@@ -72,11 +72,11 @@ const HeroChat = () => {
 
       <div className={`relative z-10 w-full max-w-2xl text-center transition-all duration-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
         {/* Hero Image */}
-        <div className={`mb-4 flex justify-center transition-all duration-1000 delay-200 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-90"}`}>
-          <img src={ainaHero} alt="AINA" className="h-48 sm:h-64 lg:h-72 w-auto object-contain drop-shadow-[0_0_40px_hsl(270_80%_65%/0.3)]" />
+        <div className={`mb-2 flex justify-center transition-all duration-1000 delay-200 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-90"}`}>
+          <img src={ainaHero} alt="AINA" className="h-32 sm:h-48 lg:h-56 w-auto object-contain drop-shadow-[0_0_40px_hsl(270_80%_65%/0.3)]" />
         </div>
 
-        <p className={`mb-8 font-modernist text-base text-primary-foreground sm:text-lg transition-all duration-700 delay-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+        <p className={`mb-4 font-modernist text-sm text-primary-foreground sm:text-base transition-all duration-700 delay-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
           Teman Pintar Mahasiswa Indonesia di Mesir
         </p>
 
