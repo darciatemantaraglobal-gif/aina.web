@@ -3,7 +3,7 @@ import HeroChat from "@/components/HeroChat";
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen overflow-hidden bg-background">
       <Navbar />
       <HeroChat />
     </div>

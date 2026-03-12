@@ -15,12 +15,9 @@ const HeroChat = () => {
   const [visible, setVisible] = useState(false);
   const navigate = useNavigate();
 
-  // Currency converter state
   const [currencies, setCurrencies] = useState({ egp: "1", idr: "", usd: "" });
   const [rates] = useState({ egpToIdr: 245.5, egpToUsd: 0.02, idrToUsd: 0.0000615 });
-  const [activeField, setActiveField] = useState<string | null>(null);
 
-  // Real-time clocks
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -39,10 +36,8 @@ const HeroChat = () => {
   const jakartaTime = formatTime(now, "Asia/Jakarta");
   const jakartaDate = formatDate(now, "Asia/Jakarta");
 
-  // Currency conversion
   const handleCurrencyChange = (field: string, value: string) => {
     const num = parseFloat(value) || 0;
-    setActiveField(field);
     if (field === "egp") {
       setCurrencies({ egp: value, idr: (num * rates.egpToIdr).toFixed(0), usd: (num * rates.egpToUsd).toFixed(4) });
     } else if (field === "idr") {
@@ -62,67 +57,86 @@ const HeroChat = () => {
   };
 
   return (
-    <section className="relative flex h-screen flex-col items-center justify-center px-3 pt-14 pb-4 overflow-hidden">
+    <section className="relative flex h-[calc(100vh-3.5rem)] flex-col items-center justify-center overflow-hidden px-4 py-4 sm:h-[calc(100vh-4rem)] sm:py-6">
       {/* Background gradient */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
-        <div className="absolute left-1/2 top-1/4 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[150px]" />
-        <div className="absolute right-1/4 bottom-1/4 h-[300px] w-[300px] rounded-full bg-accent/5 blur-[120px]" />
+        <div className="absolute left-1/2 top-1/4 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[120px]" />
+        <div className="absolute right-1/4 bottom-1/4 h-[250px] w-[250px] rounded-full bg-accent/5 blur-[100px]" />
       </div>
 
-      <div className={`relative z-10 w-full max-w-2xl text-center transition-all duration-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+      <div
+        className={`relative z-10 flex w-full max-w-xl flex-col items-center gap-3 text-center transition-all duration-700 sm:gap-4 ${
+          visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+        }`}
+      >
         {/* Hero Image */}
-        <div className={`mb-2 flex justify-center transition-all duration-1000 delay-200 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-90"}`}>
-          <img src={ainaHero} alt="AINA" className="h-32 sm:h-48 lg:h-56 w-auto object-contain drop-shadow-[0_0_40px_hsl(270_80%_65%/0.3)]" />
-        </div>
+        <img
+          src={ainaHero}
+          alt="AINA"
+          className="h-24 w-auto object-contain drop-shadow-[0_0_40px_hsl(270_80%_65%/0.3)] sm:h-36 lg:h-44"
+        />
 
-        <p className={`mb-4 font-modernist text-sm text-primary-foreground sm:text-base transition-all duration-700 delay-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+        {/* Subtitle */}
+        <p className="font-modernist text-xs text-primary-foreground/80 sm:text-sm">
           Teman Pintar Mahasiswa Indonesia di Mesir
         </p>
 
         {/* Chat Input */}
-        <form onSubmit={handleSubmit} className={`relative mx-auto w-full max-w-xl transition-all duration-700 delay-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+        <form onSubmit={handleSubmit} className="w-full">
           <div className="group relative rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-1.5 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
               placeholder="Tanyakan apa saja kepada AINA..."
               rows={2}
               className="w-full resize-none rounded-xl bg-transparent px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
-            <button type="submit" className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80">
+            <button
+              type="submit"
+              className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80"
+            >
               <Send className="h-3.5 w-3.5" />
             </button>
           </div>
         </form>
 
         {/* Suggestions */}
-        <div className={`mt-2 flex flex-wrap justify-center gap-1.5 px-2 transition-all duration-700 delay-900 ${visible ? "opacity-100" : "opacity-0"}`}>
+        <div className="flex flex-wrap justify-center gap-1.5">
           {suggestions.map((s) => (
-            <button key={s} onClick={() => handleSuggestion(s)} className="rounded-full border border-border bg-secondary/80 backdrop-blur-sm px-2.5 py-1 text-[10px] text-secondary-foreground transition-colors hover:border-primary/40 hover:bg-primary/10">
+            <button
+              key={s}
+              onClick={() => handleSuggestion(s)}
+              className="rounded-full border border-border bg-secondary/80 backdrop-blur-sm px-2.5 py-1 text-[10px] text-secondary-foreground transition-colors hover:border-primary/40 hover:bg-primary/10"
+            >
               {s}
             </button>
           ))}
         </div>
 
         {/* Utility Cards */}
-        <div className={`mt-4 grid grid-cols-2 gap-2 transition-all duration-700 delay-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+        <div className="grid w-full grid-cols-2 gap-2">
           {/* Clock Card */}
           <div className="rounded-xl border border-border bg-card/60 backdrop-blur-md p-2.5">
-            <div className="flex items-center gap-1.5 mb-2">
+            <div className="mb-1.5 flex items-center gap-1.5">
               <Clock className="h-3 w-3 text-primary" />
               <span className="text-[10px] font-modernist font-bold text-foreground">Waktu</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <div className="rounded-lg bg-secondary/50 p-1.5 text-center">
                 <p className="text-[8px] text-muted-foreground">🇪🇬 Mesir</p>
-                <p className="font-display text-xs font-bold text-foreground tabular-nums">{egyptTime}</p>
+                <p className="font-display text-[11px] font-bold text-foreground tabular-nums">{egyptTime}</p>
                 <p className="text-[8px] text-muted-foreground">{egyptDate}</p>
               </div>
               <div className="rounded-lg bg-secondary/50 p-1.5 text-center">
                 <p className="text-[8px] text-muted-foreground">🇮🇩 Jakarta</p>
-                <p className="font-display text-xs font-bold text-foreground tabular-nums">{jakartaTime}</p>
+                <p className="font-display text-[11px] font-bold text-foreground tabular-nums">{jakartaTime}</p>
                 <p className="text-[8px] text-muted-foreground">{jakartaDate}</p>
               </div>
             </div>
@@ -130,7 +144,7 @@ const HeroChat = () => {
 
           {/* Currency Card */}
           <div className="rounded-xl border border-border bg-card/60 backdrop-blur-md p-2.5">
-            <div className="flex items-center gap-1.5 mb-2">
+            <div className="mb-1.5 flex items-center gap-1.5">
               <ArrowRightLeft className="h-3 w-3 text-primary" />
               <span className="text-[10px] font-modernist font-bold text-foreground">Kurs</span>
             </div>
@@ -142,12 +156,12 @@ const HeroChat = () => {
               ].map((c) => (
                 <div key={c.code} className="flex items-center gap-1.5 rounded-lg bg-secondary/50 px-2 py-1">
                   <span className="text-[10px]">{c.flag}</span>
-                  <span className="text-[10px] font-bold text-muted-foreground w-6">{c.code}</span>
+                  <span className="w-6 text-[10px] font-bold text-muted-foreground">{c.code}</span>
                   <input
                     type="number"
                     value={currencies[c.field]}
                     onChange={(e) => handleCurrencyChange(c.field, e.target.value)}
-                    className="flex-1 bg-transparent text-right text-[11px] font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="flex-1 bg-transparent text-right text-[11px] font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     placeholder="0"
                   />
                 </div>
