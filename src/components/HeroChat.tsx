@@ -98,9 +98,9 @@ const HeroChat = () => {
         </form>
 
         {/* Suggestions */}
-        <div className={`mt-4 flex flex-wrap justify-center gap-2 px-2 transition-all duration-700 delay-900 ${visible ? "opacity-100" : "opacity-0"}`}>
+        <div className={`mt-2 flex flex-wrap justify-center gap-1.5 px-2 transition-all duration-700 delay-900 ${visible ? "opacity-100" : "opacity-0"}`}>
           {suggestions.map((s) => (
-            <button key={s} onClick={() => handleSuggestion(s)} className="rounded-full border border-border bg-secondary/80 backdrop-blur-sm px-3 py-1.5 text-xs text-secondary-foreground transition-colors hover:border-primary/40 hover:bg-primary/10">
+            <button key={s} onClick={() => handleSuggestion(s)} className="rounded-full border border-border bg-secondary/80 backdrop-blur-sm px-2.5 py-1 text-[10px] text-secondary-foreground transition-colors hover:border-primary/40 hover:bg-primary/10">
               {s}
             </button>
           ))}
