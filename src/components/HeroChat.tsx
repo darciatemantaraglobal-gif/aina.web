@@ -82,17 +82,17 @@ const HeroChat = () => {
 
         {/* Chat Input */}
         <form onSubmit={handleSubmit} className={`relative mx-auto w-full max-w-xl transition-all duration-700 delay-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <div className="group relative rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-2 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
+          <div className="group relative rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-1.5 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
-              placeholder="Tanyakan apa saja kepada AINA tentang kuliah atau kehidupan di Mesir..."
-              rows={3}
-              className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              placeholder="Tanyakan apa saja kepada AINA..."
+              rows={2}
+              className="w-full resize-none rounded-xl bg-transparent px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
-            <button type="submit" className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80">
-              <Send className="h-4 w-4" />
+            <button type="submit" className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80">
+              <Send className="h-3.5 w-3.5" />
             </button>
           </div>
         </form>
