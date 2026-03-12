@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Send, Sparkles } from "lucide-react";
+import ainaLogo from "@/assets/aina-logo.png";
 
 const suggestions = [
   "Bagaimana cara daftar kuliah di Al-Azhar?",
@@ -32,33 +33,38 @@ const HeroChat = () => {
       </div>
 
       <div className="relative z-10 w-full max-w-2xl text-center">
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm text-primary">
-          <Sparkles className="h-4 w-4" />
-          AI Assistant Masisir
+        {/* Logo */}
+        <div className="mb-6 flex justify-center">
+          <img src={ainaLogo} alt="AINA Logo" className="h-20 w-20 sm:h-24 sm:w-24 object-contain" />
         </div>
 
-        <h1 className="mb-4 font-display text-4xl font-bold leading-tight text-foreground sm:text-5xl lg:text-6xl">
-          Teman Pintar Mahasiswa{" "}
-          <span className="text-gradient-purple">Indonesia di Mesir</span>
+        <h1 className="mb-3 font-sunspire text-6xl leading-tight text-gradient-purple-white sm:text-7xl lg:text-8xl">
+          AINA
         </h1>
 
-        <p className="mb-10 text-lg text-muted-foreground">
-          AINA membantu kamu menyelesaikan masalah administrasi, akademik, dan kehidupan sehari-hari di Mesir.
+        <p className="mb-10 font-modernist text-base text-primary-foreground sm:text-lg">
+          Teman Pintar Mahasiswa Indonesia di Mesir
         </p>
 
-        {/* Chat Input */}
+        {/* Chat Input - larger */}
         <form onSubmit={handleSubmit} className="relative mx-auto w-full max-w-xl">
-          <div className="group relative rounded-2xl border border-border bg-card p-1.5 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
-            <input
-              type="text"
+          <div className="group relative rounded-2xl border border-border bg-card p-2 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
+            <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
               placeholder="Tanyakan apa saja kepada AINA tentang kuliah atau kehidupan di Mesir..."
-              className="w-full rounded-xl bg-transparent px-4 py-3.5 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              rows={3}
+              className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
             <button
               type="submit"
-              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80"
+              className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -66,7 +72,7 @@ const HeroChat = () => {
         </form>
 
         {/* Suggestions */}
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <div className="mt-5 flex flex-wrap justify-center gap-2 px-2">
           {suggestions.map((s) => (
             <button
               key={s}

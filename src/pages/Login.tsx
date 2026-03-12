@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot, Mail, ArrowRight } from "lucide-react";
+import { Mail, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import ainaLogo from "@/assets/aina-logo.png";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -43,6 +44,14 @@ const Login = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      {/* Close button */}
+      <button
+        onClick={() => navigate(-1)}
+        className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary"
+      >
+        <X className="h-5 w-5" />
+      </button>
+
       {/* Background glow */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute left-1/2 top-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[100px]" />
@@ -50,8 +59,8 @@ const Login = () => {
 
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-purple">
-            <Bot className="h-7 w-7 text-primary-foreground" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center">
+            <img src={ainaLogo} alt="AINA" className="h-14 w-14 object-contain" />
           </div>
           <h1 className="font-display text-2xl font-bold text-foreground">Masuk ke AINA</h1>
           <p className="mt-1 text-sm text-muted-foreground">AI Assistant Masisir</p>
