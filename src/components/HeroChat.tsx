@@ -107,47 +107,47 @@ const HeroChat = () => {
         </div>
 
         {/* Utility Cards */}
-        <div className={`mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 transition-all duration-700 delay-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+        <div className={`mt-4 grid grid-cols-2 gap-2 transition-all duration-700 delay-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
           {/* Clock Card */}
-          <div className="rounded-2xl border border-border bg-card/60 backdrop-blur-md p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock className="h-4 w-4 text-primary" />
-              <span className="text-xs font-modernist font-bold text-foreground">Waktu Real-Time</span>
+          <div className="rounded-xl border border-border bg-card/60 backdrop-blur-md p-2.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Clock className="h-3 w-3 text-primary" />
+              <span className="text-[10px] font-modernist font-bold text-foreground">Waktu</span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-secondary/50 p-3 text-center">
-                <p className="text-[10px] text-muted-foreground mb-1">🇪🇬 Mesir</p>
-                <p className="font-display text-lg font-bold text-foreground tabular-nums">{egyptTime}</p>
-                <p className="text-[10px] text-muted-foreground">{egyptDate}</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="rounded-lg bg-secondary/50 p-1.5 text-center">
+                <p className="text-[8px] text-muted-foreground">🇪🇬 Mesir</p>
+                <p className="font-display text-xs font-bold text-foreground tabular-nums">{egyptTime}</p>
+                <p className="text-[8px] text-muted-foreground">{egyptDate}</p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3 text-center">
-                <p className="text-[10px] text-muted-foreground mb-1">🇮🇩 Jakarta</p>
-                <p className="font-display text-lg font-bold text-foreground tabular-nums">{jakartaTime}</p>
-                <p className="text-[10px] text-muted-foreground">{jakartaDate}</p>
+              <div className="rounded-lg bg-secondary/50 p-1.5 text-center">
+                <p className="text-[8px] text-muted-foreground">🇮🇩 Jakarta</p>
+                <p className="font-display text-xs font-bold text-foreground tabular-nums">{jakartaTime}</p>
+                <p className="text-[8px] text-muted-foreground">{jakartaDate}</p>
               </div>
             </div>
           </div>
 
           {/* Currency Card */}
-          <div className="rounded-2xl border border-border bg-card/60 backdrop-blur-md p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <ArrowRightLeft className="h-4 w-4 text-primary" />
-              <span className="text-xs font-modernist font-bold text-foreground">Konversi Kurs</span>
+          <div className="rounded-xl border border-border bg-card/60 backdrop-blur-md p-2.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <ArrowRightLeft className="h-3 w-3 text-primary" />
+              <span className="text-[10px] font-modernist font-bold text-foreground">Kurs</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {[
                 { code: "EGP", flag: "🇪🇬", field: "egp" as const },
                 { code: "IDR", flag: "🇮🇩", field: "idr" as const },
                 { code: "USD", flag: "🇺🇸", field: "usd" as const },
               ].map((c) => (
-                <div key={c.code} className="flex items-center gap-2 rounded-xl bg-secondary/50 px-3 py-2">
-                  <span className="text-sm">{c.flag}</span>
-                  <span className="text-xs font-bold text-muted-foreground w-8">{c.code}</span>
+                <div key={c.code} className="flex items-center gap-1.5 rounded-lg bg-secondary/50 px-2 py-1">
+                  <span className="text-[10px]">{c.flag}</span>
+                  <span className="text-[10px] font-bold text-muted-foreground w-6">{c.code}</span>
                   <input
                     type="number"
                     value={currencies[c.field]}
                     onChange={(e) => handleCurrencyChange(c.field, e.target.value)}
-                    className="flex-1 bg-transparent text-right text-sm font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="flex-1 bg-transparent text-right text-[11px] font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="0"
                   />
                 </div>
