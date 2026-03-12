@@ -62,7 +62,7 @@ const HeroChat = () => {
   };
 
   return (
-    <section className="relative flex min-h-screen flex-col items-center justify-center px-4 pt-16 pb-8">
+    <section className="relative flex h-screen flex-col items-center justify-center px-3 pt-14 pb-4 overflow-hidden">
       {/* Background gradient */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/30 to-background" />
