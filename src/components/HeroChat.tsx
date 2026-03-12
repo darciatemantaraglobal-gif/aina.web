@@ -65,9 +65,9 @@ const HeroChat = () => {
     <section className="relative flex h-screen flex-col items-center justify-center px-3 pt-14 pb-4 overflow-hidden">
       {/* Background gradient */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/30 to-background" />
-        <div className="absolute left-1/2 top-1/4 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 blur-[150px]" />
-        <div className="absolute right-1/4 bottom-1/4 h-[400px] w-[400px] rounded-full bg-accent/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
+        <div className="absolute left-1/2 top-1/4 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[150px]" />
+        <div className="absolute right-1/4 bottom-1/4 h-[300px] w-[300px] rounded-full bg-accent/5 blur-[120px]" />
       </div>
 
       <div className={`relative z-10 w-full max-w-2xl text-center transition-all duration-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
