@@ -62,92 +62,92 @@ const HeroChat = () => {
   };
 
   return (
-    <section className="relative flex min-h-screen flex-col items-center justify-center px-4 pt-16 pb-8">
+    <section className="relative flex h-screen flex-col items-center justify-center px-3 pt-14 pb-4 overflow-hidden">
       {/* Background gradient */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/30 to-background" />
-        <div className="absolute left-1/2 top-1/4 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 blur-[150px]" />
-        <div className="absolute right-1/4 bottom-1/4 h-[400px] w-[400px] rounded-full bg-accent/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
+        <div className="absolute left-1/2 top-1/4 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[150px]" />
+        <div className="absolute right-1/4 bottom-1/4 h-[300px] w-[300px] rounded-full bg-accent/5 blur-[120px]" />
       </div>
 
       <div className={`relative z-10 w-full max-w-2xl text-center transition-all duration-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
         {/* Hero Image */}
-        <div className={`mb-4 flex justify-center transition-all duration-1000 delay-200 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-90"}`}>
-          <img src={ainaHero} alt="AINA" className="h-48 sm:h-64 lg:h-72 w-auto object-contain drop-shadow-[0_0_40px_hsl(270_80%_65%/0.3)]" />
+        <div className={`mb-2 flex justify-center transition-all duration-1000 delay-200 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-90"}`}>
+          <img src={ainaHero} alt="AINA" className="h-32 sm:h-48 lg:h-56 w-auto object-contain drop-shadow-[0_0_40px_hsl(270_80%_65%/0.3)]" />
         </div>
 
-        <p className={`mb-8 font-modernist text-base text-primary-foreground sm:text-lg transition-all duration-700 delay-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+        <p className={`mb-4 font-modernist text-sm text-primary-foreground sm:text-base transition-all duration-700 delay-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
           Teman Pintar Mahasiswa Indonesia di Mesir
         </p>
 
         {/* Chat Input */}
         <form onSubmit={handleSubmit} className={`relative mx-auto w-full max-w-xl transition-all duration-700 delay-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <div className="group relative rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-2 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
+          <div className="group relative rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-1.5 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
-              placeholder="Tanyakan apa saja kepada AINA tentang kuliah atau kehidupan di Mesir..."
-              rows={3}
-              className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              placeholder="Tanyakan apa saja kepada AINA..."
+              rows={2}
+              className="w-full resize-none rounded-xl bg-transparent px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
-            <button type="submit" className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80">
-              <Send className="h-4 w-4" />
+            <button type="submit" className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80">
+              <Send className="h-3.5 w-3.5" />
             </button>
           </div>
         </form>
 
         {/* Suggestions */}
-        <div className={`mt-4 flex flex-wrap justify-center gap-2 px-2 transition-all duration-700 delay-900 ${visible ? "opacity-100" : "opacity-0"}`}>
+        <div className={`mt-2 flex flex-wrap justify-center gap-1.5 px-2 transition-all duration-700 delay-900 ${visible ? "opacity-100" : "opacity-0"}`}>
           {suggestions.map((s) => (
-            <button key={s} onClick={() => handleSuggestion(s)} className="rounded-full border border-border bg-secondary/80 backdrop-blur-sm px-3 py-1.5 text-xs text-secondary-foreground transition-colors hover:border-primary/40 hover:bg-primary/10">
+            <button key={s} onClick={() => handleSuggestion(s)} className="rounded-full border border-border bg-secondary/80 backdrop-blur-sm px-2.5 py-1 text-[10px] text-secondary-foreground transition-colors hover:border-primary/40 hover:bg-primary/10">
               {s}
             </button>
           ))}
         </div>
 
         {/* Utility Cards */}
-        <div className={`mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 transition-all duration-700 delay-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+        <div className={`mt-4 grid grid-cols-2 gap-2 transition-all duration-700 delay-1000 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
           {/* Clock Card */}
-          <div className="rounded-2xl border border-border bg-card/60 backdrop-blur-md p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock className="h-4 w-4 text-primary" />
-              <span className="text-xs font-modernist font-bold text-foreground">Waktu Real-Time</span>
+          <div className="rounded-xl border border-border bg-card/60 backdrop-blur-md p-2.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Clock className="h-3 w-3 text-primary" />
+              <span className="text-[10px] font-modernist font-bold text-foreground">Waktu</span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-secondary/50 p-3 text-center">
-                <p className="text-[10px] text-muted-foreground mb-1">🇪🇬 Mesir</p>
-                <p className="font-display text-lg font-bold text-foreground tabular-nums">{egyptTime}</p>
-                <p className="text-[10px] text-muted-foreground">{egyptDate}</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="rounded-lg bg-secondary/50 p-1.5 text-center">
+                <p className="text-[8px] text-muted-foreground">🇪🇬 Mesir</p>
+                <p className="font-display text-xs font-bold text-foreground tabular-nums">{egyptTime}</p>
+                <p className="text-[8px] text-muted-foreground">{egyptDate}</p>
               </div>
-              <div className="rounded-xl bg-secondary/50 p-3 text-center">
-                <p className="text-[10px] text-muted-foreground mb-1">🇮🇩 Jakarta</p>
-                <p className="font-display text-lg font-bold text-foreground tabular-nums">{jakartaTime}</p>
-                <p className="text-[10px] text-muted-foreground">{jakartaDate}</p>
+              <div className="rounded-lg bg-secondary/50 p-1.5 text-center">
+                <p className="text-[8px] text-muted-foreground">🇮🇩 Jakarta</p>
+                <p className="font-display text-xs font-bold text-foreground tabular-nums">{jakartaTime}</p>
+                <p className="text-[8px] text-muted-foreground">{jakartaDate}</p>
               </div>
             </div>
           </div>
 
           {/* Currency Card */}
-          <div className="rounded-2xl border border-border bg-card/60 backdrop-blur-md p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <ArrowRightLeft className="h-4 w-4 text-primary" />
-              <span className="text-xs font-modernist font-bold text-foreground">Konversi Kurs</span>
+          <div className="rounded-xl border border-border bg-card/60 backdrop-blur-md p-2.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <ArrowRightLeft className="h-3 w-3 text-primary" />
+              <span className="text-[10px] font-modernist font-bold text-foreground">Kurs</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {[
                 { code: "EGP", flag: "🇪🇬", field: "egp" as const },
                 { code: "IDR", flag: "🇮🇩", field: "idr" as const },
                 { code: "USD", flag: "🇺🇸", field: "usd" as const },
               ].map((c) => (
-                <div key={c.code} className="flex items-center gap-2 rounded-xl bg-secondary/50 px-3 py-2">
-                  <span className="text-sm">{c.flag}</span>
-                  <span className="text-xs font-bold text-muted-foreground w-8">{c.code}</span>
+                <div key={c.code} className="flex items-center gap-1.5 rounded-lg bg-secondary/50 px-2 py-1">
+                  <span className="text-[10px]">{c.flag}</span>
+                  <span className="text-[10px] font-bold text-muted-foreground w-6">{c.code}</span>
                   <input
                     type="number"
                     value={currencies[c.field]}
                     onChange={(e) => handleCurrencyChange(c.field, e.target.value)}
-                    className="flex-1 bg-transparent text-right text-sm font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="flex-1 bg-transparent text-right text-[11px] font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="0"
                   />
                 </div>
