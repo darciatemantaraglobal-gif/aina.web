@@ -11,6 +11,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Plus,
+  Shield,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ const menuItems = [
   { id: "berita", label: "Berita Masisir", icon: Newspaper },
   { id: "contributor", label: "Contributor", icon: Users },
   { id: "profile", label: "Profile", icon: UserCircle },
+  { id: "admin", label: "Admin", icon: Shield },
 ];
 
 const DashboardSidebar = ({ activeTab, onTabChange }: DashboardSidebarProps) => {
@@ -44,7 +46,6 @@ const DashboardSidebar = ({ activeTab, onTabChange }: DashboardSidebarProps) => 
         collapsed ? "w-16" : "w-64"
       }`}
     >
-      {/* Header */}
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
           <div className="flex items-center gap-2">
@@ -62,7 +63,6 @@ const DashboardSidebar = ({ activeTab, onTabChange }: DashboardSidebarProps) => 
         </button>
       </div>
 
-      {/* New Chat */}
       <div className="p-3">
         <button
           onClick={() => onTabChange("chat")}
@@ -75,7 +75,6 @@ const DashboardSidebar = ({ activeTab, onTabChange }: DashboardSidebarProps) => 
         </button>
       </div>
 
-      {/* Menu */}
       <nav className="flex-1 space-y-1 px-3">
         {menuItems.map((item) => (
           <button
@@ -93,7 +92,6 @@ const DashboardSidebar = ({ activeTab, onTabChange }: DashboardSidebarProps) => 
         ))}
       </nav>
 
-      {/* Logout */}
       <div className="border-t border-sidebar-border p-3">
         <button
           onClick={handleLogout}
