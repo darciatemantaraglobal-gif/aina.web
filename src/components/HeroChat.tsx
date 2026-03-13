@@ -84,7 +84,7 @@ const HeroChat = () => {
   };
 
   return (
-    <section className="relative flex h-full overflow-hidden">
+    <section className="relative flex h-full">
 
       {/* Background */}
       <div className="pointer-events-none absolute inset-0">
@@ -219,7 +219,7 @@ const HeroChat = () => {
 
             <div className="h-4 w-px bg-border/60" />
 
-            <div className="flex flex-1 items-center justify-around gap-1">
+            <div className="flex flex-1 items-center justify-around gap-1 overflow-hidden">
               {(
                 [
                   { code: "EGP", flag: "🇪🇬", field: "egp" },
@@ -227,16 +227,16 @@ const HeroChat = () => {
                   { code: "USD", flag: "🇺🇸", field: "usd" },
                 ] as const
               ).map((c, i) => (
-                <div key={c.code} className="flex flex-1 items-center gap-1.5">
-                  {i > 0 && <div className="h-4 w-px bg-border/40" />}
-                  <span className="text-sm">{c.flag}</span>
-                  <div className="flex min-w-0 flex-1 flex-col">
+                <div key={c.code} className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                  {i > 0 && <div className="h-4 w-px shrink-0 bg-border/40" />}
+                  <span className="shrink-0 text-sm">{c.flag}</span>
+                  <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                     <span className="text-[10px] leading-none text-muted-foreground">{c.code}</span>
                     <input
                       type="number"
                       value={currencies[c.field]}
                       onChange={(e) => handleCurrencyChange(c.field, e.target.value)}
-                      className="w-full bg-transparent font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className="min-w-0 w-full bg-transparent font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       style={{ fontSize: "clamp(0.75rem, 1.7vh, 0.95rem)" }}
                       placeholder="0"
                     />
@@ -247,7 +247,7 @@ const HeroChat = () => {
 
             {/* Rate editor popover */}
             {rateOpen && (
-              <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-2xl border border-border/70 bg-card/95 shadow-2xl shadow-black/50 backdrop-blur-xl">
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-2xl shadow-black/50 backdrop-blur-xl">
                 <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
                   <div className="flex items-center gap-2">
                     <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
