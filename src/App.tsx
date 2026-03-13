@@ -12,6 +12,7 @@ import ContributorInfoPage from "./pages/ContributorInfoPage.tsx";
 import PartnerPage from "./pages/PartnerPage.tsx";
 import PricingPage from "./pages/PricingPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import AuthCallback from "./pages/AuthCallback.tsx";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/partner" element={<PartnerPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

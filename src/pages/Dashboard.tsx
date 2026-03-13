@@ -21,19 +21,47 @@ const BeritaPlaceholder = () => (
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("chat");
+  const [authReady, setAuthReady] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) navigate("/login");
+    // First check existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setAuthReady(true);
+      } else {
+        // No session yet — wait for onAuthStateChange (handles token-in-URL case)
+      }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) navigate("/login");
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setAuthReady(true);
+      } else if (authReady) {
+        // Only redirect if we were authenticated before (i.e., user signed out)
+        navigate("/login");
+      } else {
+        // Still loading — give it a moment then redirect
+        setTimeout(() => {
+          supabase.auth.getSession().then(({ data: { session: s } }) => {
+            if (!s) navigate("/login");
+          });
+        }, 500);
+      }
     });
 
     return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
+
+  if (!authReady) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+        <p className="text-sm text-muted-foreground">Memuat dashboard...</p>
+      </div>
+    );
+  }
 
   const renderContent = () => {
     switch (activeTab) {

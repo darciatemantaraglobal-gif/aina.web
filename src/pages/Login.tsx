@@ -53,7 +53,7 @@ const Login = () => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: window.location.origin + "/dashboard" },
+        options: { redirectTo: window.location.origin + "/auth/callback" },
       });
       if (error) throw error;
     } catch (err: any) {
@@ -78,7 +78,7 @@ const Login = () => {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin + "/dashboard" },
+        options: { emailRedirectTo: window.location.origin + "/auth/callback" },
       });
       if (error) throw error;
       setVerificationSent(true);
