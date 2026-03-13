@@ -93,8 +93,14 @@ const HeroChat = () => {
       {/* Background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
+        {/* Center glow */}
         <div className="absolute left-1/2 top-1/3 h-[60vw] w-[60vw] max-h-[500px] max-w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[120px]" />
         <div className="absolute right-1/4 bottom-1/4 h-[30vw] w-[30vw] max-h-[300px] max-w-[300px] rounded-full bg-accent/5 blur-[100px]" />
+        {/* Dark purple corner gradients */}
+        <div className="absolute -top-20 -left-20 h-[45vw] w-[45vw] max-h-[380px] max-w-[380px] rounded-full bg-[radial-gradient(ellipse_at_top_left,hsl(270_60%_18%/0.55),transparent_70%)] blur-[60px]" />
+        <div className="absolute -bottom-20 -right-20 h-[45vw] w-[45vw] max-h-[380px] max-w-[380px] rounded-full bg-[radial-gradient(ellipse_at_bottom_right,hsl(270_55%_15%/0.5),transparent_70%)] blur-[60px]" />
+        <div className="absolute -top-10 -right-10 h-[25vw] w-[25vw] max-h-[220px] max-w-[220px] rounded-full bg-[radial-gradient(ellipse_at_top_right,hsl(280_50%_20%/0.35),transparent_70%)] blur-[50px]" />
+        <div className="absolute -bottom-10 -left-10 h-[25vw] w-[25vw] max-h-[220px] max-w-[220px] rounded-full bg-[radial-gradient(ellipse_at_bottom_left,hsl(260_50%_18%/0.35),transparent_70%)] blur-[50px]" />
       </div>
 
       {/* Main content */}
@@ -120,10 +126,13 @@ const HeroChat = () => {
           </p>
         </div>
 
-        {/* Chat Input */}
+        {/* Chat Input — spinning glow border */}
         <form onSubmit={handleSubmit} className="w-full">
+          {/* Outer glow wrapper (pseudo-element handles the spinning ring) */}
+          <div className="chatbox-border-wrapper">
+            {/* Inner card — fully opaque so only the 1.5px edge shows the glow */}
           <div
-            className="group relative rounded-2xl border border-border bg-card/80 backdrop-blur-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm"
+            className="group relative rounded-[calc(1rem-1.5px)] bg-[hsl(240_10%_6%)] backdrop-blur-sm"
             style={{ padding: "clamp(0.5rem, 1.2vh, 0.75rem)" }}
           >
             <textarea
@@ -147,6 +156,7 @@ const HeroChat = () => {
             >
               <Send style={{ width: "clamp(0.9rem, 2vh, 1.1rem)", height: "clamp(0.9rem, 2vh, 1.1rem)" }} />
             </button>
+          </div>
           </div>
         </form>
 

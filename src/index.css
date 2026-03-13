@@ -102,4 +102,34 @@
   .glow-purple-sm {
     box-shadow: 0 0 15px -3px hsl(270 80% 65% / 0.3);
   }
+
+  /* Chatbox spinning border glow — pseudo-element technique */
+  .chatbox-border-wrapper {
+    position: relative;
+    border-radius: 1rem;
+    padding: 1.5px;
+    overflow: hidden;
+  }
+
+  .chatbox-border-wrapper::before {
+    content: '';
+    position: absolute;
+    inset: -300%;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0%,
+      transparent 32%,
+      hsl(270 80% 65% / 0.12) 41%,
+      hsl(270 80% 65% / 1) 50%,
+      hsl(280 90% 78% / 0.65) 58%,
+      transparent 67%,
+      transparent 100%
+    );
+    animation: chatbox-spin 3s linear infinite;
+    transform-origin: center;
+  }
+
+  @keyframes chatbox-spin {
+    to { transform: rotate(1turn); }
+  }
 }
