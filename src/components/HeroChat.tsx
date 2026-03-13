@@ -21,6 +21,23 @@ const HeroChat = () => {
   const idrToUsd = 1 / usdToIdr;
 
   const [currencies, setCurrencies] = useState({ egp: "1", idr: "245", usd: "" });
+  const [focusedCurrency, setFocusedCurrency] = useState<string | null>(null);
+  const [focusedRate, setFocusedRate] = useState<string | null>(null);
+
+  // Format helpers — Indonesian style: dots for thousands, comma for decimal
+  const fmtInt = (n: number) => Math.round(n).toLocaleString("id-ID");
+  const fmtDec = (n: number, d: number) =>
+    n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  const getDisplayValue = (field: string, raw: string) => {
+    if (focusedCurrency === field) return raw;
+    const n = parseFloat(raw);
+    if (isNaN(n)) return raw;
+    if (field === "idr") return fmtInt(n);
+    if (field === "egp") return fmtDec(n, n % 1 === 0 ? 0 : 2);
+    if (field === "usd") return fmtDec(n, 4);
+    return raw;
+  };
 
   useEffect(() => {
     const egp = parseFloat(currencies.egp) || 1;
@@ -233,10 +250,13 @@ const HeroChat = () => {
                   <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
                     <span className="text-[10px] leading-none text-muted-foreground">{c.code}</span>
                     <input
-                      type="number"
-                      value={currencies[c.field]}
+                      type="text"
+                      inputMode="decimal"
+                      value={getDisplayValue(c.field, currencies[c.field])}
                       onChange={(e) => handleCurrencyChange(c.field, e.target.value)}
-                      className="min-w-0 w-full bg-transparent font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      onFocus={() => setFocusedCurrency(c.field)}
+                      onBlur={() => setFocusedCurrency(null)}
+                      className="min-w-0 w-full bg-transparent font-display font-semibold text-foreground focus:outline-none"
                       style={{ fontSize: "clamp(0.75rem, 1.7vh, 0.95rem)" }}
                       placeholder="0"
                     />
@@ -269,12 +289,14 @@ const HeroChat = () => {
                       <span className="text-sm">{r.flag}</span>
                       <span className="shrink-0 text-[10px] text-muted-foreground">1 {r.label} =</span>
                       <input
-                        type="number"
-                        value={r.value}
-                        onChange={(e) => r.onChange(parseFloat(e.target.value) || 0)}
-                        className="min-w-0 flex-1 bg-transparent text-right text-xs font-display font-bold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        type="text"
+                        inputMode="numeric"
+                        value={focusedRate === r.label ? r.value.toString() : fmtInt(r.value)}
+                        onChange={(e) => r.onChange(parseFloat(e.target.value.replace(/\./g, "").replace(",", ".")) || 0)}
+                        onFocus={() => setFocusedRate(r.label)}
+                        onBlur={() => setFocusedRate(null)}
+                        className="min-w-0 flex-1 bg-transparent text-right text-xs font-display font-bold text-foreground focus:outline-none"
                         placeholder="0"
-                        step="any"
                       />
                       <span className="shrink-0 text-[10px] font-bold text-primary">IDR 🇮🇩</span>
                     </div>
