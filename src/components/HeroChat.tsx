@@ -247,54 +247,41 @@ const HeroChat = () => {
 
             {/* Rate editor popover */}
             {rateOpen && (
-              <div className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-2xl shadow-black/50 backdrop-blur-xl">
-                <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
-                    <span className="font-modernist text-xs font-bold text-foreground">Atur Kurs Hari Ini</span>
-                  </div>
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-56 overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-xl shadow-black/50 backdrop-blur-xl">
+                <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Atur Kurs</span>
                   <button
                     onClick={() => setRateOpen(false)}
-                    className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-3 w-3" />
                   </button>
                 </div>
-                <div className="space-y-2 p-4">
-                  <div className="group flex items-center gap-3 rounded-xl border border-border/60 bg-secondary/40 px-4 py-3 transition-colors focus-within:border-primary/50 focus-within:bg-primary/5">
-                    <span className="text-base">🇪🇬</span>
-                    <span className="shrink-0 text-xs font-semibold text-muted-foreground">1 EGP =</span>
-                    <input
-                      type="number"
-                      value={egpToIdr}
-                      onChange={(e) => setEgpToIdr(parseFloat(e.target.value) || 0)}
-                      className="flex-1 bg-transparent text-right text-sm font-display font-bold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      placeholder="0"
-                      step="any"
-                    />
-                    <span className="shrink-0 text-xs font-bold text-primary">IDR</span>
-                    <span className="text-base">🇮🇩</span>
-                  </div>
-                  <div className="group flex items-center gap-3 rounded-xl border border-border/60 bg-secondary/40 px-4 py-3 transition-colors focus-within:border-primary/50 focus-within:bg-primary/5">
-                    <span className="text-base">🇺🇸</span>
-                    <span className="shrink-0 text-xs font-semibold text-muted-foreground">1 USD =</span>
-                    <input
-                      type="number"
-                      value={usdToIdr}
-                      onChange={(e) => setUsdToIdr(parseFloat(e.target.value) || 0)}
-                      className="flex-1 bg-transparent text-right text-sm font-display font-bold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      placeholder="0"
-                      step="any"
-                    />
-                    <span className="shrink-0 text-xs font-bold text-primary">IDR</span>
-                    <span className="text-base">🇮🇩</span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t border-border/30 px-4 py-2.5 text-[11px] text-muted-foreground">
-                  <span>Otomatis:</span>
-                  <span className="font-semibold text-foreground/80">1 EGP ≈ {egpToUsd.toFixed(5)} USD</span>
-                  <span>·</span>
-                  <span className="font-semibold text-foreground/80">1 USD ≈ {(usdToIdr / egpToIdr).toFixed(2)} EGP</span>
+                <div className="space-y-1 px-3 pb-3">
+                  {[
+                    { flag: "🇪🇬", label: "EGP", value: egpToIdr, onChange: (v: number) => setEgpToIdr(v) },
+                    { flag: "🇺🇸", label: "USD", value: usdToIdr, onChange: (v: number) => setUsdToIdr(v) },
+                  ].map((r) => (
+                    <div
+                      key={r.label}
+                      className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-2.5 py-1.5 focus-within:border-primary/50 focus-within:bg-primary/5"
+                    >
+                      <span className="text-sm">{r.flag}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">1 {r.label} =</span>
+                      <input
+                        type="number"
+                        value={r.value}
+                        onChange={(e) => r.onChange(parseFloat(e.target.value) || 0)}
+                        className="min-w-0 flex-1 bg-transparent text-right text-xs font-display font-bold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        placeholder="0"
+                        step="any"
+                      />
+                      <span className="shrink-0 text-[10px] font-bold text-primary">IDR 🇮🇩</span>
+                    </div>
+                  ))}
+                  <p className="pt-0.5 text-center text-[10px] text-muted-foreground">
+                    1 EGP ≈ <span className="font-semibold text-foreground/70">{egpToUsd.toFixed(4)} USD</span>
+                  </p>
                 </div>
               </div>
             )}
