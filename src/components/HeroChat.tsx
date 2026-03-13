@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, Clock, ArrowRightLeft } from "lucide-react";
+import { Send, Clock, ArrowRightLeft, Check, X } from "lucide-react";
 import ainaHero from "@/assets/aina-hero.png";
 
 const suggestions = [
@@ -14,7 +14,13 @@ const HeroChat = () => {
   const navigate = useNavigate();
 
   const [currencies, setCurrencies] = useState({ egp: "1", idr: "245", usd: "0.0200" });
-  const [rates] = useState({ egpToIdr: 245.5, egpToUsd: 0.02, idrToUsd: 0.0000615 });
+  const [rates, setRates] = useState({ egpToIdr: 245.5, egpToUsd: 0.02, idrToUsd: 0.0000615 });
+
+  // Rate editor state
+  const [rateOpen, setRateOpen] = useState(false);
+  const [rateEdit, setRateEdit] = useState({ egpToIdr: "245.5", egpToUsd: "0.02", idrToUsd: "0.0000615" });
+  const popoverRef = useRef<HTMLDivElement>(null);
+
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -22,6 +28,44 @@ const HeroChat = () => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Close popover on click outside
+  useEffect(() => {
+    if (!rateOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setRateOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [rateOpen]);
+
+  const openRateEditor = () => {
+    setRateEdit({
+      egpToIdr: rates.egpToIdr.toString(),
+      egpToUsd: rates.egpToUsd.toString(),
+      idrToUsd: rates.idrToUsd.toString(),
+    });
+    setRateOpen(true);
+  };
+
+  const saveRates = () => {
+    const newRates = {
+      egpToIdr: parseFloat(rateEdit.egpToIdr) || rates.egpToIdr,
+      egpToUsd: parseFloat(rateEdit.egpToUsd) || rates.egpToUsd,
+      idrToUsd: parseFloat(rateEdit.idrToUsd) || rates.idrToUsd,
+    };
+    setRates(newRates);
+    // Recalculate based on current EGP value
+    const egp = parseFloat(currencies.egp) || 1;
+    setCurrencies({
+      egp: currencies.egp,
+      idr: (egp * newRates.egpToIdr).toFixed(0),
+      usd: (egp * newRates.egpToUsd).toFixed(4),
+    });
+    setRateOpen(false);
+  };
 
   const formatTime = (date: Date, tz: string) =>
     date.toLocaleTimeString("id-ID", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -85,7 +129,7 @@ const HeroChat = () => {
           </p>
         </div>
 
-        {/* Chat Input — bigger */}
+        {/* Chat Input */}
         <form onSubmit={handleSubmit} className="w-full">
           <div
             className="group relative rounded-2xl border border-border bg-card/80 backdrop-blur-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm"
@@ -115,7 +159,7 @@ const HeroChat = () => {
           </div>
         </form>
 
-        {/* Suggestions — 2 only */}
+        {/* Suggestions */}
         <div className="flex justify-center gap-2">
           {suggestions.map((s) => (
             <button
@@ -133,21 +177,19 @@ const HeroChat = () => {
           ))}
         </div>
 
-        {/* Utility Cards — full width horizontal rows */}
+        {/* Utility Cards */}
         <div className="flex flex-col gap-2">
 
-          {/* Clock Card — single horizontal row */}
+          {/* Clock Card */}
           <div
             className="flex items-center gap-3 rounded-xl border border-border bg-card/60 backdrop-blur-md"
             style={{ padding: "clamp(0.5rem, 1.4vh, 0.875rem) clamp(0.75rem, 2vw, 1.25rem)" }}
           >
-            <div className="flex shrink-0 items-center gap-1.5 text-primary">
-              <Clock className="h-3.5 w-3.5" />
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-primary" />
               <span className="font-modernist text-xs font-bold text-foreground">Waktu</span>
             </div>
-
             <div className="h-4 w-px bg-border/60" />
-
             <div className="flex flex-1 items-center justify-around gap-2">
               {[
                 { flag: "🇪🇬", label: "Mesir", time: egyptTime, date: egyptDate },
@@ -170,18 +212,29 @@ const HeroChat = () => {
             </div>
           </div>
 
-          {/* Currency Card — single horizontal row */}
+          {/* Currency Card */}
           <div
-            className="flex items-center gap-3 rounded-xl border border-border bg-card/60 backdrop-blur-md"
+            className="relative flex items-center gap-3 rounded-xl border border-border bg-card/60 backdrop-blur-md"
             style={{ padding: "clamp(0.5rem, 1.4vh, 0.875rem) clamp(0.75rem, 2vw, 1.25rem)" }}
+            ref={popoverRef}
           >
-            <div className="flex shrink-0 items-center gap-1.5 text-primary">
+            {/* Icon + label — clickable to open rate editor */}
+            <button
+              onClick={openRateEditor}
+              title="Edit kurs"
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-1.5 py-1 transition-all duration-200 ${
+                rateOpen
+                  ? "bg-primary/20 text-primary"
+                  : "text-primary hover:bg-primary/10"
+              }`}
+            >
               <ArrowRightLeft className="h-3.5 w-3.5" />
               <span className="font-modernist text-xs font-bold text-foreground">Kurs</span>
-            </div>
+            </button>
 
             <div className="h-4 w-px bg-border/60" />
 
+            {/* Currency inputs */}
             <div className="flex flex-1 items-center justify-around gap-1">
               {[
                 { code: "EGP", flag: "🇪🇬", field: "egp" as const },
@@ -205,6 +258,56 @@ const HeroChat = () => {
                 </div>
               ))}
             </div>
+
+            {/* Rate editor popover */}
+            {rateOpen && (
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-2xl border border-border/80 bg-card/95 p-4 shadow-xl backdrop-blur-xl shadow-black/40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                {/* Header */}
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-bold text-foreground font-modernist">Edit Kurs</span>
+                  </div>
+                  <button
+                    onClick={() => setRateOpen(false)}
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+
+                {/* Rate inputs */}
+                <div className="space-y-2">
+                  {[
+                    { label: "1 EGP =", suffix: "IDR", key: "egpToIdr" as const },
+                    { label: "1 EGP =", suffix: "USD", key: "egpToUsd" as const },
+                    { label: "1 IDR =", suffix: "USD", key: "idrToUsd" as const },
+                  ].map((r) => (
+                    <div key={r.key} className="flex items-center gap-2 rounded-lg bg-secondary/50 px-3 py-2">
+                      <span className="w-16 shrink-0 text-[11px] text-muted-foreground">{r.label}</span>
+                      <input
+                        type="number"
+                        value={rateEdit[r.key]}
+                        onChange={(e) => setRateEdit((prev) => ({ ...prev, [r.key]: e.target.value }))}
+                        className="flex-1 bg-transparent text-right text-[12px] font-display font-semibold text-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        placeholder="0"
+                        step="any"
+                      />
+                      <span className="w-8 shrink-0 text-right text-[11px] font-bold text-muted-foreground">{r.suffix}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Save button */}
+                <button
+                  onClick={saveRates}
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-purple py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Simpan Kurs
+                </button>
+              </div>
+            )}
           </div>
 
         </div>
