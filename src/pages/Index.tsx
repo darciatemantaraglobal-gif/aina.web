@@ -3,9 +3,11 @@ import HeroChat from "@/components/HeroChat";
 
 const Index = () => {
   return (
-    <div className="h-screen overflow-hidden bg-background">
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
       <Navbar />
-      <HeroChat />
+      <main className="flex-1 overflow-hidden">
+        <HeroChat />
+      </main>
     </div>
   );
 };

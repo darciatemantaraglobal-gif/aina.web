@@ -54,10 +54,7 @@ const HeroChat = () => {
   };
 
   return (
-    <section
-      className="relative flex overflow-hidden"
-      style={{ height: "calc(100dvh - 3.5rem)" }}
-    >
+    <section className="relative flex h-full overflow-hidden">
       {/* Background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
