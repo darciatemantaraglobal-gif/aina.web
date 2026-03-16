@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User } from "lucide-react";
+import { Send, Bot, User, AlertCircle } from "lucide-react";
 
 interface Message {
   id: string;
@@ -7,6 +7,8 @@ interface Message {
   content: string;
   timestamp: Date;
 }
+
+const API_URL = "/api/chat";
 
 const ChatArea = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -19,7 +21,9 @@ const ChatArea = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -27,34 +31,64 @@ const ChatArea = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isLoading]);
+
+  const autoResize = () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    const userText = input.trim();
+    setInput("");
+    setError(null);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input,
+      content: userText,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
     setIsLoading(true);
 
-    // Simulate AI response (will be replaced with real API)
-    setTimeout(() => {
+    try {
+      const history = [...messages, userMsg].map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "Terima kasih atas pertanyaannya! Fitur AI chat sedang dalam pengembangan. Nantikan update selanjutnya ya! 🚀",
+        content: data.reply,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMsg]);
+    } catch (err: any) {
+      setError(err.message || "Gagal menghubungi server. Coba lagi.");
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -73,7 +107,7 @@ const ChatArea = () => {
                 </div>
               )}
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-secondary-foreground"
@@ -88,6 +122,7 @@ const ChatArea = () => {
               )}
             </div>
           ))}
+
           {isLoading && (
             <div className="flex gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-purple">
@@ -102,6 +137,14 @@ const ChatArea = () => {
               </div>
             </div>
           )}
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -110,12 +153,19 @@ const ChatArea = () => {
       <div className="border-t border-border p-4">
         <form onSubmit={handleSend} className="mx-auto max-w-2xl">
           <div className="relative rounded-2xl border border-border bg-card p-1.5 transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ketik pesan..."
-              className="w-full rounded-xl bg-transparent px-4 py-3 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              onChange={(e) => { setInput(e.target.value); autoResize(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend(e);
+                }
+              }}
+              placeholder="Ketik pesan... (Enter kirim, Shift+Enter baris baru)"
+              rows={1}
+              className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
             <button
               type="submit"
