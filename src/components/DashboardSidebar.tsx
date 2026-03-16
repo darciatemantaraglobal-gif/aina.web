@@ -19,18 +19,21 @@ import { toast } from "sonner";
 interface DashboardSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  isAdmin?: boolean;
 }
 
-const menuItems = [
+const baseMenuItems = [
   { id: "chat", label: "Chat AI", icon: MessageSquare },
   { id: "productivity", label: "Productivity", icon: LayoutDashboard },
   { id: "berita", label: "Berita Masisir", icon: Newspaper },
   { id: "contributor", label: "Contributor", icon: Users },
   { id: "profile", label: "Profile", icon: UserCircle },
-  { id: "admin", label: "Admin", icon: Shield },
 ];
 
-const DashboardSidebar = ({ activeTab, onTabChange }: DashboardSidebarProps) => {
+const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false }: DashboardSidebarProps) => {
+  const menuItems = isAdmin
+    ? [...baseMenuItems, { id: "admin", label: "Admin", icon: Shield }]
+    : baseMenuItems;
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
 

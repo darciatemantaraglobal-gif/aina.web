@@ -22,26 +22,33 @@ const BeritaPlaceholder = () => (
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("chat");
   const [authReady, setAuthReady] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // First check existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
         setAuthReady(true);
-      } else {
-        // No session yet — wait for onAuthStateChange (handles token-in-URL case)
+        // Check admin role
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", session.user.id);
+        setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
         setAuthReady(true);
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", session.user.id);
+        setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
       } else if (authReady) {
-        // Only redirect if we were authenticated before (i.e., user signed out)
         navigate("/login");
       } else {
-        // Still loading — give it a moment then redirect
         setTimeout(() => {
           supabase.auth.getSession().then(({ data: { session: s } }) => {
             if (!s) navigate("/login");
@@ -77,7 +84,7 @@ const Dashboard = () => {
 
   return (
     <div className="flex h-screen bg-background">
-      <DashboardSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <DashboardSidebar activeTab={activeTab} onTabChange={setActiveTab} isAdmin={isAdmin} />
       <main className="flex-1 overflow-hidden">{renderContent()}</main>
     </div>
   );
