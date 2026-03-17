@@ -20,7 +20,8 @@ const HeroChat = () => {
   const egpToUsd = egpToIdr / usdToIdr;
   const idrToUsd = 1 / usdToIdr;
 
-  const [currencies, setCurrencies] = useState({ egp: "1", idr: "245", usd: "" });
+  const initUsd = (1 * (egpToIdr / usdToIdr)).toFixed(4);
+  const [currencies, setCurrencies] = useState({ egp: "1", idr: "245", usd: initUsd });
   const [focusedCurrency, setFocusedCurrency] = useState<string | null>(null);
   const [focusedRate, setFocusedRate] = useState<string | null>(null);
 
@@ -29,41 +30,79 @@ const HeroChat = () => {
   const fmtDec = (n: number, d: number) =>
     n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+  // Parse user input — handles plain numbers AND Indonesian-formatted (dots as thousands)
+  const parseInput = (value: string): number => {
+    if (!value) return 0;
+    // If comma exists → Indonesian decimal format: strip dots, swap comma→dot
+    if (value.includes(",")) return parseFloat(value.replace(/\./g, "").replace(",", ".")) || 0;
+    // Multiple dots → all are thousands separators
+    if ((value.match(/\./g) || []).length > 1) return parseFloat(value.replace(/\./g, "")) || 0;
+    // Single dot: treat as thousands separator only if before-dot part is non-zero (e.g. "245.000" → 245000, but "0.015" → 0.015)
+    const singleDotMatch = value.match(/^([1-9]\d*)\.(\d{3})$/);
+    if (singleDotMatch) return parseFloat(value.replace(".", "")) || 0;
+    return parseFloat(value) || 0;
+  };
+
+  // Smart formatter: abbreviates very large numbers so they always fit
+  const fmtSmart = (n: number, field: string): string => {
+    if (field === "idr") {
+      if (n >= 1e12) return fmtDec(n / 1e12, 2) + " T";
+      if (n >= 1e9)  return fmtDec(n / 1e9,  2) + " M";
+      if (n >= 1e6)  return fmtDec(n / 1e6,  2) + " Jt";
+      return fmtInt(n);
+    }
+    if (field === "egp") {
+      if (n >= 1e6) return fmtDec(n / 1e6, 2) + " Jt";
+      if (n >= 1e3) return fmtInt(n);
+      return fmtDec(n, n % 1 === 0 ? 0 : 2);
+    }
+    if (field === "usd") {
+      if (n >= 1000) return fmtInt(n);
+      if (n >= 1)    return fmtDec(n, 2);
+      return fmtDec(n, 4);
+    }
+    return String(n);
+  };
+
+  // Clean raw value for editing: remove unnecessary trailing zeros
+  const cleanRaw = (raw: string): string => {
+    const n = parseFloat(raw);
+    if (isNaN(n)) return raw;
+    return parseFloat(n.toPrecision(10)).toString();
+  };
+
   const getCurrencyFontSize = (displayValue: string) => {
     const len = displayValue.length;
     if (len <= 7)  return "clamp(0.65rem, 1.4vh, 0.8rem)";
-    if (len <= 11) return "clamp(0.55rem, 1.2vh, 0.68rem)";
-    return "clamp(0.42rem, 0.9vh, 0.52rem)";
+    if (len <= 11) return "clamp(0.56rem, 1.2vh, 0.7rem)";
+    return "clamp(0.48rem, 1.0vh, 0.58rem)";
   };
 
   const getDisplayValue = (field: string, raw: string) => {
-    if (focusedCurrency === field) return raw;
+    if (focusedCurrency === field) return cleanRaw(raw);
     const n = parseFloat(raw);
     if (isNaN(n)) return raw;
-    if (field === "idr") return fmtInt(n);
-    if (field === "egp") return fmtDec(n, n % 1 === 0 ? 0 : 2);
-    if (field === "usd") return fmtDec(n, 4);
-    return raw;
+    return fmtSmart(n, field);
   };
 
   useEffect(() => {
-    const egp = parseFloat(currencies.egp) || 1;
+    const egp = parseInput(currencies.egp) || 1;
     setCurrencies({
       egp: currencies.egp,
       idr: (egp * egpToIdr).toFixed(0),
-      usd: (egp * egpToUsd).toFixed(4),
+      usd: (egp * egpToUsd).toFixed(6),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [egpToIdr, usdToIdr]);
 
   const handleCurrencyChange = (field: string, value: string) => {
-    const num = parseFloat(value) || 0;
+    const num = parseInput(value);
     if (field === "egp") {
-      setCurrencies({ egp: value, idr: (num * egpToIdr).toFixed(0), usd: (num * egpToUsd).toFixed(4) });
+      setCurrencies({ egp: value, idr: (num * egpToIdr).toFixed(0), usd: (num * egpToUsd).toFixed(6) });
     } else if (field === "idr") {
-      setCurrencies({ egp: (num / egpToIdr).toFixed(2), idr: value, usd: (num * idrToUsd).toFixed(6) });
+      setCurrencies({ egp: (num / egpToIdr).toFixed(6), idr: value, usd: (num * idrToUsd).toFixed(6) });
     } else {
-      setCurrencies({ egp: (num / egpToUsd).toFixed(2), idr: (num * usdToIdr).toFixed(0), usd: value });
+      setCurrencies({ egp: (num / egpToUsd).toFixed(6), idr: (num * usdToIdr).toFixed(0), usd: value });
     }
   };
 
