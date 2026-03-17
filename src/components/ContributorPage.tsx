@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,9 +7,132 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send } from "lucide-react";
+import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+
+interface ChatMessage {
+  id: string;
+  role: "assistant";
+  content: string;
+  delay: number;
+}
+
+const WELCOME_MESSAGES: ChatMessage[] = [
+  {
+    id: "1",
+    role: "assistant",
+    content: "Halo! Terima kasih sudah mendaftar sebagai kontributor AINA. Permintaanmu sudah kami terima dan sedang ditinjau oleh admin. 🎉",
+    delay: 300,
+  },
+  {
+    id: "2",
+    role: "assistant",
+    content: "Sambil menunggu persetujuan, yuk kenali format penulisan artikel yang baik untuk Knowledge Base AINA!",
+    delay: 1200,
+  },
+  {
+    id: "3",
+    role: "assistant",
+    content: `📝 *Format Artikel Knowledge Base*
+
+*Judul*
+Tulis judul yang jelas dan spesifik.
+Contoh: "Cara Mengurus Iqomah di Kairo 2024"
+
+*Kategori*
+Pilih salah satu kategori yang paling sesuai:
+• Administrasi — iqomah, visa, paspor, dll
+• Akademik — perkuliahan, pendaftaran, ujian
+• Kehidupan Mesir — tips sehari-hari di Mesir
+• Transport — metro, taksi, bus, dll
+• Tempat Tinggal — sewa flat, lokasi, harga
+• Kuliner — restoran halal, masakan, harga makanan
+
+*Konten*
+– Tulis dengan bahasa yang jelas dan mudah dipahami
+– Gunakan paragraf terstruktur (pendahuluan, isi, penutup)
+– Sertakan langkah-langkah jika berupa prosedur
+– Tambahkan tips praktis dari pengalamanmu sendiri
+– Usahakan minimal 150 kata agar informasi cukup lengkap`,
+    delay: 2400,
+  },
+  {
+    id: "4",
+    role: "assistant",
+    content: "Artikel yang disetujui admin akan langsung tampil di Knowledge Base dan membantu ribuan Masisir lainnya. Semangat berkontribusi! 💪",
+    delay: 4200,
+  },
+];
+
+function WelcomeChat({ name }: { name: string }) {
+  const [visibleMessages, setVisibleMessages] = useState<ChatMessage[]>([]);
+  const [typing, setTyping] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let timeouts: ReturnType<typeof setTimeout>[] = [];
+
+    WELCOME_MESSAGES.forEach((msg, i) => {
+      const showTyping = setTimeout(() => setTyping(true), msg.delay - 200 < 0 ? 0 : msg.delay - 200);
+      const showMsg = setTimeout(() => {
+        setTyping(false);
+        setVisibleMessages((prev) => [...prev, msg]);
+      }, msg.delay + (i === 0 ? 0 : 600));
+      timeouts.push(showTyping, showMsg);
+    });
+
+    return () => timeouts.forEach(clearTimeout);
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [visibleMessages, typing]);
+
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-center gap-2 border-b border-border pb-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple">
+          <Bot className="h-4 w-4 text-primary-foreground" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">AINA</p>
+          <p className="text-xs text-muted-foreground">Panduan Kontributor</p>
+        </div>
+      </div>
+
+      <div className="flex max-h-[420px] flex-col gap-3 overflow-y-auto pr-1">
+        {visibleMessages.map((msg) => (
+          <div key={msg.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-purple">
+              <Bot className="h-3.5 w-3.5 text-primary-foreground" />
+            </div>
+            <div className="max-w-[88%] rounded-2xl rounded-tl-sm bg-secondary px-4 py-3 text-sm leading-relaxed text-secondary-foreground whitespace-pre-wrap">
+              {msg.content}
+            </div>
+          </div>
+        ))}
+
+        {typing && (
+          <div className="flex gap-3 animate-in fade-in duration-200">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-purple">
+              <Bot className="h-3.5 w-3.5 text-primary-foreground" />
+            </div>
+            <div className="rounded-2xl rounded-tl-sm bg-secondary px-4 py-3">
+              <div className="flex gap-1">
+                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
 
 const ContributorPage = () => {
   const [hasRequest, setHasRequest] = useState(false);
@@ -17,14 +140,14 @@ const ContributorPage = () => {
   const [isContributor, setIsContributor] = useState(false);
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [justSubmitted, setJustSubmitted] = useState(false);
+  const [submitterName, setSubmitterName] = useState("");
 
-  // Registration form
   const [regName, setRegName] = useState("");
   const [regEdu, setRegEdu] = useState("");
   const [regYear, setRegYear] = useState("");
   const [regExpertise, setRegExpertise] = useState("");
 
-  // Article form
   const [artTitle, setArtTitle] = useState("");
   const [artContent, setArtContent] = useState("");
   const [artCategory, setArtCategory] = useState("");
@@ -84,9 +207,12 @@ const ContributorPage = () => {
       toast.error("Gagal mengirim permintaan");
       return;
     }
-    toast.success("Permintaan berhasil dikirim! Menunggu persetujuan admin.");
+
+    setSubmitterName(regName.trim());
     setHasRequest(true);
     setRequestStatus("pending");
+    setJustSubmitted(true);
+    toast.success("Permintaan berhasil dikirim! Menunggu persetujuan admin.");
   };
 
   const submitArticle = async () => {
@@ -151,23 +277,27 @@ const ContributorPage = () => {
                 Daftar Contributor
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               {hasRequest ? (
-                <div className="flex items-center gap-3 rounded-xl bg-secondary p-4">
-                  {statusIcon(requestStatus)}
-                  <div>
-                    <p className="text-sm font-medium text-foreground capitalize">
-                      Status: {requestStatus}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {requestStatus === "pending"
-                        ? "Permintaanmu sedang ditinjau admin."
-                        : requestStatus === "approved"
-                        ? "Selamat! Kamu sudah menjadi kontributor."
-                        : "Maaf, permintaanmu ditolak."}
-                    </p>
+                <>
+                  <div className="flex items-center gap-3 rounded-xl bg-secondary p-4">
+                    {statusIcon(requestStatus)}
+                    <div>
+                      <p className="text-sm font-medium text-foreground capitalize">
+                        Status: {requestStatus}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {requestStatus === "pending"
+                          ? "Permintaanmu sedang ditinjau admin."
+                          : requestStatus === "approved"
+                          ? "Selamat! Kamu sudah menjadi kontributor."
+                          : "Maaf, permintaanmu ditolak."}
+                      </p>
+                    </div>
                   </div>
-                </div>
+
+                  {justSubmitted && <WelcomeChat name={submitterName} />}
+                </>
               ) : (
                 <div className="space-y-3">
                   <Input placeholder="Nama lengkap" value={regName} onChange={(e) => setRegName(e.target.value)} className="bg-secondary" />
