@@ -395,16 +395,16 @@ app.post("/api/admin/articles", async (req, res) => {
   const { title, content, category } = req.body;
   if (!title || !content || !category) return res.status(400).json({ error: "title, content, category required" });
 
-  const { data, error } = await supabase.from("knowledge_base").insert({
+  const { error } = await supabase.from("knowledge_base").insert({
     author_id: admin.id,
     title,
     content,
     category,
     status: "approved",
-  }).select().single();
+  });
 
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  res.json({ success: true });
 });
 
 app.delete("/api/admin/articles/:id", async (req, res) => {
@@ -423,9 +423,9 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
 
   const supabase = getAdminClient();
   const { title, content, category } = req.body;
-  const { data, error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id).select().single();
+  const { error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  res.json({ success: true });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
