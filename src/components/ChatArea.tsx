@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, User, AlertCircle, Menu, Plus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: string;
@@ -12,6 +13,9 @@ interface Message {
 
 interface ChatAreaProps {
   onMenuClick?: () => void;
+  chatId: string | null;
+  onChatCreated: (chatId: string, title: string) => void;
+  onNewChat?: () => void;
 }
 
 const API_URL = "/api/chat";
@@ -49,13 +53,15 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
-const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
+const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeChatIdRef = useRef<string | null>(chatId);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -64,6 +70,39 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    activeChatIdRef.current = chatId;
+    setMessages([]);
+    setError(null);
+    setInput("");
+    if (chatId) {
+      loadMessages(chatId);
+    }
+  }, [chatId]);
+
+  const loadMessages = async (id: string) => {
+    setLoadingHistory(true);
+    try {
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("chat_id", id)
+        .order("created_at", { ascending: true });
+      if (data) {
+        setMessages(
+          data.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: new Date(m.created_at),
+          }))
+        );
+      }
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const autoResize = () => {
     const ta = textareaRef.current;
@@ -75,6 +114,10 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
   const handleSend = async (text?: string) => {
     const userText = (text ?? input).trim();
     if (!userText || isLoading) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return;
 
     setInput("");
     setError(null);
@@ -90,12 +133,31 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
+    let currentChatId = activeChatIdRef.current;
+
     try {
+      if (!currentChatId) {
+        const title = userText.length > 50 ? userText.slice(0, 50).trim() + "…" : userText;
+        const { data: newChat, error: chatError } = await supabase
+          .from("chats")
+          .insert({ user_id: userId, title })
+          .select()
+          .single();
+        if (chatError || !newChat) throw new Error("Gagal membuat chat baru");
+        currentChatId = newChat.id;
+        activeChatIdRef.current = currentChatId;
+        onChatCreated(newChat.id, newChat.title);
+      }
+
+      await supabase.from("messages").insert({
+        chat_id: currentChatId,
+        user_id: userId,
+        role: "user",
+        content: userText,
+      });
+
       const allMessages = [...messages, userMsg];
-      const history = allMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      const history = allMessages.map((m) => ({ role: m.role, content: m.content }));
 
       const res = await fetch(API_URL, {
         method: "POST",
@@ -116,6 +178,18 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMsg]);
+
+      await supabase.from("messages").insert({
+        chat_id: currentChatId,
+        user_id: userId,
+        role: "assistant",
+        content: data.reply,
+      });
+
+      await supabase
+        .from("chats")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", currentChatId);
     } catch (err: any) {
       setError(err.message || "Gagal menghubungi server. Coba lagi.");
     } finally {
@@ -147,7 +221,7 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
         </div>
 
         <button
-          onClick={() => { setMessages([]); setError(null); }}
+          onClick={onNewChat}
           className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <Plus className="h-5 w-5" />
@@ -156,8 +230,11 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
 
       {/* Messages area or empty state */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        {isEmpty ? (
-          /* Empty / welcome state */
+        {loadingHistory ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+          </div>
+        ) : isEmpty ? (
           <div className="flex h-full flex-col items-center justify-center px-4 pb-4">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-purple p-2.5 shadow-lg shadow-primary/20">
               <AinaLogo className="h-full w-full object-contain" />
@@ -167,7 +244,6 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
               Asisten AI khusus mahasiswa Indonesia di Mesir. Tanya apa saja tentang kehidupan di Kairo!
             </p>
 
-            {/* Suggestion chips */}
             <div className="mt-8 grid w-full max-w-md grid-cols-1 gap-2 sm:grid-cols-2">
               {SUGGESTIONS.map((s) => (
                 <button
@@ -181,7 +257,6 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
             </div>
           </div>
         ) : (
-          /* Chat messages */
           <div className="mx-auto w-full max-w-2xl space-y-6 px-3 py-6 md:px-6">
             {messages.map((msg) => (
               <div
@@ -195,12 +270,10 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
                 )}
 
                 {msg.role === "user" ? (
-                  /* User bubble */
                   <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground whitespace-pre-wrap break-words">
                     {msg.content}
                   </div>
                 ) : (
-                  /* AI bubble — full width, no overflow */
                   <div className="min-w-0 flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -253,7 +326,6 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
                           </blockquote>
                         ),
                         hr: () => <hr className="my-3 border-border" />,
-                        /* Tables — scrollable horizontally inside their own container */
                         table: ({ children }) => (
                           <div className="mb-3 overflow-x-auto rounded-lg border border-border">
                             <table className="min-w-full text-xs">{children}</table>

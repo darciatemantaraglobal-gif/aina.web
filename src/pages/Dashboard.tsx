@@ -9,6 +9,12 @@ import AdminPage from "@/components/AdminPage";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper } from "lucide-react";
 
+interface Chat {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
 const tabTitles: Record<string, string> = {
   chat: "Chat AI",
   productivity: "Productivity",
@@ -33,6 +39,10 @@ const Dashboard = () => {
   const [authReady, setAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,6 +80,43 @@ const Dashboard = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
+  useEffect(() => {
+    if (authReady) loadChats();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady]);
+
+  const loadChats = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data } = await supabase
+      .from("chats")
+      .select("id, title, updated_at")
+      .eq("user_id", session.user.id)
+      .order("updated_at", { ascending: false })
+      .limit(40);
+    if (data) setChats(data);
+  };
+
+  const handleNewChat = () => {
+    setActiveChatId(null);
+    setActiveTab("chat");
+    setSidebarOpen(false);
+  };
+
+  const handleSelectChat = (chatId: string) => {
+    setActiveChatId(chatId);
+    setActiveTab("chat");
+    setSidebarOpen(false);
+  };
+
+  const handleChatCreated = (chatId: string, title: string) => {
+    setActiveChatId(chatId);
+    setChats((prev) => [
+      { id: chatId, title, updated_at: new Date().toISOString() },
+      ...prev.filter((c) => c.id !== chatId),
+    ]);
+  };
+
   if (!authReady) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
@@ -86,12 +133,18 @@ const Dashboard = () => {
 
   const renderContent = () => {
     if (activeTab === "chat") {
-      return <ChatArea onMenuClick={() => setSidebarOpen(true)} />;
+      return (
+        <ChatArea
+          onMenuClick={() => setSidebarOpen(true)}
+          chatId={activeChatId}
+          onChatCreated={handleChatCreated}
+          onNewChat={handleNewChat}
+        />
+      );
     }
 
     return (
       <div className="flex h-full flex-col">
-        {/* Mobile header for non-chat pages */}
         <header className="flex h-14 items-center gap-3 border-b border-border px-4 md:hidden shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -121,7 +174,6 @@ const Dashboard = () => {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
@@ -129,7 +181,6 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Sidebar */}
       <div
         className={`
           fixed inset-y-0 left-0 z-40 md:relative md:z-auto md:flex md:translate-x-0
@@ -142,10 +193,13 @@ const Dashboard = () => {
           onTabChange={handleTabChange}
           isAdmin={isAdmin}
           onClose={() => setSidebarOpen(false)}
+          chats={chats}
+          activeChatId={activeChatId}
+          onNewChat={handleNewChat}
+          onSelectChat={handleSelectChat}
         />
       </div>
 
-      {/* Main content */}
       <main className="flex-1 overflow-hidden min-w-0">
         {renderContent()}
       </main>

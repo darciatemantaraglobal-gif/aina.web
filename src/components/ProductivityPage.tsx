@@ -1,24 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import {
-  CheckSquare,
-  Target,
-  StickyNote,
-  Plus,
-  Trash2,
-  User,
-  Mail,
-  Award,
-  Shield,
-} from "lucide-react";
+import { CheckSquare, Target, StickyNote, Plus, Trash2 } from "lucide-react";
 
 interface Task {
   id: string;
@@ -28,20 +17,7 @@ interface Task {
   content: string | null;
 }
 
-interface Profile {
-  full_name: string | null;
-  email: string | null;
-  level: string;
-  avatar_url: string | null;
-}
-
-interface UserRole {
-  role: string;
-}
-
 const ProductivityPage = () => {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [roles, setRoles] = useState<UserRole[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTask, setNewTask] = useState("");
   const [newHabit, setNewHabit] = useState("");
@@ -49,24 +25,22 @@ const ProductivityPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
+    loadTasks();
   }, []);
 
-  const loadData = async () => {
+  const loadTasks = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) { setLoading(false); return; }
 
-      const [profileRes, rolesRes, tasksRes] = await Promise.all([
-        supabase.from("profiles").select("*").eq("user_id", user.id).single(),
-        supabase.from("user_roles").select("role").eq("user_id", user.id),
-        supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      ]);
+      const { data } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
-      if (profileRes.data) setProfile(profileRes.data);
-      if (rolesRes.data) setRoles(rolesRes.data);
-      if (tasksRes.data) setTasks(tasksRes.data);
+      if (data) setTasks(data);
     } catch (err) {
       console.error("ProductivityPage error:", err);
     } finally {
@@ -112,7 +86,6 @@ const ProductivityPage = () => {
   const dailyTasks = tasks.filter((t) => t.task_type === "daily");
   const habits = tasks.filter((t) => t.task_type === "habit");
   const notes = tasks.filter((t) => t.task_type === "note");
-  const topRole = roles.length > 0 ? roles[roles.length - 1].role : "user";
 
   if (loading) {
     return (
@@ -124,54 +97,38 @@ const ProductivityPage = () => {
 
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6">
-      <div className="mx-auto max-w-4xl space-y-6">
-        {/* Profile Card */}
-        <Card className="border-border bg-card">
-          <CardContent className="flex items-center gap-4 p-6">
-            <Avatar className="h-16 w-16 border-2 border-primary/30">
-              <AvatarFallback className="bg-gradient-purple text-lg font-bold text-primary-foreground">
-                {profile?.full_name?.charAt(0)?.toUpperCase() || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <h2 className="font-display text-xl font-bold text-foreground">
-                {profile?.full_name || "User"}
-              </h2>
-              <div className="mt-1 flex flex-wrap gap-3 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Mail className="h-3.5 w-3.5" />
-                  {profile?.email}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Award className="h-3.5 w-3.5" />
-                  {profile?.level}
-                </span>
-                <span className="flex items-center gap-1 capitalize">
-                  <Shield className="h-3.5 w-3.5" />
-                  {topRole}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="mx-auto max-w-2xl space-y-6">
+        <div>
+          <h1 className="font-display text-xl font-bold text-foreground">Productivity</h1>
+          <p className="text-sm text-muted-foreground">Kelola tugas, kebiasaan, dan catatan harianmu.</p>
+        </div>
 
-        {/* Productivity Tools */}
         <Tabs defaultValue="daily" className="w-full">
           <TabsList className="w-full bg-secondary">
-            <TabsTrigger value="daily" className="flex-1 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger
+              value="daily"
+              className="flex-1 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
               <CheckSquare className="h-4 w-4" />
               Daily Tasks
             </TabsTrigger>
-            <TabsTrigger value="habit" className="flex-1 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger
+              value="habit"
+              className="flex-1 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
               <Target className="h-4 w-4" />
               Habit Tracker
             </TabsTrigger>
-            <TabsTrigger value="notes" className="flex-1 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <TabsTrigger
+              value="notes"
+              className="flex-1 gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
               <StickyNote className="h-4 w-4" />
               Notes
             </TabsTrigger>
           </TabsList>
 
+          {/* Daily Tasks */}
           <TabsContent value="daily" className="mt-4 space-y-3">
             <div className="flex gap-2">
               <Input
@@ -186,7 +143,9 @@ const ProductivityPage = () => {
               </Button>
             </div>
             {dailyTasks.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">Belum ada tugas. Tambahkan tugas pertamamu!</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Belum ada tugas. Tambahkan tugas pertamamu!
+              </p>
             )}
             {dailyTasks.map((task) => (
               <Card key={task.id} className="border-border bg-card">
@@ -195,10 +154,17 @@ const ProductivityPage = () => {
                     checked={task.completed}
                     onCheckedChange={() => toggleTask(task.id, task.completed)}
                   />
-                  <span className={`flex-1 text-sm ${task.completed ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                  <span
+                    className={`flex-1 text-sm ${
+                      task.completed ? "text-muted-foreground line-through" : "text-foreground"
+                    }`}
+                  >
                     {task.title}
                   </span>
-                  <button onClick={() => deleteTask(task.id)} className="text-muted-foreground hover:text-destructive">
+                  <button
+                    onClick={() => deleteTask(task.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </CardContent>
@@ -206,6 +172,7 @@ const ProductivityPage = () => {
             ))}
           </TabsContent>
 
+          {/* Habit Tracker */}
           <TabsContent value="habit" className="mt-4 space-y-3">
             <div className="flex gap-2">
               <Input
@@ -220,7 +187,9 @@ const ProductivityPage = () => {
               </Button>
             </div>
             {habits.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">Belum ada kebiasaan. Mulai track kebiasaanmu!</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Belum ada kebiasaan. Mulai track kebiasaanmu!
+              </p>
             )}
             {habits.map((habit) => (
               <Card key={habit.id} className="border-border bg-card">
@@ -229,10 +198,17 @@ const ProductivityPage = () => {
                     checked={habit.completed}
                     onCheckedChange={() => toggleTask(habit.id, habit.completed)}
                   />
-                  <span className={`flex-1 text-sm ${habit.completed ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                  <span
+                    className={`flex-1 text-sm ${
+                      habit.completed ? "text-muted-foreground line-through" : "text-foreground"
+                    }`}
+                  >
                     {habit.title}
                   </span>
-                  <button onClick={() => deleteTask(habit.id)} className="text-muted-foreground hover:text-destructive">
+                  <button
+                    onClick={() => deleteTask(habit.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </CardContent>
@@ -240,6 +216,7 @@ const ProductivityPage = () => {
             ))}
           </TabsContent>
 
+          {/* Notes */}
           <TabsContent value="notes" className="mt-4 space-y-3">
             <div className="space-y-2">
               <Textarea
@@ -248,7 +225,12 @@ const ProductivityPage = () => {
                 onChange={(e) => setNewNote(e.target.value)}
                 className="min-h-[80px] bg-secondary"
               />
-              <Button variant="hero" size="sm" onClick={() => addTask("note", newNote, newNote)} className="gap-1.5">
+              <Button
+                variant="hero"
+                size="sm"
+                onClick={() => addTask("note", newNote, newNote)}
+                className="gap-1.5"
+              >
                 <Plus className="h-4 w-4" />
                 Simpan Catatan
               </Button>
@@ -260,8 +242,13 @@ const ProductivityPage = () => {
               <Card key={note.id} className="border-border bg-card">
                 <CardContent className="flex items-start gap-3 p-3">
                   <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <p className="flex-1 text-sm text-foreground whitespace-pre-wrap">{note.content || note.title}</p>
-                  <button onClick={() => deleteTask(note.id)} className="text-muted-foreground hover:text-destructive">
+                  <p className="flex-1 text-sm text-foreground whitespace-pre-wrap">
+                    {note.content || note.title}
+                  </p>
+                  <button
+                    onClick={() => deleteTask(note.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </CardContent>

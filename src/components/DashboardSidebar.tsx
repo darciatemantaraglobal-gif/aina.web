@@ -12,15 +12,26 @@ import {
   Plus,
   Shield,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+interface Chat {
+  id: string;
+  title: string;
+  updated_at: string;
+}
 
 interface DashboardSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   isAdmin?: boolean;
   onClose?: () => void;
+  chats?: Chat[];
+  activeChatId?: string | null;
+  onNewChat?: () => void;
+  onSelectChat?: (chatId: string) => void;
 }
 
 const baseMenuItems = [
@@ -31,7 +42,16 @@ const baseMenuItems = [
   { id: "profile", label: "Profile", icon: UserCircle },
 ];
 
-const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false, onClose }: DashboardSidebarProps) => {
+const DashboardSidebar = ({
+  activeTab,
+  onTabChange,
+  isAdmin = false,
+  onClose,
+  chats = [],
+  activeChatId,
+  onNewChat,
+  onSelectChat,
+}: DashboardSidebarProps) => {
   const menuItems = isAdmin
     ? [...baseMenuItems, { id: "admin", label: "Admin", icon: Shield }]
     : baseMenuItems;
@@ -51,7 +71,7 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false, onClose }: 
       }`}
     >
       {/* Header */}
-      <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
+      <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4 shrink-0">
         {!collapsed && (
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple p-1.5">
@@ -61,7 +81,6 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false, onClose }: 
           </div>
         )}
         <div className="flex items-center gap-1">
-          {/* Mobile close button */}
           {onClose && (
             <button
               onClick={onClose}
@@ -70,7 +89,6 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false, onClose }: 
               <X className="h-4 w-4" />
             </button>
           )}
-          {/* Desktop collapse button */}
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="hidden h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:flex"
@@ -80,48 +98,81 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false, onClose }: 
         </div>
       </div>
 
-      {/* New chat */}
-      <div className="p-3">
+      {/* New chat button */}
+      <div className="px-3 pt-3 shrink-0">
         <button
-          onClick={() => onTabChange("chat")}
+          onClick={onNewChat}
           className={`flex w-full items-center gap-2 rounded-xl border border-dashed border-sidebar-border px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:border-primary/40 hover:bg-sidebar-accent ${
             collapsed ? "justify-center" : ""
           }`}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4 shrink-0" />
           {!collapsed && "Chat Baru"}
         </button>
       </div>
 
-      {/* Nav items */}
-      <nav className="flex-1 space-y-1 px-3">
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => onTabChange(item.id)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
-              activeTab === item.id
-                ? "bg-primary/15 text-primary"
-                : "text-sidebar-foreground hover:bg-sidebar-accent"
-            } ${collapsed ? "justify-center" : ""}`}
-          >
-            <item.icon className="h-4 w-4 shrink-0" />
-            {!collapsed && item.label}
-          </button>
-        ))}
-      </nav>
+      {/* Chat history list — scrollable middle section */}
+      {!collapsed && (
+        <div className="mx-3 mt-3 min-h-0 flex-1 overflow-y-auto">
+          {chats.length > 0 && (
+            <>
+              <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
+                Riwayat Chat
+              </p>
+              <div className="space-y-0.5 pb-2">
+                {chats.map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => onSelectChat?.(chat.id)}
+                    className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                      activeChatId === chat.id
+                        ? "bg-primary/15 text-primary"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                    <span className="truncate">{chat.title}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
-      {/* Logout */}
-      <div className="border-t border-sidebar-border p-3">
-        <button
-          onClick={handleLogout}
-          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-destructive/10 hover:text-destructive ${
-            collapsed ? "justify-center" : ""
-          }`}
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          {!collapsed && "Logout"}
-        </button>
+      {/* Collapsed: flex-1 spacer */}
+      {collapsed && <div className="flex-1" />}
+
+      {/* Nav items + Logout — pinned to bottom */}
+      <div className="shrink-0 border-t border-sidebar-border">
+        <nav className="space-y-1 p-3">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onTabChange(item.id)}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                activeTab === item.id
+                  ? "bg-primary/15 text-primary"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+              } ${collapsed ? "justify-center" : ""}`}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {!collapsed && item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="px-3 pb-3">
+          <button
+            onClick={handleLogout}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-destructive/10 hover:text-destructive ${
+              collapsed ? "justify-center" : ""
+            }`}
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            {!collapsed && "Logout"}
+          </button>
+        </div>
       </div>
     </aside>
   );
