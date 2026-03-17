@@ -1,5 +1,22 @@
-import { Zap } from "lucide-react";
+import { Check, Zap, MessageSquare, LayoutDashboard, BookOpen, Star, Users, Shield } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
+
+const FREE_FEATURES = [
+  { icon: MessageSquare, text: "3 chat dengan AINA per hari" },
+  { icon: LayoutDashboard, text: "Akses Productivity (Tasks & Notes)" },
+  { icon: BookOpen, text: "Baca artikel Knowledge Base" },
+  { icon: Users, text: "Bergabung sebagai anggota komunitas" },
+];
+
+const CONTRIBUTOR_FEATURES = [
+  { icon: MessageSquare, text: "Chat AINA tanpa batas setiap hari" },
+  { icon: LayoutDashboard, text: "Akses Productivity (Tasks & Notes)" },
+  { icon: BookOpen, text: "Tulis & publikasikan artikel Knowledge Base" },
+  { icon: Star, text: "Badge Contributor eksklusif di profil" },
+  { icon: Users, text: "Naik level ke Senior Contributor" },
+  { icon: Shield, text: "Prioritas dukungan dari tim AINA" },
+];
 
 const PricingSection = () => {
   const [visible, setVisible] = useState(false);
@@ -9,24 +26,140 @@ const PricingSection = () => {
     <section className="relative py-20 px-4">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/15 to-background" />
+        <div className="absolute left-1/2 top-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-[120px]" />
       </div>
 
-      <div className={`relative z-10 mx-auto max-w-2xl text-center transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
-        <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-sm border border-primary/20">
-          <Zap className="h-7 w-7 text-primary" />
+      <div className={`relative z-10 mx-auto max-w-5xl transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+        <div className="mb-4 flex justify-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-4 py-1.5 backdrop-blur-sm">
+            <Zap className="h-3.5 w-3.5 text-primary" />
+            <span className="font-modernist text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+              Pricing AINA
+            </span>
+          </div>
         </div>
-        <h2 className="font-display text-3xl font-bold text-foreground sm:text-4xl">
-          <span className="text-gradient-purple">Pricing</span>
-        </h2>
-        <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-          Rencana harga untuk fitur premium AINA.
-        </p>
 
-        <div className={`mt-10 rounded-2xl border border-border/50 bg-card/40 backdrop-blur-xl px-8 py-14 transition-all duration-700 delay-300 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
-          <p className="font-display text-2xl font-bold text-gradient-purple">Coming Soon</p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Saat ini semua fitur AINA gratis. Detail pricing akan segera diumumkan!
+        <div className="mb-4 text-center">
+          <h2 className="font-display text-4xl font-bold text-foreground sm:text-5xl">
+            Sederhana &{" "}
+            <span className="text-gradient-purple">Transparan</span>
+          </h2>
+          <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Mulai gratis, upgrade dengan cara berkontribusi ke komunitas — bukan dengan membayar.
           </p>
+        </div>
+
+        <div className={`mb-12 flex justify-center transition-all duration-700 delay-100 ${visible ? "opacity-100" : "opacity-0"}`}>
+          <div className="inline-flex items-center gap-2 rounded-full border border-green-500/20 bg-green-500/5 px-4 py-2 text-xs text-green-400">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-400" />
+            </span>
+            Saat ini semua fitur dasar AINA tersedia gratis untuk semua mahasiswa
+          </div>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 md:items-stretch">
+          {/* Free */}
+          <div className={`flex flex-col rounded-2xl border border-border/60 bg-card/40 p-8 backdrop-blur-xl transition-all duration-700 delay-150 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+            <div className="mb-6">
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/60">
+                <Users className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <h3 className="font-display text-xl font-bold text-foreground">Gratis</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Untuk semua mahasiswa Indonesia di Mesir</p>
+              <div className="mt-6 flex items-end gap-1">
+                <span className="font-display text-5xl font-bold text-foreground">Rp 0</span>
+                <span className="mb-2 text-sm text-muted-foreground">/ selamanya</span>
+              </div>
+            </div>
+
+            <ul className="mb-8 flex-1 space-y-3">
+              {FREE_FEATURES.map(({ text }) => (
+                <li key={text} className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-secondary/60">
+                    <Check className="h-3 w-3 text-muted-foreground" />
+                  </div>
+                  <span className="text-sm text-muted-foreground">{text}</span>
+                </li>
+              ))}
+            </ul>
+
+            <Link to="/login">
+              <button className="w-full rounded-xl border border-border/60 bg-secondary/40 py-3 text-sm font-semibold text-foreground transition-all hover:bg-secondary/70">
+                Mulai Gratis
+              </button>
+            </Link>
+          </div>
+
+          {/* Contributor */}
+          <div className={`relative flex flex-col rounded-2xl border border-primary/40 bg-card/40 p-8 backdrop-blur-xl transition-all duration-700 delay-300 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-purple-glow/5" />
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+              <div className="rounded-full bg-gradient-purple px-4 py-1 text-[11px] font-bold uppercase tracking-widest text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.4)]">
+                Untuk Kontributor
+              </div>
+            </div>
+
+            <div className="relative mb-6">
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/15">
+                <Star className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-display text-xl font-bold text-foreground">Contributor</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Untuk mahasiswa aktif yang berbagi ilmu</p>
+              <div className="mt-6 flex items-end gap-2">
+                <span className="font-display text-5xl font-bold text-foreground">Gratis</span>
+              </div>
+              <p className="mt-1 text-xs text-primary/80">Cukup berkontribusi ke komunitas</p>
+            </div>
+
+            <ul className="relative mb-8 flex-1 space-y-3">
+              {CONTRIBUTOR_FEATURES.map(({ text }) => (
+                <li key={text} className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/15">
+                    <Check className="h-3 w-3 text-primary" />
+                  </div>
+                  <span className="text-sm text-foreground/80">{text}</span>
+                </li>
+              ))}
+            </ul>
+
+            <Link to="/contributor">
+              <button className="relative w-full overflow-hidden rounded-xl bg-gradient-purple py-3 text-sm font-semibold text-primary-foreground shadow-[0_0_20px_hsl(270_80%_65%/0.3)] transition-all hover:scale-[1.02] hover:shadow-[0_0_28px_hsl(270_80%_65%/0.5)]">
+                Daftar Jadi Kontributor
+              </button>
+            </Link>
+          </div>
+        </div>
+
+        {/* FAQ */}
+        <div className={`mt-14 transition-all duration-700 delay-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <h3 className="mb-6 text-center font-display text-xl font-bold text-foreground">Pertanyaan Umum</h3>
+          <div className="mx-auto grid max-w-3xl gap-4 md:grid-cols-2">
+            {[
+              {
+                q: "Apa itu limit 3 chat per hari?",
+                a: "User gratis bisa mengirim 3 pesan ke AINA setiap hari. Limit reset otomatis setiap tengah malam.",
+              },
+              {
+                q: "Bagaimana cara jadi Contributor?",
+                a: "Isi formulir di halaman Contributor. Tim AINA akan memverifikasi dan memberikan akses dalam 1–3 hari kerja.",
+              },
+              {
+                q: "Apakah akan ada biaya di masa depan?",
+                a: "Fitur dasar AINA akan selalu gratis untuk mahasiswa. Fitur premium mungkin hadir dengan harga terjangkau.",
+              },
+              {
+                q: "Apa itu Senior Contributor?",
+                a: "Contributor yang aktif menulis artikel berkualitas akan naik level ke Senior Contributor secara otomatis.",
+              },
+            ].map(({ q, a }) => (
+              <div key={q} className="rounded-xl border border-border/40 bg-card/30 p-5">
+                <p className="mb-2 text-sm font-semibold text-foreground">{q}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">{a}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

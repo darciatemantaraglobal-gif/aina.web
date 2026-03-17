@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Mail, Lock, ArrowRight, ArrowLeft, X, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -191,7 +191,7 @@ const Login = () => {
 
           <p className="mt-4 text-center text-xs text-muted-foreground">
             Dengan masuk, kamu menyetujui{" "}
-            <span className="cursor-pointer text-primary/80 hover:text-primary">syarat & ketentuan</span>{" "}
+            <Link to="/terms" className="text-primary/80 hover:text-primary underline underline-offset-2">syarat & ketentuan</Link>{" "}
             AINA.
           </p>
         </div>
