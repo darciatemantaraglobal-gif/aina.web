@@ -3,8 +3,7 @@ import Footer from "@/components/Footer";
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
-  Heart, BookOpen, Users, Lightbulb, Shield, Globe,
-  ArrowRight, Zap, Star, MessageSquare, FileText, TrendingUp,
+  Heart, Lightbulb, ArrowRight, Zap, Star, TrendingUp,
 } from "lucide-react";
 import ainaLogo from "@/assets/aina-logo.png";
 
@@ -25,48 +24,20 @@ function useInView(threshold = 0.15) {
   return { ref, inView };
 }
 
-/* ─── Animated counter ───────────────────────────────────── */
-function Counter({ target, suffix = "" }: { target: number; suffix?: string }) {
-  const [count, setCount] = useState(0);
-  const { ref, inView } = useInView(0.3);
-  useEffect(() => {
-    if (!inView) return;
-    let start = 0;
-    const step = target / 60;
-    const id = setInterval(() => {
-      start += step;
-      if (start >= target) { setCount(target); clearInterval(id); }
-      else setCount(Math.floor(start));
-    }, 16);
-    return () => clearInterval(id);
-  }, [inView, target]);
-  return (
-    <div ref={ref} className="tabular-nums">
-      {count.toLocaleString("id-ID")}{suffix}
-    </div>
-  );
-}
-
 /* ─── Data ───────────────────────────────────────────────── */
-const STATS = [
-  { icon: Users, value: 5000, suffix: "+", label: "Masisir Terbantu", color: "text-primary" },
-  { icon: FileText, value: 120, suffix: "+", label: "Artikel Knowledge Base", color: "text-purple-glow" },
-  { icon: MessageSquare, value: 25000, suffix: "+", label: "Pesan AI Terkirim", color: "text-primary" },
-];
-
 const TIMELINE = [
   {
-    year: "2023",
+    year: "2025",
     title: "Keresahan Lahir",
     desc: "Ribuan Masisir kebingungan mencari informasi yang tersebar di ratusan grup WA. Tidak ada satu sumber terpercaya.",
   },
   {
-    year: "2024",
+    year: "2025",
     title: "AINA Dibangun",
     desc: "Tim kecil mahasiswa Masisir mulai membangun platform dengan menggabungkan AI dan knowledge base lokal.",
   },
   {
-    year: "2025",
+    year: "2026",
     title: "Komunitas Berkembang",
     desc: "Kontributor dari berbagai jurusan bergabung, memperkaya basis pengetahuan AINA dengan pengalaman nyata.",
   },
@@ -77,14 +48,6 @@ const TIMELINE = [
   },
 ];
 
-const VALUES = [
-  { icon: Heart, title: "Kepedulian", desc: "Dibangun dari rasa peduli nyata terhadap mahasiswa yang merantau jauh ke Mesir." },
-  { icon: BookOpen, title: "Pengetahuan Lokal", desc: "Diisi kontributor yang benar-benar hidup dan memahami kehidupan Masisir dari dalam." },
-  { icon: Users, title: "Komunitas", desc: "Tumbuh bersama komunitasnya — setiap kontribusi membuat platform ini lebih baik untuk semua." },
-  { icon: Lightbulb, title: "Inovasi", desc: "Teknologi AI yang benar-benar berguna, bukan sekadar generik — dirancang untuk kebutuhan Masisir." },
-  { icon: Shield, title: "Kepercayaan", desc: "Privasi dan keamanan data pengguna adalah prioritas. Kami tidak pernah menjual data pengguna." },
-  { icon: Globe, title: "Inklusif", desc: "Terbuka untuk semua Masisir — dari mahasiswa baru hingga senior yang ingin berbagi ilmu." },
-];
 
 const TEAM: { name: string; role: string; initial: string }[] = [
   { name: "—", role: "Founder", initial: "F" },
@@ -97,9 +60,7 @@ const TEAM: { name: string; role: string; initial: string }[] = [
 const AboutPage = () => {
   const heroRef = useInView(0.1);
   const storyRef = useInView(0.1);
-  const statsRef = useInView(0.1);
   const missionRef = useInView(0.1);
-  const valuesRef = useInView(0.1);
   const teamRef = useInView(0.1);
   const ctaRef = useInView(0.1);
 
@@ -190,36 +151,6 @@ const AboutPage = () => {
         </div>
       </section>
 
-      {/* ══════════ STATS ══════════════════════════════════════ */}
-      <section className="relative px-4 py-20">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/3 to-background" />
-        </div>
-        <div
-          ref={statsRef.ref}
-          className={`relative z-10 mx-auto max-w-4xl transition-all duration-700 ${statsRef.inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
-        >
-          <div className="grid gap-6 sm:grid-cols-3">
-            {STATS.map(({ icon: Icon, value, suffix, label, color }, i) => (
-              <div
-                key={label}
-                className="group relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-8 text-center backdrop-blur-xl transition-all duration-300 hover:border-primary/30 hover:bg-primary/5"
-                style={{ transitionDelay: `${i * 100}ms` }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-                <div className={`mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 ${color}`}>
-                  <Icon className="h-6 w-6" />
-                </div>
-                <div className={`font-display text-4xl font-bold ${color}`}>
-                  <Counter target={value} suffix={suffix} />
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ══════════ STORY TIMELINE ══════════════════════════════ */}
       <section className="relative overflow-hidden px-4 py-20">
         <div className="pointer-events-none absolute inset-0">
@@ -247,7 +178,7 @@ const AboutPage = () => {
                 const isLeft = i % 2 === 0;
                 return (
                   <div
-                    key={year}
+                    key={title}
                     className={`relative flex flex-col gap-4 md:flex-row md:items-center md:gap-0 ${isLeft ? "md:flex-row" : "md:flex-row-reverse"}`}
                     style={{ marginBottom: "3rem" }}
                   >
@@ -293,87 +224,69 @@ const AboutPage = () => {
             </h2>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Vision card — glowing */}
-            <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/12 via-primary/6 to-transparent p-8 md:p-10">
-              <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-primary/15 blur-2xl" />
-              <div className="relative">
-                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-purple">
-                  <Lightbulb className="h-6 w-6 text-primary-foreground" />
+          {/* Vision — full width */}
+          <div className="relative mb-6 overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/12 via-primary/6 to-transparent p-8 md:p-10">
+            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-primary/15 blur-2xl" />
+            <div className="relative">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-purple">
+                  <Lightbulb className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <div className="mb-2 flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <Star className="h-4 w-4 text-primary" />
                   <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">Visi</span>
                 </div>
-                <p className="font-display text-lg font-bold leading-snug text-foreground">
-                  Platform AI nomor satu bagi seluruh mahasiswa Indonesia di Mesir
-                </p>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                  Tempat di mana setiap pertanyaan seputar kehidupan Masisir memiliki jawaban yang akurat dan terpercaya.
-                </p>
               </div>
-            </div>
-
-            {/* Mission card */}
-            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-8 backdrop-blur-xl md:p-10">
-              <div className="absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-purple-glow/8 blur-2xl" />
-              <div className="relative">
-                <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary/60">
-                  <Heart className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <div className="mb-2 flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-modernist text-xs font-bold uppercase tracking-widest text-muted-foreground">Misi</span>
-                </div>
-                <p className="font-display text-lg font-bold leading-snug text-foreground">
-                  Memudahkan kehidupan Masisir melalui teknologi yang relevan
-                </p>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                  AI yang cerdas, pengetahuan komunitas terverifikasi, dan alat produktivitas untuk kebutuhan sehari-hari di Kairo.
-                </p>
-              </div>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                AIGYPT hadir sebagai motor perubahan bagi kualitas hidup Masisir — dari cara belajar, berorganisasi, hingga berbisnis.
+                Di masa depan, setiap Masisir akan berteman dengan teknologi, bukan cuma jadi pengguna pasif,
+                tapi <strong className="text-foreground">pemimpin digital yang siap upgrade dan update hidupnya.</strong>
+              </p>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* ══════════ VALUES ══════════════════════════════════════ */}
-      <section className="relative overflow-hidden px-4 py-20">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/3 to-background" />
-          <div className="absolute left-1/2 top-1/2 h-[800px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-[200px]" />
-        </div>
-
-        <div
-          ref={valuesRef.ref}
-          className={`relative z-10 mx-auto max-w-5xl transition-all duration-700 ${valuesRef.inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
-        >
-          <div className="mb-14 text-center">
-            <p className="mb-3 font-modernist text-[11px] font-bold uppercase tracking-[0.2em] text-primary">DNA Kami</p>
-            <h2 className="font-display text-4xl font-bold text-foreground sm:text-5xl">
-              Nilai-nilai yang <span className="text-gradient-purple">Kami Pegang</span>
-            </h2>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {VALUES.map(({ icon: Icon, title, desc }, i) => (
-              <div
-                key={title}
-                className="group relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl transition-all duration-300 hover:border-primary/35 hover:bg-primary/5 hover:-translate-y-1 hover:shadow-[0_8px_32px_hsl(270_80%_65%/0.12)]"
-                style={{ animationDelay: `${i * 80}ms` }}
-              >
-                {/* Corner accent */}
-                <div className="absolute right-0 top-0 h-16 w-16 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100">
-                  <div className="absolute right-0 top-0 h-16 w-16 -translate-x-1/2 translate-y-0 rotate-45 bg-gradient-to-br from-primary/20 to-transparent" />
-                </div>
-
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 transition-all group-hover:bg-primary/20 group-hover:scale-110">
-                  <Icon className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mb-2 font-display text-base font-bold text-foreground">{title}</h3>
-                <p className="text-xs leading-relaxed text-muted-foreground">{desc}</p>
+          {/* Mission — two pillars */}
+          <div className="mb-4">
+            <div className="mb-5 flex items-center gap-2">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-secondary/60">
+                <Zap className="h-5 w-5 text-primary" />
               </div>
-            ))}
+              <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">Misi</span>
+            </div>
+            <p className="mb-6 text-sm text-muted-foreground">
+              Untuk mencapai tujuan itu, <strong className="text-foreground">AIGYPT</strong> mempunyai misi:
+            </p>
+            <div className="grid gap-5 md:grid-cols-2">
+              {/* Pelatihan Praktis */}
+              <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl">
+                <div className="absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-primary/8 blur-2xl" />
+                <div className="relative">
+                  <h3 className="mb-4 inline-block rounded-lg border border-primary/40 bg-primary/10 px-3 py-1 font-display text-sm font-bold text-primary">
+                    Pelatihan Praktis
+                  </h3>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Fokus ke tools nyata: ChatGPT, Notion, dll.</li>
+                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Menyediakan modul & template siap pakai.</li>
+                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Mengasah skill komunikasi digital, prompting.</li>
+                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Menciptakan AI khusus untuk Masisir.</li>
+                  </ul>
+                </div>
+              </div>
+              {/* Budaya Digital */}
+              <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl">
+                <div className="absolute -right-8 -bottom-8 h-32 w-32 rounded-full bg-purple-glow/8 blur-2xl" />
+                <div className="relative">
+                  <h3 className="mb-4 inline-block rounded-lg border border-primary/40 bg-primary/10 px-3 py-1 font-display text-sm font-bold text-primary">
+                    Budaya Digital
+                  </h3>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Menyampaikan mindset efisiensi & sistem digital di kehidupan sehari-hari.</li>
+                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Mendirikan komunitas sebagai ruang belajar bersama.</li>
+                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Mendorong organisasi Masisir menerapkan sistem kerja berbasis AI.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
