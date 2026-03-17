@@ -75,7 +75,7 @@ const Footer = () => {
 
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-border/30 pt-6 sm:flex-row">
           <p className="text-xs text-muted-foreground/60">
-            © {year} AINA. Dibuat dengan ❤️ untuk Masisir.
+            © {year} AINA. Dibuat dengan kepedulian untuk Masisir.
           </p>
           <p className="text-xs text-muted-foreground/40">
             Asisten Pintar Khusus Mahasiswa Indonesia di Mesir

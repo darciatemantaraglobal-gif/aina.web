@@ -10,7 +10,7 @@ const FREE_FEATURES = [
 ];
 
 const CONTRIBUTOR_FEATURES = [
-  { icon: MessageSquare, text: "Chat AINA tanpa batas setiap hari" },
+  { icon: MessageSquare, text: "10 chat dengan AINA per hari" },
   { icon: LayoutDashboard, text: "Akses Productivity (Tasks & Notes)" },
   { icon: BookOpen, text: "Tulis & publikasikan artikel Knowledge Base" },
   { icon: Star, text: "Badge Contributor eksklusif di profil" },
