@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Award, Shield, FileText, Calendar, Pencil, Check, X } from "lucide-react";
+import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 const ProfilePage = () => {
@@ -12,6 +12,7 @@ const ProfilePage = () => {
   const [roles, setRoles] = useState<string[]>([]);
   const [articleCount, setArticleCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -22,15 +23,24 @@ const ProfilePage = () => {
   }, []);
 
   const loadData = async () => {
+    setLoadError(false);
+    setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) { setLoading(false); return; }
 
-      const [profileRes, rolesRes, articlesRes] = await Promise.all([
-        supabase.from("profiles").select("*").eq("user_id", user.id).single(),
-        supabase.from("user_roles").select("role").eq("user_id", user.id),
-        supabase.from("knowledge_base").select("id").eq("author_id", user.id).eq("status", "approved"),
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 10000)
+      );
+
+      const [profileRes, rolesRes, articlesRes] = await Promise.race([
+        Promise.all([
+          supabase.from("profiles").select("*").eq("user_id", user.id).single(),
+          supabase.from("user_roles").select("role").eq("user_id", user.id),
+          supabase.from("knowledge_base").select("id").eq("author_id", user.id).eq("status", "approved"),
+        ]),
+        timeout,
       ]);
 
       if (profileRes.data) setProfile(profileRes.data);
@@ -38,6 +48,7 @@ const ProfilePage = () => {
       if (articlesRes.data) setArticleCount(articlesRes.data.length);
     } catch (err) {
       console.error("ProfilePage error:", err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -79,8 +90,35 @@ const ProfilePage = () => {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full flex-col items-center justify-center gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-xs text-muted-foreground">Menghubungi server...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
+          <AlertCircle className="h-7 w-7 text-destructive" />
+        </div>
+        <div>
+          <p className="font-semibold text-foreground">Koneksi ke database gagal</p>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Supabase project mungkin sedang tidur (free tier). Buka{" "}
+            <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-primary underline">
+              supabase.com/dashboard
+            </a>{" "}
+            dan pastikan project tidak di-pause, lalu coba lagi.
+          </p>
+        </div>
+        <button
+          onClick={loadData}
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          Coba Lagi
+        </button>
       </div>
     );
   }

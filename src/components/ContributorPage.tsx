@@ -140,6 +140,7 @@ const ContributorPage = () => {
   const [isContributor, setIsContributor] = useState(false);
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [submitterName, setSubmitterName] = useState("");
 
@@ -164,10 +165,17 @@ const ContributorPage = () => {
       const user = session?.user;
       if (!user) { setLoading(false); return; }
 
-      const [reqRes, rolesRes, articlesRes] = await Promise.all([
-        supabase.from("contributor_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1),
-        supabase.from("user_roles").select("role").eq("user_id", user.id),
-        supabase.from("knowledge_base").select("*").eq("author_id", user.id).order("created_at", { ascending: false }),
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 10000)
+      );
+
+      const [reqRes, rolesRes, articlesRes] = await Promise.race([
+        Promise.all([
+          supabase.from("contributor_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1),
+          supabase.from("user_roles").select("role").eq("user_id", user.id),
+          supabase.from("knowledge_base").select("*").eq("author_id", user.id).order("created_at", { ascending: false }),
+        ]),
+        timeout,
       ]);
 
       if (reqRes.data && reqRes.data.length > 0) {
@@ -177,12 +185,17 @@ const ContributorPage = () => {
 
       if (rolesRes.data) {
         const roleNames = rolesRes.data.map((r) => r.role);
-        setIsContributor(roleNames.includes("contributor") || roleNames.includes("senior_contributor"));
+        setIsContributor(
+          roleNames.includes("contributor") ||
+          roleNames.includes("senior_contributor") ||
+          roleNames.includes("admin")
+        );
       }
 
       if (articlesRes.data) setArticles(articlesRes.data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("ContributorPage error:", err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -243,7 +256,7 @@ const ContributorPage = () => {
       }).select().single();
 
       if (error) {
-        toast.error("Gagal mengirim artikel");
+        toast.error(`Gagal mengirim artikel: ${error.message}`);
         return;
       }
       if (data) setArticles((prev) => [data, ...prev]);
@@ -268,8 +281,35 @@ const ContributorPage = () => {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full flex-col items-center justify-center gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-xs text-muted-foreground">Menghubungi server...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
+          <XCircle className="h-7 w-7 text-destructive" />
+        </div>
+        <div>
+          <p className="font-semibold text-foreground">Koneksi ke database gagal</p>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Supabase project mungkin sedang tidur (free tier). Buka{" "}
+            <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-primary underline">
+              supabase.com/dashboard
+            </a>{" "}
+            dan pastikan project tidak di-pause, lalu coba lagi.
+          </p>
+        </div>
+        <button
+          onClick={() => { setLoadError(false); setLoading(true); loadData(); }}
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          Coba Lagi
+        </button>
       </div>
     );
   }

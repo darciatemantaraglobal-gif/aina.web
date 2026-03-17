@@ -8,6 +8,7 @@ import ProfilePage from "@/components/ProfilePage";
 import AdminPage from "@/components/AdminPage";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper } from "lucide-react";
+import { toast } from "sonner";
 
 interface Chat {
   id: string;
@@ -125,6 +126,19 @@ const Dashboard = () => {
     ]);
   };
 
+  const handleDeleteChat = async (chatId: string) => {
+    const { error } = await supabase.from("chats").delete().eq("id", chatId);
+    if (error) {
+      toast.error("Gagal menghapus chat");
+      return;
+    }
+    setChats((prev) => prev.filter((c) => c.id !== chatId));
+    if (activeChatId === chatId) {
+      setActiveChatId(null);
+    }
+    toast.success("Chat dihapus");
+  };
+
   if (!authReady) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
@@ -206,6 +220,7 @@ const Dashboard = () => {
           activeChatId={activeChatId}
           onNewChat={handleNewChat}
           onSelectChat={handleSelectChat}
+          onDeleteChat={handleDeleteChat}
         />
       </div>
 

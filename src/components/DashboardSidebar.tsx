@@ -13,6 +13,7 @@ import {
   Shield,
   X,
   MessageCircle,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ interface DashboardSidebarProps {
   activeChatId?: string | null;
   onNewChat?: () => void;
   onSelectChat?: (chatId: string) => void;
+  onDeleteChat?: (chatId: string) => void;
 }
 
 const baseMenuItems = [
@@ -51,6 +53,7 @@ const DashboardSidebar = ({
   activeChatId,
   onNewChat,
   onSelectChat,
+  onDeleteChat,
 }: DashboardSidebarProps) => {
   const menuItems = isAdmin
     ? [...baseMenuItems, { id: "admin", label: "Admin", icon: Shield }]
@@ -121,18 +124,29 @@ const DashboardSidebar = ({
               </p>
               <div className="space-y-0.5 pb-2">
                 {chats.map((chat) => (
-                  <button
+                  <div
                     key={chat.id}
-                    onClick={() => onSelectChat?.(chat.id)}
-                    className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                    className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors ${
                       activeChatId === chat.id
                         ? "bg-primary/15 text-primary"
                         : "text-sidebar-foreground hover:bg-sidebar-accent"
                     }`}
                   >
-                    <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                    <span className="truncate">{chat.title}</span>
-                  </button>
+                    <button
+                      onClick={() => onSelectChat?.(chat.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                      <span className="truncate">{chat.title}</span>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeleteChat?.(chat.id); }}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                      title="Hapus chat"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </>
