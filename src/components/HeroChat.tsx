@@ -73,9 +73,9 @@ const HeroChat = () => {
 
   const getCurrencyFontSize = (displayValue: string) => {
     const len = displayValue.length;
-    if (len <= 7)  return "clamp(0.55rem, 1.1vh, 0.68rem)";
-    if (len <= 11) return "clamp(0.48rem, 1.0vh, 0.58rem)";
-    return "clamp(0.42rem, 0.85vh, 0.5rem)";
+    if (len <= 7)  return "0.6rem";
+    if (len <= 11) return "0.52rem";
+    return "0.44rem";
   };
 
   const getDisplayValue = (field: string, raw: string) => {
