@@ -178,16 +178,16 @@ app.post("/api/chat", async (req, res) => {
     knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nGunakan informasi berikut sebagai referensi utama saat menjawab. Jika informasi yang dicari ada di sini, prioritaskan isi artikel ini di atas pengetahuan umummu.\n\n${articlesText}\n---`;
   }
 
-  const systemPrompt = `Kamu adalah AINA, asisten AI cerdas untuk mahasiswa Indonesia yang sedang belajar di Mesir (Masisir).
+  const systemPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Mesir (Masisir).
 
-Keahlianmu meliputi:
-- Informasi administrasi: Iqomah, Paspor, Visa Mesir, VOA, pendaftaran kuliah
-- Kehidupan di Mesir: transportasi, kuliner halal, tempat tinggal, biaya hidup
-- Informasi Al-Azhar dan universitas lainnya di Mesir
-- Tips dan panduan sehari-hari untuk mahasiswa di Kairo dan sekitarnya
-- Kurs mata uang EGP, IDR, USD
+Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, dan kurs EGP/IDR/USD.
 
-Jawab dalam Bahasa Indonesia yang ramah, informatif, dan mudah dipahami. Gunakan format markdown (tebal, poin, dll) agar mudah dibaca. Jika kamu tidak yakin tentang sesuatu, katakan dengan jujur.${knowledgeContext}`;
+ATURAN MENJAWAB:
+- Jawab langsung ke inti pertanyaan, singkat dan padat — jangan bertele-tele
+- Maksimal 3-5 poin atau 2-3 paragraf pendek; hindari penjelasan yang tidak diminta
+- Gunakan markdown sederhana (tebal, poin) hanya jika membantu kejelasan
+- Jika tidak tahu, katakan jujur dalam satu kalimat
+- WAJIB selesaikan jawaban — jangan berhenti di tengah kalimat${knowledgeContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
@@ -208,8 +208,8 @@ Jawab dalam Bahasa Indonesia yang ramah, informatif, dan mudah dipahami. Gunakan
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: systemPrompt }, ...messages],
-          max_tokens: 4096,
-          temperature: 0.7,
+          max_tokens: 1024,
+          temperature: 0.5,
         }),
       });
 
