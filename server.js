@@ -151,7 +151,25 @@ Jawab dalam Bahasa Indonesia yang ramah, informatif, dan mudah dipahami. Gunakan
 
       if (response.ok) {
         const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || "Maaf, tidak ada respons.";
+        const raw = data.choices?.[0]?.message?.content || "Maaf, tidak ada respons.";
+        const reply = raw
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<\/?p>/gi, "\n")
+          .replace(/<\/?b>/gi, "**")
+          .replace(/<\/?strong>/gi, "**")
+          .replace(/<\/?i>/gi, "_")
+          .replace(/<\/?em>/gi, "_")
+          .replace(/<li>/gi, "\n- ")
+          .replace(/<\/li>/gi, "")
+          .replace(/<\/?[uo]l>/gi, "")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .replace(/&lt;/gi, "<")
+          .replace(/&gt;/gi, ">")
+          .replace(/&quot;/gi, '"')
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
         console.log(`Responded using model: ${model}`);
         return res.json({ reply, model });
       }

@@ -27,6 +27,28 @@ const AinaLogo = ({ className }: { className?: string }) => (
   <img src="/aina-icon.png" alt="AINA" className={className} />
 );
 
+function cleanMarkdown(text: string): string {
+  return text
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?p>/gi, "\n")
+    .replace(/<\/?b>/gi, "**")
+    .replace(/<\/?strong>/gi, "**")
+    .replace(/<\/?i>/gi, "_")
+    .replace(/<\/?em>/gi, "_")
+    .replace(/<\/?ul>/gi, "")
+    .replace(/<\/?ol>/gi, "")
+    .replace(/<li>/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -183,6 +205,7 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
+                        br: () => <br />,
                         p: ({ children }) => (
                           <p className="mb-2 last:mb-0 break-words leading-relaxed">{children}</p>
                         ),
@@ -255,7 +278,7 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
                         ),
                       }}
                     >
-                      {msg.content}
+                      {cleanMarkdown(msg.content)}
                     </ReactMarkdown>
                   </div>
                 )}
