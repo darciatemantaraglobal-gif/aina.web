@@ -31,6 +31,55 @@ async function verifyAdminUser(authHeader) {
   return user;
 }
 
+/* ── Fetch relevant knowledge base articles ──────────── */
+async function fetchRelevantArticles(userQuestion) {
+  const supabase = getAdminClient();
+  if (!supabase) return [];
+
+  // Extract keywords from the question (words > 3 chars)
+  const keywords = userQuestion
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 3);
+
+  if (keywords.length === 0) {
+    // No keywords — return a sample of recent approved articles
+    const { data } = await supabase
+      .from("knowledge_base")
+      .select("title, content, category")
+      .eq("status", "approved")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    return data ?? [];
+  }
+
+  // Search articles matching any keyword in title or content
+  const { data: allApproved } = await supabase
+    .from("knowledge_base")
+    .select("title, content, category")
+    .eq("status", "approved");
+
+  if (!allApproved || allApproved.length === 0) return [];
+
+  // Score each article by keyword matches
+  const scored = allApproved.map(article => {
+    const text = `${article.title} ${article.content}`.toLowerCase();
+    const score = keywords.reduce((acc, kw) => acc + (text.includes(kw) ? 1 : 0), 0);
+    return { ...article, score };
+  });
+
+  // Return top 5 articles with at least 1 match; if none match, return top 3 recent
+  const matched = scored
+    .filter(a => a.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  if (matched.length > 0) return matched;
+
+  return allApproved.slice(0, 3);
+}
+
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", async (req, res) => {
   const { messages } = req.body;
@@ -52,6 +101,19 @@ app.post("/api/chat", async (req, res) => {
     "meta-llama/llama-3.2-3b-instruct:free",
   ];
 
+  // Get last user message to search the knowledge base
+  const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+  const articles = await fetchRelevantArticles(lastUserMessage);
+
+  // Build knowledge base context block
+  let knowledgeContext = "";
+  if (articles.length > 0) {
+    const articlesText = articles.map((a, i) =>
+      `### Artikel ${i + 1}: ${a.title} [${a.category}]\n${a.content}`
+    ).join("\n\n");
+    knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nGunakan informasi berikut sebagai referensi utama saat menjawab. Jika informasi yang dicari ada di sini, prioritaskan isi artikel ini di atas pengetahuan umummu.\n\n${articlesText}\n---`;
+  }
+
   const systemPrompt = `Kamu adalah AINA, asisten AI cerdas untuk mahasiswa Indonesia yang sedang belajar di Mesir (Masisir).
 
 Keahlianmu meliputi:
@@ -61,7 +123,9 @@ Keahlianmu meliputi:
 - Tips dan panduan sehari-hari untuk mahasiswa di Kairo dan sekitarnya
 - Kurs mata uang EGP, IDR, USD
 
-Jawab dalam Bahasa Indonesia yang ramah, informatif, dan mudah dipahami. Jika kamu tidak yakin tentang sesuatu, katakan dengan jujur.`;
+Jawab dalam Bahasa Indonesia yang ramah, informatif, dan mudah dipahami. Gunakan format markdown (tebal, poin, dll) agar mudah dibaca. Jika kamu tidak yakin tentang sesuatu, katakan dengan jujur.${knowledgeContext}`;
+
+  console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
   let lastError = null;
   for (const model of MODELS) {
