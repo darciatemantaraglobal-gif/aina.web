@@ -71,11 +71,11 @@ const HeroChat = () => {
     return parseFloat(n.toPrecision(10)).toString();
   };
 
-  const getCurrencyFontSize = (displayValue: string) => {
+  const getCurrencyClass = (displayValue: string) => {
     const len = displayValue.length;
-    if (len <= 7)  return "0.6rem";
-    if (len <= 11) return "0.52rem";
-    return "0.44rem";
+    if (len <= 7)  return "currency-val-short";
+    if (len <= 11) return "currency-val-medium";
+    return "currency-val-long";
   };
 
   const getDisplayValue = (field: string, raw: string) => {
@@ -302,8 +302,7 @@ const HeroChat = () => {
                       onChange={(e) => handleCurrencyChange(c.field, e.target.value)}
                       onFocus={() => setFocusedCurrency(c.field)}
                       onBlur={() => setFocusedCurrency(null)}
-                      className="min-w-0 w-full bg-transparent font-display font-bold text-foreground tabular-nums focus:outline-none"
-                      style={{ fontSize: getCurrencyFontSize(getDisplayValue(c.field, currencies[c.field])) }}
+                      className={`min-w-0 w-full bg-transparent font-display font-bold text-foreground tabular-nums focus:outline-none ${getCurrencyClass(getDisplayValue(c.field, currencies[c.field]))}`}
                       placeholder="0"
                     />
                   </div>
