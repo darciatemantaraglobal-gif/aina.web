@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, AlertCircle, Menu, Plus } from "lucide-react";
+import { Send, User, AlertCircle, Menu, Plus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -22,6 +22,10 @@ const SUGGESTIONS = [
   "Biaya hidup di Kairo untuk mahasiswa",
   "Tips mencari tempat tinggal di Mesir",
 ];
+
+const AinaLogo = ({ className }: { className?: string }) => (
+  <img src="/aina-icon.png" alt="AINA" className={className} />
+);
 
 const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -116,14 +120,12 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
         </button>
 
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-purple">
-            <Bot className="h-3.5 w-3.5 text-primary-foreground" />
-          </div>
+          <AinaLogo className="h-7 w-7 object-contain" />
           <span className="font-display text-base font-bold text-foreground">AINA</span>
         </div>
 
         <button
-          onClick={() => setMessages([])}
+          onClick={() => { setMessages([]); setError(null); }}
           className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <Plus className="h-5 w-5" />
@@ -131,12 +133,12 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
       </header>
 
       {/* Messages area or empty state */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {isEmpty ? (
-          /* Empty / welcome state — ChatGPT-style centered */
+          /* Empty / welcome state */
           <div className="flex h-full flex-col items-center justify-center px-4 pb-4">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-purple shadow-lg shadow-primary/20">
-              <Bot className="h-7 w-7 text-primary-foreground" />
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-purple p-2.5 shadow-lg shadow-primary/20">
+              <AinaLogo className="h-full w-full object-contain" />
             </div>
             <h1 className="font-display text-2xl font-bold text-foreground">Halo! Saya AINA</h1>
             <p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
@@ -158,49 +160,106 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
           </div>
         ) : (
           /* Chat messages */
-          <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-6 md:px-6">
+          <div className="mx-auto w-full max-w-2xl space-y-6 px-3 py-6 md:px-6">
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}
+                className={`flex gap-2.5 min-w-0 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-purple">
-                    <Bot className="h-4 w-4 text-primary-foreground" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-purple p-1.5">
+                    <AinaLogo className="h-full w-full object-contain" />
                   </div>
                 )}
-                <div
-                  className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground whitespace-pre-wrap"
-                      : "bg-secondary text-secondary-foreground prose prose-sm prose-invert max-w-none"
-                  }`}
-                >
-                  {msg.role === "user" ? (
-                    msg.content
-                  ) : (
+
+                {msg.role === "user" ? (
+                  /* User bubble */
+                  <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground whitespace-pre-wrap break-words">
+                    {msg.content}
+                  </div>
+                ) : (
+                  /* AI bubble — full width, no overflow */
+                  <div className="min-w-0 flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                        em: ({ children }) => <em className="italic text-muted-foreground">{children}</em>,
-                        ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-1">{children}</ul>,
-                        ol: ({ children }) => <ol className="mb-2 ml-4 list-decimal space-y-1">{children}</ol>,
-                        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                        h1: ({ children }) => <h1 className="mb-2 text-base font-bold text-foreground">{children}</h1>,
-                        h2: ({ children }) => <h2 className="mb-1.5 text-sm font-bold text-foreground">{children}</h2>,
-                        h3: ({ children }) => <h3 className="mb-1 text-sm font-semibold text-foreground">{children}</h3>,
-                        code: ({ children }) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">{children}</code>,
-                        pre: ({ children }) => <pre className="mb-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{children}</pre>,
-                        blockquote: ({ children }) => <blockquote className="mb-2 border-l-2 border-primary/50 pl-3 text-muted-foreground">{children}</blockquote>,
-                        hr: () => <hr className="my-2 border-border" />,
+                        p: ({ children }) => (
+                          <p className="mb-2 last:mb-0 break-words leading-relaxed">{children}</p>
+                        ),
+                        strong: ({ children }) => (
+                          <strong className="font-semibold text-foreground">{children}</strong>
+                        ),
+                        em: ({ children }) => (
+                          <em className="italic text-muted-foreground">{children}</em>
+                        ),
+                        ul: ({ children }) => (
+                          <ul className="mb-2 ml-4 list-disc space-y-1">{children}</ul>
+                        ),
+                        ol: ({ children }) => (
+                          <ol className="mb-2 ml-4 list-decimal space-y-1">{children}</ol>
+                        ),
+                        li: ({ children }) => (
+                          <li className="leading-relaxed break-words">{children}</li>
+                        ),
+                        h1: ({ children }) => (
+                          <h1 className="mb-2 mt-3 text-base font-bold text-foreground first:mt-0">{children}</h1>
+                        ),
+                        h2: ({ children }) => (
+                          <h2 className="mb-1.5 mt-3 text-sm font-bold text-foreground first:mt-0">{children}</h2>
+                        ),
+                        h3: ({ children }) => (
+                          <h3 className="mb-1 mt-2 text-sm font-semibold text-foreground first:mt-0">{children}</h3>
+                        ),
+                        code: ({ children, className }) => {
+                          const isBlock = className?.includes("language-");
+                          if (isBlock) return <code className={className}>{children}</code>;
+                          return (
+                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground break-all">
+                              {children}
+                            </code>
+                          );
+                        },
+                        pre: ({ children }) => (
+                          <div className="mb-2 overflow-x-auto rounded-lg bg-muted">
+                            <pre className="p-3 font-mono text-xs text-foreground">{children}</pre>
+                          </div>
+                        ),
+                        blockquote: ({ children }) => (
+                          <blockquote className="mb-2 border-l-2 border-primary/50 pl-3 text-muted-foreground">
+                            {children}
+                          </blockquote>
+                        ),
+                        hr: () => <hr className="my-3 border-border" />,
+                        /* Tables — scrollable horizontally inside their own container */
+                        table: ({ children }) => (
+                          <div className="mb-3 overflow-x-auto rounded-lg border border-border">
+                            <table className="min-w-full text-xs">{children}</table>
+                          </div>
+                        ),
+                        thead: ({ children }) => (
+                          <thead className="bg-muted/60">{children}</thead>
+                        ),
+                        tbody: ({ children }) => (
+                          <tbody className="divide-y divide-border">{children}</tbody>
+                        ),
+                        tr: ({ children }) => (
+                          <tr className="hover:bg-muted/30 transition-colors">{children}</tr>
+                        ),
+                        th: ({ children }) => (
+                          <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">
+                            {children}
+                          </th>
+                        ),
+                        td: ({ children }) => (
+                          <td className="px-3 py-2 text-secondary-foreground">{children}</td>
+                        ),
                       }}
                     >
                       {msg.content}
                     </ReactMarkdown>
-                  )}
-                </div>
+                  </div>
+                )}
+
                 {msg.role === "user" && (
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
                     <User className="h-4 w-4 text-muted-foreground" />
@@ -210,9 +269,9 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
             ))}
 
             {isLoading && (
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-purple">
-                  <Bot className="h-4 w-4 text-primary-foreground" />
+              <div className="flex gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-purple p-1.5">
+                  <AinaLogo className="h-full w-full object-contain" />
                 </div>
                 <div className="rounded-2xl bg-secondary px-4 py-3">
                   <div className="flex gap-1">
@@ -227,7 +286,7 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
             {error && (
               <div className="flex items-start gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{error}</span>
+                <span className="break-words">{error}</span>
               </div>
             )}
 
@@ -237,9 +296,9 @@ const ChatArea = ({ onMenuClick }: ChatAreaProps) => {
       </div>
 
       {/* Input bar — always at bottom */}
-      <div className="shrink-0 px-4 pb-4 pt-2 md:pb-6">
+      <div className="shrink-0 px-3 pb-4 pt-2 md:px-6 md:pb-6">
         <form onSubmit={handleFormSubmit} className="mx-auto max-w-2xl">
-          <div className="relative rounded-2xl border border-border bg-card p-1.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:shadow-primary/10 focus-within:glow-purple-sm">
+          <div className="relative rounded-2xl border border-border bg-card p-1.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
             <textarea
               ref={textareaRef}
               value={input}

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Bot,
   MessageSquare,
   Newspaper,
   Users,
@@ -55,8 +54,8 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false, onClose }: 
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple">
-              <Bot className="h-4 w-4 text-primary-foreground" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-purple p-1.5">
+              <img src="/aina-icon.png" alt="AINA" className="h-full w-full object-contain" />
             </div>
             <span className="font-display text-lg font-bold text-sidebar-foreground">AINA</span>
           </div>

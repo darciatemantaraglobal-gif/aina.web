@@ -7,7 +7,7 @@ import ContributorPage from "@/components/ContributorPage";
 import ProfilePage from "@/components/ProfilePage";
 import AdminPage from "@/components/AdminPage";
 import { supabase } from "@/integrations/supabase/client";
-import { Bot, Menu, Newspaper } from "lucide-react";
+import { Menu, Newspaper } from "lucide-react";
 
 const tabTitles: Record<string, string> = {
   chat: "Chat AI",
@@ -100,8 +100,8 @@ const Dashboard = () => {
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-purple">
-              <Bot className="h-3.5 w-3.5 text-primary-foreground" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-purple p-1">
+              <img src="/aina-icon.png" alt="AINA" className="h-full w-full object-contain" />
             </div>
             <span className="font-display text-base font-bold text-foreground">
               {tabTitles[activeTab] ?? "AINA"}
