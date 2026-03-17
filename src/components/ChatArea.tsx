@@ -73,13 +73,15 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaPro
 
   useEffect(() => {
     activeChatIdRef.current = chatId;
+    // Don't reset while a send is in-flight (e.g. new chat just created mid-send)
+    if (isLoading) return;
     setMessages([]);
     setError(null);
     setInput("");
     if (chatId) {
       loadMessages(chatId);
     }
-  }, [chatId]);
+  }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadMessages = async (id: string) => {
     setLoadingHistory(true);

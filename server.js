@@ -144,7 +144,7 @@ Jawab dalam Bahasa Indonesia yang ramah, informatif, dan mudah dipahami. Gunakan
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: systemPrompt }, ...messages],
-          max_tokens: 1024,
+          max_tokens: 4096,
           temperature: 0.7,
         }),
       });
