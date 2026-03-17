@@ -1,23 +1,6 @@
 import express from "express";
 import cors from "cors";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
 import { createClient } from "@supabase/supabase-js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const RATES_FILE = join(__dirname, "rates.json");
-
-function getRates() {
-  try {
-    if (fs.existsSync(RATES_FILE)) return JSON.parse(fs.readFileSync(RATES_FILE, "utf8"));
-  } catch {}
-  return { egpToIdr: 245, usdToIdr: 15800 };
-}
-function saveRates(rates) {
-  fs.writeFileSync(RATES_FILE, JSON.stringify(rates, null, 2));
-}
 
 const app = express();
 const PORT = 3001;
@@ -386,23 +369,6 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   const { data, error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
-});
-
-/* ─── Rates Endpoints ────────────────────────────────── */
-app.get("/api/rates", (req, res) => {
-  res.json(getRates());
-});
-
-app.post("/api/admin/rates", async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Unauthorized" });
-  const { egpToIdr, usdToIdr } = req.body;
-  if (typeof egpToIdr !== "number" || typeof usdToIdr !== "number") {
-    return res.status(400).json({ error: "egpToIdr and usdToIdr harus berupa angka" });
-  }
-  const rates = { egpToIdr, usdToIdr };
-  saveRates(rates);
-  res.json({ success: true, rates });
 });
 
 app.listen(PORT, "0.0.0.0", () => {

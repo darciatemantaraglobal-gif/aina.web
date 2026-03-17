@@ -10,7 +10,7 @@ import {
   Shield, Users, FileText, Check, X, LayoutDashboard,
   MessageSquare, BookOpen, Clock, ChevronDown, Search,
   RefreshCw, TrendingUp, UserCheck, AlertCircle, Plus,
-  Pencil, Trash2, Eye, Settings,
+  Pencil, Trash2, Eye,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -547,103 +547,8 @@ function KnowledgeBaseTab() {
   );
 }
 
-/* ─── Settings Tab ───────────────────────────────────── */
-function SettingsTab() {
-  const [egpToIdr, setEgpToIdr] = useState<string>("");
-  const [usdToIdr, setUsdToIdr] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/rates")
-      .then((r) => r.json())
-      .then((data) => {
-        setEgpToIdr(String(data.egpToIdr ?? 245));
-        setUsdToIdr(String(data.usdToIdr ?? 15800));
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  const save = async () => {
-    const egp = parseFloat(egpToIdr);
-    const usd = parseFloat(usdToIdr);
-    if (isNaN(egp) || egp <= 0 || isNaN(usd) || usd <= 0) {
-      toast.error("Nilai kurs harus berupa angka positif");
-      return;
-    }
-    setSaving(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const res = await fetch("/api/admin/rates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ egpToIdr: egp, usdToIdr: usd }),
-      });
-      if (!res.ok) { const e = await res.json(); toast.error(e.error || "Gagal menyimpan"); return; }
-      toast.success("Kurs berhasil diperbarui");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) return <div className="flex justify-center py-12"><div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="font-display text-lg font-bold text-foreground">Pengaturan Kurs</h2>
-        <p className="text-sm text-muted-foreground">Atur kurs mata uang yang tampil di halaman utama.</p>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
-        {[
-          { flag: "🇪🇬", label: "EGP → IDR", value: egpToIdr, onChange: setEgpToIdr, hint: "1 EGP = ? IDR" },
-          { flag: "🇺🇸", label: "USD → IDR", value: usdToIdr, onChange: setUsdToIdr, hint: "1 USD = ? IDR" },
-        ].map((r) => (
-          <div key={r.label} className="space-y-1">
-            <label className="text-sm font-medium text-muted-foreground">
-              {r.flag} {r.label} <span className="text-xs text-muted-foreground/60">({r.hint})</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                value={r.value}
-                onChange={(e) => r.onChange(e.target.value)}
-                className="flex-1 rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-                placeholder="0"
-                min="1"
-              />
-              <span className="shrink-0 text-sm font-bold text-primary">IDR 🇮🇩</span>
-            </div>
-          </div>
-        ))}
-
-        <div className="pt-1 text-xs text-muted-foreground">
-          Kurs saat ini: 1 EGP ≈{" "}
-          <span className="font-semibold text-foreground/70">
-            {(parseFloat(egpToIdr) / parseFloat(usdToIdr) || 0).toFixed(4)} USD
-          </span>
-        </div>
-
-        <button
-          onClick={save}
-          disabled={saving}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-purple py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-        >
-          {saving ? (
-            <><span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" /> Menyimpan...</>
-          ) : (
-            "Simpan Kurs"
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "requests" | "knowledge" | "settings";
+type Tab = "overview" | "users" | "requests" | "knowledge";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -691,7 +596,6 @@ const AdminPage = () => {
     { id: "users", label: "Users", icon: Users, badge: stats.totalUsers || undefined },
     { id: "requests", label: "Requests", icon: UserCheck, badge: stats.pendingRequests || undefined },
     { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
-    { id: "settings", label: "Settings", icon: Settings },
   ];
 
   return (
@@ -726,7 +630,6 @@ const AdminPage = () => {
         {activeTab === "users" && <UsersTab />}
         {activeTab === "requests" && <RequestsTab />}
         {activeTab === "knowledge" && <KnowledgeBaseTab />}
-        {activeTab === "settings" && <SettingsTab />}
       </div>
     </div>
   );

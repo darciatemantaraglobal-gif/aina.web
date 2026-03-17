@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, Clock, ArrowRightLeft } from "lucide-react";
+import { Send, Clock, ArrowRightLeft, X } from "lucide-react";
 import ainaHero from "@/assets/aina-hero.png";
 
 const suggestions = [
@@ -13,7 +13,7 @@ const HeroChat = () => {
   const [visible, setVisible] = useState(false);
   const navigate = useNavigate();
 
-  // Two base rates — fetched from server (admin can update)
+  // Two base rates — everything else is derived
   const [egpToIdr, setEgpToIdr] = useState(245);
   const [usdToIdr, setUsdToIdr] = useState(15800);
 
@@ -22,6 +22,7 @@ const HeroChat = () => {
 
   const [currencies, setCurrencies] = useState({ egp: "1", idr: "245", usd: "" });
   const [focusedCurrency, setFocusedCurrency] = useState<string | null>(null);
+  const [focusedRate, setFocusedRate] = useState<string | null>(null);
 
   // Format helpers — Indonesian style: dots for thousands, comma for decimal
   const fmtInt = (n: number) => Math.round(n).toLocaleString("id-ID");
@@ -59,17 +60,24 @@ const HeroChat = () => {
     }
   };
 
+  const [rateOpen, setRateOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!rateOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setRateOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [rateOpen]);
+
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     setVisible(true);
     const timer = setInterval(() => setNow(new Date()), 1000);
-    fetch("/api/rates")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.egpToIdr) setEgpToIdr(data.egpToIdr);
-        if (data.usdToIdr) setUsdToIdr(data.usdToIdr);
-      })
-      .catch(() => {});
     return () => clearInterval(timer);
   }, []);
 
@@ -213,11 +221,18 @@ const HeroChat = () => {
           <div
             className="relative flex items-center gap-3 rounded-xl border border-border bg-card/60 backdrop-blur-md"
             style={{ padding: "clamp(0.5rem, 1.4vh, 0.875rem) clamp(0.75rem, 2vw, 1.25rem)" }}
+            ref={popoverRef}
           >
-            <div className="flex shrink-0 items-center gap-1.5 px-1.5 py-1">
-              <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+            <button
+              onClick={() => setRateOpen((o) => !o)}
+              title="Atur kurs"
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-1.5 py-1 transition-all duration-200 ${
+                rateOpen ? "bg-primary/20 text-primary" : "text-primary hover:bg-primary/10"
+              }`}
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
               <span className="font-modernist text-xs font-bold text-foreground">Kurs</span>
-            </div>
+            </button>
 
             <div className="h-4 w-px bg-border/60" />
 
@@ -250,6 +265,48 @@ const HeroChat = () => {
               ))}
             </div>
 
+            {/* Rate editor popover */}
+            {rateOpen && (
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-56 overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-xl shadow-black/50 backdrop-blur-xl">
+                <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Atur Kurs</span>
+                  <button
+                    onClick={() => setRateOpen(false)}
+                    className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="space-y-1 px-3 pb-3">
+                  {[
+                    { flag: "🇪🇬", label: "EGP", value: egpToIdr, onChange: (v: number) => setEgpToIdr(v) },
+                    { flag: "🇺🇸", label: "USD", value: usdToIdr, onChange: (v: number) => setUsdToIdr(v) },
+                  ].map((r) => (
+                    <div
+                      key={r.label}
+                      className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-2.5 py-1.5 focus-within:border-primary/50 focus-within:bg-primary/5"
+                    >
+                      <span className="text-sm">{r.flag}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">1 {r.label} =</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={focusedRate === r.label ? r.value.toString() : fmtInt(r.value)}
+                        onChange={(e) => r.onChange(parseFloat(e.target.value.replace(/\./g, "").replace(",", ".")) || 0)}
+                        onFocus={() => setFocusedRate(r.label)}
+                        onBlur={() => setFocusedRate(null)}
+                        className="min-w-0 flex-1 bg-transparent text-right text-xs font-display font-bold text-foreground focus:outline-none"
+                        placeholder="0"
+                      />
+                      <span className="shrink-0 text-[10px] font-bold text-primary">IDR 🇮🇩</span>
+                    </div>
+                  ))}
+                  <p className="pt-0.5 text-center text-[10px] text-muted-foreground">
+                    1 EGP ≈ <span className="font-semibold text-foreground/70">{egpToUsd.toFixed(4)} USD</span>
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
