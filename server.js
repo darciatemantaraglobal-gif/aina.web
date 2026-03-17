@@ -89,16 +89,16 @@ app.post("/api/chat", async (req, res) => {
   if (!apiKey) return res.status(500).json({ error: "OPENROUTER_API_KEY not configured" });
 
   const MODELS = [
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "minimax/minimax-m2.5:free",
-    "stepfun/step-3.5-flash:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "openai/gpt-oss-120b:free",
-    "openai/gpt-oss-20b:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "meta-llama/llama-3.2-3b-instruct:free",
     "google/gemma-3-27b-it:free",
     "mistralai/mistral-small-3.1-24b-instruct:free",
-    "meta-llama/llama-3.2-3b-instruct:free",
+    "openai/gpt-oss-20b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "stepfun/step-3.5-flash:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "minimax/minimax-m2.5:free",
+    "openai/gpt-oss-120b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
   ];
 
   // Get last user message to search the knowledge base
@@ -129,32 +129,42 @@ Jawab dalam Bahasa Indonesia yang ramah, informatif, dan mudah dipahami. Gunakan
 
   let lastError = null;
   for (const model of MODELS) {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN || "https://aina.replit.app",
-        "X-Title": "AINA - Asisten Masisir",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
-        max_tokens: 1024,
-        temperature: 0.7,
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN || "https://aina.replit.app",
+          "X-Title": "AINA - Asisten Masisir",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: systemPrompt }, ...messages],
+          max_tokens: 1024,
+          temperature: 0.7,
+        }),
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      const reply = data.choices?.[0]?.message?.content || "Maaf, tidak ada respons.";
-      console.log(`Responded using model: ${model}`);
-      return res.json({ reply, model });
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data.choices?.[0]?.message?.content || "Maaf, tidak ada respons.";
+        console.log(`Responded using model: ${model}`);
+        return res.json({ reply, model });
+      }
+      const errBody = await response.text();
+      console.warn(`Model ${model} failed (${response.status}):`, errBody.slice(0, 200));
+      lastError = errBody;
+      if (response.status === 401 || response.status === 403) break;
+    } catch (err) {
+      console.warn(`Model ${model} timed out or errored:`, err.message);
+      lastError = err.message;
+    } finally {
+      clearTimeout(timeout);
     }
-    const errBody = await response.text();
-    console.warn(`Model ${model} failed (${response.status}):`, errBody.slice(0, 200));
-    lastError = errBody;
-    if (response.status === 401 || response.status === 403) break;
   }
 
   return res.status(503).json({ error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik.", detail: lastError });
