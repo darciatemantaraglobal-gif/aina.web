@@ -41,6 +41,8 @@ waitForPort = 5000
 VITE_SUPABASE_URL = "https://alibsjhwmturwfadqkkz.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsaWJzamh3bXR1cndmYWRxa2t6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMjEyOTIsImV4cCI6MjA4ODg5NzI5Mn0.BzAZKpc1Ygux7MSScbLPqq0wmgmgrTcqqRZi2q_iLLs"
 VITE_SUPABASE_PROJECT_ID = "alibsjhwmturwfadqkkz"
+SUPABASE_URL = "https://alibsjhwmturwfadqkkz.supabase.co"
+PORT = "3001"
 
 [[ports]]
 localPort = 3001
