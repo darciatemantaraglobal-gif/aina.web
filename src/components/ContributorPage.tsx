@@ -158,27 +158,33 @@ const ContributorPage = () => {
   }, []);
 
   const loadData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) { setLoading(false); return; }
 
-    const [reqRes, rolesRes, articlesRes] = await Promise.all([
-      supabase.from("contributor_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1),
-      supabase.from("user_roles").select("role").eq("user_id", user.id),
-      supabase.from("knowledge_base").select("*").eq("author_id", user.id).order("created_at", { ascending: false }),
-    ]);
+      const [reqRes, rolesRes, articlesRes] = await Promise.all([
+        supabase.from("contributor_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1),
+        supabase.from("user_roles").select("role").eq("user_id", user.id),
+        supabase.from("knowledge_base").select("*").eq("author_id", user.id).order("created_at", { ascending: false }),
+      ]);
 
-    if (reqRes.data && reqRes.data.length > 0) {
-      setHasRequest(true);
-      setRequestStatus(reqRes.data[0].status);
+      if (reqRes.data && reqRes.data.length > 0) {
+        setHasRequest(true);
+        setRequestStatus(reqRes.data[0].status);
+      }
+
+      if (rolesRes.data) {
+        const roleNames = rolesRes.data.map((r) => r.role);
+        setIsContributor(roleNames.includes("contributor") || roleNames.includes("senior_contributor"));
+      }
+
+      if (articlesRes.data) setArticles(articlesRes.data);
+    } catch (err) {
+      console.error("ContributorPage error:", err);
+    } finally {
+      setLoading(false);
     }
-
-    if (rolesRes.data) {
-      const roleNames = rolesRes.data.map((r) => r.role);
-      setIsContributor(roleNames.includes("contributor") || roleNames.includes("senior_contributor"));
-    }
-
-    if (articlesRes.data) setArticles(articlesRes.data);
-    setLoading(false);
   };
 
   const submitRequest = async () => {
@@ -192,7 +198,8 @@ const ContributorPage = () => {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
     const { error } = await supabase.from("contributor_requests").insert({
@@ -221,7 +228,8 @@ const ContributorPage = () => {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
     const { data, error } = await supabase.from("knowledge_base").insert({

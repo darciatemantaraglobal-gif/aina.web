@@ -53,24 +53,31 @@ const ProductivityPage = () => {
   }, []);
 
   const loadData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) { setLoading(false); return; }
 
-    const [profileRes, rolesRes, tasksRes] = await Promise.all([
-      supabase.from("profiles").select("*").eq("user_id", user.id).single(),
-      supabase.from("user_roles").select("role").eq("user_id", user.id),
-      supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-    ]);
+      const [profileRes, rolesRes, tasksRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("user_id", user.id).single(),
+        supabase.from("user_roles").select("role").eq("user_id", user.id),
+        supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+      ]);
 
-    if (profileRes.data) setProfile(profileRes.data);
-    if (rolesRes.data) setRoles(rolesRes.data);
-    if (tasksRes.data) setTasks(tasksRes.data);
-    setLoading(false);
+      if (profileRes.data) setProfile(profileRes.data);
+      if (rolesRes.data) setRoles(rolesRes.data);
+      if (tasksRes.data) setTasks(tasksRes.data);
+    } catch (err) {
+      console.error("ProductivityPage error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const addTask = async (type: string, title: string, content?: string) => {
     if (!title.trim()) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
     const { data, error } = await supabase.from("tasks").insert({

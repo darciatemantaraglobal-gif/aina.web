@@ -15,19 +15,25 @@ const ProfilePage = () => {
   }, []);
 
   const loadData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) { setLoading(false); return; }
 
-    const [profileRes, rolesRes, articlesRes] = await Promise.all([
-      supabase.from("profiles").select("*").eq("user_id", user.id).single(),
-      supabase.from("user_roles").select("role").eq("user_id", user.id),
-      supabase.from("knowledge_base").select("id").eq("author_id", user.id).eq("status", "approved"),
-    ]);
+      const [profileRes, rolesRes, articlesRes] = await Promise.all([
+        supabase.from("profiles").select("*").eq("user_id", user.id).single(),
+        supabase.from("user_roles").select("role").eq("user_id", user.id),
+        supabase.from("knowledge_base").select("id").eq("author_id", user.id).eq("status", "approved"),
+      ]);
 
-    if (profileRes.data) setProfile(profileRes.data);
-    if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
-    if (articlesRes.data) setArticleCount(articlesRes.data.length);
-    setLoading(false);
+      if (profileRes.data) setProfile(profileRes.data);
+      if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
+      if (articlesRes.data) setArticleCount(articlesRes.data.length);
+    } catch (err) {
+      console.error("ProfilePage error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
