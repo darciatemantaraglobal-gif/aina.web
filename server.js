@@ -3,12 +3,27 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  "http://localhost:5000",
+  "http://localhost:3000",
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://alibsjhwmturwfadqkkz.supabase.co";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://alibsjhwmturwfadqkkz.supabase.co";
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function getAdminClient() {
@@ -81,6 +96,11 @@ async function fetchRelevantArticles(userQuestion) {
 }
 
 const DAILY_FREE_LIMIT = 3;
+
+/* ── Health check (UptimeRobot / Railway) ────────────── */
+app.get("/api/ping", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", async (req, res) => {
