@@ -80,6 +80,8 @@ async function fetchRelevantArticles(userQuestion) {
   return allApproved.slice(0, 3);
 }
 
+const DAILY_FREE_LIMIT = 3;
+
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", async (req, res) => {
   const { messages } = req.body;
@@ -87,6 +89,37 @@ app.post("/api/chat", async (req, res) => {
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "OPENROUTER_API_KEY not configured" });
+
+  // ── Rate limit: 3 messages/day for free users ──────────
+  const supabaseAdmin = getAdminClient();
+  const authHeader = req.headers.authorization;
+  if (supabaseAdmin && authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+    if (user) {
+      const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id);
+      const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
+
+      if (!isPaidUser) {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const { count } = await supabaseAdmin
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("role", "user")
+          .gte("created_at", todayStart.toISOString());
+
+        if ((count ?? 0) >= DAILY_FREE_LIMIT) {
+          return res.status(429).json({
+            error: "Batas chat harian tercapai",
+            limitReached: true,
+          });
+        }
+      }
+    }
+  }
+  // ──────────────────────────────────────────────────────
 
   const MODELS = [
     "meta-llama/llama-3.2-3b-instruct:free",

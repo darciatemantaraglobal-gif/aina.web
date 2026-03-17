@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, User, AlertCircle, Menu, Plus } from "lucide-react";
+import { Send, User, AlertCircle, Menu, Plus, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,11 +55,13 @@ function cleanMarkdown(text: string): string {
 }
 
 const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaProps) => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeChatIdRef = useRef<string | null>(chatId);
@@ -123,6 +126,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaPro
 
     setInput("");
     setError(null);
+    setLimitReached(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     const userMsg: Message = {
@@ -163,12 +167,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaPro
 
       const res = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ messages: history }),
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        if (res.status === 429 && errData.limitReached) {
+          setLimitReached(true);
+          return;
+        }
         throw new Error(errData.error || `Server error ${res.status}`);
       }
 
@@ -387,6 +398,26 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaPro
               </div>
             )}
 
+            {limitReached && (
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-6 py-6 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-purple">
+                  <Zap className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Batas chat harian tercapai</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Kamu sudah menggunakan 3 chat gratis hari ini. Upgrade ke AINA Pro untuk chat tanpa batas!
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate("/pricing")}
+                  className="mt-1 rounded-xl bg-gradient-purple px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  Lihat Paket Upgrade →
+                </button>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -394,34 +425,40 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaPro
 
       {/* Input bar — always at bottom */}
       <div className="shrink-0 px-3 pb-4 pt-2 md:px-6 md:pb-6">
-        <form onSubmit={handleFormSubmit} className="mx-auto max-w-2xl">
-          <div className="relative rounded-2xl border border-border bg-card p-1.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => { setInput(e.target.value); autoResize(); }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Tanyakan sesuatu kepada AINA..."
-              rows={1}
-              className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-30"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+        {limitReached ? (
+          <div className="mx-auto max-w-2xl rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-center text-sm text-muted-foreground">
+            Chat dinonaktifkan hari ini. <button onClick={() => navigate("/pricing")} className="font-semibold text-primary underline-offset-2 hover:underline">Upgrade sekarang</button> untuk lanjut.
           </div>
-          <p className="mt-2 text-center text-xs text-muted-foreground/50">
-            AINA dapat membuat kesalahan. Periksa informasi penting.
-          </p>
-        </form>
+        ) : (
+          <form onSubmit={handleFormSubmit} className="mx-auto max-w-2xl">
+            <div className="relative rounded-2xl border border-border bg-card p-1.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => { setInput(e.target.value); autoResize(); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="Tanyakan sesuatu kepada AINA..."
+                rows={1}
+                className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !input.trim()}
+                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-30"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-2 text-center text-xs text-muted-foreground/50">
+              AINA dapat membuat kesalahan. Periksa informasi penting.
+            </p>
+          </form>
+        )}
       </div>
     </div>
   );
