@@ -1,7 +1,8 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ainaLogo from "@/assets/aina-logo.png";
+import { supabase } from "@/integrations/supabase/client";
 
 const navItems = [
   { label: "Features", href: "/features" },
@@ -13,7 +14,15 @@ const navItems = [
 
 const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setIsLoggedIn(!!session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setIsLoggedIn(!!session));
+    return () => subscription.unsubscribe();
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 w-full">
@@ -63,13 +72,23 @@ const Navbar = () => {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
-            {/* Login button — futuristic pill */}
-            <Link to="/login">
-              <button className="relative overflow-hidden rounded-full bg-gradient-purple px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-[0_0_12px_hsl(270_80%_65%/0.35)] transition-all duration-300 hover:shadow-[0_0_20px_hsl(270_80%_65%/0.6)] hover:scale-105 md:px-5 md:py-2 md:text-sm">
-                <span className="relative z-10">Login</span>
+            {/* Auth-aware button */}
+            {isLoggedIn ? (
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="relative overflow-hidden rounded-full bg-gradient-purple px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-[0_0_12px_hsl(270_80%_65%/0.35)] transition-all duration-300 hover:shadow-[0_0_20px_hsl(270_80%_65%/0.6)] hover:scale-105 md:px-5 md:py-2 md:text-sm"
+              >
+                <span className="relative z-10">Dashboard</span>
                 <span className="absolute inset-0 bg-white/10 opacity-0 transition-opacity hover:opacity-100" />
               </button>
-            </Link>
+            ) : (
+              <Link to="/login">
+                <button className="relative overflow-hidden rounded-full bg-gradient-purple px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-[0_0_12px_hsl(270_80%_65%/0.35)] transition-all duration-300 hover:shadow-[0_0_20px_hsl(270_80%_65%/0.6)] hover:scale-105 md:px-5 md:py-2 md:text-sm">
+                  <span className="relative z-10">Login</span>
+                  <span className="absolute inset-0 bg-white/10 opacity-0 transition-opacity hover:opacity-100" />
+                </button>
+              </Link>
+            )}
 
             {/* Mobile hamburger */}
             <button

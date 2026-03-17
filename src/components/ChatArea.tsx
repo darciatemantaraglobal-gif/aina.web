@@ -17,6 +17,7 @@ interface ChatAreaProps {
   chatId: string | null;
   onChatCreated: (chatId: string, title: string) => void;
   onNewChat?: () => void;
+  initialMessage?: string;
 }
 
 const API_URL = "/api/chat";
@@ -54,7 +55,7 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
-const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaProps) => {
+const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage }: ChatAreaProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -85,6 +86,13 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat }: ChatAreaPro
       loadMessages(chatId);
     }
   }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (initialMessage) {
+      const timer = setTimeout(() => handleSend(initialMessage), 400);
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadMessages = async (id: string) => {
     setLoadingHistory(true);

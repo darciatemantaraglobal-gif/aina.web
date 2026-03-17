@@ -42,6 +42,7 @@ const Dashboard = () => {
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
 
   const navigate = useNavigate();
 
@@ -81,7 +82,14 @@ const Dashboard = () => {
   }, [navigate]);
 
   useEffect(() => {
-    if (authReady) loadChats();
+    if (authReady) {
+      loadChats();
+      const stored = sessionStorage.getItem("pendingMessage");
+      if (stored) {
+        sessionStorage.removeItem("pendingMessage");
+        setPendingMessage(stored);
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
 
@@ -139,6 +147,7 @@ const Dashboard = () => {
           chatId={activeChatId}
           onChatCreated={handleChatCreated}
           onNewChat={handleNewChat}
+          initialMessage={pendingMessage}
         />
       );
     }

@@ -27,6 +27,7 @@ const Footer = () => {
                 { label: "Features", to: "/features" },
                 { label: "Pricing", to: "/pricing" },
                 { label: "Berita Masisir", to: "/berita" },
+                { label: "Tentang AINA", to: "/about" },
               ].map(({ label, to }) => (
                 <li key={to}>
                   <Link to={to} className="text-sm text-muted-foreground transition-colors hover:text-foreground">

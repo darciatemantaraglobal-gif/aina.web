@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Send, Clock, ArrowRightLeft, X } from "lucide-react";
 import ainaHero from "@/assets/aina-hero.png";
+import { supabase } from "@/integrations/supabase/client";
 
 const suggestions = [
   "Bagaimana cara daftar kuliah di Al-Azhar?",
@@ -11,7 +12,18 @@ const suggestions = [
 const HeroChat = () => {
   const [message, setMessage] = useState("");
   const [visible, setVisible] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setIsLoggedIn(!!session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Two base rates — everything else is derived
   const [egpToIdr, setEgpToIdr] = useState(245);
@@ -139,11 +151,21 @@ const HeroChat = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim()) navigate("/login", { state: { pendingMessage: message } });
+    if (isLoggedIn) {
+      if (message.trim()) sessionStorage.setItem("pendingMessage", message.trim());
+      navigate("/dashboard");
+    } else {
+      if (message.trim()) navigate("/login", { state: { pendingMessage: message } });
+    }
   };
 
   const handleSuggestion = (text: string) => {
-    navigate("/login", { state: { pendingMessage: text } });
+    if (isLoggedIn) {
+      sessionStorage.setItem("pendingMessage", text);
+      navigate("/dashboard");
+    } else {
+      navigate("/login", { state: { pendingMessage: text } });
+    }
   };
 
   return (
