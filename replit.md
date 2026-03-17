@@ -30,14 +30,15 @@ This starts both the Express server (`node server.js`) and Vite dev server concu
 
 ## Environment Variables
 
-Set in Replit Secrets (sensitive) or `.replit` [userenv.shared] (non-sensitive):
+All variables are stored in Replit (Secrets tab or shared env vars):
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `VITE_SUPABASE_URL` | userenv.shared | Supabase project URL |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | userenv.shared | Supabase anon/public key |
-| `OPENROUTER_API_KEY` | Secret | OpenRouter AI API key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Supabase service role key (admin operations) |
+| `VITE_SUPABASE_URL` | Replit shared env var | Supabase project URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Replit shared env var | Supabase anon/public key |
+| `VITE_SUPABASE_PROJECT_ID` | Replit shared env var | Supabase project ID |
+| `OPENROUTER_API_KEY` | Replit Secret | OpenRouter AI API key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Replit Secret | Supabase service role key (admin operations) |
 
 ## Database Schema (Supabase)
 
