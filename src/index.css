@@ -82,9 +82,32 @@
   body {
     @apply bg-background text-foreground font-body antialiased;
   }
+
+  /* Prevent iOS Safari auto-zoom on input focus.
+     iOS zooms in when font-size < 16px — this locks it at 16px on mobile. */
+  @media (max-width: 768px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+
 }
 
 @layer utilities {
+  /* Use dynamic viewport height (dvh) so the UI fills the screen
+     correctly when the mobile browser address bar shows/hides. */
+  .h-screen {
+    height: 100dvh;
+  }
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+  .max-h-screen {
+    max-height: 100dvh;
+  }
+
   .text-gradient-purple {
     @apply bg-clip-text text-transparent;
     background-image: linear-gradient(135deg, hsl(270 60% 55%), hsl(270 80% 65%));
