@@ -152,6 +152,7 @@ const ContributorPage = () => {
   const [artContent, setArtContent] = useState("");
   const [artCategory, setArtCategory] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -228,27 +229,32 @@ const ContributorPage = () => {
       return;
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user) return;
+    setSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
 
-    const { data, error } = await supabase.from("knowledge_base").insert({
-      author_id: user.id,
-      title: artTitle.trim(),
-      content: artContent.trim(),
-      category: artCategory,
-    }).select().single();
+      const { data, error } = await supabase.from("knowledge_base").insert({
+        author_id: user.id,
+        title: artTitle.trim(),
+        content: artContent.trim(),
+        category: artCategory,
+      }).select().single();
 
-    if (error) {
-      toast.error("Gagal mengirim artikel");
-      return;
+      if (error) {
+        toast.error("Gagal mengirim artikel");
+        return;
+      }
+      if (data) setArticles((prev) => [data, ...prev]);
+      setArtTitle("");
+      setArtContent("");
+      setArtCategory("");
+      setDialogOpen(false);
+      toast.success("Artikel dikirim! Menunggu persetujuan admin.");
+    } finally {
+      setSubmitting(false);
     }
-    if (data) setArticles((prev) => [data, ...prev]);
-    setArtTitle("");
-    setArtContent("");
-    setArtCategory("");
-    setDialogOpen(false);
-    toast.success("Artikel dikirim! Menunggu persetujuan admin.");
   };
 
   const statusIcon = (status: string) => {
@@ -356,9 +362,18 @@ const ContributorPage = () => {
                       onChange={(e) => setArtContent(e.target.value)}
                       className="min-h-[150px] bg-secondary"
                     />
-                    <Button variant="hero" onClick={submitArticle} className="w-full gap-1.5">
-                      <Send className="h-4 w-4" />
-                      Kirim Artikel
+                    <Button variant="hero" onClick={submitArticle} disabled={submitting} className="w-full gap-1.5">
+                      {submitting ? (
+                        <>
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                          Mengirim...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" />
+                          Kirim Artikel
+                        </>
+                      )}
                     </Button>
                   </div>
                 </DialogContent>
