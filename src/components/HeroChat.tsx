@@ -256,8 +256,8 @@ const HeroChat = () => {
                       onChange={(e) => handleCurrencyChange(c.field, e.target.value)}
                       onFocus={() => setFocusedCurrency(c.field)}
                       onBlur={() => setFocusedCurrency(null)}
-                      className="min-w-0 w-full bg-transparent font-display font-semibold text-foreground focus:outline-none"
-                      style={{ fontSize: "clamp(0.75rem, 1.7vh, 0.95rem)" }}
+                      className="min-w-0 w-full bg-transparent font-display font-bold text-foreground tabular-nums focus:outline-none"
+                      style={{ fontSize: "clamp(0.65rem, 1.4vh, 0.8rem)" }}
                       placeholder="0"
                     />
                   </div>
