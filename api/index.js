@@ -7,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://qyzimrshfcenpwvuownz.supabase.co";
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://alibsjhwmturwfadqkkz.supabase.co";
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function getAdminClient() {
