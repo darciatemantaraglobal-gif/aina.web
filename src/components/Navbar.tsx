@@ -10,6 +10,7 @@ const navItems = [
   { label: "Contributor", href: "/contributor" },
   { label: "Partner", href: "/partner" },
   { label: "Pricing", href: "/pricing" },
+  { label: "About", href: "/about" },
 ];
 
 const Navbar = () => {

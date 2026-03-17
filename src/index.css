@@ -157,13 +157,7 @@
   }
 }
 
-/* Currency value: small on mobile, original size on desktop */
-.currency-val-short  { font-size: 0.6rem; }
-.currency-val-medium { font-size: 0.52rem; }
-.currency-val-long   { font-size: 0.44rem; }
-
-@media (min-width: 768px) {
-  .currency-val-short  { font-size: clamp(0.75rem, 1.7vh, 0.95rem); }
-  .currency-val-medium { font-size: clamp(0.65rem, 1.4vh, 0.8rem); }
-  .currency-val-long   { font-size: clamp(0.55rem, 1.2vh, 0.68rem); }
-}
+/* Currency value — matches time-widget font size across all screen sizes */
+.currency-val-short  { font-size: clamp(0.75rem, 1.7vh, 0.95rem); }
+.currency-val-medium { font-size: clamp(0.65rem, 1.4vh, 0.8rem); }
+.currency-val-long   { font-size: clamp(0.55rem, 1.2vh, 0.68rem); }

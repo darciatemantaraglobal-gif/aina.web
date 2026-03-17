@@ -269,7 +269,13 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
-                  onClick={() => handleSend(s)}
+                  onClick={() => {
+                    setInput(s);
+                    setTimeout(() => {
+                      textareaRef.current?.focus();
+                      autoResize();
+                    }, 0);
+                  }}
                   className="rounded-xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
                 >
                   {s}
