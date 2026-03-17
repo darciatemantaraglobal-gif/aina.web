@@ -29,6 +29,13 @@ const HeroChat = () => {
   const fmtDec = (n: number, d: number) =>
     n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+  const getCurrencyFontSize = (displayValue: string) => {
+    const len = displayValue.length;
+    if (len <= 7)  return "clamp(0.65rem, 1.4vh, 0.8rem)";
+    if (len <= 11) return "clamp(0.55rem, 1.2vh, 0.68rem)";
+    return "clamp(0.42rem, 0.9vh, 0.52rem)";
+  };
+
   const getDisplayValue = (field: string, raw: string) => {
     if (focusedCurrency === field) return raw;
     const n = parseFloat(raw);
@@ -257,7 +264,7 @@ const HeroChat = () => {
                       onFocus={() => setFocusedCurrency(c.field)}
                       onBlur={() => setFocusedCurrency(null)}
                       className="min-w-0 w-full bg-transparent font-display font-bold text-foreground tabular-nums focus:outline-none"
-                      style={{ fontSize: "clamp(0.65rem, 1.4vh, 0.8rem)" }}
+                      style={{ fontSize: getCurrencyFontSize(getDisplayValue(c.field, currencies[c.field])) }}
                       placeholder="0"
                     />
                   </div>
