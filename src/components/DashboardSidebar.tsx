@@ -12,6 +12,7 @@ import {
   PanelLeft,
   Plus,
   Shield,
+  X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ interface DashboardSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   isAdmin?: boolean;
+  onClose?: () => void;
 }
 
 const baseMenuItems = [
@@ -30,7 +32,7 @@ const baseMenuItems = [
   { id: "profile", label: "Profile", icon: UserCircle },
 ];
 
-const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false }: DashboardSidebarProps) => {
+const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false, onClose }: DashboardSidebarProps) => {
   const menuItems = isAdmin
     ? [...baseMenuItems, { id: "admin", label: "Admin", icon: Shield }]
     : baseMenuItems;
@@ -49,6 +51,7 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false }: Dashboard
         collapsed ? "w-16" : "w-64"
       }`}
     >
+      {/* Header */}
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
           <div className="flex items-center gap-2">
@@ -58,14 +61,27 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false }: Dashboard
             <span className="font-display text-lg font-bold text-sidebar-foreground">AINA</span>
           </div>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
-        >
-          {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Mobile close button */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:hidden"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {/* Desktop collapse button */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="hidden h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:flex"
+          >
+            {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
+      {/* New chat */}
       <div className="p-3">
         <button
           onClick={() => onTabChange("chat")}
@@ -78,6 +94,7 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false }: Dashboard
         </button>
       </div>
 
+      {/* Nav items */}
       <nav className="flex-1 space-y-1 px-3">
         {menuItems.map((item) => (
           <button
@@ -95,6 +112,7 @@ const DashboardSidebar = ({ activeTab, onTabChange, isAdmin = false }: Dashboard
         ))}
       </nav>
 
+      {/* Logout */}
       <div className="border-t border-sidebar-border p-3">
         <button
           onClick={handleLogout}
