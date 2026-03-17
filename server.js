@@ -37,9 +37,14 @@ function getAdminClient() {
   return _adminClient;
 }
 
+const _adminCache = new Map();
 async function verifyAdminUser(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.replace("Bearer ", "");
+
+  const cached = _adminCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) return cached.user;
+
   const supabase = getAdminClient();
   if (!supabase) return null;
   const { data: { user }, error } = await supabase.auth.getUser(token);
@@ -47,6 +52,8 @@ async function verifyAdminUser(authHeader) {
   const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
   const isAdmin = roles?.some(r => r.role === "admin");
   if (!isAdmin) return null;
+
+  _adminCache.set(token, { user, expiresAt: Date.now() + 5 * 60 * 1000 });
   return user;
 }
 
