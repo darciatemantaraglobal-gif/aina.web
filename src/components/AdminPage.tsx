@@ -76,15 +76,25 @@ async function getAuthHeader() {
 
 async function adminFetch(path: string, options: RequestInit = {}) {
   const auth = await getAuthHeader();
-  const res = await fetch(path, {
-    ...options,
-    headers: { "Content-Type": "application/json", Authorization: auth, ...(options.headers || {}) },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(err.error || "Request failed");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(path, {
+      ...options,
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", Authorization: auth, ...(options.headers || {}) },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new Error(err.error || "Request failed");
+    }
+    return res.json();
+  } catch (e: any) {
+    if (e.name === "AbortError") throw new Error("Koneksi timeout. Coba lagi.");
+    throw e;
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json();
 }
 
 /* ─── Overview Tab ───────────────────────────────────── */

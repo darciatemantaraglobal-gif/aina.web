@@ -10,11 +10,15 @@ app.use(express.json());
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://alibsjhwmturwfadqkkz.supabase.co";
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+let _adminClient = null;
 function getAdminClient() {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return null;
-  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  });
+  if (!_adminClient) {
+    _adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+  }
+  return _adminClient;
 }
 
 async function verifyAdminUser(authHeader) {
