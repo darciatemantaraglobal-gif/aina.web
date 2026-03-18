@@ -349,12 +349,12 @@ const AboutPage = () => {
                     {members.map(({ name, role, initial }) => (
                       <div
                         key={name}
-                        className={`group flex flex-col items-center rounded-xl border border-border/40 bg-card/30 p-3 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1 md:rounded-2xl md:p-6 ${members.length === 1 ? "w-40 md:w-56" : ""}`}
+                        className="group flex flex-col items-center rounded-xl border border-border/40 bg-card/30 p-3 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1 md:rounded-2xl md:p-6"
                       >
                         <div className="relative mb-3 md:mb-5">
                           <div className="absolute inset-0 scale-110 rounded-xl bg-gradient-purple opacity-0 blur-md transition-opacity group-hover:opacity-40 md:rounded-2xl" />
-                          <div className={`relative flex items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10 md:rounded-2xl ${members.length === 1 ? "h-16 w-16 md:h-20 md:w-20" : "h-12 w-12 md:h-16 md:w-16"}`}>
-                            <span className={`font-display font-bold text-primary/50 ${members.length === 1 ? "text-2xl md:text-3xl" : "text-lg md:text-xl"}`}>{initial}</span>
+                          <div className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10 md:h-16 md:w-16 md:rounded-2xl">
+                            <span className="font-display text-lg font-bold text-primary/50 md:text-xl">{initial}</span>
                           </div>
                         </div>
                         <p className="font-display text-[11px] font-bold leading-tight text-foreground md:text-sm">{name}</p>
