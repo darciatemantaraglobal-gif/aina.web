@@ -9,11 +9,12 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
   "http://localhost:5000",
   "http://localhost:3000",
+  process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null,
 ].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o)) || (process.env.REPLIT_DEV_DOMAIN && origin.includes("replit"))) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
