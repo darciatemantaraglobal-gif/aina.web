@@ -14,6 +14,7 @@ import {
   X,
   MessageCircle,
   Trash2,
+  Home,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -62,8 +63,16 @@ const DashboardSidebar = ({
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Ignore errors — force logout regardless
+    }
     toast.success("Berhasil logout");
+    navigate("/login");
+  };
+
+  const handleGoHome = () => {
     navigate("/");
   };
 
@@ -174,12 +183,23 @@ const DashboardSidebar = ({
           ))}
         </nav>
 
-        <div className="px-3 pb-3">
+        <div className="px-3 pb-3 space-y-1">
+          <button
+            onClick={handleGoHome}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
+              collapsed ? "justify-center" : ""
+            }`}
+            title="Kembali ke Halaman Utama"
+          >
+            <Home className="h-4 w-4 shrink-0" />
+            {!collapsed && "Halaman Utama"}
+          </button>
           <button
             onClick={handleLogout}
             className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-destructive/10 hover:text-destructive ${
               collapsed ? "justify-center" : ""
             }`}
+            title="Logout"
           >
             <LogOut className="h-4 w-4 shrink-0" />
             {!collapsed && "Logout"}
