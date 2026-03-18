@@ -27,24 +27,24 @@ function useInView(threshold = 0.15) {
 /* ─── Data ───────────────────────────────────────────────── */
 const TIMELINE = [
   {
-    period: "Nov – Des 2025",
-    title: "Foundation & Alignment",
-    desc: "Kickoff Power Team, setup struktur & sistem kerja, riset kebutuhan Masisir, dan menyusun narasi AINA.",
+    period: "Mei 2025",
+    title: "AIGYPT Batch 0 — Awal Mula",
+    desc: "AIGYPT didirikan oleh Daru dan kawan-kawan untuk mengajak Masisir mulai belajar AI. Batch 0 diadakan khusus untuk membantu persiapan Ujian Al-Azhar.",
   },
   {
-    period: "Feb – Mar 2026",
-    title: "System & MVP Internal",
-    desc: "Develop MVP AINA, testing internal, aktivasi komunitas awal, dan partnership pilot.",
+    period: "Juni 2025",
+    title: "AIGYPT Batch 1 × HPIM Mesir",
+    desc: "AIGYPT kembali hadir berkolaborasi dengan HPIM Mesir. Berlangsung 5 hari secara indoor dan outdoor — pelajaran meluas ke praktik langsung dan produktivitas.",
   },
   {
-    period: "Apr – Mei 2026",
-    title: "Representation & Scaling",
-    desc: "Soft launch ke early adopters, pengenalan ke KBRI Kairo, Kekeluargaan Nusantara, dan outreach ke almamater.",
+    period: "Desember 2025",
+    title: "AINA Dirancang & Power Team Terbentuk",
+    desc: "AINA mulai dirancang secara serius. Power Team dibentuk dan diketuai oleh Fairuz dan Maliki untuk memimpin perjalanan AINA di Mesir.",
   },
   {
-    period: "Jun – Sep 2026",
-    title: "Partnership & Expansion",
-    desc: "Kerjasama sponsor & brand Indonesia, evaluasi, optimasi sistem, scaling komunitas, dan persiapan ekspansi.",
+    period: "April 2026",
+    title: "Launching! 🚀",
+    desc: "AINA resmi diluncurkan untuk seluruh Masisir — hadir sebagai AI pendamping yang benar-benar mengerti kehidupan mahasiswa Indonesia di Mesir.",
   },
 ];
 
