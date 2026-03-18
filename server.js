@@ -228,7 +228,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: systemPrompt }, ...messages],
-          max_tokens: 512,
+          max_tokens: 768,
           temperature: 0.5,
         }),
       });
