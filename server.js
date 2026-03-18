@@ -394,6 +394,19 @@ app.post("/api/admin/requests/:id/review", async (req, res) => {
   if (status === "approved") {
     await supabase.from("user_roles").upsert({ user_id: request.user_id, role: "contributor" }, { onConflict: "user_id,role" });
     await supabase.from("profiles").update({ level: "Contributor" }).eq("user_id", request.user_id);
+    await supabase.from("notifications").insert({
+      user_id: request.user_id,
+      title: "Selamat! Kamu jadi Kontributor 🎉",
+      message: "Permintaanmu untuk menjadi kontributor telah disetujui. Kamu sekarang bisa menulis dan mengirim artikel ke Knowledge Base AINA.",
+      type: "success",
+    }).catch(() => {});
+  } else {
+    await supabase.from("notifications").insert({
+      user_id: request.user_id,
+      title: "Permintaan kontributor ditolak",
+      message: "Permintaanmu untuk menjadi kontributor belum bisa disetujui saat ini. Kamu tetap bisa menggunakan semua fitur AINA.",
+      type: "warning",
+    }).catch(() => {});
   }
 
   res.json({ success: true });
@@ -422,6 +435,7 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
   const { data: article } = await supabase.from("knowledge_base").select("author_id").eq("id", id).single();
   if (!article) return res.status(404).json({ error: "Article not found" });
 
+  const { data: articleData } = await supabase.from("knowledge_base").select("title").eq("id", id).single();
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
   if (status === "approved") {
@@ -432,8 +446,28 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
       await supabase.from("profiles").update({ contribution_count: newCount, level }).eq("user_id", article.author_id);
       if (newCount >= 10) {
         await supabase.from("user_roles").upsert({ user_id: article.author_id, role: "senior_contributor" }, { onConflict: "user_id,role" });
+        await supabase.from("notifications").insert({
+          user_id: article.author_id,
+          title: "Selamat! Kamu naik jadi Senior Contributor 🌟",
+          message: `Artikelmu "${articleData?.title ?? ""}" telah disetujui. Kamu kini berstatus Senior Contributor karena sudah ${newCount} artikel disetujui!`,
+          type: "success",
+        }).catch(() => {});
+      } else {
+        await supabase.from("notifications").insert({
+          user_id: article.author_id,
+          title: "Artikel kamu disetujui! ✅",
+          message: `Artikel "${articleData?.title ?? ""}" telah disetujui dan kini tersedia di Knowledge Base AINA. Total kontribusimu: ${newCount} artikel.`,
+          type: "success",
+        }).catch(() => {});
       }
     }
+  } else {
+    await supabase.from("notifications").insert({
+      user_id: article.author_id,
+      title: "Artikel belum bisa disetujui",
+      message: `Artikel "${articleData?.title ?? ""}" belum bisa dipublikasikan saat ini. Silakan perbaiki dan kirim ulang.`,
+      type: "warning",
+    }).catch(() => {});
   }
 
   res.json({ success: true });

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import NotificationBell from "@/components/NotificationBell";
 
 interface Chat {
   id: string;
@@ -184,6 +185,7 @@ const DashboardSidebar = ({
         </nav>
 
         <div className="px-3 pb-3 space-y-1">
+          <NotificationBell collapsed={collapsed} />
           <button
             onClick={handleGoHome}
             className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
