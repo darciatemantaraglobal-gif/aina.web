@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle } from "lucide-react";
+import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
@@ -17,6 +17,9 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
@@ -97,6 +100,62 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
     }
   };
 
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("File harus berupa gambar (JPG, PNG, dll)");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Ukuran foto maksimal 2MB");
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Silakan login terlebih dahulu"); return; }
+
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch("/api/upload-avatar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Upload gagal");
+      }
+
+      const { url } = await res.json();
+
+      await supabase.from("profiles").update({ avatar_url: url }).eq("user_id", session.user.id);
+      setProfile((prev: any) => ({ ...prev, avatar_url: url }));
+      toast.success("Foto profil berhasil diperbarui!");
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengupload foto");
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
@@ -123,7 +182,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
           </p>
         </div>
         <button
-          onClick={loadData}
+          onClick={() => loadData()}
           className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           Coba Lagi
@@ -132,7 +191,12 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
     );
   }
 
-  const topRole = roles.includes("admin") ? "Admin" : roles.includes("senior_contributor") ? "Senior Contributor" : roles.includes("contributor") ? "Contributor" : "User";
+  const topRole = roles.includes("admin") ? "Admin"
+    : roles.includes("senior_contributor") ? "Senior Contributor"
+    : roles.includes("contributor") ? "Contributor"
+    : "User";
+
+  const initials = profile?.full_name?.charAt(0)?.toUpperCase() || "U";
 
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6">
@@ -141,11 +205,32 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
           <div className="h-24 bg-gradient-purple" />
           <CardContent className="-mt-12 p-6">
             <div className="flex flex-col items-center text-center">
-              <Avatar className="h-20 w-20 border-4 border-card">
-                <AvatarFallback className="bg-secondary text-2xl font-bold text-foreground">
-                  {profile?.full_name?.charAt(0)?.toUpperCase() || "U"}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar className="h-20 w-20 border-4 border-card">
+                  <AvatarImage src={profile?.avatar_url} alt={profile?.full_name} />
+                  <AvatarFallback className="bg-secondary text-2xl font-bold text-foreground">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <button
+                  onClick={handleAvatarClick}
+                  disabled={uploadingAvatar}
+                  className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-card bg-primary text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-50"
+                  title="Ganti foto profil"
+                >
+                  {uploadingAvatar
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Camera className="h-3.5 w-3.5" />
+                  }
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarChange}
+                />
+              </div>
 
               {editing ? (
                 <div className="mt-3 flex w-full max-w-xs items-center gap-2">

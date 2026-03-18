@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { CheckSquare, Target, StickyNote, Plus, Trash2 } from "lucide-react";
+import { CheckSquare, Target, StickyNote, Plus, Trash2, Flame, Pencil, Check, X } from "lucide-react";
 
 interface Task {
   id: string;
@@ -15,6 +15,40 @@ interface Task {
   completed: boolean;
   task_type: string;
   content: string | null;
+  updated_at: string;
+}
+
+interface HabitMeta {
+  streak: number;
+  lastCompleted: string | null;
+}
+
+function parseHabitMeta(content: string | null): HabitMeta {
+  if (!content) return { streak: 0, lastCompleted: null };
+  try {
+    const parsed = JSON.parse(content);
+    if (typeof parsed === "object" && "streak" in parsed) return parsed as HabitMeta;
+  } catch {}
+  return { streak: 0, lastCompleted: null };
+}
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function yesterdayStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function getStreakNotification(streak: number): string | null {
+  if (streak === 3) return "Streak 3 hari! Mulai terbentuk kebiasaan baik!";
+  if (streak === 7) return "Streak 7 hari! Satu minggu penuh, luar biasa!";
+  if (streak === 14) return "Streak 14 hari! Dua minggu konsisten, kamu hebat!";
+  if (streak === 30) return "Streak 30 hari! Satu bulan penuh! Luar biasa!";
+  if (streak > 0 && streak % 30 === 0) return `Streak ${streak} hari! Pencapaian yang menakjubkan!`;
+  return null;
 }
 
 const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
@@ -25,17 +59,23 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
 
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteContent, setEditNoteContent] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
   useEffect(() => {
     loadTasks();
   }, []);
 
+  const getUserId = async (): Promise<string | undefined> => {
+    if (userIdProp) return userIdProp;
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user?.id;
+  };
+
   const loadTasks = async () => {
     try {
-      let uid = userIdProp;
-      if (!uid) {
-        const { data: { session } } = await supabase.auth.getSession();
-        uid = session?.user?.id;
-      }
+      const uid = await getUserId();
       if (!uid) { setLoading(false); return; }
 
       const { data } = await supabase
@@ -44,7 +84,28 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
         .eq("user_id", uid)
         .order("created_at", { ascending: false });
 
-      if (data) setTasks(data);
+      if (!data) { setLoading(false); return; }
+
+      const today = todayStr();
+      const toReset = data.filter(
+        t => t.task_type === "daily" &&
+          t.completed &&
+          t.updated_at.slice(0, 10) < today
+      );
+
+      if (toReset.length > 0) {
+        const ids = toReset.map(t => t.id);
+        await supabase.from("tasks").update({ completed: false }).in("id", ids);
+        const resetData = data.map(t =>
+          ids.includes(t.id) ? { ...t, completed: false } : t
+        );
+        setTasks(resetData);
+        toast.info(`${toReset.length} tugas harian direset untuk hari ini`, {
+          description: "Semangat selesaikan tugas harianmu!",
+        });
+      } else {
+        setTasks(data);
+      }
     } catch (err) {
       console.error("ProductivityPage error:", err);
     } finally {
@@ -56,29 +117,30 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
     if (!title.trim() || adding) return;
     setAdding(true);
     try {
-      let uid = userIdProp;
-      if (!uid) {
-        const { data: { session } } = await supabase.auth.getSession();
-        uid = session?.user?.id;
-      }
+      const uid = await getUserId();
       if (!uid) return;
+
+      const insertContent = type === "habit"
+        ? JSON.stringify({ streak: 0, lastCompleted: null })
+        : content || null;
 
       const { data, error } = await supabase.from("tasks").insert({
         user_id: uid,
         title: title.trim(),
         task_type: type,
-        content: content || null,
+        content: insertContent,
       }).select().single();
 
-      if (error) {
-        toast.error("Gagal menambah item. Coba lagi.");
-        return;
-      }
+      if (error) { toast.error("Gagal menambah item. Coba lagi."); return; }
       if (data) setTasks((prev) => [data, ...prev]);
       if (type === "daily") setNewTask("");
       if (type === "habit") setNewHabit("");
       if (type === "note") setNewNote("");
-      toast.success("Berhasil ditambahkan!");
+      toast.success(
+        type === "daily" ? "Tugas ditambahkan!"
+        : type === "habit" ? "Kebiasaan ditambahkan! Mulai streak-mu hari ini."
+        : "Catatan disimpan!"
+      );
     } catch {
       toast.error("Koneksi gagal. Coba lagi.");
     } finally {
@@ -95,6 +157,65 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
     }
   };
 
+  const toggleHabit = async (task: Task) => {
+    const meta = parseHabitMeta(task.content);
+    const today = todayStr();
+    const yesterday = yesterdayStr();
+
+    let newStreak = meta.streak;
+    let newCompleted: boolean;
+
+    if (!task.completed) {
+      if (meta.lastCompleted === today) {
+        newStreak = meta.streak;
+      } else if (meta.lastCompleted === yesterday) {
+        newStreak = meta.streak + 1;
+      } else {
+        newStreak = 1;
+      }
+      newCompleted = true;
+    } else {
+      newCompleted = false;
+      newStreak = meta.streak;
+    }
+
+    const newMeta: HabitMeta = {
+      streak: newStreak,
+      lastCompleted: newCompleted ? today : meta.lastCompleted,
+    };
+    const newContent = JSON.stringify(newMeta);
+
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id
+          ? { ...t, completed: newCompleted, content: newContent }
+          : t
+      )
+    );
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ completed: newCompleted, content: newContent })
+      .eq("id", task.id);
+
+    if (error) {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, completed: task.completed, content: task.content } : t))
+      );
+      toast.error("Gagal mengubah status. Coba lagi.");
+      return;
+    }
+
+    if (newCompleted) {
+      const msg = getStreakNotification(newStreak);
+      if (msg) {
+        toast.success(`🔥 ${msg}`, { duration: 4000 });
+      } else {
+        toast.success(`Habit selesai! Streak: ${newStreak} hari 🔥`);
+      }
+    }
+  };
+
   const deleteTask = async (id: string) => {
     const prev = tasks;
     setTasks((t) => t.filter((x) => x.id !== id));
@@ -105,6 +226,37 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
       return;
     }
     toast.success("Berhasil dihapus");
+  };
+
+  const startEditNote = (note: Task) => {
+    setEditingNoteId(note.id);
+    setEditNoteContent(note.content || note.title);
+  };
+
+  const cancelEditNote = () => {
+    setEditingNoteId(null);
+    setEditNoteContent("");
+  };
+
+  const saveEditNote = async (note: Task) => {
+    const trimmed = editNoteContent.trim();
+    if (!trimmed) { toast.error("Catatan tidak boleh kosong"); return; }
+    setSavingNote(true);
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ title: trimmed, content: trimmed })
+        .eq("id", note.id);
+
+      if (error) { toast.error("Gagal menyimpan catatan"); return; }
+      setTasks((prev) =>
+        prev.map((t) => t.id === note.id ? { ...t, title: trimmed, content: trimmed } : t)
+      );
+      setEditingNoteId(null);
+      toast.success("Catatan diperbarui!");
+    } finally {
+      setSavingNote(false);
+    }
   };
 
   const dailyTasks = tasks.filter((t) => t.task_type === "daily");
@@ -163,9 +315,15 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
                 className="bg-secondary"
               />
               <Button variant="hero" size="icon" disabled={adding} onClick={() => addTask("daily", newTask)}>
-                {adding ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" /> : <Plus className="h-4 w-4" />}
+                {adding
+                  ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                  : <Plus className="h-4 w-4" />
+                }
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground/60">
+              Tugas harian direset otomatis setiap hari.
+            </p>
             {dailyTasks.length === 0 && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 Belum ada tugas. Tambahkan tugas pertamamu!
@@ -187,7 +345,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
                   </span>
                   <button
                     onClick={() => deleteTask(task.id)}
-                    className="text-muted-foreground hover:text-destructive"
+                    className="text-muted-foreground hover:text-destructive transition-colors"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -207,7 +365,10 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
                 className="bg-secondary"
               />
               <Button variant="hero" size="icon" disabled={adding} onClick={() => addTask("habit", newHabit)}>
-                {adding ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" /> : <Plus className="h-4 w-4" />}
+                {adding
+                  ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                  : <Plus className="h-4 w-4" />
+                }
               </Button>
             </div>
             {habits.length === 0 && (
@@ -215,29 +376,38 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
                 Belum ada kebiasaan. Mulai track kebiasaanmu!
               </p>
             )}
-            {habits.map((habit) => (
-              <Card key={habit.id} className="border-border bg-card">
-                <CardContent className="flex items-center gap-3 p-3">
-                  <Checkbox
-                    checked={habit.completed}
-                    onCheckedChange={() => toggleTask(habit.id, habit.completed)}
-                  />
-                  <span
-                    className={`flex-1 text-sm ${
-                      habit.completed ? "text-muted-foreground line-through" : "text-foreground"
-                    }`}
-                  >
-                    {habit.title}
-                  </span>
-                  <button
-                    onClick={() => deleteTask(habit.id)}
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </CardContent>
-              </Card>
-            ))}
+            {habits.map((habit) => {
+              const meta = parseHabitMeta(habit.content);
+              return (
+                <Card key={habit.id} className="border-border bg-card">
+                  <CardContent className="flex items-center gap-3 p-3">
+                    <Checkbox
+                      checked={habit.completed}
+                      onCheckedChange={() => toggleHabit(habit)}
+                    />
+                    <span
+                      className={`flex-1 text-sm ${
+                        habit.completed ? "text-muted-foreground line-through" : "text-foreground"
+                      }`}
+                    >
+                      {habit.title}
+                    </span>
+                    {meta.streak > 0 && (
+                      <div className="flex items-center gap-1 rounded-full bg-orange-500/15 px-2.5 py-1 text-xs font-semibold text-orange-400">
+                        <Flame className="h-3 w-3" />
+                        {meta.streak}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => deleteTask(habit.id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </TabsContent>
 
           {/* Notes */}
@@ -256,11 +426,10 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
                 onClick={() => addTask("note", newNote, newNote)}
                 className="gap-1.5"
               >
-                {adding ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
+                {adding
+                  ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                  : <Plus className="h-4 w-4" />
+                }
                 {adding ? "Menyimpan..." : "Simpan Catatan"}
               </Button>
             </div>
@@ -271,15 +440,61 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
               <Card key={note.id} className="border-border bg-card">
                 <CardContent className="flex items-start gap-3 p-3">
                   <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <p className="flex-1 text-sm text-foreground whitespace-pre-wrap">
-                    {note.content || note.title}
-                  </p>
-                  <button
-                    onClick={() => deleteTask(note.id)}
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {editingNoteId === note.id ? (
+                    <div className="flex-1 space-y-2">
+                      <Textarea
+                        value={editNoteContent}
+                        onChange={(e) => setEditNoteContent(e.target.value)}
+                        className="min-h-[80px] bg-secondary text-sm"
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => saveEditNote(note)}
+                          disabled={savingNote}
+                          className="h-7 gap-1 text-green-500 hover:bg-green-500/10"
+                        >
+                          {savingNote
+                            ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-green-500 border-t-transparent" />
+                            : <Check className="h-3.5 w-3.5" />
+                          }
+                          Simpan
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={cancelEditNote}
+                          className="h-7 gap-1 text-muted-foreground hover:bg-secondary"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Batal
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="flex-1 text-sm text-foreground whitespace-pre-wrap">
+                      {note.content || note.title}
+                    </p>
+                  )}
+                  {editingNoteId !== note.id && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => startEditNote(note)}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        title="Edit catatan"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteTask(note.id)}
+                        className="text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}

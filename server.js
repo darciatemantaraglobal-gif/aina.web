@@ -22,7 +22,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,6 +37,27 @@ function getAdminClient() {
   }
   return _adminClient;
 }
+
+/* ── Storage Init ────────────────────────────────────── */
+async function initStorage() {
+  const supabase = getAdminClient();
+  if (!supabase) { console.warn("Storage init skipped: no admin client"); return; }
+  try {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const exists = buckets?.some(b => b.name === "avatars");
+    if (!exists) {
+      await supabase.storage.createBucket("avatars", { public: true, fileSizeLimit: 2097152 });
+      console.log("Storage bucket 'avatars' created");
+    }
+  } catch (e) {
+    console.warn("Storage init warning:", e.message);
+  }
+}
+initStorage();
+
+console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
+console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
+console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
 
 const _adminCache = new Map();
 async function verifyAdminUser(authHeader) {
@@ -63,7 +84,6 @@ async function fetchRelevantArticles(userQuestion) {
   const supabase = getAdminClient();
   if (!supabase) return [];
 
-  // Extract keywords from the question (words > 3 chars)
   const keywords = userQuestion
     .toLowerCase()
     .replace(/[^\w\s]/g, " ")
@@ -71,7 +91,6 @@ async function fetchRelevantArticles(userQuestion) {
     .filter(w => w.length > 3);
 
   if (keywords.length === 0) {
-    // No keywords — return a sample of recent approved articles
     const { data } = await supabase
       .from("knowledge_base")
       .select("title, content, category")
@@ -81,7 +100,6 @@ async function fetchRelevantArticles(userQuestion) {
     return data ?? [];
   }
 
-  // Search articles matching any keyword in title or content
   const { data: allApproved } = await supabase
     .from("knowledge_base")
     .select("title, content, category")
@@ -89,27 +107,24 @@ async function fetchRelevantArticles(userQuestion) {
 
   if (!allApproved || allApproved.length === 0) return [];
 
-  // Score each article by keyword matches
   const scored = allApproved.map(article => {
     const text = `${article.title} ${article.content}`.toLowerCase();
     const score = keywords.reduce((acc, kw) => acc + (text.includes(kw) ? 1 : 0), 0);
     return { ...article, score };
   });
 
-  // Return top 5 articles with at least 1 match; if none match, return top 3 recent
   const matched = scored
     .filter(a => a.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
   if (matched.length > 0) return matched;
-
   return allApproved.slice(0, 3);
 }
 
 const DAILY_FREE_LIMIT = 3;
 
-/* ── Health check (UptimeRobot / Railway) ────────────── */
+/* ── Health check ────────────────────────────────────── */
 app.get("/api/ping", (_req, res) => {
   res.json({ status: "ok" });
 });
@@ -122,7 +137,6 @@ app.post("/api/chat", async (req, res) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "OPENROUTER_API_KEY not configured" });
 
-  // ── Rate limit: 3 messages/day for free users ──────────
   const supabaseAdmin = getAdminClient();
   const authHeader = req.headers.authorization;
   if (supabaseAdmin && authHeader && authHeader.startsWith("Bearer ")) {
@@ -142,6 +156,8 @@ app.post("/api/chat", async (req, res) => {
           .eq("role", "user")
           .gte("created_at", todayStart.toISOString());
 
+        console.log(`Rate limit check: user ${user.id} used ${count}/${DAILY_FREE_LIMIT} messages today`);
+
         if ((count ?? 0) >= DAILY_FREE_LIMIT) {
           return res.status(429).json({
             error: "Batas chat harian tercapai",
@@ -151,7 +167,6 @@ app.post("/api/chat", async (req, res) => {
       }
     }
   }
-  // ──────────────────────────────────────────────────────
 
   const MODELS = [
     "meta-llama/llama-3.2-3b-instruct:free",
@@ -166,11 +181,9 @@ app.post("/api/chat", async (req, res) => {
     "nvidia/nemotron-3-super-120b-a12b:free",
   ];
 
-  // Get last user message to search the knowledge base
   const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
   const articles = await fetchRelevantArticles(lastUserMessage);
 
-  // Build knowledge base context block
   let knowledgeContext = "";
   if (articles.length > 0) {
     const articlesText = articles.map((a, i) =>
@@ -187,7 +200,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
 - PRIORITAS JAWABAN: Gunakan Knowledge Base terlebih dahulu. Gunakan pengetahuan umum hanya jika topik tidak tercakup di Knowledge Base.
 - Jawab minimal 3 paragraf pendek — pastikan informasi tersampaikan jelas tapi tidak bertele-tele.
 - Setiap paragraf fokus pada satu poin utama. Hindari pengulangan dan elaborasi berlebihan.
-- Untuk syarat, dokumen, atau daftar ketentuan → gunakan format poin (bullet `-`) bukan paragraf.
+- Untuk syarat, dokumen, atau daftar ketentuan → gunakan format poin (bullet \`-\`) bukan paragraf.
 - DILARANG menggunakan format tabel dalam jawaban apapun.
 - Gunakan format Markdown yang rapi: judul bagian pakai **bold**, isi pakai paragraf atau poin.
 - DILARANG memberi pengantar, basa-basi, atau kesimpulan yang tidak diminta.
@@ -216,7 +229,6 @@ ATURAN KERAS — WAJIB DIIKUTI:
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  // Race all models in parallel — first to succeed wins, worst case ~12s not ~200s
   const tryModel = async (model) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 25000);
@@ -254,6 +266,36 @@ ATURAN KERAS — WAJIB DIIKUTI:
   } catch {
     return res.status(503).json({ error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik." });
   }
+});
+
+/* ── Upload Avatar ───────────────────────────────────── */
+app.post("/api/upload-avatar", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server not configured" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { imageBase64, mimeType } = req.body;
+  if (!imageBase64) return res.status(400).json({ error: "imageBase64 required" });
+
+  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  const buffer = Buffer.from(base64Data, "base64");
+  const ext = (mimeType || "image/jpeg").split("/")[1] || "jpg";
+  const path = `${user.id}/avatar.${ext}`;
+
+  const { error: uploadErr } = await supabase.storage
+    .from("avatars")
+    .upload(path, buffer, { contentType: mimeType || "image/jpeg", upsert: true });
+
+  if (uploadErr) return res.status(500).json({ error: uploadErr.message });
+
+  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+  res.json({ url: publicUrl });
 });
 
 /* ── Admin: Stats ────────────────────────────────────── */
