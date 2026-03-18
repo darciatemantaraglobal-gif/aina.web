@@ -281,7 +281,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               Asisten AI khusus mahasiswa Indonesia di Mesir. Tanya apa saja tentang kehidupan di Kairo!
             </p>
 
-            <div className="mt-8 grid w-full max-w-md grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="mt-4 sm:mt-8 grid w-full max-w-md grid-cols-2 gap-1.5 sm:gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
@@ -292,7 +292,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       autoResize();
                     }, 0);
                   }}
-                  className="rounded-xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
+                  className="rounded-xl border border-border bg-card px-3 py-2 sm:px-4 sm:py-3 text-left text-xs sm:text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
                 >
                   {s}
                 </button>
@@ -307,9 +307,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 className={`flex gap-2.5 min-w-0 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-purple p-1.5">
-                    <AinaLogo className="h-full w-full object-contain" />
-                  </div>
+                  <AinaLogo className="h-8 w-8 shrink-0 object-contain" />
                 )}
 
                 {msg.role === "user" ? (
@@ -408,9 +406,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
             {isLoading && (
               <div className="flex gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-purple p-1.5">
-                  <AinaLogo className="h-full w-full object-contain" />
-                </div>
+                <AinaLogo className="h-8 w-8 shrink-0 object-contain" />
                 <div className="rounded-2xl bg-secondary px-4 py-3">
                   <div className="flex gap-1">
                     <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
