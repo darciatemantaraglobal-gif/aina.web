@@ -3,7 +3,7 @@ import Footer from "@/components/Footer";
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
-  Heart, Lightbulb, ArrowRight, Zap, Star, TrendingUp,
+  Lightbulb, ArrowRight, Zap, Star, TrendingUp,
 } from "lucide-react";
 import ainaLogo from "@/assets/aina-logo.png";
 
@@ -27,33 +27,43 @@ function useInView(threshold = 0.15) {
 /* ─── Data ───────────────────────────────────────────────── */
 const TIMELINE = [
   {
-    year: "2025",
-    title: "Keresahan Lahir",
-    desc: "Ribuan Masisir kebingungan mencari informasi yang tersebar di ratusan grup WA. Tidak ada satu sumber terpercaya.",
+    period: "Nov – Des 2025",
+    title: "Foundation & Alignment",
+    desc: "Kickoff Power Team, setup struktur & sistem kerja, riset kebutuhan Masisir, dan menyusun narasi AINA.",
   },
   {
-    year: "2025",
-    title: "AINA Dibangun",
-    desc: "Tim kecil mahasiswa Masisir mulai membangun platform dengan menggabungkan AI dan knowledge base lokal.",
+    period: "Feb – Mar 2026",
+    title: "System & MVP Internal",
+    desc: "Develop MVP AINA, testing internal, aktivasi komunitas awal, dan partnership pilot.",
   },
   {
-    year: "2026",
-    title: "Komunitas Berkembang",
-    desc: "Kontributor dari berbagai jurusan bergabung, memperkaya basis pengetahuan AINA dengan pengalaman nyata.",
+    period: "Apr – Mei 2026",
+    title: "Representation & Scaling",
+    desc: "Soft launch ke early adopters, pengenalan ke KBRI Kairo, Kekeluargaan Nusantara, dan outreach ke almamater.",
   },
   {
-    year: "2026",
-    title: "Saat Ini",
-    desc: "AINA terus tumbuh bersama komunitas Masisir, menghadirkan fitur baru dan memperluas jangkauan.",
+    period: "Jun – Sep 2026",
+    title: "Partnership & Expansion",
+    desc: "Kerjasama sponsor & brand Indonesia, evaluasi, optimasi sistem, scaling komunitas, dan persiapan ekspansi.",
   },
 ];
 
 
 const TEAM: { name: string; role: string; initial: string }[] = [
-  { name: "—", role: "Founder", initial: "F" },
-  { name: "—", role: "Co-Founder", initial: "C" },
-  { name: "—", role: "Lead Developer", initial: "D" },
-  { name: "—", role: "Content & Knowledge", initial: "K" },
+  { name: "Daru Fahmaa Muliawan, Lc.", role: "Founder AIGYPT & AINA", initial: "D" },
+  { name: "Fairuz Azri Afif Arsyadi", role: "Head of AINA Mesir", initial: "F" },
+  { name: "Teuku Muhammad Maliki Ishak", role: "Head of AINA Mesir", initial: "M" },
+  { name: "Mohamad Virli Okto", role: "Operations & Admin Lead", initial: "V" },
+  { name: "Moch Azriel Putra Novendra", role: "Operations & Admin Lead", initial: "A" },
+  { name: "Adyatma Zaki Rabbani", role: "Community & Growth Lead", initial: "Z" },
+  { name: "Muhammad Ariiq Ash Shidiq", role: "External & Partnership Lead", initial: "Ar" },
+  { name: "Rifki Haikal", role: "External & Partnership Lead", initial: "R" },
+  { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I" },
+  { name: "Muhammad Asrori", role: "Fullstack Developer", initial: "As" },
+  { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N" },
+  { name: "Sulthan Nadzir", role: "Creative & Media Lead", initial: "S" },
+  { name: "Navis Athiyatul Hafidz", role: "Creative & Media", initial: "Na" },
+  { name: "Hafidz Majduddin", role: "Creative & Media", initial: "H" },
 ];
 
 /* ─── Page ───────────────────────────────────────────────── */
@@ -111,8 +121,8 @@ const AboutPage = () => {
           </h1>
 
           <p className="mx-auto mt-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            AINA lahir dari keresahan nyata mahasiswa Indonesia di Mesir —
-            gabungan kecerdasan AI modern dan pengetahuan lokal dari komunitas yang hidup di sana.
+            AINA adalah AI pendamping untuk mahasiswa Indonesia di Mesir. Karena AINA belajar dari pengalaman
+            nyata Masisir, jawabannya lebih nyambung, praktis, dan sesuai kondisi di lapangan.
           </p>
 
           {/* CTA buttons */}
@@ -174,7 +184,7 @@ const AboutPage = () => {
             <div className="absolute left-1/2 top-0 hidden h-full w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-primary/30 to-transparent md:block" />
 
             <div className="space-y-10 md:space-y-0">
-              {TIMELINE.map(({ year, title, desc }, i) => {
+              {TIMELINE.map(({ period, title, desc }, i) => {
                 const isLeft = i % 2 === 0;
                 return (
                   <div
@@ -185,7 +195,7 @@ const AboutPage = () => {
                     {/* Content card */}
                     <div className={`flex-1 ${isLeft ? "md:pr-12 md:text-right" : "md:pl-12 md:text-left"}`}>
                       <div className="group rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5">
-                        <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">{year}</span>
+                        <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">{period}</span>
                         <h3 className="mt-1 font-display text-lg font-bold text-foreground">{title}</h3>
                         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{desc}</p>
                       </div>
@@ -238,54 +248,37 @@ const AboutPage = () => {
                 </div>
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                AIGYPT hadir sebagai motor perubahan bagi kualitas hidup Masisir — dari cara belajar, berorganisasi, hingga berbisnis.
-                Di masa depan, setiap Masisir akan berteman dengan teknologi, bukan cuma jadi pengguna pasif,
-                tapi <strong className="text-foreground">pemimpin digital yang siap upgrade dan update hidupnya.</strong>
+                AINA menjadi <strong className="text-foreground">AI Assistant yang dipakai rutin oleh Masisir</strong> untuk
+                membantu urusan akademik, administrasi, dan kehidupan sehari-hari — menjadikan setiap Masisir
+                lebih mudah, lebih terarah, dan lebih produktif.
               </p>
             </div>
           </div>
 
-          {/* Mission — two pillars */}
+          {/* Mission — 4 roles */}
           <div className="mb-4">
             <div className="mb-5 flex items-center gap-2">
               <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-secondary/60">
                 <Zap className="h-5 w-5 text-primary" />
               </div>
-              <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">Misi</span>
+              <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">Peran AINA</span>
             </div>
-            <p className="mb-6 text-sm text-muted-foreground">
-              Untuk mencapai tujuan itu, <strong className="text-foreground">AIGYPT</strong> mempunyai misi:
-            </p>
-            <div className="grid gap-5 md:grid-cols-2">
-              {/* Pelatihan Praktis */}
-              <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl">
-                <div className="absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-primary/8 blur-2xl" />
-                <div className="relative">
-                  <h3 className="mb-4 inline-block rounded-lg border border-primary/40 bg-primary/10 px-3 py-1 font-display text-sm font-bold text-primary">
-                    Pelatihan Praktis
-                  </h3>
-                  <ul className="space-y-2 text-sm text-muted-foreground">
-                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Fokus ke tools nyata: ChatGPT, Notion, dll.</li>
-                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Menyediakan modul & template siap pakai.</li>
-                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Mengasah skill komunikasi digital, prompting.</li>
-                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Menciptakan AI khusus untuk Masisir.</li>
-                  </ul>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[
+                { id: "SYS_01", title: "Academic Support", desc: "Membantu proses belajar, pemahaman materi, dan adaptasi akademik di lingkungan Al-Azhar." },
+                { id: "SYS_02", title: "Administrative Guidance", desc: "Panduan terstruktur terkait urusan kampus, dokumen, dan proses birokrasi." },
+                { id: "SYS_03", title: "Life System", desc: "Membantu Masisir hidup lebih teratur, produktif, dan terarah." },
+                { id: "SYS_04", title: "Komunitas Masisir", desc: "Ekosistem saling bantu antar mahasiswa Indonesia di Mesir." },
+              ].map(({ id, title, desc }) => (
+                <div key={id} className="relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl">
+                  <div className="absolute -right-8 -bottom-8 h-28 w-28 rounded-full bg-primary/6 blur-2xl" />
+                  <div className="relative">
+                    <span className="font-modernist text-[10px] font-bold tracking-widest text-primary/50">{id}</span>
+                    <h3 className="mt-1 mb-2 font-display text-sm font-bold text-foreground">{title}</h3>
+                    <p className="text-xs leading-relaxed text-muted-foreground">{desc}</p>
+                  </div>
                 </div>
-              </div>
-              {/* Budaya Digital */}
-              <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl">
-                <div className="absolute -right-8 -bottom-8 h-32 w-32 rounded-full bg-purple-glow/8 blur-2xl" />
-                <div className="relative">
-                  <h3 className="mb-4 inline-block rounded-lg border border-primary/40 bg-primary/10 px-3 py-1 font-display text-sm font-bold text-primary">
-                    Budaya Digital
-                  </h3>
-                  <ul className="space-y-2 text-sm text-muted-foreground">
-                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Menyampaikan mindset efisiensi & sistem digital di kehidupan sehari-hari.</li>
-                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Mendirikan komunitas sebagai ruang belajar bersama.</li>
-                    <li className="flex items-start gap-2"><Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/60" />Mendorong organisasi Masisir menerapkan sistem kerja berbasis AI.</li>
-                  </ul>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -321,11 +314,7 @@ const AboutPage = () => {
                     <span className="font-display text-2xl font-bold text-primary/50">{initial}</span>
                   </div>
                 </div>
-                <p className="font-display text-sm font-bold text-foreground">
-                  {name === "—" ? (
-                    <span className="italic text-muted-foreground/40 text-xs">Segera hadir</span>
-                  ) : name}
-                </p>
+                <p className="font-display text-sm font-bold text-foreground">{name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{role}</p>
                 <div className="mt-3 h-px w-8 rounded-full bg-primary/20 transition-all group-hover:w-12 group-hover:bg-primary/50" />
               </div>
