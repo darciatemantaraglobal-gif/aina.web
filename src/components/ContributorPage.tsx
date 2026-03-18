@@ -216,28 +216,38 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       return;
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user) return;
+    setSubmitting(true);
+    try {
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) return;
 
-    const { error } = await supabase.from("contributor_requests").insert({
-      user_id: user.id,
-      full_name: regName.trim(),
-      education: regEdu.trim(),
-      enrollment_year: year,
-      expertise: regExpertise.trim(),
-    });
+      const { error } = await supabase.from("contributor_requests").insert({
+        user_id: uid,
+        full_name: regName.trim(),
+        education: regEdu.trim(),
+        enrollment_year: year,
+        expertise: regExpertise.trim(),
+      });
 
-    if (error) {
-      toast.error("Gagal mengirim permintaan");
-      return;
+      if (error) {
+        toast.error("Gagal mengirim permintaan: " + error.message);
+        return;
+      }
+
+      setSubmitterName(regName.trim());
+      setHasRequest(true);
+      setRequestStatus("pending");
+      setJustSubmitted(true);
+      toast.success("Permintaan berhasil dikirim! Menunggu persetujuan admin.");
+    } catch (err: any) {
+      toast.error("Koneksi gagal. Coba lagi.");
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitterName(regName.trim());
-    setHasRequest(true);
-    setRequestStatus("pending");
-    setJustSubmitted(true);
-    toast.success("Permintaan berhasil dikirim! Menunggu persetujuan admin.");
   };
 
   const submitArticle = async () => {
@@ -362,9 +372,18 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                   <Input placeholder="Pendidikan (misal: S1 Syariah Al-Azhar)" value={regEdu} onChange={(e) => setRegEdu(e.target.value)} className="bg-secondary" />
                   <Input placeholder="Tahun masuk (misal: 2022)" value={regYear} onChange={(e) => setRegYear(e.target.value)} className="bg-secondary" />
                   <Input placeholder="Keahlian (misal: Administrasi, Bahasa Arab)" value={regExpertise} onChange={(e) => setRegExpertise(e.target.value)} className="bg-secondary" />
-                  <Button variant="hero" onClick={submitRequest} className="gap-1.5">
-                    <Send className="h-4 w-4" />
-                    Kirim Permintaan
+                  <Button variant="hero" onClick={submitRequest} disabled={submitting} className="gap-1.5">
+                    {submitting ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                        Mengirim...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Kirim Permintaan
+                      </>
+                    )}
                   </Button>
                 </div>
               )}

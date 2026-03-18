@@ -23,6 +23,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [newHabit, setNewHabit] = useState("");
   const [newNote, setNewNote] = useState("");
   const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     loadTasks();
@@ -52,37 +53,57 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   };
 
   const addTask = async (type: string, title: string, content?: string) => {
-    if (!title.trim()) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user) return;
+    if (!title.trim() || adding) return;
+    setAdding(true);
+    try {
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) return;
 
-    const { data, error } = await supabase.from("tasks").insert({
-      user_id: user.id,
-      title: title.trim(),
-      task_type: type,
-      content: content || null,
-    }).select().single();
+      const { data, error } = await supabase.from("tasks").insert({
+        user_id: uid,
+        title: title.trim(),
+        task_type: type,
+        content: content || null,
+      }).select().single();
 
-    if (error) {
-      toast.error("Gagal menambah item");
-      return;
+      if (error) {
+        toast.error("Gagal menambah item. Coba lagi.");
+        return;
+      }
+      if (data) setTasks((prev) => [data, ...prev]);
+      if (type === "daily") setNewTask("");
+      if (type === "habit") setNewHabit("");
+      if (type === "note") setNewNote("");
+      toast.success("Berhasil ditambahkan!");
+    } catch {
+      toast.error("Koneksi gagal. Coba lagi.");
+    } finally {
+      setAdding(false);
     }
-    if (data) setTasks((prev) => [data, ...prev]);
-    if (type === "daily") setNewTask("");
-    if (type === "habit") setNewHabit("");
-    if (type === "note") setNewNote("");
-    toast.success("Berhasil ditambahkan!");
   };
 
   const toggleTask = async (id: string, completed: boolean) => {
-    await supabase.from("tasks").update({ completed: !completed }).eq("id", id);
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !completed } : t)));
+    const { error } = await supabase.from("tasks").update({ completed: !completed }).eq("id", id);
+    if (error) {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed } : t)));
+      toast.error("Gagal mengubah status. Coba lagi.");
+    }
   };
 
   const deleteTask = async (id: string) => {
-    await supabase.from("tasks").delete().eq("id", id);
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    const prev = tasks;
+    setTasks((t) => t.filter((x) => x.id !== id));
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) {
+      setTasks(prev);
+      toast.error("Gagal menghapus. Coba lagi.");
+      return;
+    }
     toast.success("Berhasil dihapus");
   };
 
@@ -141,8 +162,8 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
                 onKeyDown={(e) => e.key === "Enter" && addTask("daily", newTask)}
                 className="bg-secondary"
               />
-              <Button variant="hero" size="icon" onClick={() => addTask("daily", newTask)}>
-                <Plus className="h-4 w-4" />
+              <Button variant="hero" size="icon" disabled={adding} onClick={() => addTask("daily", newTask)}>
+                {adding ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" /> : <Plus className="h-4 w-4" />}
               </Button>
             </div>
             {dailyTasks.length === 0 && (
@@ -185,8 +206,8 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
                 onKeyDown={(e) => e.key === "Enter" && addTask("habit", newHabit)}
                 className="bg-secondary"
               />
-              <Button variant="hero" size="icon" onClick={() => addTask("habit", newHabit)}>
-                <Plus className="h-4 w-4" />
+              <Button variant="hero" size="icon" disabled={adding} onClick={() => addTask("habit", newHabit)}>
+                {adding ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" /> : <Plus className="h-4 w-4" />}
               </Button>
             </div>
             {habits.length === 0 && (
@@ -231,11 +252,16 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
               <Button
                 variant="hero"
                 size="sm"
+                disabled={adding}
                 onClick={() => addTask("note", newNote, newNote)}
                 className="gap-1.5"
               >
-                <Plus className="h-4 w-4" />
-                Simpan Catatan
+                {adding ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                {adding ? "Menyimpan..." : "Simpan Catatan"}
               </Button>
             </div>
             {notes.length === 0 && (

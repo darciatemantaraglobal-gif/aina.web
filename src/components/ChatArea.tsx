@@ -97,11 +97,12 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const loadMessages = async (id: string) => {
     setLoadingHistory(true);
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("messages")
         .select("*")
         .eq("chat_id", id)
         .order("created_at", { ascending: true });
+      if (error) throw error;
       if (data) {
         setMessages(
           data.map((m) => ({
@@ -112,6 +113,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           }))
         );
       }
+    } catch (err: any) {
+      setError("Gagal memuat riwayat chat. Coba refresh halaman.");
     } finally {
       setLoadingHistory(false);
     }
@@ -173,14 +176,27 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       const allMessages = [...messages, userMsg];
       const history = allMessages.map((m) => ({ role: m.role, content: m.content }));
 
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-        },
-        body: JSON.stringify({ messages: history }),
-      });
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 30000);
+      let res: Response;
+      try {
+        res = await fetch(API_URL, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+          },
+          body: JSON.stringify({ messages: history }),
+        });
+      } catch (fetchErr: any) {
+        if (fetchErr.name === "AbortError") {
+          throw new Error("Koneksi timeout. AI sedang sibuk, coba lagi dalam beberapa detik.");
+        }
+        throw new Error("Gagal terhubung ke server. Periksa koneksi internetmu.");
+      } finally {
+        clearTimeout(fetchTimeout);
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
