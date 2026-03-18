@@ -188,7 +188,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
                   <Award className="h-4 w-4" />
                   Level
                 </span>
-                <span className="text-sm font-medium text-foreground">{profile?.level}</span>
+                <span className="text-sm font-medium text-foreground">{profile?.level || "Anggota"}</span>
               </div>
               <div className="flex items-center justify-between rounded-xl bg-secondary p-3">
                 <span className="flex items-center gap-2 text-sm text-muted-foreground">

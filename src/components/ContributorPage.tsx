@@ -258,12 +258,15 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
     setSubmitting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) return;
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) return;
 
       const { data, error } = await supabase.from("knowledge_base").insert({
-        author_id: user.id,
+        author_id: uid,
         title: artTitle.trim(),
         content: artContent.trim(),
         category: artCategory,
@@ -279,6 +282,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       setArtCategory("");
       setDialogOpen(false);
       toast.success("Artikel dikirim! Menunggu persetujuan admin.");
+    } catch {
+      toast.error("Koneksi gagal. Coba lagi.");
     } finally {
       setSubmitting(false);
     }

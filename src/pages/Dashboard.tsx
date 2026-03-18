@@ -106,15 +106,20 @@ const Dashboard = () => {
   }, [authReady]);
 
   const loadChats = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-    const { data } = await supabase
-      .from("chats")
-      .select("id, title, updated_at")
-      .eq("user_id", session.user.id)
-      .order("updated_at", { ascending: false })
-      .limit(40);
-    if (data) setChats(data);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data, error } = await supabase
+        .from("chats")
+        .select("id, title, updated_at")
+        .eq("user_id", session.user.id)
+        .order("updated_at", { ascending: false })
+        .limit(40);
+      if (error) throw error;
+      if (data) setChats(data);
+    } catch {
+      // Silent — sidebar just shows empty if chats can't load
+    }
   };
 
   const handleNewChat = () => {
@@ -138,14 +143,14 @@ const Dashboard = () => {
   };
 
   const handleDeleteChat = async (chatId: string) => {
+    const prev = chats;
+    setChats((c) => c.filter((x) => x.id !== chatId));
+    if (activeChatId === chatId) setActiveChatId(null);
     const { error } = await supabase.from("chats").delete().eq("id", chatId);
     if (error) {
+      setChats(prev);
       toast.error("Gagal menghapus chat");
       return;
-    }
-    setChats((prev) => prev.filter((c) => c.id !== chatId));
-    if (activeChatId === chatId) {
-      setActiveChatId(null);
     }
     toast.success("Chat dihapus");
   };
@@ -217,9 +222,7 @@ const Dashboard = () => {
               <Menu className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-purple p-1">
-                <img src="/aina-icon.png" alt="AINA" className="h-full w-full object-contain" />
-              </div>
+              <img src="/aina-icon.png" alt="AINA" className="h-7 w-7 object-contain" />
               <span className="font-display text-base font-bold text-foreground">
                 {tabTitles[activeTab] ?? "AINA"}
               </span>
