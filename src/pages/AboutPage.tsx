@@ -48,21 +48,54 @@ const TIMELINE = [
   },
 ];
 
-const TEAM: { name: string; role: string; initial: string }[] = [
-  { name: "Daru Fahmaa Muliawan, Lc.", role: "Founder AIGYPT & AINA", initial: "D" },
-  { name: "Fairuz Azri Afif Arsyadi", role: "Head of AINA Mesir", initial: "F" },
-  { name: "Teuku Muhammad Maliki Ishak", role: "Head of AINA Mesir", initial: "M" },
-  { name: "Mohamad Virli Okto", role: "Operations & Admin Lead", initial: "V" },
-  { name: "Moch Azriel Putra Novendra", role: "Operations & Admin Lead", initial: "A" },
-  { name: "Adyatma Zaki Rabbani", role: "Community & Growth Lead", initial: "Z" },
-  { name: "Muhammad Ariiq Ash Shidiq", role: "External & Partnership Lead", initial: "Ar" },
-  { name: "Rifki Haikal", role: "External & Partnership Lead", initial: "R" },
-  { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I" },
-  { name: "Muhammad Asrori", role: "Fullstack Developer", initial: "As" },
-  { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N" },
-  { name: "Sulthan Nadzir", role: "Creative & Media Lead", initial: "S" },
-  { name: "Navis Athiyatul Hafidz", role: "Creative & Media", initial: "Na" },
-  { name: "Hafidz Majduddin", role: "Creative & Media", initial: "H" },
+type Member = { name: string; role: string; initial: string };
+type TeamGroup = { label: string; members: Member[] };
+
+const TEAM_GROUPS: TeamGroup[] = [
+  {
+    label: "Founder",
+    members: [
+      { name: "Daru Fahmaa Muliawan, Lc.", role: "Founder AIGYPT & AINA", initial: "D" },
+    ],
+  },
+  {
+    label: "Head of AINA Mesir",
+    members: [
+      { name: "Fairuz Azri Afif Arsyadi", role: "Head of AINA Mesir", initial: "F" },
+      { name: "Teuku Muhammad Maliki Ishak", role: "Head of AINA Mesir", initial: "M" },
+    ],
+  },
+  {
+    label: "Operations & Admin",
+    members: [
+      { name: "Mohamad Virli Okto", role: "Operations & Admin Lead", initial: "V" },
+      { name: "Moch Azriel Putra Novendra", role: "Operations & Admin Lead", initial: "A" },
+    ],
+  },
+  {
+    label: "Community & Partnership",
+    members: [
+      { name: "Adyatma Zaki Rabbani", role: "Community & Growth Lead", initial: "Z" },
+      { name: "Muhammad Ariiq Ash Shidiq", role: "External & Partnership Lead", initial: "Ar" },
+      { name: "Rifki Haikal", role: "External & Partnership Lead", initial: "R" },
+    ],
+  },
+  {
+    label: "Developer",
+    members: [
+      { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I" },
+      { name: "Muhammad Asrori", role: "Fullstack Developer", initial: "As" },
+      { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N" },
+    ],
+  },
+  {
+    label: "Creative & Media",
+    members: [
+      { name: "Sulthan Nadzir", role: "Creative & Media Lead", initial: "S" },
+      { name: "Navis Athiyatul Hafidz", role: "Creative & Media", initial: "Na" },
+      { name: "Hafidz Majduddin", role: "Creative & Media", initial: "H" },
+    ],
+  },
 ];
 
 /* ─── Page ───────────────────────────────────────────────── */
@@ -291,23 +324,48 @@ const AboutPage = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 md:gap-5">
-            {TEAM.map(({ name, role, initial }, i) => (
-              <div
-                key={i}
-                className="group flex flex-col items-center rounded-xl border border-border/40 bg-card/30 p-3 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1 md:rounded-2xl md:p-6"
-              >
-                <div className="relative mb-3 md:mb-5">
-                  <div className="absolute inset-0 scale-110 rounded-xl bg-gradient-purple opacity-0 blur-md transition-opacity group-hover:opacity-40 md:rounded-2xl" />
-                  <div className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10 md:h-20 md:w-20 md:rounded-2xl">
-                    <span className="font-display text-lg font-bold text-primary/50 md:text-2xl">{initial}</span>
+          <div className="flex flex-col gap-6 md:gap-8">
+            {TEAM_GROUPS.map(({ label, members }) => {
+              const colClass =
+                members.length === 1
+                  ? "flex justify-center"
+                  : members.length === 2
+                  ? "grid grid-cols-2 gap-3 max-w-xs mx-auto w-full md:max-w-sm md:gap-5"
+                  : "grid grid-cols-3 gap-3 md:gap-5";
+
+              return (
+                <div key={label}>
+                  {/* Group label */}
+                  <div className="mb-3 flex items-center gap-2 md:mb-4">
+                    <div className="h-px flex-1 bg-border/30" />
+                    <span className="font-modernist text-[10px] font-bold uppercase tracking-widest text-primary/60 md:text-[11px]">
+                      {label}
+                    </span>
+                    <div className="h-px flex-1 bg-border/30" />
+                  </div>
+
+                  {/* Members */}
+                  <div className={colClass}>
+                    {members.map(({ name, role, initial }) => (
+                      <div
+                        key={name}
+                        className={`group flex flex-col items-center rounded-xl border border-border/40 bg-card/30 p-3 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1 md:rounded-2xl md:p-6 ${members.length === 1 ? "w-40 md:w-56" : ""}`}
+                      >
+                        <div className="relative mb-3 md:mb-5">
+                          <div className="absolute inset-0 scale-110 rounded-xl bg-gradient-purple opacity-0 blur-md transition-opacity group-hover:opacity-40 md:rounded-2xl" />
+                          <div className={`relative flex items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10 md:rounded-2xl ${members.length === 1 ? "h-16 w-16 md:h-20 md:w-20" : "h-12 w-12 md:h-16 md:w-16"}`}>
+                            <span className={`font-display font-bold text-primary/50 ${members.length === 1 ? "text-2xl md:text-3xl" : "text-lg md:text-xl"}`}>{initial}</span>
+                          </div>
+                        </div>
+                        <p className="font-display text-[11px] font-bold leading-tight text-foreground md:text-sm">{name}</p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground md:mt-1 md:text-xs">{role}</p>
+                        <div className="mt-2 h-px w-6 rounded-full bg-primary/20 transition-all group-hover:w-10 group-hover:bg-primary/50 md:mt-3 md:w-8" />
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <p className="font-display text-[11px] font-bold leading-tight text-foreground md:text-sm">{name}</p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground md:mt-1 md:text-xs">{role}</p>
-                <div className="mt-2 h-px w-6 rounded-full bg-primary/20 transition-all group-hover:w-10 group-hover:bg-primary/50 md:mt-3 md:w-8" />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
