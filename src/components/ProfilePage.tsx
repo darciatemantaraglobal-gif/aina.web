@@ -22,9 +22,11 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
     loadData();
   }, []);
 
-  const loadData = async () => {
-    setLoadError(false);
-    setLoading(true);
+  const loadData = async (attempt = 1) => {
+    if (attempt === 1) {
+      setLoadError(false);
+      setLoading(true);
+    }
     try {
       let uid = userIdProp;
       if (!uid) {
@@ -34,7 +36,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       if (!uid) { setLoading(false); return; }
 
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 10000)
+        setTimeout(() => reject(new Error("timeout")), 25000)
       );
 
       const [profileRes, rolesRes, articlesRes] = await Promise.race([
@@ -49,10 +51,14 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       if (profileRes.data) setProfile(profileRes.data);
       if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
       if (articlesRes.data) setArticleCount(articlesRes.data.length);
+      setLoading(false);
     } catch (err) {
-      console.error("ProfilePage error:", err);
+      console.error(`ProfilePage error (attempt ${attempt}):`, err);
+      if (attempt < 3) {
+        setTimeout(() => loadData(attempt + 1), 3000);
+        return;
+      }
       setLoadError(true);
-    } finally {
       setLoading(false);
     }
   };
