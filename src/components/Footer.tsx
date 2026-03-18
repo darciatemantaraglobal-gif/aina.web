@@ -72,7 +72,7 @@ const Footer = () => {
             <ul className="space-y-2.5">
               {[
                 { label: "Syarat & Ketentuan", to: "/terms" },
-                { label: "Kebijakan Privasi", to: "/terms#privacy" },
+                { label: "Kebijakan Privasi", to: "/privacy" },
               ].map(({ label, to }) => (
                 <li key={to}>
                   <Link to={to} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
