@@ -84,7 +84,6 @@ const TEAM_GROUPS: TeamGroup[] = [
     label: "Developer",
     members: [
       { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I" },
-      { name: "Muhammad Asrori", role: "Fullstack Developer", initial: "As" },
       { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N" },
     ],
   },
@@ -388,9 +387,8 @@ const AboutPage = () => {
               </div>
 
               <h2 className="font-display text-2xl font-bold leading-tight text-foreground sm:text-4xl">
-                Bergabunglah Bersama
-                <br />
-                <span className="text-gradient-purple">Ribuan Masisir</span>
+                Bergabung bersama{" "}
+                <span className="text-gradient-purple">Tim AINA!</span>
               </h2>
               <p className="mx-auto mt-3 max-w-md text-xs leading-relaxed text-muted-foreground md:mt-4 md:text-sm">
                 Daftar gratis dan mulai tanyakan apa saja tentang kehidupan di Mesir kepada AINA.
