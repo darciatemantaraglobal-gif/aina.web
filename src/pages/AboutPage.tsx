@@ -48,7 +48,6 @@ const TIMELINE = [
   },
 ];
 
-
 const TEAM: { name: string; role: string; initial: string }[] = [
   { name: "Daru Fahmaa Muliawan, Lc.", role: "Founder AIGYPT & AINA", initial: "D" },
   { name: "Fairuz Azri Afif Arsyadi", role: "Head of AINA Mesir", initial: "F" },
@@ -79,15 +78,13 @@ const AboutPage = () => {
       <Navbar />
 
       {/* ══════════ HERO ══════════════════════════════════════ */}
-      <section className="relative min-h-[92vh] overflow-hidden flex items-center justify-center px-4 pt-16">
+      <section className="relative overflow-hidden flex items-center justify-center px-4 pt-20 pb-12 md:min-h-[92vh] md:pt-16 md:pb-0">
 
         {/* Background layers */}
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-background to-background" />
-          {/* Large glow orbs */}
           <div className="absolute left-1/4 top-1/4 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[160px]" />
           <div className="absolute right-1/4 bottom-1/3 h-[400px] w-[400px] rounded-full bg-purple-glow/8 blur-[120px]" />
-          {/* Grid dots */}
           <div
             className="absolute inset-0 opacity-20"
             style={{
@@ -103,7 +100,7 @@ const AboutPage = () => {
           className={`relative z-10 mx-auto max-w-4xl text-center transition-all duration-1000 ${heroRef.inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"}`}
         >
           {/* Badge */}
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/8 px-5 py-2 backdrop-blur-sm">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/8 px-4 py-1.5 backdrop-blur-sm md:mb-8 md:px-5 md:py-2">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
@@ -112,7 +109,7 @@ const AboutPage = () => {
           </div>
 
           {/* Main heading */}
-          <h1 className="font-display text-5xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
+          <h1 className="font-display text-4xl font-bold leading-[1.08] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
             Asisten AI yang{" "}
             <br className="hidden sm:block" />
             <span className="text-gradient-purple">Benar-benar Mengerti</span>
@@ -120,28 +117,28 @@ const AboutPage = () => {
             <span className="text-foreground"> Masisir</span>
           </h1>
 
-          <p className="mx-auto mt-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+          <p className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-lg md:mt-8 md:text-base">
             AINA adalah AI pendamping untuk mahasiswa Indonesia di Mesir. Karena AINA belajar dari pengalaman
             nyata Masisir, jawabannya lebih nyambung, praktis, dan sesuai kondisi di lapangan.
           </p>
 
           {/* CTA buttons */}
-          <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center md:mt-10">
             <Link to="/login">
-              <button className="group flex items-center gap-2 rounded-xl bg-gradient-purple px-7 py-3 text-sm font-semibold text-primary-foreground shadow-[0_0_24px_hsl(270_80%_65%/0.35)] transition-all hover:scale-105 hover:shadow-[0_0_36px_hsl(270_80%_65%/0.55)]">
+              <button className="group flex items-center gap-2 rounded-xl bg-gradient-purple px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_0_24px_hsl(270_80%_65%/0.35)] transition-all hover:scale-105 hover:shadow-[0_0_36px_hsl(270_80%_65%/0.55)] md:px-7 md:py-3">
                 Mulai Gratis
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
             </Link>
             <Link to="/contributor">
-              <button className="rounded-xl border border-border/60 bg-card/40 px-7 py-3 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/5">
+              <button className="rounded-xl border border-border/60 bg-card/40 px-6 py-2.5 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/5 md:px-7 md:py-3">
                 Jadi Kontributor
               </button>
             </Link>
           </div>
 
-          {/* Logo glow */}
-          <div className="mt-16 flex justify-center">
+          {/* Logo glow — hidden on mobile, visible on md+ */}
+          <div className="mt-10 hidden justify-center md:mt-16 md:flex">
             <div className="relative">
               <div className="absolute inset-0 scale-150 rounded-full bg-primary/15 blur-3xl" />
               <img
@@ -154,15 +151,15 @@ const AboutPage = () => {
           </div>
         </div>
 
-        {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 opacity-40">
+        {/* Scroll indicator — desktop only */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 hidden flex-col items-center gap-1 opacity-40 md:flex">
           <div className="h-12 w-px bg-gradient-to-b from-transparent to-primary/60" />
           <div className="h-2 w-2 animate-bounce rounded-full bg-primary/60" />
         </div>
       </section>
 
       {/* ══════════ STORY TIMELINE ══════════════════════════════ */}
-      <section className="relative overflow-hidden px-4 py-20">
+      <section className="relative overflow-hidden px-4 py-10 md:py-20">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -left-32 top-1/2 h-[500px] w-[500px] -translate-y-1/2 rounded-full bg-primary/6 blur-[140px]" />
         </div>
@@ -171,42 +168,36 @@ const AboutPage = () => {
           ref={storyRef.ref}
           className={`relative z-10 mx-auto max-w-5xl transition-all duration-700 ${storyRef.inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
         >
-          <div className="mb-14 text-center">
-            <p className="mb-3 font-modernist text-[11px] font-bold uppercase tracking-[0.2em] text-primary">Perjalanan</p>
-            <h2 className="font-display text-4xl font-bold text-foreground sm:text-5xl">
+          <div className="mb-8 text-center md:mb-14">
+            <p className="mb-2 font-modernist text-[11px] font-bold uppercase tracking-[0.2em] text-primary md:mb-3">Perjalanan</p>
+            <h2 className="font-display text-3xl font-bold text-foreground sm:text-5xl">
               Dari <span className="text-gradient-purple">Keresahan</span> ke Solusi
             </h2>
           </div>
 
-          {/* Timeline */}
+          {/* Timeline — stacked on mobile, alternating on desktop */}
           <div className="relative">
-            {/* Vertical line (desktop) */}
             <div className="absolute left-1/2 top-0 hidden h-full w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-primary/30 to-transparent md:block" />
 
-            <div className="space-y-10 md:space-y-0">
+            <div className="flex flex-col gap-3 md:gap-0 md:space-y-0">
               {TIMELINE.map(({ period, title, desc }, i) => {
                 const isLeft = i % 2 === 0;
                 return (
                   <div
                     key={title}
                     className={`relative flex flex-col gap-4 md:flex-row md:items-center md:gap-0 ${isLeft ? "md:flex-row" : "md:flex-row-reverse"}`}
-                    style={{ marginBottom: "3rem" }}
+                    style={{ marginBottom: "2.5rem" }}
                   >
-                    {/* Content card */}
                     <div className={`flex-1 ${isLeft ? "md:pr-12 md:text-right" : "md:pl-12 md:text-left"}`}>
-                      <div className="group rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5">
-                        <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">{period}</span>
-                        <h3 className="mt-1 font-display text-lg font-bold text-foreground">{title}</h3>
-                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{desc}</p>
+                      <div className="group rounded-xl border border-border/40 bg-card/30 p-4 backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 md:rounded-2xl md:p-6">
+                        <span className="font-modernist text-[10px] font-bold uppercase tracking-widest text-primary md:text-xs">{period}</span>
+                        <h3 className="mt-0.5 font-display text-base font-bold text-foreground md:mt-1 md:text-lg">{title}</h3>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground md:mt-2 md:text-sm">{desc}</p>
                       </div>
                     </div>
-
-                    {/* Dot on the line */}
                     <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 h-5 w-5 items-center justify-center rounded-full border-2 border-primary bg-background shadow-[0_0_12px_hsl(270_80%_65%/0.5)]">
                       <div className="h-2 w-2 rounded-full bg-primary" />
                     </div>
-
-                    {/* Empty side */}
                     <div className="hidden flex-1 md:block" />
                   </div>
                 );
@@ -217,7 +208,7 @@ const AboutPage = () => {
       </section>
 
       {/* ══════════ VISION & MISSION ════════════════════════════ */}
-      <section className="relative px-4 py-20">
+      <section className="relative px-4 py-10 md:py-20">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute right-0 top-1/2 h-[600px] w-[600px] -translate-y-1/2 rounded-full bg-primary/6 blur-[150px]" />
         </div>
@@ -226,24 +217,23 @@ const AboutPage = () => {
           ref={missionRef.ref}
           className={`relative z-10 mx-auto max-w-5xl transition-all duration-700 ${missionRef.inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
         >
-          {/* Heading */}
-          <div className="mb-14 text-center">
-            <p className="mb-3 font-modernist text-[11px] font-bold uppercase tracking-[0.2em] text-primary">Arah Kami</p>
-            <h2 className="font-display text-4xl font-bold text-foreground sm:text-5xl">
+          <div className="mb-8 text-center md:mb-14">
+            <p className="mb-2 font-modernist text-[11px] font-bold uppercase tracking-[0.2em] text-primary md:mb-3">Arah Kami</p>
+            <h2 className="font-display text-3xl font-bold text-foreground sm:text-5xl">
               Visi & <span className="text-gradient-purple">Misi</span>
             </h2>
           </div>
 
-          {/* Vision — full width */}
-          <div className="relative mb-6 overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/12 via-primary/6 to-transparent p-8 md:p-10">
+          {/* Vision */}
+          <div className="relative mb-4 overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-br from-primary/12 via-primary/6 to-transparent p-5 md:mb-6 md:rounded-2xl md:p-10">
             <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-primary/15 blur-2xl" />
             <div className="relative">
-              <div className="mb-4 flex items-center gap-2">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-purple">
-                  <Lightbulb className="h-5 w-5 text-primary-foreground" />
+              <div className="mb-3 flex items-center gap-2 md:mb-4">
+                <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-purple md:h-10 md:w-10 md:rounded-2xl">
+                  <Lightbulb className="h-4 w-4 text-primary-foreground md:h-5 md:w-5" />
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Star className="h-4 w-4 text-primary" />
+                  <Star className="h-3.5 w-3.5 text-primary md:h-4 md:w-4" />
                   <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">Visi</span>
                 </div>
               </div>
@@ -257,25 +247,25 @@ const AboutPage = () => {
 
           {/* Mission — 4 roles */}
           <div className="mb-4">
-            <div className="mb-5 flex items-center gap-2">
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-secondary/60">
-                <Zap className="h-5 w-5 text-primary" />
+            <div className="mb-4 flex items-center gap-2 md:mb-5">
+              <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-secondary/60 md:h-10 md:w-10 md:rounded-2xl">
+                <Zap className="h-4 w-4 text-primary md:h-5 md:w-5" />
               </div>
               <span className="font-modernist text-xs font-bold uppercase tracking-widest text-primary">Peran AINA</span>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3 md:gap-4">
               {[
                 { id: "SYS_01", title: "Academic Support", desc: "Membantu proses belajar, pemahaman materi, dan adaptasi akademik di lingkungan Al-Azhar." },
                 { id: "SYS_02", title: "Administrative Guidance", desc: "Panduan terstruktur terkait urusan kampus, dokumen, dan proses birokrasi." },
                 { id: "SYS_03", title: "Life System", desc: "Membantu Masisir hidup lebih teratur, produktif, dan terarah." },
                 { id: "SYS_04", title: "Komunitas Masisir", desc: "Ekosistem saling bantu antar mahasiswa Indonesia di Mesir." },
               ].map(({ id, title, desc }) => (
-                <div key={id} className="relative overflow-hidden rounded-2xl border border-border/40 bg-card/30 p-6 backdrop-blur-xl">
+                <div key={id} className="relative overflow-hidden rounded-xl border border-border/40 bg-card/30 p-4 backdrop-blur-xl md:rounded-2xl md:p-6">
                   <div className="absolute -right-8 -bottom-8 h-28 w-28 rounded-full bg-primary/6 blur-2xl" />
                   <div className="relative">
                     <span className="font-modernist text-[10px] font-bold tracking-widest text-primary/50">{id}</span>
-                    <h3 className="mt-1 mb-2 font-display text-sm font-bold text-foreground">{title}</h3>
-                    <p className="text-xs leading-relaxed text-muted-foreground">{desc}</p>
+                    <h3 className="mt-0.5 mb-1 font-display text-xs font-bold text-foreground md:mt-1 md:mb-2 md:text-sm">{title}</h3>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground md:text-xs">{desc}</p>
                   </div>
                 </div>
               ))}
@@ -285,38 +275,37 @@ const AboutPage = () => {
       </section>
 
       {/* ══════════ TEAM ════════════════════════════════════════ */}
-      <section className="relative px-4 py-20">
+      <section className="relative px-4 py-10 md:py-20">
         <div
           ref={teamRef.ref}
           className={`relative z-10 mx-auto max-w-4xl transition-all duration-700 ${teamRef.inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
         >
-          <div className="mb-14 text-center">
-            <p className="mb-3 font-modernist text-[11px] font-bold uppercase tracking-[0.2em] text-primary">Tim Kami</p>
-            <h2 className="font-display text-4xl font-bold text-foreground sm:text-5xl">
+          <div className="mb-8 text-center md:mb-14">
+            <p className="mb-2 font-modernist text-[11px] font-bold uppercase tracking-[0.2em] text-primary md:mb-3">Tim Kami</p>
+            <h2 className="font-display text-3xl font-bold text-foreground sm:text-5xl">
               Orang-orang di Balik{" "}
               <span className="text-gradient-purple">AINA</span>
             </h2>
-            <p className="mx-auto mt-4 max-w-md text-sm text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-md text-xs text-muted-foreground md:mt-4 md:text-sm">
               Mahasiswa dan alumni Masisir yang peduli dan berkomitmen membangun platform ini.
             </p>
           </div>
 
-          <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 md:gap-5">
             {TEAM.map(({ name, role, initial }, i) => (
               <div
                 key={i}
-                className="group flex flex-col items-center rounded-2xl border border-border/40 bg-card/30 p-6 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1"
+                className="group flex flex-col items-center rounded-xl border border-border/40 bg-card/30 p-3 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1 md:rounded-2xl md:p-6"
               >
-                {/* Avatar ring */}
-                <div className="relative mb-5">
-                  <div className="absolute inset-0 scale-110 rounded-2xl bg-gradient-purple opacity-0 blur-md transition-opacity group-hover:opacity-40" />
-                  <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10">
-                    <span className="font-display text-2xl font-bold text-primary/50">{initial}</span>
+                <div className="relative mb-3 md:mb-5">
+                  <div className="absolute inset-0 scale-110 rounded-xl bg-gradient-purple opacity-0 blur-md transition-opacity group-hover:opacity-40 md:rounded-2xl" />
+                  <div className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10 md:h-20 md:w-20 md:rounded-2xl">
+                    <span className="font-display text-lg font-bold text-primary/50 md:text-2xl">{initial}</span>
                   </div>
                 </div>
-                <p className="font-display text-sm font-bold text-foreground">{name}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{role}</p>
-                <div className="mt-3 h-px w-8 rounded-full bg-primary/20 transition-all group-hover:w-12 group-hover:bg-primary/50" />
+                <p className="font-display text-[11px] font-bold leading-tight text-foreground md:text-sm">{name}</p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground md:mt-1 md:text-xs">{role}</p>
+                <div className="mt-2 h-px w-6 rounded-full bg-primary/20 transition-all group-hover:w-10 group-hover:bg-primary/50 md:mt-3 md:w-8" />
               </div>
             ))}
           </div>
@@ -324,42 +313,40 @@ const AboutPage = () => {
       </section>
 
       {/* ══════════ CTA ══════════════════════════════════════════ */}
-      <section className="relative overflow-hidden px-4 pb-28 pt-8">
+      <section className="relative overflow-hidden px-4 py-10 md:pb-28 md:pt-8">
         <div
           ref={ctaRef.ref}
           className={`relative z-10 mx-auto max-w-3xl transition-all duration-700 ${ctaRef.inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
         >
-          <div className="relative overflow-hidden rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/15 via-card/30 to-purple-glow/8 p-10 text-center backdrop-blur-xl md:p-14">
-            {/* Background glow orbs inside card */}
+          <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/15 via-card/30 to-purple-glow/8 p-7 text-center backdrop-blur-xl md:rounded-3xl md:p-14">
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute -left-16 -top-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
               <div className="absolute -bottom-16 -right-16 h-48 w-48 rounded-full bg-purple-glow/15 blur-3xl" />
             </div>
 
             <div className="relative">
-              {/* Trending icon badge */}
-              <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-purple shadow-[0_0_32px_hsl(270_80%_65%/0.5)]">
-                <TrendingUp className="h-8 w-8 text-primary-foreground" />
+              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-purple shadow-[0_0_32px_hsl(270_80%_65%/0.5)] md:mb-6 md:h-16 md:w-16 md:rounded-2xl">
+                <TrendingUp className="h-6 w-6 text-primary-foreground md:h-8 md:w-8" />
               </div>
 
-              <h2 className="font-display text-3xl font-bold leading-tight text-foreground sm:text-4xl">
+              <h2 className="font-display text-2xl font-bold leading-tight text-foreground sm:text-4xl">
                 Bergabunglah Bersama
                 <br />
                 <span className="text-gradient-purple">Ribuan Masisir</span>
               </h2>
-              <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
-                Daftar gratis dan mulai tanyakan apa saja tentang kehidupan di Mesir kepada AINA. Tidak ada pertanyaan yang terlalu kecil.
+              <p className="mx-auto mt-3 max-w-md text-xs leading-relaxed text-muted-foreground md:mt-4 md:text-sm">
+                Daftar gratis dan mulai tanyakan apa saja tentang kehidupan di Mesir kepada AINA.
               </p>
 
-              <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <div className="mt-5 flex flex-col items-center gap-3 sm:flex-row sm:justify-center md:mt-8">
                 <Link to="/login">
-                  <button className="group flex items-center gap-2 rounded-xl bg-gradient-purple px-8 py-3 text-sm font-semibold text-primary-foreground shadow-[0_0_24px_hsl(270_80%_65%/0.4)] transition-all hover:scale-105 hover:shadow-[0_0_36px_hsl(270_80%_65%/0.65)]">
+                  <button className="group flex items-center gap-2 rounded-xl bg-gradient-purple px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_0_24px_hsl(270_80%_65%/0.4)] transition-all hover:scale-105 hover:shadow-[0_0_36px_hsl(270_80%_65%/0.65)] md:px-8 md:py-3">
                     Mulai Gratis Sekarang
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </button>
                 </Link>
                 <Link to="/contributor">
-                  <button className="rounded-xl border border-border/60 bg-background/40 px-8 py-3 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/8">
+                  <button className="rounded-xl border border-border/60 bg-background/40 px-6 py-2.5 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/8 md:px-8 md:py-3">
                     Jadi Kontributor
                   </button>
                 </Link>
