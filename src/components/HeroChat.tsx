@@ -25,15 +25,9 @@ const HeroChat = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Two base rates — everything else is derived
   const [egpToIdr, setEgpToIdr] = useState(245);
-  const [usdToIdr, setUsdToIdr] = useState(15800);
 
-  const egpToUsd = egpToIdr / usdToIdr;
-  const idrToUsd = 1 / usdToIdr;
-
-  const initUsd = (1 * (egpToIdr / usdToIdr)).toFixed(4);
-  const [currencies, setCurrencies] = useState({ egp: "1", idr: "245", usd: initUsd });
+  const [currencies, setCurrencies] = useState({ egp: "1", idr: "245" });
   const [focusedCurrency, setFocusedCurrency] = useState<string | null>(null);
   const [focusedRate, setFocusedRate] = useState<string | null>(null);
 
@@ -68,11 +62,6 @@ const HeroChat = () => {
       if (n >= 1e3) return fmtInt(n);
       return fmtDec(n, n % 1 === 0 ? 0 : 2);
     }
-    if (field === "usd") {
-      if (n >= 1000) return fmtInt(n);
-      if (n >= 1)    return fmtDec(n, 2);
-      return fmtDec(n, 4);
-    }
     return String(n);
   };
 
@@ -102,19 +91,16 @@ const HeroChat = () => {
     setCurrencies({
       egp: currencies.egp,
       idr: (egp * egpToIdr).toFixed(0),
-      usd: (egp * egpToUsd).toFixed(6),
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [egpToIdr, usdToIdr]);
+  }, [egpToIdr]);
 
   const handleCurrencyChange = (field: string, value: string) => {
     const num = parseInput(value);
     if (field === "egp") {
-      setCurrencies({ egp: value, idr: (num * egpToIdr).toFixed(0), usd: (num * egpToUsd).toFixed(6) });
-    } else if (field === "idr") {
-      setCurrencies({ egp: (num / egpToIdr).toFixed(6), idr: value, usd: (num * idrToUsd).toFixed(6) });
+      setCurrencies({ egp: value, idr: (num * egpToIdr).toFixed(0) });
     } else {
-      setCurrencies({ egp: (num / egpToUsd).toFixed(6), idr: (num * usdToIdr).toFixed(0), usd: value });
+      setCurrencies({ egp: (num / egpToIdr).toFixed(6), idr: value });
     }
   };
 
@@ -309,7 +295,6 @@ const HeroChat = () => {
                 [
                   { code: "EGP", flag: "🇪🇬", field: "egp" },
                   { code: "IDR", flag: "🇮🇩", field: "idr" },
-                  { code: "USD", flag: "🇺🇸", field: "usd" },
                 ] as const
               ).map((c, i) => (
                 <div key={c.code} className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
@@ -345,32 +330,21 @@ const HeroChat = () => {
                   </button>
                 </div>
                 <div className="space-y-1 px-3 pb-3">
-                  {[
-                    { flag: "🇪🇬", label: "EGP", value: egpToIdr, onChange: (v: number) => setEgpToIdr(v) },
-                    { flag: "🇺🇸", label: "USD", value: usdToIdr, onChange: (v: number) => setUsdToIdr(v) },
-                  ].map((r) => (
-                    <div
-                      key={r.label}
-                      className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-2.5 py-1.5 focus-within:border-primary/50 focus-within:bg-primary/5"
-                    >
-                      <span className="text-sm">{r.flag}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">1 {r.label} =</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={focusedRate === r.label ? r.value.toString() : fmtInt(r.value)}
-                        onChange={(e) => r.onChange(parseFloat(e.target.value.replace(/\./g, "").replace(",", ".")) || 0)}
-                        onFocus={() => setFocusedRate(r.label)}
-                        onBlur={() => setFocusedRate(null)}
-                        className="min-w-0 flex-1 bg-transparent text-right text-xs font-display font-bold text-foreground focus:outline-none"
-                        placeholder="0"
-                      />
-                      <span className="shrink-0 text-[10px] font-bold text-primary">IDR 🇮🇩</span>
-                    </div>
-                  ))}
-                  <p className="pt-0.5 text-center text-[10px] text-muted-foreground">
-                    1 EGP ≈ <span className="font-semibold text-foreground/70">{egpToUsd.toFixed(4)} USD</span>
-                  </p>
+                  <div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-secondary/40 px-2.5 py-1.5 focus-within:border-primary/50 focus-within:bg-primary/5">
+                    <span className="text-sm">🇪🇬</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">1 EGP =</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={focusedRate === "EGP" ? egpToIdr.toString() : fmtInt(egpToIdr)}
+                      onChange={(e) => setEgpToIdr(parseFloat(e.target.value.replace(/\./g, "").replace(",", ".")) || 0)}
+                      onFocus={() => setFocusedRate("EGP")}
+                      onBlur={() => setFocusedRate(null)}
+                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-display font-bold text-foreground focus:outline-none"
+                      placeholder="0"
+                    />
+                    <span className="shrink-0 text-[10px] font-bold text-primary">IDR 🇮🇩</span>
+                  </div>
                 </div>
               </div>
             )}
