@@ -214,7 +214,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
   // Race all models in parallel — first to succeed wins, worst case ~12s not ~200s
   const tryModel = async (model) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
     try {
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -228,7 +228,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: systemPrompt }, ...messages],
-          max_tokens: 1500,
+          max_tokens: 3000,
           temperature: 0.5,
         }),
       });
