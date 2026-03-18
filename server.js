@@ -176,7 +176,7 @@ app.post("/api/chat", async (req, res) => {
     const articlesText = articles.map((a, i) =>
       `### Artikel ${i + 1}: ${a.title} [${a.category}]\n${a.content}`
     ).join("\n\n");
-    knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nGunakan informasi berikut sebagai referensi utama saat menjawab. Jika informasi yang dicari ada di sini, prioritaskan isi artikel ini di atas pengetahuan umummu.\n\n${articlesText}\n---`;
+    knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Jangan gunakan pengetahuan umummu jika jawabannya sudah ada di sini. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.\n\n${articlesText}\n---`;
   }
 
   const systemPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Mesir (Masisir).
@@ -184,6 +184,7 @@ app.post("/api/chat", async (req, res) => {
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
 
 ATURAN KERAS — WAJIB DIIKUTI:
+- PRIORITAS JAWABAN: Gunakan Knowledge Base terlebih dahulu. Gunakan pengetahuan umum hanya jika topik tidak tercakup di Knowledge Base.
 - Jawab minimal 3 paragraf pendek — pastikan informasi tersampaikan jelas tapi tidak bertele-tele.
 - Setiap paragraf fokus pada satu poin utama. Hindari pengulangan dan elaborasi berlebihan.
 - Untuk syarat, dokumen, atau daftar ketentuan → gunakan format poin (bullet `-`) bukan paragraf.
