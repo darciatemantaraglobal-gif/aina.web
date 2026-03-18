@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import ainaLogo from "@/assets/aina-logo.png";
+import { Instagram } from "lucide-react";
 
 const Footer = () => {
   const year = new Date().getFullYear();
@@ -17,6 +18,15 @@ const Footer = () => {
             <p className="text-xs leading-relaxed text-muted-foreground">
               Asisten pintar khusus mahasiswa Indonesia di Mesir. Temukan jawaban, kelola aktivitas, dan tumbuh bersama komunitas.
             </p>
+            <a
+              href="https://instagram.com/ai.gypt"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-primary"
+            >
+              <Instagram className="h-3.5 w-3.5" />
+              @ai.gypt
+            </a>
           </div>
 
           {/* Platform */}

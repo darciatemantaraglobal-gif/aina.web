@@ -191,10 +191,29 @@ ATURAN MENJAWAB:
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
-  let lastError = null;
-  for (const model of MODELS) {
+  const cleanReply = (raw) => raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?p>/gi, "\n")
+    .replace(/<\/?b>/gi, "**")
+    .replace(/<\/?strong>/gi, "**")
+    .replace(/<\/?i>/gi, "_")
+    .replace(/<\/?em>/gi, "_")
+    .replace(/<li>/gi, "\n- ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<\/?[uo]l>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // Race all models in parallel — first to succeed wins, worst case ~12s not ~200s
+  const tryModel = async (model) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     try {
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -212,44 +231,23 @@ ATURAN MENJAWAB:
           temperature: 0.5,
         }),
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        const raw = data.choices?.[0]?.message?.content || "Maaf, tidak ada respons.";
-        const reply = raw
-          .replace(/<br\s*\/?>/gi, "\n")
-          .replace(/<\/?p>/gi, "\n")
-          .replace(/<\/?b>/gi, "**")
-          .replace(/<\/?strong>/gi, "**")
-          .replace(/<\/?i>/gi, "_")
-          .replace(/<\/?em>/gi, "_")
-          .replace(/<li>/gi, "\n- ")
-          .replace(/<\/li>/gi, "")
-          .replace(/<\/?[uo]l>/gi, "")
-          .replace(/<[^>]+>/g, "")
-          .replace(/&nbsp;/gi, " ")
-          .replace(/&amp;/gi, "&")
-          .replace(/&lt;/gi, "<")
-          .replace(/&gt;/gi, ">")
-          .replace(/&quot;/gi, '"')
-          .replace(/\n{3,}/g, "\n\n")
-          .trim();
-        console.log(`Responded using model: ${model}`);
-        return res.json({ reply, model });
-      }
-      const errBody = await response.text();
-      console.warn(`Model ${model} failed (${response.status}):`, errBody.slice(0, 200));
-      lastError = errBody;
-      if (response.status === 401 || response.status === 403) break;
-    } catch (err) {
-      console.warn(`Model ${model} timed out or errored:`, err.message);
-      lastError = err.message;
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error("empty response");
+      return { reply: content, model };
     } finally {
-      clearTimeout(timeout);
+      clearTimeout(timeoutId);
     }
-  }
+  };
 
-  return res.status(503).json({ error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik.", detail: lastError });
+  try {
+    const result = await Promise.any(MODELS.map(tryModel));
+    console.log(`Responded using model: ${result.model}`);
+    return res.json({ reply: cleanReply(result.reply), model: result.model });
+  } catch {
+    return res.status(503).json({ error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik." });
+  }
 });
 
 /* ── Admin: Stats ────────────────────────────────────── */
