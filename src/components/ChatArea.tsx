@@ -273,9 +273,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : isEmpty ? (
           <div className="flex h-full flex-col items-center justify-center px-4 pb-4">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-purple p-2.5 shadow-lg shadow-primary/20">
-              <AinaLogo className="h-full w-full object-contain" />
-            </div>
+            <AinaLogo className="mb-4 h-16 w-16 object-contain drop-shadow-[0_0_18px_rgba(139,92,246,0.85)]" />
             <h1 className="font-display text-2xl font-bold text-foreground">Halo! Saya AINA</h1>
             <p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
               Asisten AI khusus mahasiswa Indonesia di Mesir. Tanya apa saja tentang kehidupan di Kairo!
