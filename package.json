@@ -4,12 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node server.js & vite",
+    "dev": "node server.js & npx --no-install vite",
     "server": "node server.js",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
-    "lint": "eslint .",
-    "preview": "vite preview",
+    "build": "npx --no-install vite build",
+    "build:dev": "npx --no-install vite build --mode development",
+    "lint": "npx --no-install eslint .",
+    "preview": "npx --no-install vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
   },
