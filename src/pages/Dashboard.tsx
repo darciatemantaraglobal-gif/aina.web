@@ -78,8 +78,14 @@ const Dashboard = () => {
           .select("role")
           .eq("user_id", session.user.id);
         setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
-      } else {
+      } else if (authReady) {
         navigate("/login");
+      } else {
+        setTimeout(() => {
+          supabase.auth.getSession().then(({ data: { session: s } }) => {
+            if (!s) navigate("/login");
+          });
+        }, 500);
       }
     });
 
