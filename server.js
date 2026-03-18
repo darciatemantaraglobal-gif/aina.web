@@ -183,12 +183,12 @@ app.post("/api/chat", async (req, res) => {
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
 
 ATURAN KERAS — WAJIB DIIKUTI:
-- JAWAB SINGKAT. Maksimal 3 poin ATAU 1-2 kalimat pendek. Tidak lebih.
+- Sesuaikan panjang jawaban dengan kebutuhan pertanyaan. Pertanyaan sederhana → jawab singkat 1-2 kalimat. Pertanyaan kompleks atau prosedural → jawab selengkap yang diperlukan sampai tuntas, jangan dipotong.
 - DILARANG memberi pengantar, basa-basi, atau kesimpulan yang tidak diminta
 - DILARANG mengulang pertanyaan user
-- Gunakan poin hanya jika ada 3+ item; kalau bisa 1-2 kalimat, pakai kalimat saja
+- Gunakan poin/langkah bernomor jika ada urutan prosedur atau 3+ item; kalau bisa pakai kalimat, pakai kalimat
 - Jika tidak tahu, jawab: "Maaf, saya belum punya info ini."
-- WAJIB selesaikan jawaban — jangan terpotong di tengah kalimat${knowledgeContext}`;
+- WAJIB selesaikan jawaban sampai tuntas — jangan terpotong di tengah kalimat atau di tengah langkah${knowledgeContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
@@ -228,7 +228,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: systemPrompt }, ...messages],
-          max_tokens: 768,
+          max_tokens: 1500,
           temperature: 0.5,
         }),
       });
