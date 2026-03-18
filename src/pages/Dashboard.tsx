@@ -1,14 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
-import ProductivityPage from "@/components/ProductivityPage";
-import ContributorPage from "@/components/ContributorPage";
-import ProfilePage from "@/components/ProfilePage";
-import AdminPage from "@/components/AdminPage";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper } from "lucide-react";
 import { toast } from "sonner";
+
+const ProductivityPage = lazy(() => import("@/components/ProductivityPage"));
+const ContributorPage = lazy(() => import("@/components/ContributorPage"));
+const ProfilePage = lazy(() => import("@/components/ProfilePage"));
+const AdminPage = lazy(() => import("@/components/AdminPage"));
 
 interface Chat {
   id: string;
@@ -35,11 +36,19 @@ const BeritaPlaceholder = () => (
   </div>
 );
 
+const TabLoader = () => (
+  <div className="flex h-full items-center justify-center">
+    <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+  </div>
+);
+
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("chat");
   const [authReady, setAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userId, setUserId] = useState<string | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(["chat"]));
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -50,6 +59,7 @@ const Dashboard = () => {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
+        setUserId(session.user.id);
         setAuthReady(true);
         const { data: roles } = await supabase
           .from("user_roles")
@@ -61,6 +71,7 @@ const Dashboard = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
+        setUserId(session.user.id);
         setAuthReady(true);
         const { data: roles } = await supabase
           .from("user_roles")
@@ -139,6 +150,12 @@ const Dashboard = () => {
     toast.success("Chat dihapus");
   };
 
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    setVisitedTabs((prev) => new Set([...prev, tab]));
+    setSidebarOpen(false);
+  };
+
   if (!authReady) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
@@ -147,53 +164,6 @@ const Dashboard = () => {
       </div>
     );
   }
-
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
-    setSidebarOpen(false);
-  };
-
-  const renderContent = () => {
-    if (activeTab === "chat") {
-      return (
-        <ChatArea
-          onMenuClick={() => setSidebarOpen(true)}
-          chatId={activeChatId}
-          onChatCreated={handleChatCreated}
-          onNewChat={handleNewChat}
-          initialMessage={pendingMessage}
-        />
-      );
-    }
-
-    return (
-      <div className="flex h-full flex-col">
-        <header className="flex h-14 items-center gap-3 border-b border-border px-4 md:hidden shrink-0">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-purple p-1">
-              <img src="/aina-icon.png" alt="AINA" className="h-full w-full object-contain" />
-            </div>
-            <span className="font-display text-base font-bold text-foreground">
-              {tabTitles[activeTab] ?? "AINA"}
-            </span>
-          </div>
-        </header>
-        <div className="flex-1 overflow-hidden">
-          {activeTab === "productivity" && <ProductivityPage />}
-          {activeTab === "berita" && <BeritaPlaceholder />}
-          {activeTab === "contributor" && <ContributorPage />}
-          {activeTab === "profile" && <ProfilePage />}
-          {activeTab === "admin" && <AdminPage />}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -225,7 +195,75 @@ const Dashboard = () => {
       </div>
 
       <main className="flex-1 overflow-hidden min-w-0">
-        {renderContent()}
+        {/* Chat — always mounted, hidden when not active */}
+        <div className={activeTab === "chat" ? "h-full" : "hidden"}>
+          <ChatArea
+            onMenuClick={() => setSidebarOpen(true)}
+            chatId={activeChatId}
+            onChatCreated={handleChatCreated}
+            onNewChat={handleNewChat}
+            initialMessage={pendingMessage}
+          />
+        </div>
+
+        {/* Non-chat tabs shell — visible when any non-chat tab is active */}
+        <div className={activeTab !== "chat" ? "h-full flex flex-col" : "hidden"}>
+          {/* Mobile header */}
+          <header className="flex h-14 items-center gap-3 border-b border-border px-4 md:hidden shrink-0">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-purple p-1">
+                <img src="/aina-icon.png" alt="AINA" className="h-full w-full object-contain" />
+              </div>
+              <span className="font-display text-base font-bold text-foreground">
+                {tabTitles[activeTab] ?? "AINA"}
+              </span>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-hidden">
+            {/* Berita — simple placeholder, no state to preserve */}
+            {activeTab === "berita" && <BeritaPlaceholder />}
+
+            {/* Keep-mounted tabs: mount once first visited, stay alive after */}
+            {visitedTabs.has("productivity") && (
+              <div className={activeTab === "productivity" ? "h-full" : "hidden"}>
+                <Suspense fallback={<TabLoader />}>
+                  <ProductivityPage userId={userId} />
+                </Suspense>
+              </div>
+            )}
+
+            {visitedTabs.has("contributor") && (
+              <div className={activeTab === "contributor" ? "h-full" : "hidden"}>
+                <Suspense fallback={<TabLoader />}>
+                  <ContributorPage userId={userId} />
+                </Suspense>
+              </div>
+            )}
+
+            {visitedTabs.has("profile") && (
+              <div className={activeTab === "profile" ? "h-full" : "hidden"}>
+                <Suspense fallback={<TabLoader />}>
+                  <ProfilePage userId={userId} />
+                </Suspense>
+              </div>
+            )}
+
+            {isAdmin && visitedTabs.has("admin") && (
+              <div className={activeTab === "admin" ? "h-full" : "hidden"}>
+                <Suspense fallback={<TabLoader />}>
+                  <AdminPage />
+                </Suspense>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
     </div>
   );

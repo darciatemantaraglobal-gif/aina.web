@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
-const ProfilePage = () => {
+const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [profile, setProfile] = useState<any>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [articleCount, setArticleCount] = useState(0);
@@ -26,9 +26,12 @@ const ProfilePage = () => {
     setLoadError(false);
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) { setLoading(false); return; }
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) { setLoading(false); return; }
 
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 10000)
@@ -36,9 +39,9 @@ const ProfilePage = () => {
 
       const [profileRes, rolesRes, articlesRes] = await Promise.race([
         Promise.all([
-          supabase.from("profiles").select("*").eq("user_id", user.id).single(),
-          supabase.from("user_roles").select("role").eq("user_id", user.id),
-          supabase.from("knowledge_base").select("id").eq("author_id", user.id).eq("status", "approved"),
+          supabase.from("profiles").select("*").eq("user_id", uid).single(),
+          supabase.from("user_roles").select("role").eq("user_id", uid),
+          supabase.from("knowledge_base").select("id").eq("author_id", uid).eq("status", "approved"),
         ]),
         timeout,
       ]);

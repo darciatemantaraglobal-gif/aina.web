@@ -134,7 +134,7 @@ function WelcomeChat({ name }: { name: string }) {
   );
 }
 
-const ContributorPage = () => {
+const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [hasRequest, setHasRequest] = useState(false);
   const [requestStatus, setRequestStatus] = useState("");
   const [isContributor, setIsContributor] = useState(false);
@@ -161,9 +161,13 @@ const ContributorPage = () => {
 
   const loadData = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) { setLoading(false); return; }
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) { setLoading(false); return; }
+      const user = { id: uid };
 
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 10000)

@@ -17,7 +17,7 @@ interface Task {
   content: string | null;
 }
 
-const ProductivityPage = () => {
+const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTask, setNewTask] = useState("");
   const [newHabit, setNewHabit] = useState("");
@@ -30,14 +30,17 @@ const ProductivityPage = () => {
 
   const loadTasks = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) { setLoading(false); return; }
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) { setLoading(false); return; }
 
       const { data } = await supabase
         .from("tasks")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .order("created_at", { ascending: false });
 
       if (data) setTasks(data);
