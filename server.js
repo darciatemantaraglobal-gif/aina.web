@@ -132,6 +132,8 @@ function emailTemplate({ title, body, ctaText, ctaUrl }) {
 const MASTER_ADMIN_IDS = new Set(
   (process.env.MASTER_ADMIN_IDS || "").split(",").map(s => s.trim()).filter(Boolean)
 );
+console.log(`[MASTER_ADMIN_IDS] loaded: ${[...MASTER_ADMIN_IDS].join(",") || "(empty)"} — raw env: "${process.env.MASTER_ADMIN_IDS || ""}"`);
+
 
 const _adminCache = new Map();
 async function verifyAdminUser(authHeader) {
@@ -225,6 +227,8 @@ app.get("/api/me", async (req, res) => {
   const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
   const roleList = roles?.map(r => r.role) ?? ["user"];
   const isMasterAdmin = MASTER_ADMIN_IDS.has(user.id);
+
+  console.log(`[/api/me] user.id=${user.id} email=${user.email} isMasterAdmin=${isMasterAdmin} MASTER_ADMIN_IDS=${[...MASTER_ADMIN_IDS].join(",")}`);
 
   res.json({
     id: user.id,

@@ -640,10 +640,13 @@ const AdminPage = () => {
       if (admin) {
         try {
           const me = await adminFetch("/api/me");
+          console.log("[AdminPage] /api/me response:", me);
           setIsMasterAdmin(me.isMasterAdmin ?? false);
           const data = await adminFetch("/api/admin/stats");
           setStats(data);
-        } catch { }
+        } catch (err) {
+          console.error("[AdminPage] Error fetching /api/me or stats:", err);
+        }
         setStatsLoading(false);
       }
 
