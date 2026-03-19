@@ -3,7 +3,6 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1169,23 +1168,8 @@ app.post("/api/admin/threads/:id/promote", async (req, res) => {
   res.json({ success: true });
 });
 
-/* ── Beta Feedback ───────────────────────────────────── */
-const FEEDBACK_DIR = "./data";
-const FEEDBACK_FILE = "./data/beta_feedback.json";
-
-function loadFeedback() {
-  if (!existsSync(FEEDBACK_DIR)) mkdirSync(FEEDBACK_DIR, { recursive: true });
-  if (!existsSync(FEEDBACK_FILE)) return [];
-  try { return JSON.parse(readFileSync(FEEDBACK_FILE, "utf8")); } catch { return []; }
-}
-
-function saveFeedback(items) {
-  if (!existsSync(FEEDBACK_DIR)) mkdirSync(FEEDBACK_DIR, { recursive: true });
-  writeFileSync(FEEDBACK_FILE, JSON.stringify(items, null, 2));
-}
-
+/* ── Beta Feedback (stored in Supabase, not local files) ─ */
 app.post("/api/feedback", feedbackLimiter, async (req, res) => {
-  // Require authentication to prevent anonymous spam
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan untuk mengirim feedback" });
 
@@ -1196,42 +1180,43 @@ app.post("/api/feedback", feedbackLimiter, async (req, res) => {
   const validTypes = ["bug", "suggestion", "general"];
   const feedbackType = validTypes.includes(type) ? type : "general";
 
-  let userEmail = null;
-  let userId = null;
   const supabase = getAdminClient();
-  if (supabase) {
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user } } = await supabase.auth.getUser(token);
-    if (user) {
-      userEmail = user.email;
-      userId = user.id;
-    }
-  }
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
 
-  if (!userId) return res.status(401).json({ error: "Token tidak valid" });
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user } } = await supabase.auth.getUser(token);
+  if (!user) return res.status(401).json({ error: "Token tidak valid" });
 
-  const entry = {
-    id: Date.now().toString(),
+  const { error } = await supabase.from("beta_feedback").insert({
     type: feedbackType,
     message: message.trim(),
-    user_email: userEmail,
-    user_id: userId,
-    created_at: new Date().toISOString(),
-  };
+    user_email: user.email,
+    user_id: user.id,
+  });
 
-  const items = loadFeedback();
-  items.unshift(entry);
-  saveFeedback(items);
+  if (error) {
+    console.error("[FEEDBACK] insert error:", error.message);
+    return res.status(500).json({ error: "Gagal menyimpan feedback" });
+  }
 
-  console.log(`[FEEDBACK] [${feedbackType}] from ${userEmail}: ${message.slice(0, 80)}`);
+  console.log(`[FEEDBACK] [${feedbackType}] from ${user.email}: ${message.slice(0, 80)}`);
   res.json({ success: true });
 });
 
 app.get("/api/admin/feedback", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
-  const items = loadFeedback();
-  res.json(items);
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { data, error } = await supabase
+    .from("beta_feedback")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
 });
 
 // ─── BADGE SYSTEM ──────────────────────────────────────────────────────────
@@ -1816,6 +1801,7 @@ async function checkRequiredTables() {
     "threads", "thread_replies",
     "pinned_updates", "message_reports",
     "notifications", "user_badges",
+    "beta_feedback",
   ];
 
   const missing = [];
@@ -1834,8 +1820,12 @@ async function checkRequiredTables() {
     console.log("[MIGRATIONS] ✓ All required tables exist");
   }
 }
-checkRequiredTables();
+// On Vercel (serverless) we export the app; listen() is only called in local dev.
+if (!process.env.VERCEL) {
+  checkRequiredTables();
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`AINA API server running on port ${PORT}`);
+  });
+}
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`AINA API server running on port ${PORT}`);
-});
+export default app;
