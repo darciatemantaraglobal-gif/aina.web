@@ -49,6 +49,7 @@ const EQUIPPED_BADGE_KEY = "aina_equipped_badge";
 const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [profile, setProfile] = useState<any>(null);
   const [roles, setRoles] = useState<string[]>([]);
+  const [isMasterAdmin, setIsMasterAdmin] = useState(false);
   const [articleCount, setArticleCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -105,20 +106,22 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
       if (articlesRes.data) setArticleCount(articlesRes.data.length);
 
-      // Fetch badges (non-blocking, fails silently)
+      // Fetch badges + master admin status (non-blocking, fails silently)
       try {
         const { data: { session: s } } = await supabase.auth.getSession();
         if (s?.access_token) {
-          const badgeRes = await fetch("/api/my-badges", {
-            headers: { Authorization: `Bearer ${s.access_token}` },
-          });
-          if (badgeRes.ok) {
-            const badgeData = await badgeRes.json();
-            setBadges(badgeData);
+          const [badgeRes, meRes] = await Promise.all([
+            fetch("/api/my-badges", { headers: { Authorization: `Bearer ${s.access_token}` } }),
+            !userIdProp ? fetch("/api/me", { headers: { Authorization: `Bearer ${s.access_token}` } }) : Promise.resolve(null),
+          ]);
+          if (badgeRes.ok) setBadges(await badgeRes.json());
+          if (meRes?.ok) {
+            const me = await meRes.json();
+            setIsMasterAdmin(me.isMasterAdmin ?? false);
           }
         }
       } catch {
-        // Badges are non-critical, ignore error
+        // Non-critical, ignore error
       }
 
       setLoading(false);
@@ -289,7 +292,8 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
     );
   }
 
-  const topRole = roles.includes("admin") ? "Admin"
+  const topRole = isMasterAdmin ? "Master Admin"
+    : roles.includes("admin") ? "Admin"
     : roles.includes("senior_contributor") ? "Senior Contributor"
     : roles.includes("contributor") ? "Contributor"
     : "User";
@@ -349,7 +353,9 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
               {/* Role badge + equipped badge */}
               <div className="relative z-10 mt-3 flex items-center gap-2">
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  topRole === "Admin"
+                  topRole === "Master Admin"
+                    ? "bg-gradient-to-r from-yellow-500/20 to-amber-500/20 text-yellow-300 border border-yellow-500/30"
+                    : topRole === "Admin"
                     ? "bg-red-500/15 text-red-400 border border-red-500/20"
                     : topRole === "Senior Contributor"
                     ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
