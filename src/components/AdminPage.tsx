@@ -8,15 +8,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import {
   Shield, Users, FileText, Check, X, LayoutDashboard,
-  MessageSquare, BookOpen, Clock, ChevronDown, Search,
-  RefreshCw, TrendingUp, UserCheck, AlertCircle, Plus,
+  MessageSquare, BookOpen, Clock, Search,
+  RefreshCw, TrendingUp, UserCheck, Plus,
   Pencil, Trash2, Eye,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
 interface Profile {
   id: string; user_id: string; full_name: string | null;
-  email: string | null; level: string; contribution_count: number;
+  email: string | null; avatar_url: string | null; level: string; contribution_count: number;
   created_at: string; roles: string[];
 }
 interface ContributorRequest {
@@ -66,6 +66,108 @@ function Initials({ name }: { name: string | null }) {
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-purple text-xs font-bold text-white">
       {letters}
     </div>
+  );
+}
+
+const AVATAR_SIZE_CLASSES: Record<number, string> = {
+  9: "h-9 w-9",
+  16: "h-16 w-16",
+};
+
+function AvatarDisplay({ name, avatarUrl, size = 9 }: { name: string | null; avatarUrl: string | null; size?: number }) {
+  const [imgError, setImgError] = useState(false);
+  const letters = (name ?? "?").split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  const sizeClass = AVATAR_SIZE_CLASSES[size] ?? "h-9 w-9";
+  const cls = `${sizeClass} shrink-0 rounded-xl`;
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        src={avatarUrl} alt={name ?? "avatar"}
+        className={`${cls} object-cover`}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return (
+    <div className={`${cls} flex items-center justify-center bg-gradient-purple text-xs font-bold text-white`}>
+      {letters}
+    </div>
+  );
+}
+
+/* ─── User Profile Modal (Master Admin only) ─────────── */
+function UserProfileModal({ user, onClose, onSetRole, onDelete }: {
+  user: Profile; onClose: () => void;
+  onSetRole: (userId: string, role: string) => Promise<void>;
+  onDelete: (user: Profile) => void;
+}) {
+  const [settingRole, setSettingRole] = useState(false);
+  const topRole = (roles: string[]) => {
+    const order = ["admin", "senior_contributor", "contributor", "user"];
+    return order.find(r => roles.includes(r)) ?? "user";
+  };
+  const role = topRole(user.roles);
+
+  const handleSetRole = async (r: string) => {
+    setSettingRole(true);
+    await onSetRole(user.user_id, r);
+    setSettingRole(false);
+  };
+
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-sm gap-0 p-0 overflow-hidden">
+        <div className="bg-gradient-to-br from-violet-600/20 to-purple-600/10 p-5 pb-4">
+          <DialogHeader>
+            <DialogTitle className="sr-only">Profil User</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-4">
+            <AvatarDisplay name={user.full_name} avatarUrl={user.avatar_url} size={16} />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-foreground truncate">{user.full_name ?? "—"}</p>
+              <p className="text-xs text-muted-foreground truncate">{user.email ?? "—"}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <span className={`rounded-full border px-2 py-0.5 text-xs ${ROLE_COLORS[role]}`}>{ROLE_LABELS[role]}</span>
+                {user.contribution_count > 0 && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{user.contribution_count} artikel</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3 p-5">
+          <div className="rounded-xl border border-border bg-card/60 p-3 space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">User ID</span>
+              <span className="font-mono text-foreground break-all text-right max-w-[180px]">{user.user_id}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Level</span>
+              <span className="text-foreground">{user.level}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Bergabung</span>
+              <span className="text-foreground">{fmtDate(user.created_at)}</span>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Ubah Role</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {Object.entries(ROLE_LABELS).map(([r, label]) => (
+                <button key={r} disabled={settingRole || role === r} onClick={() => handleSetRole(r)}
+                  className={`rounded-lg border py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${role === r ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={() => { onClose(); onDelete(user); }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors">
+            <Trash2 className="h-3.5 w-3.5" /> Hapus Akun
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -132,8 +234,8 @@ function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
         <h3 className="mb-3 font-medium text-foreground">Struktur Role</h3>
         <div className="space-y-2 text-sm">
           {[
-            { role: "admin", desc: "Akses penuh: kelola semua data, user, dan konten." },
-            { role: "senior_contributor", desc: "≥10 artikel disetujui. Bisa menulis & mengedit konten." },
+            { role: "admin", desc: "Moderasi konten, kelola artikel, dan persetujuan kontributor." },
+            { role: "senior_contributor", desc: "≥10 artikel disetujui. Bisa menulis & mengirim artikel." },
             { role: "contributor", desc: "Terverifikasi. Bisa mengirim artikel ke knowledge base." },
             { role: "user", desc: "User biasa. Hanya bisa chat dan baca konten." },
           ].map(r => (
@@ -155,7 +257,7 @@ function UsersTab() {
   const [users, setUsers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [openRoleMenu, setOpenRoleMenu] = useState<string | null>(null);
+  const [viewProfile, setViewProfile] = useState<Profile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -176,17 +278,12 @@ function UsersTab() {
   };
 
   const setRole = async (userId: string, role: string) => {
-    setOpenRoleMenu(null);
     try {
       await adminFetch(`/api/admin/users/${userId}/role`, { method: "POST", body: JSON.stringify({ role }) });
       toast.success(`Role diubah ke ${ROLE_LABELS[role]}`);
-      load();
+      await load();
+      setViewProfile(prev => prev?.user_id === userId ? { ...prev, roles: [role] } : prev);
     } catch (e: any) { toast.error(e.message); }
-  };
-
-  const confirmDelete = (u: Profile) => {
-    setOpenRoleMenu(null);
-    setDeleteConfirm(u);
   };
 
   const deleteUser = async () => {
@@ -234,9 +331,10 @@ function UsersTab() {
             {filtered.map(u => {
               const role = topRole(u.roles);
               return (
-                <div key={u.id} className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
+                <button key={u.id} onClick={() => setViewProfile(u)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-left hover:border-primary/30 hover:bg-card/80 transition-colors">
                   <div className="flex min-w-0 items-center gap-3">
-                    <Initials name={u.full_name} />
+                    <AvatarDisplay name={u.full_name} avatarUrl={u.avatar_url} size={9} />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{u.full_name ?? "—"}</p>
                       <p className="truncate text-xs text-muted-foreground">{u.email ?? "—"}</p>
@@ -249,39 +347,26 @@ function UsersTab() {
                         {u.contribution_count} artikel
                       </span>
                     )}
-                    <div className="relative">
-                      <button onClick={() => setOpenRoleMenu(openRoleMenu === u.user_id ? null : u.user_id)}
-                        className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs hover:opacity-80 ${ROLE_COLORS[role]}`}>
-                        {ROLE_LABELS[role]}<ChevronDown className="h-3 w-3" />
-                      </button>
-                      {openRoleMenu === u.user_id && (
-                        <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-xl">
-                          {Object.entries(ROLE_LABELS).map(([r, label]) => (
-                            <button key={r} onClick={() => setRole(u.user_id, r)}
-                              className={`flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-accent ${role === r ? "text-primary" : "text-foreground"}`}>
-                              {label}{role === r && <Check className="h-3 w-3" />}
-                            </button>
-                          ))}
-                          <div className="border-t border-border">
-                            <button
-                              onClick={() => confirmDelete(u)}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Hapus Akun
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <span className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${ROLE_COLORS[role]}`}>
+                      {ROLE_LABELS[role]}
+                    </span>
                   </div>
-                </div>
+                </button>
               );
             })}
             {filtered.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada user ditemukan.</p>}
           </div>
         )}
       </div>
+
+      {viewProfile && (
+        <UserProfileModal
+          user={viewProfile}
+          onClose={() => setViewProfile(null)}
+          onSetRole={setRole}
+          onDelete={u => { setViewProfile(null); setDeleteConfirm(u); }}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open && !deleting) setDeleteConfirm(null); }}>
@@ -617,42 +702,6 @@ function KnowledgeBaseTab() {
   );
 }
 
-/* ─── Master Admin Banner (shown to admins who aren't master admin yet) ── */
-function MasterAdminBanner() {
-  const [info, setInfo] = useState<{ uuid: string; email: string; roles: string[] } | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const res = await fetch("/api/whoami", { headers: { Authorization: `Bearer ${session.access_token}` } });
-      if (res.ok) setInfo(await res.json());
-    })();
-  }, []);
-
-  return (
-    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
-      <div className="flex items-start gap-3">
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-amber-400">Akses Master Admin Belum Aktif</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Tab <strong>Users</strong> belum muncul karena UUID kamu belum terdaftar sebagai Master Admin.
-            Salin UUID di bawah, lalu set sebagai <code className="rounded bg-muted px-1">MASTER_ADMIN_IDS</code> di environment variable (Vercel / Replit).
-          </p>
-          {info && (
-            <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 font-mono text-xs">
-              <div className="text-muted-foreground">Email: <span className="text-foreground">{info.email}</span></div>
-              <div className="mt-1 text-muted-foreground">UUID: <span className="text-foreground break-all">{info.uuid}</span></div>
-              <div className="mt-1 text-muted-foreground">Roles: <span className="text-foreground">{info.roles.join(", ") || "none"}</span></div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ─── No Admin Screen (first-time setup) ─────────────── */
 function NoAdminScreen({ onClaimed }: { onClaimed: () => void }) {
   const [claiming, setClaiming] = useState(false);
@@ -806,7 +855,6 @@ const AdminPage = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
-        {!isMasterAdmin && <MasterAdminBanner />}
         {activeTab === "overview" && <OverviewTab stats={stats} loading={statsLoading} />}
         {activeTab === "users" && isMasterAdmin && <UsersTab />}
         {activeTab === "requests" && <RequestsTab />}

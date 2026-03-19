@@ -514,9 +514,9 @@ app.get("/api/admin/users", async (req, res) => {
   res.json(users);
 });
 
-/* ── Admin: Set User Role ────────────────────────────── */
+/* ── Admin: Set User Role (Master Admin only) ────────── */
 app.post("/api/admin/users/:userId/role", async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
+  const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const { userId } = req.params;
