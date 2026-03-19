@@ -55,6 +55,8 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
+const DAILY_LIMIT = 3;
+
 const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage }: ChatAreaProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -63,6 +65,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
+  const [dailyCount, setDailyCount] = useState<number | null>(null);
+  const [isPaidUser, setIsPaidUser] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeChatIdRef = useRef<string | null>(chatId);
@@ -92,6 +96,40 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       const timer = setTimeout(() => handleSend(initialMessage), 400);
       return () => clearTimeout(timer);
     }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch daily chat count and check paid status on mount
+  useEffect(() => {
+    const fetchDailyUsage = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const userId = session.user.id;
+
+      // Check if paid user (contributor/senior_contributor/admin)
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
+      const paid = roles?.some(r =>
+        ["contributor", "senior_contributor", "admin"].includes(r.role)
+      ) ?? false;
+      setIsPaidUser(paid);
+
+      if (!paid) {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const { count } = await supabase
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("role", "user")
+          .gte("created_at", todayStart.toISOString());
+        setDailyCount(count ?? 0);
+        if ((count ?? 0) >= DAILY_LIMIT) setLimitReached(true);
+      }
+    };
+    fetchDailyUsage();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadMessages = async (id: string) => {
@@ -215,6 +253,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMsg]);
+      // Increment daily count
+      setDailyCount(prev => (prev ?? 0) + 1);
 
       await supabase.from("messages").insert({
         chat_id: currentChatId,
@@ -559,9 +599,28 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 <Send className="h-4 w-4" />
               </button>
             </div>
-            <p className="mt-2 text-center text-xs text-muted-foreground/50">
-              AINA dapat membuat kesalahan. Periksa informasi penting.
-            </p>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground/50">
+                AINA dapat membuat kesalahan. Periksa informasi penting.
+              </p>
+              {!isPaidUser && dailyCount !== null && (
+                <button
+                  type="button"
+                  onClick={() => setLimitReached(true)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                    dailyCount >= DAILY_LIMIT
+                      ? "bg-red-500/10 text-red-400"
+                      : dailyCount >= DAILY_LIMIT - 1
+                      ? "bg-amber-500/10 text-amber-400"
+                      : "bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
+                  title="Klik untuk info lebih lanjut"
+                >
+                  <Zap className="h-3 w-3" />
+                  {dailyCount}/{DAILY_LIMIT} chat
+                </button>
+              )}
+            </div>
           </form>
         )}
       </div>
