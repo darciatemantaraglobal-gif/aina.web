@@ -237,6 +237,24 @@ async function fetchRelevantArticles(userQuestion) {
 
 const DAILY_FREE_LIMIT = 3;
 
+/* ── Fetch active pinned/breaking updates ────────────── */
+async function fetchPinnedUpdates() {
+  const supabase = getAdminClient();
+  if (!supabase) return [];
+  try {
+    const now = new Date().toISOString();
+    const { data } = await supabase
+      .from("pinned_updates")
+      .select("topic, content")
+      .eq("active", true)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order("created_at", { ascending: false });
+    return data ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /* ── Health check ────────────────────────────────────── */
 app.get("/api/ping", (_req, res) => {
   res.json({ status: "ok" });
@@ -373,7 +391,10 @@ app.post("/api/chat", async (req, res) => {
   ];
 
   const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
-  const articles = await fetchRelevantArticles(lastUserMessage);
+  const [articles, pinnedUpdates] = await Promise.all([
+    fetchRelevantArticles(lastUserMessage),
+    fetchPinnedUpdates(),
+  ]);
 
   // Build knowledge context with article-type-aware formatting hints
   let knowledgeContext = "";
@@ -385,6 +406,13 @@ app.post("/api/chat", async (req, res) => {
       return `### Artikel ${i + 1}: ${a.title} [${a.category}]${typeHint}\n${a.content}`;
     }).join("\n\n");
     knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.\n\n${articlesText}\n---`;
+  }
+
+  // Build breaking/pinned updates context
+  let pinnedContext = "";
+  if (pinnedUpdates.length > 0) {
+    const updatesText = pinnedUpdates.map(u => `**[${u.topic}]**: ${u.content}`).join("\n");
+    pinnedContext = `\n\n---\n## 🚨 Breaking Updates — PRIORITAS TERTINGGI\nAdmin telah memverifikasi bahwa informasi berikut adalah update kebijakan/situasi TERBARU dan HARUS diprioritaskan di atas semua sumber lain:\n\n${updatesText}\n---`;
   }
 
   // Build user personalization context
@@ -417,7 +445,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
 - DILARANG memberi pengantar, basa-basi, atau kesimpulan yang tidak diminta.
 - DILARANG mengulang pertanyaan user.
 - Jika tidak tahu, jawab: "Maaf, saya belum punya info ini."
-- WAJIB cantumkan sumber di akhir setiap jawaban dalam format: *Sumber: [nama sumber/instansi/artikel]* — jika dari knowledge base gunakan judul artikelnya, jika dari pengetahuan umum tulis "Pengetahuan umum", jika dari pengalaman komunitas tulis "Komunitas Masisir"${personalizationContext}${knowledgeContext}`;
+- WAJIB cantumkan sumber di akhir setiap jawaban dalam format: *Sumber: [nama sumber/instansi/artikel]* — jika dari knowledge base gunakan judul artikelnya, jika dari pengetahuan umum tulis "Pengetahuan umum", jika dari pengalaman komunitas tulis "Komunitas Masisir"${pinnedContext}${personalizationContext}${knowledgeContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
@@ -1101,6 +1129,160 @@ app.delete("/api/admin/users/:userId", async (req, res) => {
   res.json({ success: true });
 });
 
+
+/* ── Pinned Updates (Breaking Updates) ───────────────── */
+app.get("/api/admin/pinned-updates", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  try {
+    const { data, error } = await supabase
+      .from("pinned_updates")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/pinned-updates", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { topic, content, expires_at } = req.body;
+  if (!topic?.trim() || !content?.trim()) return res.status(400).json({ error: "topic and content required" });
+
+  const supabase = getAdminClient();
+  try {
+    const { data, error } = await supabase
+      .from("pinned_updates")
+      .insert({ topic: topic.trim(), content: content.trim(), expires_at: expires_at || null, active: true, created_by: admin.id })
+      .select()
+      .single();
+    if (error) throw error;
+    console.log(`[ADMIN] Pinned update created: "${topic}" by ${admin.email}`);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/pinned-updates/:id", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const updates = {};
+  if (typeof req.body.active === "boolean") updates.active = req.body.active;
+  if (req.body.topic) updates.topic = req.body.topic.trim();
+  if (req.body.content) updates.content = req.body.content.trim();
+  if ("expires_at" in req.body) updates.expires_at = req.body.expires_at || null;
+
+  try {
+    const { error } = await supabase.from("pinned_updates").update(updates).eq("id", id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/admin/pinned-updates/:id", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  try {
+    const { error } = await supabase.from("pinned_updates").delete().eq("id", id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ── Report Message ──────────────────────────────────── */
+app.post("/api/report-message", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server not configured" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { message_id, message_content, reason } = req.body;
+  if (!reason?.trim()) return res.status(400).json({ error: "reason required" });
+
+  try {
+    const { data, error } = await supabase
+      .from("message_reports")
+      .insert({
+        user_id: user.id,
+        message_id: message_id || null,
+        message_content: message_content?.slice(0, 2000) || null,
+        reason: reason.trim(),
+        status: "pending",
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    console.log(`[REPORT] New report by user ${user.id}: "${reason}"`);
+    res.json({ success: true, id: data.id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/admin/reports", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { status = "pending" } = req.query;
+  try {
+    const query = supabase
+      .from("message_reports")
+      .select("*, reporter:profiles!message_reports_user_id_fkey(full_name, email)")
+      .order("created_at", { ascending: false });
+    if (status !== "all") query.eq("status", status);
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/reports/:id", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const { status, admin_note } = req.body;
+  const validStatuses = ["pending", "reviewed", "dismissed"];
+  if (status && !validStatuses.includes(status)) return res.status(400).json({ error: "Invalid status" });
+
+  const updates = {};
+  if (status) updates.status = status;
+  if (admin_note !== undefined) updates.admin_note = admin_note;
+
+  try {
+    const { error } = await supabase.from("message_reports").update(updates).eq("id", id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`AINA API server running on port ${PORT}`);

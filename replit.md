@@ -49,9 +49,21 @@ npm install   # Install dependencies
 npm run dev   # Start both backend (port 3001) and frontend (port 5000)
 ```
 
+## Features
+
+- **AI Chat** — Multi-model fallback via OpenRouter (10 free models, `Promise.any()`)
+- **Knowledge Base** — Contributor-submitted articles, admin moderation workflow
+- **Article Types** — `narrative` vs `step_by_step` with format-aware AI prompting
+- **User Personalization** — Profile study info (faculty, jurusan, angkatan, kota asal) injected into AI context
+- **Breaking Updates** — Admin pins urgent info; auto-injected at highest priority into every AI chat
+- **Message Reports** — Users flag inaccurate AI responses; admin reviews in dashboard
+- **RBAC** — user / contributor / senior_contributor / admin; rate limit 3 msgs/day for free users
+- **Badges** — Achievement system stored in `user_badges`
+- **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Laporan tabs
+
 ## Key Files
 
 - `server.js` — Express backend with all API routes
 - `src/integrations/supabase/client.ts` — Supabase client config
 - `vite.config.ts` — Vite config with proxy and env var definitions
-- `supabase/migrations/` — Database schema migrations
+- `supabase/migrations/` — Database schema migrations (run manually in Supabase dashboard)

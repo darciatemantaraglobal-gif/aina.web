@@ -10,7 +10,7 @@ import {
   Shield, Users, FileText, Check, X, LayoutDashboard,
   MessageSquare, BookOpen, Clock, Search,
   RefreshCw, TrendingUp, UserCheck, Plus,
-  Pencil, Trash2, Eye, AlertCircle,
+  Pencil, Trash2, Eye, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -871,7 +871,300 @@ function ChatMonitorTab() {
   );
 }
 
-/* ─── No Admin Screen (first-time setup) ─────────────── */
+/* ─── Pinned Updates Tab ─────────────────────────────── */
+interface PinnedUpdate {
+  id: string; topic: string; content: string;
+  expires_at: string | null; active: boolean; created_at: string;
+}
+
+function PinnedUpdatesTab() {
+  const [updates, setUpdates] = useState<PinnedUpdate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [content, setContent] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await adminFetch("/api/admin/pinned-updates");
+      setUpdates(data);
+    } catch (e: any) { toast.error(e.message); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async () => {
+    if (!topic.trim() || !content.trim()) return toast.error("Topic dan konten wajib diisi");
+    setSaving(true);
+    try {
+      await adminFetch("/api/admin/pinned-updates", {
+        method: "POST",
+        body: JSON.stringify({ topic, content, expires_at: expiresAt || null }),
+      });
+      toast.success("Breaking update berhasil dibuat!");
+      setTopic(""); setContent(""); setExpiresAt(""); setFormOpen(false);
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(false);
+  };
+
+  const toggleActive = async (u: PinnedUpdate) => {
+    try {
+      await adminFetch(`/api/admin/pinned-updates/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ active: !u.active }),
+      });
+      toast.success(u.active ? "Update dinonaktifkan" : "Update diaktifkan");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Yakin hapus breaking update ini?")) return;
+    try {
+      await adminFetch(`/api/admin/pinned-updates/${id}`, { method: "DELETE" });
+      toast.success("Update dihapus");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const activeCount = updates.filter(u => u.active).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-lg font-bold text-foreground">Breaking Updates</h2>
+            {activeCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-bold text-red-400">
+                <Zap className="h-3 w-3" /> {activeCount} aktif
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">Update yang aktif otomatis masuk ke konteks semua percakapan AI.</p>
+        </div>
+        <Button onClick={() => setFormOpen(!formOpen)} size="sm" className="shrink-0 gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
+          <Plus className="h-4 w-4" /> Buat Update
+        </Button>
+      </div>
+
+      {formOpen && (
+        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Zap className="h-4 w-4 text-primary" /> Buat Breaking Update Baru
+          </p>
+          <Input
+            placeholder="Topik singkat (misal: Perubahan Iqomah, Jadwal Registrasi)"
+            value={topic}
+            onChange={e => setTopic(e.target.value)}
+            className="bg-card"
+          />
+          <Textarea
+            placeholder="Isi informasi terbaru yang perlu diketahui semua pengguna..."
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            rows={4}
+            className="bg-card"
+          />
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">Kadaluarsa (opsional)</label>
+            <Input
+              type="datetime-local"
+              value={expiresAt}
+              onChange={e => setExpiresAt(e.target.value)}
+              className="bg-card"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={handleCreate} disabled={saving} size="sm" className="bg-gradient-purple text-white hover:opacity-90">
+              {saving ? "Menyimpan..." : "Publikasikan Update"}
+            </Button>
+            <Button onClick={() => setFormOpen(false)} size="sm" variant="outline">Batal</Button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="space-y-2">{[...Array(2)].map((_, i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-card" />)}</div>
+      ) : updates.length === 0 ? (
+        <div className="flex flex-col items-center py-12 text-center">
+          <Bell className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">Belum ada breaking update. Buat update untuk menginformasikan perubahan kebijakan terkini.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {updates.map(u => (
+            <div key={u.id} className={`rounded-2xl border p-4 ${u.active ? "border-primary/30 bg-primary/5" : "border-border bg-card opacity-60"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${u.active ? "bg-red-500/15 text-red-400" : "bg-muted text-muted-foreground"}`}>
+                      {u.active ? "🔴 Aktif" : "Nonaktif"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{fmtDate(u.created_at)}</span>
+                    {u.expires_at && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> Kadaluarsa: {fmtDate(u.expires_at)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-semibold text-foreground text-sm">{u.topic}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{u.content}</p>
+                </div>
+                <div className="flex shrink-0 flex-col gap-2">
+                  <Button
+                    size="sm" variant="outline"
+                    className={`h-8 gap-1 ${u.active ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10" : "border-green-500/30 text-green-400 hover:bg-green-500/10"}`}
+                    onClick={() => toggleActive(u)}
+                    title={u.active ? "Nonaktifkan" : "Aktifkan"}
+                  >
+                    {u.active ? <ToggleRight className="h-3.5 w-3.5" /> : <ToggleLeft className="h-3.5 w-3.5" />}
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handleDelete(u.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Reports Tab ────────────────────────────────────── */
+interface MessageReport {
+  id: string; user_id: string; message_id: string | null;
+  message_content: string | null; reason: string; status: string;
+  admin_note: string | null; created_at: string;
+  reporter?: { full_name: string | null; email: string | null };
+}
+
+function ReportsTab() {
+  const [reports, setReports] = useState<MessageReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"pending" | "reviewed" | "dismissed">("pending");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await adminFetch(`/api/admin/reports?status=${filter}`);
+      setReports(data);
+    } catch (e: any) { toast.error(e.message); }
+    setLoading(false);
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const updateStatus = async (id: string, status: "reviewed" | "dismissed") => {
+    try {
+      await adminFetch(`/api/admin/reports/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      toast.success(status === "reviewed" ? "Laporan ditandai sudah ditinjau" : "Laporan diabaikan");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const REASON_COLORS: Record<string, string> = {
+    "Informasi tidak akurat": "bg-red-500/15 text-red-400",
+    "Sumber tidak sesuai": "bg-orange-500/15 text-orange-400",
+    "Jawaban tidak relevan": "bg-yellow-500/15 text-yellow-400",
+    "Lainnya": "bg-muted text-muted-foreground",
+  };
+
+  const REPORT_STATUS_COLORS: Record<string, string> = {
+    pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    reviewed: "bg-green-500/20 text-green-400 border-green-500/30",
+    dismissed: "bg-muted text-muted-foreground border-border",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-display text-lg font-bold text-foreground">Laporan Pengguna</h2>
+        <p className="text-sm text-muted-foreground">Tinjau laporan info tidak akurat dari pengguna.</p>
+      </div>
+
+      <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
+        {(["pending", "reviewed", "dismissed"] as const).map(t => (
+          <button key={t} onClick={() => setFilter(t)}
+            className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors ${filter === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            {t === "pending" ? "Menunggu" : t === "reviewed" ? "Ditinjau" : "Diabaikan"}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-card" />)}</div>
+      ) : reports.length === 0 ? (
+        <div className="flex flex-col items-center py-12 text-center">
+          <Flag className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">
+            {filter === "pending" ? "Tidak ada laporan yang menunggu review." : `Tidak ada laporan dengan status "${filter}".`}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {reports.map(r => (
+            <div key={r.id} className="rounded-2xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${REASON_COLORS[r.reason] ?? "bg-muted text-muted-foreground"}`}>
+                      {r.reason}
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 text-xs ${REPORT_STATUS_COLORS[r.status]}`}>
+                      {r.status === "pending" ? "Menunggu" : r.status === "reviewed" ? "Ditinjau" : "Diabaikan"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{fmtDate(r.created_at)}</span>
+                  </div>
+                  {r.reporter && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Dari: <span className="text-foreground">{r.reporter.full_name ?? r.reporter.email ?? "Unknown"}</span>
+                    </p>
+                  )}
+                  {r.message_content && (
+                    <div className="mt-2">
+                      <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                        <Eye className="h-3 w-3" /> {expanded === r.id ? "Sembunyikan pesan" : "Lihat pesan AI yang dilaporkan"}
+                      </button>
+                      {expanded === r.id && (
+                        <div className="mt-2 rounded-xl bg-secondary p-3 text-xs text-muted-foreground leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
+                          {r.message_content}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {r.status === "pending" && (
+                  <div className="flex shrink-0 flex-col gap-2">
+                    <Button size="sm" variant="outline" className="h-8 gap-1 border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => updateStatus(r.id, "reviewed")} title="Tandai Ditinjau">
+                      <Check className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => updateStatus(r.id, "dismissed")} title="Abaikan">
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NoAdminScreen({ onClaimed }: { onClaimed: () => void }) {
   const [claiming, setClaiming] = useState(false);
   const [info, setInfo] = useState<{ uuid: string; email: string } | null>(null);
@@ -938,7 +1231,7 @@ function NoAdminScreen({ onClaimed }: { onClaimed: () => void }) {
 }
 
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -988,6 +1281,8 @@ const AdminPage = () => {
     ...(isMasterAdmin ? [{ id: "monitor" as Tab, label: "Monitor", icon: Eye }] : []),
     { id: "requests", label: "Requests", icon: UserCheck, badge: stats.pendingRequests || undefined },
     { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
+    { id: "updates", label: "Breaking Updates", icon: Zap },
+    { id: "reports", label: "Laporan", icon: Flag },
   ];
 
   return (
@@ -1030,6 +1325,8 @@ const AdminPage = () => {
         {activeTab === "monitor" && isMasterAdmin && <ChatMonitorTab />}
         {activeTab === "requests" && <RequestsTab />}
         {activeTab === "knowledge" && <KnowledgeBaseTab />}
+        {activeTab === "updates" && <PinnedUpdatesTab />}
+        {activeTab === "reports" && <ReportsTab />}
       </div>
     </div>
   );

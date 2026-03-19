@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, User, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X } from "lucide-react";
+import { Send, User, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -114,6 +114,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [dailyCount, setDailyCount] = useState<number | null>(null);
   const [isPaidUser, setIsPaidUser] = useState(false);
   const [userProfile, setUserProfile] = useState<Record<string, any> | null>(null);
+  const [reportingMsgId, setReportingMsgId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState<string>("");
+  const [reportedMsgIds, setReportedMsgIds] = useState<Set<string>>(new Set());
+  const [submittingReport, setSubmittingReport] = useState(false);
   const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -240,6 +244,29 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+  };
+
+  const submitReport = async (msgId: string, msgContent: string) => {
+    if (!reportReason.trim() || submittingReport) return;
+    setSubmittingReport(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch("/api/report-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ message_id: msgId, message_content: msgContent, reason: reportReason }),
+      });
+      setReportedMsgIds(prev => new Set(prev).add(msgId));
+      setReportingMsgId(null);
+      setReportReason("");
+    } catch {
+      // silently fail
+    } finally {
+      setSubmittingReport(false);
+    }
   };
 
   const handleSend = async (text?: string) => {
@@ -430,10 +457,59 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     {msg.content}
                   </div>
                 ) : (
-                  <div className="min-w-0 flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
-                    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
-                      {cleanMarkdown(msg.content)}
-                    </ReactMarkdown>
+                  <div className="min-w-0 flex-1">
+                    <div className="rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
+                      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
+                        {cleanMarkdown(msg.content)}
+                      </ReactMarkdown>
+                    </div>
+
+                    {/* Report row */}
+                    <div className="mt-1.5 flex items-center justify-end">
+                      {reportedMsgIds.has(msg.id) ? (
+                        <span className="flex items-center gap-1 text-[10px] text-green-500/70">
+                          <Check className="h-3 w-3" /> Laporan terkirim
+                        </span>
+                      ) : reportingMsgId === msg.id ? (
+                        <div className="w-full rounded-xl border border-border bg-card p-3 space-y-2">
+                          <p className="text-xs font-medium text-foreground">Pilih alasan laporan:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {["Informasi tidak akurat", "Sumber tidak sesuai", "Jawaban tidak relevan", "Lainnya"].map(r => (
+                              <button
+                                key={r}
+                                onClick={() => setReportReason(r)}
+                                className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${reportReason === r ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"}`}
+                              >
+                                {r}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              disabled={!reportReason || submittingReport}
+                              onClick={() => submitReport(msg.id, msg.content)}
+                              className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
+                            >
+                              {submittingReport ? <span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> : <Flag className="h-3 w-3" />}
+                              Kirim Laporan
+                            </button>
+                            <button
+                              onClick={() => { setReportingMsgId(null); setReportReason(""); }}
+                              className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setReportingMsgId(msg.id); setReportReason(""); }}
+                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] text-muted-foreground/50 transition-colors hover:bg-secondary hover:text-muted-foreground"
+                        >
+                          <Flag className="h-2.5 w-2.5" /> Laporkan
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
