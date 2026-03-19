@@ -94,6 +94,15 @@ const MD_COMPONENTS = {
   td: ({ children }: any) => <td className="px-3 py-2 text-secondary-foreground">{children}</td>,
 };
 
+interface StreamingMsg {
+  id: string;
+  full: string;
+  displayed: string;
+}
+
+const STREAM_CHARS_PER_TICK = 6;
+const STREAM_INTERVAL_MS = 16;
+
 const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage }: ChatAreaProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -104,6 +113,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [limitReached, setLimitReached] = useState(false);
   const [dailyCount, setDailyCount] = useState<number | null>(null);
   const [isPaidUser, setIsPaidUser] = useState(false);
+  const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeChatIdRef = useRef<string | null>(chatId);
@@ -114,13 +124,37 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length, scrollToBottom]);
+  }, [messages.length, streamingMsg?.displayed, scrollToBottom]);
+
+  /* ── Typewriter animation ── */
+  useEffect(() => {
+    if (!streamingMsg) return;
+    if (streamingMsg.displayed.length >= streamingMsg.full.length) {
+      setMessages(prev => [...prev, {
+        id: streamingMsg.id,
+        role: "assistant",
+        content: streamingMsg.full,
+        timestamp: new Date(),
+      }]);
+      setStreamingMsg(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setStreamingMsg(prev => {
+        if (!prev) return null;
+        const nextLen = Math.min(prev.displayed.length + STREAM_CHARS_PER_TICK, prev.full.length);
+        return { ...prev, displayed: prev.full.slice(0, nextLen) };
+      });
+    }, STREAM_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [streamingMsg]);
 
   useEffect(() => {
     activeChatIdRef.current = chatId;
     // Don't reset while a send is in-flight (e.g. new chat just created mid-send)
     if (isLoading) return;
     setMessages([]);
+    setStreamingMsg(null);
     setError(null);
     setInput("");
     if (chatId) {
@@ -283,22 +317,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       }
 
       const data = await res.json();
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.reply,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      const fullContent = cleanMarkdown(data.reply);
+      const msgId = (Date.now() + 1).toString();
+
       // Increment daily count
       setDailyCount(prev => (prev ?? 0) + 1);
 
+      // Save to DB immediately (full content)
       await supabase.from("messages").insert({
         chat_id: currentChatId,
         user_id: userId,
         role: "assistant",
         content: data.reply,
       });
+
+      // Start typewriter animation
+      setStreamingMsg({ id: msgId, full: fullContent, displayed: "" });
 
       await supabase
         .from("chats")
@@ -404,6 +438,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 )}
               </div>
             ))}
+
+            {/* Streaming typewriter bubble */}
+            {streamingMsg && (
+              <div className="flex gap-2.5 min-w-0 justify-start">
+                <AinaLogo className="h-8 w-8 shrink-0 object-contain" />
+                <div className="min-w-0 flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
+                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
+                    {streamingMsg.displayed}
+                  </ReactMarkdown>
+                  <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
+                </div>
+              </div>
+            )}
 
             {isLoading && (
               <div className="flex gap-2.5">
