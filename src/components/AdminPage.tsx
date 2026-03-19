@@ -10,7 +10,7 @@ import {
   Shield, Users, FileText, Check, X, LayoutDashboard,
   MessageSquare, BookOpen, Clock, Search,
   RefreshCw, TrendingUp, UserCheck, Plus,
-  Pencil, Trash2, Eye,
+  Pencil, Trash2, Eye, AlertCircle,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
