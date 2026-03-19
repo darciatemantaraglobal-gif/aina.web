@@ -129,6 +129,10 @@ function emailTemplate({ title, body, ctaText, ctaUrl }) {
 </html>`;
 }
 
+const MASTER_ADMIN_IDS = new Set(
+  (process.env.MASTER_ADMIN_IDS || "").split(",").map(s => s.trim()).filter(Boolean)
+);
+
 const _adminCache = new Map();
 async function verifyAdminUser(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
@@ -146,6 +150,13 @@ async function verifyAdminUser(authHeader) {
   if (!isAdmin) return null;
 
   _adminCache.set(token, { user, expiresAt: Date.now() + 5 * 60 * 1000 });
+  return user;
+}
+
+async function verifyMasterAdmin(authHeader) {
+  const user = await verifyAdminUser(authHeader);
+  if (!user) return null;
+  if (!MASTER_ADMIN_IDS.has(user.id)) return null;
   return user;
 }
 
@@ -197,6 +208,30 @@ const DAILY_FREE_LIMIT = 3;
 /* ── Health check ────────────────────────────────────── */
 app.get("/api/ping", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+/* ── Current user info (role, master admin status) ───── */
+app.get("/api/me", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const roleList = roles?.map(r => r.role) ?? ["user"];
+  const isMasterAdmin = MASTER_ADMIN_IDS.has(user.id);
+
+  res.json({
+    id: user.id,
+    email: user.email,
+    roles: roleList,
+    isMasterAdmin,
+  });
 });
 
 /* ── AI Chat ─────────────────────────────────────────── */
@@ -393,9 +428,9 @@ app.get("/api/admin/stats", async (req, res) => {
   res.json({ totalUsers, totalChats, pendingRequests, pendingArticles, approvedArticles, totalArticles });
 });
 
-/* ── Admin: List Users ───────────────────────────────── */
+/* ── Admin: List Users (Master Admin only) ───────────── */
 app.get("/api/admin/users", async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
+  const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
@@ -875,9 +910,9 @@ app.get("/api/admin/badges/all", async (req, res) => {
   res.json(data ?? []);
 });
 
-/* ── Delete User (Admin only) ─────────────────────── */
+/* ── Delete User (Master Admin only) ─────────────────── */
 app.delete("/api/admin/users/:userId", async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
+  const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const { userId } = req.params;

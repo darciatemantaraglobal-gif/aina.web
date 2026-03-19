@@ -622,6 +622,7 @@ type Tab = "overview" | "users" | "requests" | "knowledge";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isMasterAdmin, setIsMasterAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [stats, setStats] = useState<Stats>({ totalUsers: 0, totalChats: 0, pendingRequests: 0, pendingArticles: 0, approvedArticles: 0, totalArticles: 0 });
@@ -629,19 +630,24 @@ const AdminPage = () => {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setLoading(false); return; }
+
+      const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id);
       const admin = roles?.some(r => r.role === "admin") ?? false;
       setIsAdmin(admin);
-      setLoading(false);
+
       if (admin) {
         try {
+          const me = await adminFetch("/api/me");
+          setIsMasterAdmin(me.isMasterAdmin ?? false);
           const data = await adminFetch("/api/admin/stats");
           setStats(data);
         } catch { }
         setStatsLoading(false);
       }
+
+      setLoading(false);
     })();
   }, []);
 
@@ -663,7 +669,7 @@ const AdminPage = () => {
 
   const navItems: Array<{ id: Tab; label: string; icon: React.ElementType; badge?: number }> = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
-    { id: "users", label: "Users", icon: Users, badge: stats.totalUsers || undefined },
+    ...(isMasterAdmin ? [{ id: "users" as Tab, label: "Users", icon: Users, badge: stats.totalUsers || undefined }] : []),
     { id: "requests", label: "Requests", icon: UserCheck, badge: stats.pendingRequests || undefined },
     { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
   ];
@@ -674,8 +680,15 @@ const AdminPage = () => {
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-purple">
           <Shield className="h-4 w-4 text-white" />
         </div>
-        <div>
-          <h1 className="font-display text-lg font-bold text-foreground">Admin Panel</h1>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-lg font-bold text-foreground">Admin Panel</h1>
+            {isMasterAdmin && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-amber-400">
+                ⭐ MASTER ADMIN
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">Kelola platform AINA</p>
         </div>
       </div>
@@ -697,7 +710,7 @@ const AdminPage = () => {
 
       <div className="flex-1 overflow-y-auto p-5">
         {activeTab === "overview" && <OverviewTab stats={stats} loading={statsLoading} />}
-        {activeTab === "users" && <UsersTab />}
+        {activeTab === "users" && isMasterAdmin && <UsersTab />}
         {activeTab === "requests" && <RequestsTab />}
         {activeTab === "knowledge" && <KnowledgeBaseTab />}
       </div>
