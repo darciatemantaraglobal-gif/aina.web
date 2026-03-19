@@ -39,6 +39,7 @@ waitForPort = 5000
 
 [userenv.shared]
 PORT = "3001"
+EMAIL_FROM = "AINA <noreply@ainalabs.pro>"
 
 [[ports]]
 localPort = 3001
