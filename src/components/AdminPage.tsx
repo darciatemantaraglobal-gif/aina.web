@@ -26,6 +26,7 @@ interface ContributorRequest {
 interface Article {
   id: string; author_id: string; title: string; content: string;
   category: string; status: string; created_at: string;
+  author_name: string | null; author_email: string | null;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -661,6 +662,14 @@ function KnowledgeBaseTab() {
                     <span className="text-xs text-muted-foreground">{fmtDate(art.created_at)}</span>
                   </div>
                   <h3 className="mt-1.5 font-medium text-foreground">{art.title}</h3>
+                  {(art.author_name || art.author_email) && (
+                    <p className="mt-0.5 text-xs text-muted-foreground/70">
+                      Oleh: <span className="font-medium text-muted-foreground">{art.author_name ?? art.author_email}</span>
+                      {art.author_name && art.author_email && (
+                        <span className="ml-1">({art.author_email})</span>
+                      )}
+                    </p>
+                  )}
                   <p className={`mt-1 text-sm text-muted-foreground ${expanded === art.id ? "" : "line-clamp-2"}`}>
                     {art.content}
                   </p>

@@ -698,8 +698,30 @@ app.get("/api/admin/articles", async (req, res) => {
 
   const supabase = getAdminClient();
   const { status = "pending" } = req.query;
-  const { data } = await supabase.from("knowledge_base").select("*").eq("status", status).order("created_at", { ascending: false });
-  res.json(data ?? []);
+  const { data: articles } = await supabase
+    .from("knowledge_base")
+    .select("*")
+    .eq("status", status)
+    .order("created_at", { ascending: false });
+
+  if (!articles || articles.length === 0) return res.json([]);
+
+  const authorIds = [...new Set(articles.map(a => a.author_id).filter(Boolean))];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("user_id, full_name, email")
+    .in("user_id", authorIds);
+
+  const profileMap = {};
+  (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
+
+  const result = articles.map(a => ({
+    ...a,
+    author_name: profileMap[a.author_id]?.full_name ?? null,
+    author_email: profileMap[a.author_id]?.email ?? null,
+  }));
+
+  res.json(result);
 });
 
 app.post("/api/admin/articles/:id/review", async (req, res) => {
