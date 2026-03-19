@@ -21,13 +21,17 @@ const allowedOrigins = new Set([
   process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null,
 ].filter(Boolean));
 
-// Also allow *.replit.dev and *.replit.app subdomains (exact suffix, not substring)
+// Also allow *.replit.dev, *.replit.app, and *.vercel.app subdomains (exact suffix, not substring)
 function isAllowedOrigin(origin) {
   if (!origin) return true; // same-origin / non-browser requests
   if (allowedOrigins.has(origin)) return true;
   try {
     const { hostname } = new URL(origin);
-    return hostname.endsWith(".replit.dev") || hostname.endsWith(".replit.app");
+    return (
+      hostname.endsWith(".replit.dev") ||
+      hostname.endsWith(".replit.app") ||
+      hostname.endsWith(".vercel.app")
+    );
   } catch {
     return false;
   }
