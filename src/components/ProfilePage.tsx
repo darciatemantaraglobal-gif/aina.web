@@ -266,40 +266,73 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   return (
     <>
       <div className="h-full overflow-y-auto p-4 md:p-6">
-        <div className="mx-auto max-w-md space-y-6">
+        <div className="mx-auto max-w-md space-y-4">
           <Card className="border-border bg-card overflow-hidden">
-            <div className="h-24 bg-gradient-purple" />
-            <CardContent className="-mt-12 p-6">
-              <div className="flex flex-col items-center text-center">
-                <div className="relative">
-                  <Avatar className="h-20 w-20 border-4 border-card">
-                    <AvatarImage src={profile?.avatar_url} alt={profile?.full_name} />
-                    <AvatarFallback className="bg-secondary text-2xl font-bold text-foreground">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <button
-                    onClick={handleAvatarClick}
-                    disabled={uploadingAvatar}
-                    className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-card bg-primary text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-50"
-                    title="Ganti foto profil"
-                  >
-                    {uploadingAvatar
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <Camera className="h-3.5 w-3.5" />
-                    }
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
+            {/* Header — no banner, just ambient glow background */}
+            <div className="relative flex flex-col items-center px-6 pb-6 pt-10">
+              {/* Ambient background glows */}
+              <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-violet-900/20 via-purple-900/8 to-transparent" />
+                <div className="absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 -translate-y-1/4 rounded-full bg-primary/15 blur-3xl" />
+                <div className="absolute left-1/4 top-1/2 h-24 w-24 -translate-y-1/2 rounded-full bg-fuchsia-600/10 blur-2xl" />
+                <div className="absolute right-1/4 top-1/2 h-24 w-24 -translate-y-1/2 rounded-full bg-violet-600/10 blur-2xl" />
+              </div>
+
+              {/* Avatar with spinning glow ring */}
+              <div className="relative z-10">
+                <div className="avatar-glow-ring">
+                  <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-card">
+                    <Avatar className="h-[92px] w-[92px]">
+                      <AvatarImage src={profile?.avatar_url} alt={profile?.full_name} />
+                      <AvatarFallback className="rounded-full bg-gradient-to-br from-violet-700 to-purple-900 text-2xl font-bold text-white">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
                 </div>
 
+                {/* Camera button — outside the glow ring */}
+                <button
+                  onClick={handleAvatarClick}
+                  disabled={uploadingAvatar}
+                  className="absolute -bottom-0.5 -right-0.5 z-20 flex h-7 w-7 items-center justify-center rounded-full border-2 border-card bg-primary text-primary-foreground shadow-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+                  title="Ganti foto profil"
+                >
+                  {uploadingAvatar
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Camera className="h-3.5 w-3.5" />
+                  }
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+              </div>
+
+              {/* Role badge */}
+              <div className="relative z-10 mt-3">
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  topRole === "Admin"
+                    ? "bg-red-500/15 text-red-400 border border-red-500/20"
+                    : topRole === "Senior Contributor"
+                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
+                    : topRole === "Contributor"
+                    ? "bg-primary/15 text-primary border border-primary/20"
+                    : "bg-secondary text-muted-foreground border border-border"
+                }`}>
+                  <Shield className="h-3 w-3" />
+                  {topRole}
+                </span>
+              </div>
+
+              {/* Name & email */}
+              <div className="relative z-10 mt-3 flex flex-col items-center text-center">
                 {editing ? (
-                  <div className="mt-3 flex w-full max-w-xs items-center gap-2">
+                  <div className="flex w-full max-w-xs items-center gap-2">
                     <Input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -315,7 +348,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
                     </Button>
                   </div>
                 ) : (
-                  <div className="mt-3 flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <h2 className="font-display text-xl font-bold text-foreground">
                       {profile?.full_name || "User"}
                     </h2>
@@ -328,33 +361,31 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
                     </button>
                   </div>
                 )}
-
-                <p className="text-sm text-muted-foreground">{profile?.email}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">{profile?.email}</p>
               </div>
+            </div>
 
-              <div className="mt-6 space-y-3">
-                <div className="flex items-center justify-between rounded-xl bg-secondary p-3">
-                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Shield className="h-4 w-4" />
-                    Role
-                  </span>
-                  <span className="text-sm font-medium text-foreground">{topRole}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl bg-secondary p-3">
+            {/* Divider */}
+            <div className="mx-6 border-t border-border/60" />
+
+            {/* Stats */}
+            <CardContent className="p-6 pt-5">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between rounded-xl bg-secondary/60 px-4 py-3">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Award className="h-4 w-4" />
                     Level
                   </span>
                   <span className="text-sm font-medium text-foreground">{profile?.level || "Anggota"}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-xl bg-secondary p-3">
+                <div className="flex items-center justify-between rounded-xl bg-secondary/60 px-4 py-3">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <FileText className="h-4 w-4" />
                     Kontribusi
                   </span>
                   <span className="text-sm font-medium text-foreground">{articleCount} artikel</span>
                 </div>
-                <div className="flex items-center justify-between rounded-xl bg-secondary p-3">
+                <div className="flex items-center justify-between rounded-xl bg-secondary/60 px-4 py-3">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="h-4 w-4" />
                     Bergabung

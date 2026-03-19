@@ -155,6 +155,33 @@
   @keyframes chatbox-spin {
     to { transform: rotate(1turn); }
   }
+
+  /* Avatar spinning glow ring — same conic technique, circular */
+  .avatar-glow-ring {
+    position: relative;
+    border-radius: 50%;
+    padding: 2.5px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .avatar-glow-ring::before {
+    content: '';
+    position: absolute;
+    inset: -300%;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0%,
+      transparent 30%,
+      hsl(270 80% 65% / 0.1) 40%,
+      hsl(270 80% 65% / 1) 50%,
+      hsl(280 90% 78% / 0.7) 59%,
+      transparent 68%,
+      transparent 100%
+    );
+    animation: chatbox-spin 4s linear infinite;
+    transform-origin: center;
+  }
 }
 
 /* Currency value — matches time-widget font size across all screen sizes */
