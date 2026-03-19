@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Trash2,
   Home,
+  Hash,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -42,6 +43,7 @@ const baseMenuItems = [
   { id: "chat", label: "Chat AI", icon: MessageSquare },
   { id: "productivity", label: "Productivity", icon: LayoutDashboard },
   { id: "berita", label: "Berita Masisir", icon: Newspaper },
+  { id: "threads", label: "Threads", icon: Hash },
   { id: "contributor", label: "Contributor", icon: Users },
   { id: "profile", label: "Profile", icon: UserCircle },
 ];

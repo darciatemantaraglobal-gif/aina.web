@@ -870,6 +870,178 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ── Threads ─────────────────────────────────────────── */
+async function verifyAuth(authHeader) {
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  const supabase = getAdminClient();
+  if (!supabase) return null;
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+  return user;
+}
+
+app.get("/api/threads", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { category, page = "1" } = req.query;
+  const limit = 30;
+  const offset = (parseInt(page) - 1) * limit;
+
+  let query = supabase
+    .from("threads")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (category) query = query.eq("category", category);
+
+  const { data: threads, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  if (!threads || threads.length === 0) return res.json([]);
+
+  const authorIds = [...new Set(threads.map(t => t.user_id))];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("user_id, full_name, avatar_url")
+    .in("user_id", authorIds);
+
+  const profileMap = {};
+  (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
+
+  res.json(threads.map(t => ({
+    ...t,
+    author_name: profileMap[t.user_id]?.full_name ?? null,
+    author_avatar: profileMap[t.user_id]?.avatar_url ?? null,
+  })));
+});
+
+app.post("/api/threads", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { title, content, category } = req.body;
+  if (!title?.trim() || !content?.trim() || !category) return res.status(400).json({ error: "title, content, category required" });
+  const valid = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+  if (!valid.includes(category)) return res.status(400).json({ error: "Invalid category" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("threads")
+    .insert({ user_id: user.id, title: title.trim(), content: content.trim(), category })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.get("/api/threads/:id", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+
+  const [{ data: thread }, { data: replies }] = await Promise.all([
+    supabase.from("threads").select("*").eq("id", id).single(),
+    supabase.from("thread_replies").select("*").eq("thread_id", id).order("created_at", { ascending: true }),
+  ]);
+  if (!thread) return res.status(404).json({ error: "Thread not found" });
+
+  const userIds = [...new Set([thread.user_id, ...(replies ?? []).map(r => r.user_id)])];
+  const { data: profiles } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", userIds);
+  const profileMap = {};
+  (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
+
+  res.json({
+    ...thread,
+    author_name: profileMap[thread.user_id]?.full_name ?? null,
+    author_avatar: profileMap[thread.user_id]?.avatar_url ?? null,
+    replies: (replies ?? []).map(r => ({
+      ...r,
+      author_name: profileMap[r.user_id]?.full_name ?? null,
+      author_avatar: profileMap[r.user_id]?.avatar_url ?? null,
+    })),
+  });
+});
+
+app.post("/api/threads/:id/replies", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { content } = req.body;
+  if (!content?.trim()) return res.status(400).json({ error: "content required" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const { data: thread } = await supabase.from("threads").select("id").eq("id", id).single();
+  if (!thread) return res.status(404).json({ error: "Thread not found" });
+
+  const { data, error } = await supabase.from("thread_replies")
+    .insert({ thread_id: id, user_id: user.id, content: content.trim() })
+    .select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete("/api/threads/:id/replies/:replyId", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { replyId } = req.params;
+  const { data: reply } = await supabase.from("thread_replies").select("user_id").eq("id", replyId).single();
+  if (!reply) return res.status(404).json({ error: "Reply not found" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const isAdmin = roles?.some(r => r.role === "admin");
+  if (reply.user_id !== user.id && !isAdmin) return res.status(403).json({ error: "Forbidden" });
+
+  await supabase.from("thread_replies").delete().eq("id", replyId);
+  res.json({ success: true });
+});
+
+app.delete("/api/threads/:id", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const { data: thread } = await supabase.from("threads").select("user_id").eq("id", id).single();
+  if (!thread) return res.status(404).json({ error: "Thread not found" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const isAdmin = roles?.some(r => r.role === "admin");
+  if (thread.user_id !== user.id && !isAdmin) return res.status(403).json({ error: "Forbidden" });
+
+  await supabase.from("threads").delete().eq("id", id);
+  res.json({ success: true });
+});
+
+app.post("/api/admin/threads/:id/promote", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const { data: thread } = await supabase.from("threads").select("*").eq("id", id).single();
+  if (!thread) return res.status(404).json({ error: "Thread not found" });
+  if (thread.promoted_to_kb) return res.status(400).json({ error: "Already promoted" });
+
+  const { error: insertErr } = await supabase.from("knowledge_base").insert({
+    author_id: thread.user_id,
+    title: thread.title,
+    content: thread.content,
+    category: thread.category,
+    status: "pending",
+    article_type: "narrative",
+  });
+  if (insertErr) return res.status(500).json({ error: insertErr.message });
+
+  await supabase.from("threads").update({ promoted_to_kb: true }).eq("id", id);
+  console.log(`[PROMOTE] Thread "${thread.title}" promoted to KB pending by admin ${admin.id}`);
+  res.json({ success: true });
+});
+
 /* ── Beta Feedback ───────────────────────────────────── */
 const FEEDBACK_DIR = "./data";
 const FEEDBACK_FILE = "./data/beta_feedback.json";

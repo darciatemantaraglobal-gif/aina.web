@@ -50,6 +50,7 @@ const ProductivityPage = lazy(() => import("@/components/ProductivityPage"));
 const ContributorPage = lazy(() => import("@/components/ContributorPage"));
 const ProfilePage = lazy(() => import("@/components/ProfilePage"));
 const AdminPage = lazy(() => import("@/components/AdminPage"));
+const ThreadsPage = lazy(() => import("@/components/ThreadsPage"));
 
 interface Chat {
   id: string;
@@ -61,6 +62,7 @@ const tabTitles: Record<string, string> = {
   chat: "Chat AI",
   productivity: "Productivity",
   berita: "Berita Masisir",
+  threads: "Threads",
   contributor: "Contributor",
   profile: "Profile",
   admin: "Admin",
@@ -274,6 +276,14 @@ const Dashboard = () => {
                 <TabErrorBoundary tabName="Productivity">
                   <Suspense fallback={<TabLoader />}>
                     <ProductivityPage userId={userId} />
+                  </Suspense>
+                </TabErrorBoundary>
+              )}
+
+              {activeTab === "threads" && (
+                <TabErrorBoundary tabName="Threads">
+                  <Suspense fallback={<TabLoader />}>
+                    <ThreadsPage userId={userId} isAdmin={isAdmin} />
                   </Suspense>
                 </TabErrorBoundary>
               )}
