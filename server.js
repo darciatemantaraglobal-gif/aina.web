@@ -68,6 +68,22 @@ const uploadLimiter   = rl(60_000,   5, "Terlalu banyak upload, tunggu sebentar.
 const feedbackLimiter = rl(60_000,   5, "Terlalu banyak feedback, tunggu sebentar.");
 const writeLimiter    = rl(60_000,  30, "Terlalu banyak operasi tulis, tunggu sebentar.");
 
+/* ── Suspicious request logger ───────────────────────── */
+// Logs 401 (auth failure), 403 (forbidden), 429 (rate-limited) with IP, method, path, user-agent
+// This is a "response-finish" hook — it runs after the handler sends the response.
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    const { statusCode } = res;
+    if (statusCode === 401 || statusCode === 403 || statusCode === 429) {
+      const ip = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+      const ua = (req.headers["user-agent"] || "").slice(0, 120);
+      const label = statusCode === 429 ? "RATE-LIMITED" : statusCode === 403 ? "FORBIDDEN" : "AUTH-FAIL";
+      console.warn(`[SECURITY:${label}] ${req.method} ${req.path} — IP:${ip} UA:${ua}`);
+    }
+  });
+  next();
+});
+
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -326,7 +342,7 @@ app.get("/api/me", async (req, res) => {
   const isAdmin = roleList.includes("admin");
   const isMasterAdmin = isAdmin && isMasterAdminId(user.id);
 
-  console.log(`[/api/me] user.id=${user.id} email=${user.email} isAdmin=${isAdmin} isMasterAdmin=${isMasterAdmin} MASTER_ADMIN_IDS=[${[...MASTER_ADMIN_IDS].join(",") || "empty=all admins"}]`);
+  // Debug line removed — was leaking user email in every request log
 
   res.json({
     id: user.id,
@@ -463,15 +479,25 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // Build user personalization context
+  // Sanitize every field: strip control characters + cap at 100 chars to block prompt injection
   let personalizationContext = "";
-  if (userProfile) {
+  if (userProfile && typeof userProfile === "object") {
+    const sanitize = (v) => typeof v === "string"
+      ? v.replace(/[\r\n\t\x00-\x1F\x7F]/g, " ").trim().slice(0, 100)
+      : null;
     const parts = [];
-    if (userProfile.full_name) parts.push(`Nama: ${userProfile.full_name}`);
-    if (userProfile.level && userProfile.level !== "User") parts.push(`Level: ${userProfile.level}`);
-    if (userProfile.arrival_year) parts.push(`Angkatan/tahun tiba: ${userProfile.arrival_year}`);
-    if (userProfile.faculty) parts.push(`Fakultas: ${userProfile.faculty}`);
-    if (userProfile.study_field) parts.push(`Jurusan: ${userProfile.study_field}`);
-    if (userProfile.origin_city) parts.push(`Kota asal: ${userProfile.origin_city}`);
+    const name = sanitize(userProfile.full_name);
+    const level = sanitize(userProfile.level);
+    const year = sanitize(String(userProfile.arrival_year ?? ""));
+    const faculty = sanitize(userProfile.faculty);
+    const field = sanitize(userProfile.study_field);
+    const city = sanitize(userProfile.origin_city);
+    if (name) parts.push(`Nama: ${name}`);
+    if (level && level !== "User") parts.push(`Level: ${level}`);
+    if (year) parts.push(`Angkatan/tahun tiba: ${year}`);
+    if (faculty) parts.push(`Fakultas: ${faculty}`);
+    if (field) parts.push(`Jurusan: ${field}`);
+    if (city) parts.push(`Kota asal: ${city}`);
     if (parts.length > 0) {
       personalizationContext = `\n\n---\n## Profil User Saat Ini\n${parts.join("\n")}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
     }
