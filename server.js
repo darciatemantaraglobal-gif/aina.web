@@ -875,6 +875,59 @@ app.get("/api/admin/badges/all", async (req, res) => {
   res.json(data ?? []);
 });
 
+/* ── Delete User (Admin only) ─────────────────────── */
+app.delete("/api/admin/users/:userId", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { userId } = req.params;
+  if (userId === admin.id) return res.status(400).json({ error: "Tidak bisa menghapus akun sendiri" });
+
+  const supabase = getAdminClient();
+
+  // Delete from auth (cascades to profiles, roles, etc via DB triggers)
+  const { error } = await supabase.auth.admin.deleteUser(userId);
+  if (error) return res.status(500).json({ error: error.message });
+
+  console.log(`[ADMIN] User ${userId} deleted by admin ${admin.email}`);
+  res.json({ success: true });
+});
+
+/* ── One-time Admin Promote (setup only) ─────────── */
+const SETUP_TOKEN = "aina-setup-2026-daru";
+app.post("/api/internal/promote-admin", async (req, res) => {
+  if (req.headers["x-setup-token"] !== SETUP_TOKEN) return res.status(403).json({ error: "Forbidden" });
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "email required" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "No admin client" });
+
+  // Try profiles table first
+  let uid;
+  const { data: profile } = await supabase.from("profiles").select("user_id").eq("email", email).single();
+  if (profile) {
+    uid = profile.user_id;
+  } else {
+    // Fall back to auth.admin.listUsers
+    const { data: { users }, error: listErr } = await supabase.auth.admin.listUsers();
+    if (listErr) return res.status(500).json({ error: listErr.message });
+    const authUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    if (!authUser) return res.status(404).json({ error: `User not found. All emails: ${users.map(u=>u.email).join(", ")}` });
+    uid = authUser.id;
+  }
+
+  const validRoles = ["user", "contributor", "senior_contributor", "admin"];
+  for (const r of validRoles) {
+    await supabase.from("user_roles").delete().eq("user_id", uid).eq("role", r);
+  }
+  await supabase.from("user_roles").insert({ user_id: uid, role: "admin" });
+  await supabase.from("profiles").update({ level: "Admin" }).eq("user_id", uid);
+
+  console.log(`[SETUP] ${email} promoted to admin (uid: ${uid})`);
+  res.json({ success: true, user_id: uid, email });
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`AINA API server running on port ${PORT}`);
 });

@@ -156,6 +156,8 @@ function UsersTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [openRoleMenu, setOpenRoleMenu] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Profile | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,6 +184,26 @@ function UsersTab() {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const confirmDelete = (u: Profile) => {
+    setOpenRoleMenu(null);
+    setDeleteConfirm(u);
+  };
+
+  const deleteUser = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      await adminFetch(`/api/admin/users/${deleteConfirm.user_id}`, { method: "DELETE" });
+      toast.success(`Akun ${deleteConfirm.full_name ?? deleteConfirm.email} berhasil dihapus`);
+      setDeleteConfirm(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const filtered = users.filter(u =>
     !search ||
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -189,67 +211,105 @@ function UsersTab() {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-display text-lg font-bold text-foreground">Manajemen User</h2>
-          <p className="text-sm text-muted-foreground">{users.length} akun terdaftar</p>
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-lg font-bold text-foreground">Manajemen User</h2>
+            <p className="text-sm text-muted-foreground">{users.length} akun terdaftar</p>
+          </div>
+          <button onClick={load} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <button onClick={load} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
-          <RefreshCw className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama atau email..."
-          className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
-      </div>
-      {loading ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 animate-pulse rounded-2xl bg-card" />)}</div>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map(u => {
-            const role = topRole(u.roles);
-            return (
-              <div key={u.id} className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Initials name={u.full_name} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{u.full_name ?? "—"}</p>
-                    <p className="truncate text-xs text-muted-foreground">{u.email ?? "—"}</p>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama atau email..."
+            className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
+        </div>
+        {loading ? (
+          <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 animate-pulse rounded-2xl bg-card" />)}</div>
+        ) : (
+          <div className="space-y-2">
+            {filtered.map(u => {
+              const role = topRole(u.roles);
+              return (
+                <div key={u.id} className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Initials name={u.full_name} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{u.full_name ?? "—"}</p>
+                      <p className="truncate text-xs text-muted-foreground">{u.email ?? "—"}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="ml-3 flex shrink-0 items-center gap-2">
-                  <span className="hidden text-xs text-muted-foreground sm:block">{fmtDate(u.created_at)}</span>
-                  {u.contribution_count > 0 && (
-                    <span className="hidden rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary sm:block">
-                      {u.contribution_count} artikel
-                    </span>
-                  )}
-                  <div className="relative">
-                    <button onClick={() => setOpenRoleMenu(openRoleMenu === u.user_id ? null : u.user_id)}
-                      className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs hover:opacity-80 ${ROLE_COLORS[role]}`}>
-                      {ROLE_LABELS[role]}<ChevronDown className="h-3 w-3" />
-                    </button>
-                    {openRoleMenu === u.user_id && (
-                      <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-xl">
-                        {Object.entries(ROLE_LABELS).map(([r, label]) => (
-                          <button key={r} onClick={() => setRole(u.user_id, r)}
-                            className={`flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-accent ${role === r ? "text-primary" : "text-foreground"}`}>
-                            {label}{role === r && <Check className="h-3 w-3" />}
-                          </button>
-                        ))}
-                      </div>
+                  <div className="ml-3 flex shrink-0 items-center gap-2">
+                    <span className="hidden text-xs text-muted-foreground sm:block">{fmtDate(u.created_at)}</span>
+                    {u.contribution_count > 0 && (
+                      <span className="hidden rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary sm:block">
+                        {u.contribution_count} artikel
+                      </span>
                     )}
+                    <div className="relative">
+                      <button onClick={() => setOpenRoleMenu(openRoleMenu === u.user_id ? null : u.user_id)}
+                        className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs hover:opacity-80 ${ROLE_COLORS[role]}`}>
+                        {ROLE_LABELS[role]}<ChevronDown className="h-3 w-3" />
+                      </button>
+                      {openRoleMenu === u.user_id && (
+                        <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-xl">
+                          {Object.entries(ROLE_LABELS).map(([r, label]) => (
+                            <button key={r} onClick={() => setRole(u.user_id, r)}
+                              className={`flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-accent ${role === r ? "text-primary" : "text-foreground"}`}>
+                              {label}{role === r && <Check className="h-3 w-3" />}
+                            </button>
+                          ))}
+                          <div className="border-t border-border">
+                            <button
+                              onClick={() => confirmDelete(u)}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Hapus Akun
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-          {filtered.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada user ditemukan.</p>}
-        </div>
-      )}
-    </div>
+              );
+            })}
+            {filtered.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada user ditemukan.</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open && !deleting) setDeleteConfirm(null); }}>
+        <DialogContent className="max-w-sm gap-4 p-5">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-destructive">
+              <Trash2 className="h-4 w-4" />
+              Hapus Akun
+            </DialogTitle>
+          </DialogHeader>
+          <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+            <p className="text-sm font-medium text-foreground">{deleteConfirm?.full_name ?? "—"}</p>
+            <p className="text-xs text-muted-foreground">{deleteConfirm?.email ?? "—"}</p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Akun ini akan dihapus permanen beserta semua data terkait (chat, artikel, profil). <span className="font-medium text-foreground">Tindakan ini tidak bisa dibatalkan.</span>
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="flex-1" onClick={() => setDeleteConfirm(null)} disabled={deleting}>
+              Batal
+            </Button>
+            <Button size="sm" className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={deleteUser} disabled={deleting}>
+              {deleting ? <><span className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Menghapus...</> : "Ya, Hapus Akun"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
