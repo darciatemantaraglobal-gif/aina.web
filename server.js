@@ -1567,14 +1567,28 @@ app.get("/api/admin/reports", async (req, res) => {
   const supabase = getAdminClient();
   const { status = "pending" } = req.query;
   try {
-    const query = supabase
+    let query = supabase
       .from("message_reports")
-      .select("*, reporter:profiles!message_reports_user_id_fkey(full_name, email)")
+      .select("*")
       .order("created_at", { ascending: false });
-    if (status !== "all") query.eq("status", status);
-    const { data, error } = await query;
+    if (status !== "all") query = query.eq("status", status);
+    const { data: reports, error } = await query;
     if (error) throw error;
-    res.json(data ?? []);
+    if (!reports || reports.length === 0) return res.json([]);
+
+    // Fetch reporter profiles separately (no direct FK from message_reports to profiles)
+    const userIds = [...new Set(reports.map(r => r.user_id).filter(Boolean))];
+    const { data: profiles } = userIds.length > 0
+      ? await supabase.from("profiles").select("user_id, full_name, email").in("user_id", userIds)
+      : { data: [] };
+
+    const profileMap = {};
+    (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
+
+    res.json(reports.map(r => ({
+      ...r,
+      reporter: r.user_id ? (profileMap[r.user_id] ?? null) : null,
+    })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
