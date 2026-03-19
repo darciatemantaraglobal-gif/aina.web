@@ -17,6 +17,12 @@ export default defineConfig({
       },
     },
   },
+  define: {
+    // Expose SUPABASE_ANON_KEY as VITE_SUPABASE_PUBLISHABLE_KEY if the latter is not set
+    "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || ""
+    ),
+  },
   plugins: [react()],
   resolve: {
     alias: {
