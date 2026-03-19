@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, Component, ReactNode } from "react";
+import { useState, useEffect, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
@@ -92,40 +92,34 @@ const Dashboard = () => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
-  const [tabKey, setTabKey] = useState(0);
 
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    let initialized = false;
+
+    const initSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUserId(session.user.id);
-        setAuthReady(true);
         const { data: roles } = await supabase
           .from("user_roles")
           .select("role")
           .eq("user_id", session.user.id);
         setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
+        setAuthReady(true);
+        initialized = true;
+      } else {
+        navigate("/login");
       }
-    });
+    };
+
+    initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
-        setUserId(session.user.id);
-        setAuthReady(true);
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id);
-        setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
-      } else if (authReady) {
+      if (!initialized) return;
+      if (!session) {
         navigate("/login");
-      } else {
-        setTimeout(() => {
-          supabase.auth.getSession().then(({ data: { session: s } }) => {
-            if (!s) navigate("/login");
-          });
-        }, 500);
       }
     });
 
@@ -145,7 +139,7 @@ const Dashboard = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
 
-  const loadChats = async () => {
+  const loadChats = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
@@ -160,46 +154,49 @@ const Dashboard = () => {
     } catch {
       // Silent — sidebar just shows empty if chats can't load
     }
-  };
+  }, []);
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     setActiveChatId(null);
     setActiveTab("chat");
     setSidebarOpen(false);
-  };
+  }, []);
 
-  const handleSelectChat = (chatId: string) => {
+  const handleSelectChat = useCallback((chatId: string) => {
     setActiveChatId(chatId);
     setActiveTab("chat");
     setSidebarOpen(false);
-  };
+  }, []);
 
-  const handleChatCreated = (chatId: string, title: string) => {
+  const handleChatCreated = useCallback((chatId: string, title: string) => {
     setActiveChatId(chatId);
     setChats((prev) => [
       { id: chatId, title, updated_at: new Date().toISOString() },
       ...prev.filter((c) => c.id !== chatId),
     ]);
-  };
+  }, []);
 
-  const handleDeleteChat = async (chatId: string) => {
-    const prev = chats;
-    setChats((c) => c.filter((x) => x.id !== chatId));
-    if (activeChatId === chatId) setActiveChatId(null);
-    const { error } = await supabase.from("chats").delete().eq("id", chatId);
-    if (error) {
-      setChats(prev);
-      toast.error("Gagal menghapus chat");
-      return;
-    }
-    toast.success("Chat dihapus");
-  };
+  const handleDeleteChat = useCallback(async (chatId: string) => {
+    setChats((c) => {
+      const prev = c;
+      const next = prev.filter((x) => x.id !== chatId);
+      supabase.from("chats").delete().eq("id", chatId).then(({ error }) => {
+        if (error) {
+          setChats(prev);
+          toast.error("Gagal menghapus chat");
+        } else {
+          toast.success("Chat dihapus");
+        }
+      });
+      return next;
+    });
+    setActiveChatId((id) => (id === chatId ? null : id));
+  }, []);
 
-  const handleTabChange = (tab: string) => {
-    if (tab !== activeTab) setTabKey(k => k + 1);
+  const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
     setSidebarOpen(false);
-  };
+  }, []);
 
   if (!authReady) {
     return (
@@ -270,7 +267,7 @@ const Dashboard = () => {
               </div>
             </header>
 
-            <div className="flex-1 overflow-hidden" key={`${activeTab}-${tabKey}`}>
+            <div className="flex-1 overflow-hidden" key={activeTab}>
               {activeTab === "berita" && <BeritaPlaceholder />}
 
               {activeTab === "productivity" && (

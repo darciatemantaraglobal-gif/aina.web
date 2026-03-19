@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, User, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -56,6 +56,43 @@ function cleanMarkdown(text: string): string {
 }
 
 const DAILY_LIMIT = 3;
+const REMARK_PLUGINS = [remarkGfm];
+
+const MD_COMPONENTS = {
+  br: () => <br />,
+  p: ({ children }: any) => <p className="mb-2 last:mb-0 break-words leading-relaxed">{children}</p>,
+  strong: ({ children }: any) => <strong className="font-semibold text-foreground">{children}</strong>,
+  em: ({ children }: any) => <em className="italic text-muted-foreground">{children}</em>,
+  ul: ({ children }: any) => <ul className="mb-2 ml-4 list-disc space-y-1">{children}</ul>,
+  ol: ({ children }: any) => <ol className="mb-2 ml-4 list-decimal space-y-1">{children}</ol>,
+  li: ({ children }: any) => <li className="leading-relaxed break-words">{children}</li>,
+  h1: ({ children }: any) => <h1 className="mb-2 mt-3 text-base font-bold text-foreground first:mt-0">{children}</h1>,
+  h2: ({ children }: any) => <h2 className="mb-1.5 mt-3 text-sm font-bold text-foreground first:mt-0">{children}</h2>,
+  h3: ({ children }: any) => <h3 className="mb-1 mt-2 text-sm font-semibold text-foreground first:mt-0">{children}</h3>,
+  code: ({ children, className }: any) => {
+    if (className?.includes("language-")) return <code className={className}>{children}</code>;
+    return <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground break-all">{children}</code>;
+  },
+  pre: ({ children }: any) => (
+    <div className="mb-2 overflow-x-auto rounded-lg bg-muted">
+      <pre className="p-3 font-mono text-xs text-foreground">{children}</pre>
+    </div>
+  ),
+  blockquote: ({ children }: any) => (
+    <blockquote className="mb-2 border-l-2 border-primary/50 pl-3 text-muted-foreground">{children}</blockquote>
+  ),
+  hr: () => <hr className="my-3 border-border" />,
+  table: ({ children }: any) => (
+    <div className="mb-3 overflow-x-auto rounded-lg border border-border">
+      <table className="min-w-full text-xs">{children}</table>
+    </div>
+  ),
+  thead: ({ children }: any) => <thead className="bg-muted/60">{children}</thead>,
+  tbody: ({ children }: any) => <tbody className="divide-y divide-border">{children}</tbody>,
+  tr: ({ children }: any) => <tr className="hover:bg-muted/30 transition-colors">{children}</tr>,
+  th: ({ children }: any) => <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">{children}</th>,
+  td: ({ children }: any) => <td className="px-3 py-2 text-secondary-foreground">{children}</td>,
+};
 
 const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage }: ChatAreaProps) => {
   const navigate = useNavigate();
@@ -71,13 +108,13 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeChatIdRef = useRef<string | null>(chatId);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading]);
+  }, [messages.length, scrollToBottom]);
 
   useEffect(() => {
     activeChatIdRef.current = chatId;
@@ -354,81 +391,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        br: () => <br />,
-                        p: ({ children }) => (
-                          <p className="mb-2 last:mb-0 break-words leading-relaxed">{children}</p>
-                        ),
-                        strong: ({ children }) => (
-                          <strong className="font-semibold text-foreground">{children}</strong>
-                        ),
-                        em: ({ children }) => (
-                          <em className="italic text-muted-foreground">{children}</em>
-                        ),
-                        ul: ({ children }) => (
-                          <ul className="mb-2 ml-4 list-disc space-y-1">{children}</ul>
-                        ),
-                        ol: ({ children }) => (
-                          <ol className="mb-2 ml-4 list-decimal space-y-1">{children}</ol>
-                        ),
-                        li: ({ children }) => (
-                          <li className="leading-relaxed break-words">{children}</li>
-                        ),
-                        h1: ({ children }) => (
-                          <h1 className="mb-2 mt-3 text-base font-bold text-foreground first:mt-0">{children}</h1>
-                        ),
-                        h2: ({ children }) => (
-                          <h2 className="mb-1.5 mt-3 text-sm font-bold text-foreground first:mt-0">{children}</h2>
-                        ),
-                        h3: ({ children }) => (
-                          <h3 className="mb-1 mt-2 text-sm font-semibold text-foreground first:mt-0">{children}</h3>
-                        ),
-                        code: ({ children, className }) => {
-                          const isBlock = className?.includes("language-");
-                          if (isBlock) return <code className={className}>{children}</code>;
-                          return (
-                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground break-all">
-                              {children}
-                            </code>
-                          );
-                        },
-                        pre: ({ children }) => (
-                          <div className="mb-2 overflow-x-auto rounded-lg bg-muted">
-                            <pre className="p-3 font-mono text-xs text-foreground">{children}</pre>
-                          </div>
-                        ),
-                        blockquote: ({ children }) => (
-                          <blockquote className="mb-2 border-l-2 border-primary/50 pl-3 text-muted-foreground">
-                            {children}
-                          </blockquote>
-                        ),
-                        hr: () => <hr className="my-3 border-border" />,
-                        table: ({ children }) => (
-                          <div className="mb-3 overflow-x-auto rounded-lg border border-border">
-                            <table className="min-w-full text-xs">{children}</table>
-                          </div>
-                        ),
-                        thead: ({ children }) => (
-                          <thead className="bg-muted/60">{children}</thead>
-                        ),
-                        tbody: ({ children }) => (
-                          <tbody className="divide-y divide-border">{children}</tbody>
-                        ),
-                        tr: ({ children }) => (
-                          <tr className="hover:bg-muted/30 transition-colors">{children}</tr>
-                        ),
-                        th: ({ children }) => (
-                          <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">
-                            {children}
-                          </th>
-                        ),
-                        td: ({ children }) => (
-                          <td className="px-3 py-2 text-secondary-foreground">{children}</td>
-                        ),
-                      }}
-                    >
+                    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                       {cleanMarkdown(msg.content)}
                     </ReactMarkdown>
                   </div>

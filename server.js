@@ -171,7 +171,8 @@ async function fetchRelevantArticles(userQuestion) {
     .toLowerCase()
     .replace(/[^\w\s]/g, " ")
     .split(/\s+/)
-    .filter(w => w.length > 3);
+    .filter(w => w.length > 3)
+    .slice(0, 5);
 
   if (keywords.length === 0) {
     const { data } = await supabase
@@ -183,26 +184,28 @@ async function fetchRelevantArticles(userQuestion) {
     return data ?? [];
   }
 
-  const { data: allApproved } = await supabase
+  // Use server-side OR filter across keywords — avoids loading all articles in memory
+  const orFilter = keywords
+    .flatMap(kw => [`title.ilike.%${kw}%`, `content.ilike.%${kw}%`])
+    .join(",");
+
+  const { data: matched } = await supabase
     .from("knowledge_base")
     .select("title, content, category")
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .or(orFilter)
+    .limit(5);
 
-  if (!allApproved || allApproved.length === 0) return [];
+  if (matched && matched.length > 0) return matched;
 
-  const scored = allApproved.map(article => {
-    const text = `${article.title} ${article.content}`.toLowerCase();
-    const score = keywords.reduce((acc, kw) => acc + (text.includes(kw) ? 1 : 0), 0);
-    return { ...article, score };
-  });
-
-  const matched = scored
-    .filter(a => a.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
-  if (matched.length > 0) return matched;
-  return allApproved.slice(0, 3);
+  // Fallback: return recent articles
+  const { data: recent } = await supabase
+    .from("knowledge_base")
+    .select("title, content, category")
+    .eq("status", "approved")
+    .order("created_at", { ascending: false })
+    .limit(3);
+  return recent ?? [];
 }
 
 const DAILY_FREE_LIMIT = 3;
