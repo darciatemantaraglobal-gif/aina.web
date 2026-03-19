@@ -371,6 +371,21 @@ app.get("/api/me", async (req, res) => {
   });
 });
 
+/* ── Whoami (UUID + email for the authenticated user) ─── */
+app.get("/api/whoami", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  res.json({ uuid: user.id, email: user.email });
+});
+
 /* ── Bootstrap: Claim Admin (only works if no admin exists yet) ── */
 app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
