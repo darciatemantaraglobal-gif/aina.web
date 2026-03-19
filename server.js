@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -676,6 +677,67 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   const { error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+/* ── Beta Feedback ───────────────────────────────────── */
+const FEEDBACK_DIR = "./data";
+const FEEDBACK_FILE = "./data/beta_feedback.json";
+
+function loadFeedback() {
+  if (!existsSync(FEEDBACK_DIR)) mkdirSync(FEEDBACK_DIR, { recursive: true });
+  if (!existsSync(FEEDBACK_FILE)) return [];
+  try { return JSON.parse(readFileSync(FEEDBACK_FILE, "utf8")); } catch { return []; }
+}
+
+function saveFeedback(items) {
+  if (!existsSync(FEEDBACK_DIR)) mkdirSync(FEEDBACK_DIR, { recursive: true });
+  writeFileSync(FEEDBACK_FILE, JSON.stringify(items, null, 2));
+}
+
+app.post("/api/feedback", async (req, res) => {
+  const { type, message } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: "message required" });
+
+  const validTypes = ["bug", "suggestion", "general"];
+  const feedbackType = validTypes.includes(type) ? type : "general";
+
+  let userEmail = null;
+  let userId = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const supabase = getAdminClient();
+    if (supabase) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      if (user) {
+        userEmail = user.email;
+        userId = user.id;
+      }
+    }
+  }
+
+  const entry = {
+    id: Date.now().toString(),
+    type: feedbackType,
+    message: message.trim(),
+    user_email: userEmail,
+    user_id: userId,
+    created_at: new Date().toISOString(),
+  };
+
+  const items = loadFeedback();
+  items.unshift(entry);
+  saveFeedback(items);
+
+  console.log(`[FEEDBACK] [${feedbackType}] from ${userEmail ?? "anonymous"}: ${message.slice(0, 80)}`);
+  res.json({ success: true });
+});
+
+app.get("/api/admin/feedback", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const items = loadFeedback();
+  res.json(items);
 });
 
 app.listen(PORT, "0.0.0.0", () => {

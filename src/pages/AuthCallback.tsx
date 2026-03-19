@@ -15,7 +15,7 @@ const AuthCallback = () => {
       if (event === "SIGNED_IN" && session) {
         navigate("/dashboard", { replace: true });
       } else if (event === "PASSWORD_RECOVERY") {
-        navigate("/login", { replace: true });
+        navigate("/reset-password", { replace: true });
       }
     });
 

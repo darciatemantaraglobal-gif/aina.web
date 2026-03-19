@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense, Component, ReactNode } from "react
 import { useNavigate } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
+import FeedbackButton from "@/components/FeedbackButton";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -306,6 +307,7 @@ const Dashboard = () => {
           </div>
         )}
       </main>
+      <FeedbackButton />
     </div>
   );
 };

@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ainaLogo from "@/assets/aina-logo.png";
 
-type View = "main" | "emailForm";
+type View = "main" | "emailForm" | "forgotPassword";
 type Mode = "login" | "register";
 
 const GoogleIcon = () => (
@@ -32,6 +32,7 @@ const Login = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const resetForm = () => {
     setEmail("");
@@ -40,6 +41,24 @@ const Login = () => {
     setShowPassword(false);
     setShowConfirmPassword(false);
     setVerificationSent(false);
+    setResetSent(false);
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/auth/callback",
+      });
+      if (error) throw error;
+      setResetSent(true);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengirim link reset password");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const goToEmailForm = (m: Mode) => {
@@ -329,16 +348,25 @@ const Login = () => {
                       </button>
                     </>
                   ) : (
-                    <>
-                      Belum punya akun?{" "}
+                    <div className="flex flex-col gap-1.5">
+                      <span>
+                        Belum punya akun?{" "}
+                        <button
+                          type="button"
+                          onClick={() => { resetForm(); setMode("register"); }}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Daftar sekarang
+                        </button>
+                      </span>
                       <button
                         type="button"
-                        onClick={() => { resetForm(); setMode("register"); }}
-                        className="font-medium text-primary hover:underline"
+                        onClick={() => { setEmail(email); setView("forgotPassword"); }}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        Daftar sekarang
+                        Lupa password?
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
               </form>
@@ -353,6 +381,81 @@ const Login = () => {
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Kembali ke pilihan login
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── FORGOT PASSWORD VIEW ── */}
+      {view === "forgotPassword" && (
+        <div className="relative z-10 w-full max-w-sm">
+          <div className="mb-6 flex flex-col items-center gap-3 text-center">
+            <img src={ainaLogo} alt="AINA" className="h-12 w-12 object-contain drop-shadow-[0_0_16px_hsl(270_80%_65%/0.4)]" />
+            <div>
+              <h1 className="font-display text-xl font-bold text-foreground">Lupa Password?</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Masukkan email kamu dan kami akan kirimkan link reset password
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-border bg-card/80 backdrop-blur-sm p-6">
+            {resetSent ? (
+              <div className="flex flex-col items-center gap-4 py-4 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
+                  <CheckCircle className="h-8 w-8 text-green-500" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Cek email kamu!</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Link reset password sudah dikirim ke{" "}
+                    <span className="font-medium text-foreground">{email}</span>.
+                    Klik link tersebut untuk membuat password baru.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setView("main"); resetForm(); }}
+                  className="mt-2 text-sm text-primary hover:underline"
+                >
+                  Kembali ke halaman login
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotPassword} className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Email Akun AINA</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="email"
+                      placeholder="email@contoh.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-9"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="mt-1 w-full gap-2 bg-gradient-purple text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.3)] hover:opacity-90"
+                  disabled={loading}
+                >
+                  {loading ? "Mengirim..." : "Kirim Link Reset Password"}
+                  {!loading && <ArrowRight className="h-4 w-4" />}
+                </Button>
+              </form>
+            )}
+          </div>
+
+          {!resetSent && (
+            <button
+              onClick={() => { setView("emailForm"); setMode("login"); }}
+              className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Kembali ke login
             </button>
           )}
         </div>
