@@ -702,6 +702,175 @@ function KnowledgeBaseTab() {
   );
 }
 
+/* ─── Chat Monitor Tab (Master Admin only) ───────────── */
+interface ChatEntry {
+  id: string;
+  title: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+  profile: { full_name: string | null; email: string | null; avatar_url: string | null } | null;
+  lastUserMessage: string | null;
+}
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+function ChatMonitorTab() {
+  const [chats, setChats] = useState<ChatEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [selected, setSelected] = useState<ChatEntry | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [msgLoading, setMsgLoading] = useState(false);
+
+  const load = useCallback(async (q = "") => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "50", ...(q ? { search: q } : {}) });
+      const data = await adminFetch(`/api/admin/chats?${params}`);
+      setChats(data);
+    } catch (e: any) { toast.error(e.message); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSearch(searchInput);
+    load(searchInput);
+  };
+
+  const openChat = async (chat: ChatEntry) => {
+    setSelected(chat);
+    setMessages([]);
+    setMsgLoading(true);
+    try {
+      const data = await adminFetch(`/api/admin/chats/${chat.id}/messages`);
+      setMessages(data);
+    } catch (e: any) { toast.error(e.message); }
+    setMsgLoading(false);
+  };
+
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-lg font-bold text-foreground">Monitor Chat</h2>
+            <p className="text-sm text-muted-foreground">{chats.length} percakapan terbaru</p>
+          </div>
+          <button onClick={() => load(search)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSearch} className="relative flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="Cari nama, email, atau isi pesan..."
+              className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+          </div>
+          <button type="submit" className="rounded-xl border border-border bg-card px-4 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+            Cari
+          </button>
+        </form>
+
+        {loading ? (
+          <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-16 animate-pulse rounded-2xl bg-card" />)}</div>
+        ) : chats.length === 0 ? (
+          <div className="flex flex-col items-center py-12 text-center">
+            <MessageSquare className="mb-3 h-10 w-10 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">Tidak ada chat ditemukan.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {chats.map(c => (
+              <button key={c.id} onClick={() => openChat(c)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left hover:border-primary/30 hover:bg-card/80 transition-colors">
+                <AvatarDisplay name={c.profile?.full_name ?? null} avatarUrl={c.profile?.avatar_url ?? null} size={9} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-medium text-foreground">{c.profile?.full_name ?? c.profile?.email ?? "Pengguna"}</p>
+                    <span className="shrink-0 text-xs text-muted-foreground">{fmtDate(c.updated_at)}</span>
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">{c.title}</p>
+                  {c.lastUserMessage && (
+                    <p className="truncate text-xs text-muted-foreground/60 mt-0.5">"{c.lastUserMessage}"</p>
+                  )}
+                </div>
+                <Eye className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Conversation Viewer Dialog */}
+      <Dialog open={!!selected} onOpenChange={open => !open && setSelected(null)}>
+        <DialogContent className="max-w-lg gap-0 p-0 overflow-hidden max-h-[85vh] flex flex-col">
+          {selected && (
+            <>
+              <div className="flex items-center gap-3 border-b border-border p-4 shrink-0">
+                <AvatarDisplay name={selected.profile?.full_name ?? null} avatarUrl={selected.profile?.avatar_url ?? null} size={9} />
+                <div className="min-w-0 flex-1">
+                  <DialogTitle className="text-sm font-semibold text-foreground truncate">{selected.profile?.full_name ?? selected.profile?.email ?? "Pengguna"}</DialogTitle>
+                  <p className="text-xs text-muted-foreground truncate">{selected.title}</p>
+                </div>
+                <span className="shrink-0 text-xs text-muted-foreground">{fmtDate(selected.updated_at)}</span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {msgLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada pesan.</p>
+                ) : (
+                  messages.map(m => (
+                    <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                      {m.role === "assistant" && (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-purple-700">
+                          <Shield className="h-3.5 w-3.5 text-white" />
+                        </div>
+                      )}
+                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                        m.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-secondary-foreground"
+                      }`}>
+                        <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                        <p className={`mt-1 text-[10px] ${m.role === "user" ? "text-primary-foreground/60" : "text-muted-foreground/60"}`}>
+                          {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      {m.role === "user" && (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 /* ─── No Admin Screen (first-time setup) ─────────────── */
 function NoAdminScreen({ onClaimed }: { onClaimed: () => void }) {
   const [claiming, setClaiming] = useState(false);
@@ -769,7 +938,7 @@ function NoAdminScreen({ onClaimed }: { onClaimed: () => void }) {
 }
 
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "requests" | "knowledge";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -816,6 +985,7 @@ const AdminPage = () => {
   const navItems: Array<{ id: Tab; label: string; icon: React.ElementType; badge?: number }> = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     ...(isMasterAdmin ? [{ id: "users" as Tab, label: "Users", icon: Users, badge: stats.totalUsers || undefined }] : []),
+    ...(isMasterAdmin ? [{ id: "monitor" as Tab, label: "Monitor", icon: Eye }] : []),
     { id: "requests", label: "Requests", icon: UserCheck, badge: stats.pendingRequests || undefined },
     { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
   ];
@@ -857,6 +1027,7 @@ const AdminPage = () => {
       <div className="flex-1 overflow-y-auto p-5">
         {activeTab === "overview" && <OverviewTab stats={stats} loading={statsLoading} />}
         {activeTab === "users" && isMasterAdmin && <UsersTab />}
+        {activeTab === "monitor" && isMasterAdmin && <ChatMonitorTab />}
         {activeTab === "requests" && <RequestsTab />}
         {activeTab === "knowledge" && <KnowledgeBaseTab />}
       </div>

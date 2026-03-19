@@ -975,6 +975,73 @@ app.get("/api/admin/badges/all", async (req, res) => {
   res.json(data ?? []);
 });
 
+/* ── Admin: Monitor Chats (Master Admin only) ────────── */
+app.get("/api/admin/chats", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { search = "", limit = 50, offset = 0 } = req.query;
+
+  const { data: chats, error } = await supabase
+    .from("chats")
+    .select("id, title, user_id, created_at, updated_at")
+    .order("updated_at", { ascending: false })
+    .range(Number(offset), Number(offset) + Number(limit) - 1);
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!chats || chats.length === 0) return res.json([]);
+
+  const userIds = [...new Set(chats.map(c => c.user_id))];
+  const [{ data: profiles }, { data: lastMsgs }] = await Promise.all([
+    supabase.from("profiles").select("user_id, full_name, email, avatar_url").in("user_id", userIds),
+    supabase.from("messages").select("chat_id, content, role, created_at")
+      .in("chat_id", chats.map(c => c.id))
+      .eq("role", "user")
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.user_id, p]));
+  const lastMsgMap = {};
+  (lastMsgs ?? []).forEach(m => {
+    if (!lastMsgMap[m.chat_id]) lastMsgMap[m.chat_id] = m.content;
+  });
+
+  const result = chats
+    .map(c => ({
+      ...c,
+      profile: profileMap[c.user_id] ?? null,
+      lastUserMessage: lastMsgMap[c.id] ?? null,
+    }))
+    .filter(c => {
+      if (!search) return true;
+      const q = String(search).toLowerCase();
+      return (
+        c.title?.toLowerCase().includes(q) ||
+        c.profile?.full_name?.toLowerCase().includes(q) ||
+        c.profile?.email?.toLowerCase().includes(q) ||
+        c.lastUserMessage?.toLowerCase().includes(q)
+      );
+    });
+
+  res.json(result);
+});
+
+app.get("/api/admin/chats/:chatId/messages", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("messages")
+    .select("id, role, content, created_at")
+    .eq("chat_id", req.params.chatId)
+    .order("created_at", { ascending: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
+});
+
 /* ── Delete User (Master Admin only) ─────────────────── */
 app.delete("/api/admin/users/:userId", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
