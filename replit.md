@@ -1,55 +1,60 @@
 # AINA — Asisten Pintar Masisir
 
-AI assistant platform for Indonesian students studying in Egypt (Masisir). Built with React + Vite frontend and an Express.js backend, using Supabase for auth and database.
+AI assistant for Indonesian students in Egypt (Masisir). Built with React + Vite frontend and an Express backend, powered by Supabase for auth/database and OpenRouter for AI.
 
 ## Architecture
 
-- **Frontend**: React + TypeScript + Vite (port 5000)
-- **Backend**: Express.js API server (port 3001), proxied via Vite's `/api/*` proxy
-- **Auth & Database**: Supabase (hosted) — auth, profiles, chats, knowledge_base, tasks, user_roles
-- **AI Chat**: OpenRouter API with multi-model fallback chain
+- **Frontend**: React 18 + TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, React Router v6
+- **Backend**: Node.js + Express (`server.js`), runs on port 3001
+- **Auth & Database**: Supabase (external) — `@supabase/supabase-js` used on both frontend and backend
+- **AI**: OpenRouter API (multiple free model fallbacks via `Promise.any`)
+- **Email**: Resend API (optional, email notifications disabled if key not set)
 
-## Running the App
+## Running
 
-```bash
-npm run dev
-```
+The app runs with a single workflow: `npm run dev`
+- Starts `node server.js` (API on port 3001) and `vite` (frontend on port 5000) concurrently
+- Vite proxies `/api/*` requests to `localhost:3001`
 
-This starts both the Express server (`node server.js`) and Vite dev server concurrently.
+## Required Environment Secrets
+
+| Secret | Purpose |
+|--------|---------|
+| `VITE_SUPABASE_URL` | Supabase project URL (used by frontend) |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon/public key (used by frontend) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (used by server only) |
+| `OPENROUTER_API_KEY` | OpenRouter API key for AI chat |
+| `RESEND_API_KEY` | (Optional) Resend API key for email notifications |
+
+## Optional Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PORT` | 3001 | API server port |
+| `EMAIL_FROM` | `AINA <noreply@ainalabs.pro>` | Sender address for emails |
 
 ## Key Files
 
-- `server.js` — Express API server: AI chat endpoint, admin endpoints (stats, users, articles, contributor requests)
-- `src/integrations/supabase/client.ts` — Supabase client (uses anon key, safe for frontend)
-- `src/components/ChatArea.tsx` — Chat UI, calls `/api/chat`
-- `src/components/AdminPage.tsx` — Admin dashboard, calls `/api/admin/*` with auth token
-- `src/components/ContributorPage.tsx` — Contributor registration & article submission
-- `src/components/ProductivityPage.tsx` — Tasks, habits, notes (Supabase direct)
-- `src/pages/Login.tsx` — Email/password + Google OAuth login
-- `src/pages/AuthCallback.tsx` — Supabase OAuth callback handler
-
-## Environment Variables
-
-All variables are stored in Replit (Secrets tab or shared env vars):
-
-| Variable | Where | Purpose |
-|---|---|---|
-| `VITE_SUPABASE_URL` | Replit shared env var | Supabase project URL |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Replit shared env var | Supabase anon/public key |
-| `VITE_SUPABASE_PROJECT_ID` | Replit shared env var | Supabase project ID |
-| `OPENROUTER_API_KEY` | Replit Secret | OpenRouter AI API key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Replit Secret | Supabase service role key (admin operations) |
+- `server.js` — Express API server (chat, admin, avatar upload, email)
+- `src/integrations/supabase/client.ts` — Supabase frontend client
+- `src/App.tsx` — React app entry, routing
+- `src/pages/` — Page components (Dashboard, Login, Admin, etc.)
+- `src/components/` — Shared UI components
+- `vite.config.ts` — Vite config with `/api` proxy to port 3001
+- `supabase/migrations/` — Database schema SQL
 
 ## Database Schema (Supabase)
 
-Tables: `profiles`, `user_roles`, `chats`, `messages`, `knowledge_base`, `contributor_requests`, `tasks`
+Tables: `profiles`, `user_roles`, `chats`, `messages`, `knowledge_base`, `contributor_requests`, `tasks`, `notifications`
 
-Roles: `user` → `contributor` → `senior_contributor` → `admin`
+Roles: `user`, `contributor`, `senior_contributor`, `admin`
 
-- Contributors can submit articles to the knowledge base
-- Senior Contributors: ≥10 approved articles
-- Admins: full access via admin panel
+## Features
 
-## Deployment
-
-Configured for Replit Autoscale deployment. Build command: `npm run build`. Run: `node ./dist/index.cjs`.
+- AI Chat with Knowledge Base context injection
+- Daily message limit (3/day for free users, unlimited for contributors+)
+- Knowledge Base — contributors write articles, admins approve
+- Contributor request flow with email notifications
+- Admin panel — user management, role assignment, article review
+- Avatar upload via Supabase Storage
+- Productivity tools (tasks, habits, notes)
