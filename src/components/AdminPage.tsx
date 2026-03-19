@@ -11,6 +11,7 @@ import {
   MessageSquare, BookOpen, Clock, Search,
   RefreshCw, TrendingUp, UserCheck, Plus,
   Pencil, Trash2, Eye, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
+  ShieldAlert, Filter, Trash,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -1239,8 +1240,171 @@ function NoAdminScreen({ onClaimed }: { onClaimed: () => void }) {
   );
 }
 
+/* ─── Security Logs Tab (master admin only) ──────────── */
+interface SecurityEvent {
+  id: string;
+  timestamp: string;
+  type: "AUTH-FAIL" | "FORBIDDEN" | "RATE-LIMITED";
+  status: number;
+  method: string;
+  path: string;
+  ip: string;
+  ua: string;
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  "AUTH-FAIL":    "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  "FORBIDDEN":    "bg-red-500/15 text-red-400 border-red-500/30",
+  "RATE-LIMITED": "bg-orange-500/15 text-orange-400 border-orange-500/30",
+};
+
+function SecurityLogsTab() {
+  const [events, setEvents] = useState<SecurityEvent[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [clearing, setClearing] = useState(false);
+
+  const load = async (filter = typeFilter) => {
+    setLoading(true);
+    try {
+      const qs = filter !== "all" ? `?type=${filter}&limit=200` : "?limit=200";
+      const data = await adminFetch(`/api/admin/security-logs${qs}`);
+      setEvents(data.events ?? []);
+      setTotal(data.total ?? 0);
+    } catch {
+      toast.error("Gagal memuat security log");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleFilter = (val: string) => {
+    setTypeFilter(val);
+    load(val);
+  };
+
+  const handleClear = async () => {
+    if (!window.confirm("Hapus semua log keamanan?")) return;
+    setClearing(true);
+    try {
+      await adminFetch("/api/admin/security-logs", { method: "DELETE" });
+      toast.success("Log keamanan dihapus");
+      setEvents([]);
+      setTotal(0);
+    } catch {
+      toast.error("Gagal menghapus log");
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const counts = {
+    "AUTH-FAIL":    events.filter(e => e.type === "AUTH-FAIL").length,
+    "FORBIDDEN":    events.filter(e => e.type === "FORBIDDEN").length,
+    "RATE-LIMITED": events.filter(e => e.type === "RATE-LIMITED").length,
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-red-400" /> Security Log
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {total} event tersimpan (maks. 500, reset saat server restart)
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => load(typeFilter)}
+            className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <RefreshCw className="h-3 w-3" /> Refresh
+          </button>
+          <button onClick={handleClear} disabled={clearing || events.length === 0}
+            className="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40">
+            <Trash className="h-3 w-3" /> Hapus Semua
+          </button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        {(["AUTH-FAIL", "FORBIDDEN", "RATE-LIMITED"] as const).map(t => (
+          <div key={t} className={`rounded-xl border p-3 ${TYPE_COLORS[t]}`}>
+            <div className="text-lg font-bold">{counts[t]}</div>
+            <div className="text-xs opacity-80">{t}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter */}
+      <div className="flex items-center gap-2">
+        <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Filter:</span>
+        {["all", "AUTH-FAIL", "FORBIDDEN", "RATE-LIMITED"].map(f => (
+          <button key={f} onClick={() => handleFilter(f)}
+            className={`rounded-full border px-3 py-0.5 text-xs transition-colors ${typeFilter === f ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
+            {f === "all" ? "Semua" : f}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : events.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+          <ShieldAlert className="h-8 w-8 opacity-30" />
+          <p className="text-sm">Tidak ada event keamanan yang tercatat.</p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Waktu</th>
+                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tipe</th>
+                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Method</th>
+                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Path</th>
+                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">IP</th>
+                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">User-Agent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((ev, i) => (
+                  <tr key={ev.id} className={`border-b border-border/50 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-muted-foreground">
+                      {new Date(ev.timestamp).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${TYPE_COLORS[ev.type]}`}>
+                        {ev.type}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 font-mono font-semibold text-foreground">{ev.method}</td>
+                    <td className="max-w-[180px] truncate px-3 py-2 font-mono text-foreground">{ev.path}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-primary">{ev.ip}</td>
+                    <td className="max-w-[200px] truncate px-3 py-2 text-muted-foreground" title={ev.ua}>{ev.ua}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1292,6 +1456,7 @@ const AdminPage = () => {
     { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
     { id: "updates", label: "Breaking Updates", icon: Zap },
     { id: "reports", label: "Laporan", icon: Flag },
+    ...(isMasterAdmin ? [{ id: "security" as Tab, label: "Security", icon: ShieldAlert }] : []),
   ];
 
   return (
@@ -1336,6 +1501,7 @@ const AdminPage = () => {
         {activeTab === "knowledge" && <KnowledgeBaseTab />}
         {activeTab === "updates" && <PinnedUpdatesTab />}
         {activeTab === "reports" && <ReportsTab />}
+        {activeTab === "security" && isMasterAdmin && <SecurityLogsTab />}
       </div>
     </div>
   );

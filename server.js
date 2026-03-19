@@ -68,17 +68,36 @@ const uploadLimiter   = rl(60_000,   5, "Terlalu banyak upload, tunggu sebentar.
 const feedbackLimiter = rl(60_000,   5, "Terlalu banyak feedback, tunggu sebentar.");
 const writeLimiter    = rl(60_000,  30, "Terlalu banyak operasi tulis, tunggu sebentar.");
 
+/* ── Security event ring buffer ──────────────────────── */
+// Stores the last 500 suspicious events in memory for master-admin review.
+const SECURITY_LOG_MAX = 500;
+const _securityLog = [];
+
+function addSecurityEvent(event) {
+  _securityLog.unshift(event); // newest first
+  if (_securityLog.length > SECURITY_LOG_MAX) _securityLog.pop();
+}
+
 /* ── Suspicious request logger ───────────────────────── */
-// Logs 401 (auth failure), 403 (forbidden), 429 (rate-limited) with IP, method, path, user-agent
-// This is a "response-finish" hook — it runs after the handler sends the response.
+// Captures 401 (auth failure), 403 (forbidden), 429 (rate-limited) after response is sent.
 app.use((req, res, next) => {
   res.on("finish", () => {
     const { statusCode } = res;
     if (statusCode === 401 || statusCode === 403 || statusCode === 429) {
       const ip = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
-      const ua = (req.headers["user-agent"] || "").slice(0, 120);
+      const ua = (req.headers["user-agent"] || "").slice(0, 200);
       const label = statusCode === 429 ? "RATE-LIMITED" : statusCode === 403 ? "FORBIDDEN" : "AUTH-FAIL";
-      console.warn(`[SECURITY:${label}] ${req.method} ${req.path} — IP:${ip} UA:${ua}`);
+      console.warn(`[SECURITY:${label}] ${req.method} ${req.path} — IP:${ip}`);
+      addSecurityEvent({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        type: label,
+        status: statusCode,
+        method: req.method,
+        path: req.path,
+        ip,
+        ua,
+      });
     }
   });
   next();
@@ -1576,6 +1595,33 @@ app.patch("/api/admin/reports/:id", async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+/* ── Security Logs — master admin only ───────────────── */
+app.get("/api/admin/security-logs", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const typeFilter = req.query.type; // optional: AUTH-FAIL | FORBIDDEN | RATE-LIMITED
+
+  let events = _securityLog;
+  if (typeFilter) events = events.filter(e => e.type === typeFilter);
+
+  res.json({
+    total: _securityLog.length,
+    returned: Math.min(events.length, limit),
+    events: events.slice(0, limit),
+  });
+});
+
+/* ── Clear Security Logs — master admin only ─────────── */
+app.delete("/api/admin/security-logs", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  _securityLog.length = 0;
+  console.log(`[SECURITY] Log cleared by master admin ${admin.email}`);
+  res.json({ success: true });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
