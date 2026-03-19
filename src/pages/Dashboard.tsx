@@ -1,10 +1,48 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense, Component, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
 import { supabase } from "@/integrations/supabase/client";
-import { Menu, Newspaper } from "lucide-react";
+import { Menu, Newspaper, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+
+class TabErrorBoundary extends Component<
+  { children: ReactNode; tabName: string },
+  { hasError: boolean; error: string }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error.message };
+  }
+  componentDidCatch(error: Error) {
+    console.error("Tab error:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10">
+            <RefreshCw className="h-7 w-7 text-destructive" />
+          </div>
+          <div>
+            <p className="font-semibold text-foreground">Halaman {this.props.tabName} mengalami error</p>
+            <p className="mt-1 text-sm text-muted-foreground">Klik tombol di bawah untuk memuat ulang</p>
+          </div>
+          <button
+            onClick={() => this.setState({ hasError: false, error: "" })}
+            className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            Muat Ulang
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const ProductivityPage = lazy(() => import("@/components/ProductivityPage"));
 const ContributorPage = lazy(() => import("@/components/ContributorPage"));
@@ -48,11 +86,11 @@ const Dashboard = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(["chat"]));
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
+  const [tabKey, setTabKey] = useState(0);
 
   const navigate = useNavigate();
 
@@ -156,8 +194,8 @@ const Dashboard = () => {
   };
 
   const handleTabChange = (tab: string) => {
+    if (tab !== activeTab) setTabKey(k => k + 1);
     setActiveTab(tab);
-    setVisitedTabs((prev) => new Set([...prev, tab]));
     setSidebarOpen(false);
   };
 
@@ -211,62 +249,62 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Non-chat tabs shell — visible when any non-chat tab is active */}
-        <div className={activeTab !== "chat" ? "h-full flex flex-col" : "hidden"}>
-          {/* Mobile header */}
-          <header className="flex h-14 items-center gap-3 border-b border-border px-4 md:hidden shrink-0">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <img src="/aina-icon.png" alt="AINA" className="h-7 w-7 object-contain" />
-              <span className="font-display text-base font-bold text-foreground">
-                {tabTitles[activeTab] ?? "AINA"}
-              </span>
+        {/* Non-chat tabs — only the active one is mounted at a time */}
+        {activeTab !== "chat" && (
+          <div className="h-full flex flex-col">
+            {/* Mobile header */}
+            <header className="flex h-14 items-center gap-3 border-b border-border px-4 md:hidden shrink-0">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div className="flex items-center gap-2">
+                <img src="/aina-icon.png" alt="AINA" className="h-7 w-7 object-contain" />
+                <span className="font-display text-base font-bold text-foreground">
+                  {tabTitles[activeTab] ?? "AINA"}
+                </span>
+              </div>
+            </header>
+
+            <div className="flex-1 overflow-hidden" key={`${activeTab}-${tabKey}`}>
+              {activeTab === "berita" && <BeritaPlaceholder />}
+
+              {activeTab === "productivity" && (
+                <TabErrorBoundary tabName="Productivity">
+                  <Suspense fallback={<TabLoader />}>
+                    <ProductivityPage userId={userId} />
+                  </Suspense>
+                </TabErrorBoundary>
+              )}
+
+              {activeTab === "contributor" && (
+                <TabErrorBoundary tabName="Contributor">
+                  <Suspense fallback={<TabLoader />}>
+                    <ContributorPage userId={userId} />
+                  </Suspense>
+                </TabErrorBoundary>
+              )}
+
+              {activeTab === "profile" && (
+                <TabErrorBoundary tabName="Profile">
+                  <Suspense fallback={<TabLoader />}>
+                    <ProfilePage userId={userId} />
+                  </Suspense>
+                </TabErrorBoundary>
+              )}
+
+              {activeTab === "admin" && isAdmin && (
+                <TabErrorBoundary tabName="Admin">
+                  <Suspense fallback={<TabLoader />}>
+                    <AdminPage />
+                  </Suspense>
+                </TabErrorBoundary>
+              )}
             </div>
-          </header>
-
-          <div className="flex-1 overflow-hidden">
-            {/* Berita — simple placeholder, no state to preserve */}
-            {activeTab === "berita" && <BeritaPlaceholder />}
-
-            {/* Keep-mounted tabs: mount once first visited, stay alive after */}
-            {visitedTabs.has("productivity") && (
-              <div className={activeTab === "productivity" ? "h-full" : "hidden"}>
-                <Suspense fallback={<TabLoader />}>
-                  <ProductivityPage userId={userId} />
-                </Suspense>
-              </div>
-            )}
-
-            {visitedTabs.has("contributor") && (
-              <div className={activeTab === "contributor" ? "h-full" : "hidden"}>
-                <Suspense fallback={<TabLoader />}>
-                  <ContributorPage userId={userId} />
-                </Suspense>
-              </div>
-            )}
-
-            {visitedTabs.has("profile") && (
-              <div className={activeTab === "profile" ? "h-full" : "hidden"}>
-                <Suspense fallback={<TabLoader />}>
-                  <ProfilePage userId={userId} />
-                </Suspense>
-              </div>
-            )}
-
-            {isAdmin && visitedTabs.has("admin") && (
-              <div className={activeTab === "admin" ? "h-full" : "hidden"}>
-                <Suspense fallback={<TabLoader />}>
-                  <AdminPage />
-                </Suspense>
-              </div>
-            )}
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
