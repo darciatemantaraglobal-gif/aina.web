@@ -42,6 +42,22 @@ Managed entirely by Supabase. Schema is in `supabase/migrations/`. Tables:
 - `user_badges` — badge/achievement system
 - `notifications` — in-app notifications
 
+## Security Measures (server.js)
+
+- **Helmet** — HTTP security headers (XSS, clickjacking, MIME sniffing protection)
+- **Rate limiting** — Global 200 req/min per IP; stricter limits per route:
+  - `/api/chat` — 20 req/min (chatLimiter) + auth required + daily per-user DB limit
+  - `/api/upload-avatar` — 5 req/min (uploadLimiter)
+  - `/api/feedback` — 5 req/min (feedbackLimiter) + auth required
+  - Write endpoints (threads, replies, reports) — 30 req/min (writeLimiter)
+  - `/api/setup/claim-admin` — 10 req/min (strictLimiter)
+- **CORS** — Exact origin matching only; suffix-checks `*.replit.dev` / `*.replit.app`
+- **Body size** — 64KB default for all routes; 2MB only for avatar upload
+- **Input length caps** — Thread title ≤200, content ≤10k, reply ≤2k, feedback ≤2k, reason ≤500
+- **Avatar mimeType whitelist** — Only jpeg/png/webp/gif accepted; extension derived server-side
+- **Admin cache bounded** — Max 500 entries with LRU eviction (prevents memory-leak attack)
+- **Chat auth enforced** — `/api/chat` requires valid Supabase JWT; unauthenticated requests blocked before reaching OpenRouter
+
 ## Running the Project
 
 ```bash

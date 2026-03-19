@@ -1,29 +1,72 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const allowedOrigins = [
+/* ── Security headers ────────────────────────────────── */
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false, // managed by Vite for the SPA
+}));
+
+/* ── CORS — exact origin matching only ──────────────── */
+const allowedOrigins = new Set([
   process.env.CLIENT_URL,
   "http://localhost:5000",
   "http://localhost:3000",
   process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null,
-].filter(Boolean);
+].filter(Boolean));
+
+// Also allow *.replit.dev and *.replit.app subdomains (exact suffix, not substring)
+function isAllowedOrigin(origin) {
+  if (!origin) return true; // same-origin / non-browser requests
+  if (allowedOrigins.has(origin)) return true;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname.endsWith(".replit.dev") || hostname.endsWith(".replit.app");
+  } catch {
+    return false;
+  }
+}
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o)) || (process.env.REPLIT_DEV_DOMAIN && origin.includes("replit"))) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
+    if (isAllowedOrigin(origin)) callback(null, true);
+    else callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
 }));
-app.use(express.json({ limit: "5mb" }));
+
+/* ── Body parser — default small limit ──────────────── */
+// Avatar upload route overrides this with its own limit (see below)
+app.use((req, res, next) => {
+  const avatarRoute = req.path === "/api/upload-avatar";
+  express.json({ limit: avatarRoute ? "2mb" : "64kb" })(req, res, next);
+});
+
+/* ── Rate limiters ───────────────────────────────────── */
+const rl = (windowMs, max, msg) => rateLimit({
+  windowMs,
+  max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: msg },
+});
+
+// Global: 200 req/min per IP (baseline DoS protection for all routes)
+app.use(rl(60_000, 200, "Terlalu banyak permintaan, coba lagi sebentar."));
+
+// Strict: auth-sensitive & expensive endpoints
+const strictLimiter   = rl(60_000,  10, "Terlalu banyak percobaan, tunggu 1 menit.");
+const chatLimiter     = rl(60_000,  20, "Terlalu banyak pesan, tunggu sebentar.");
+const uploadLimiter   = rl(60_000,   5, "Terlalu banyak upload, tunggu sebentar.");
+const feedbackLimiter = rl(60_000,   5, "Terlalu banyak feedback, tunggu sebentar.");
+const writeLimiter    = rl(60_000,  30, "Terlalu banyak operasi tulis, tunggu sebentar.");
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -135,7 +178,9 @@ const MASTER_ADMIN_IDS = new Set(
 console.log(`[MASTER_ADMIN_IDS] loaded: ${[...MASTER_ADMIN_IDS].join(",") || "(empty)"} — raw env: "${process.env.MASTER_ADMIN_IDS || ""}"`);
 
 
+// Bounded admin token cache — max 500 entries, 5-min TTL
 const _adminCache = new Map();
+const ADMIN_CACHE_MAX = 500;
 async function verifyAdminUser(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.replace("Bearer ", "");
@@ -151,6 +196,10 @@ async function verifyAdminUser(authHeader) {
   const isAdmin = roles?.some(r => r.role === "admin");
   if (!isAdmin) return null;
 
+  // Evict oldest entry if at capacity
+  if (_adminCache.size >= ADMIN_CACHE_MAX) {
+    _adminCache.delete(_adminCache.keys().next().value);
+  }
   _adminCache.set(token, { user, expiresAt: Date.now() + 5 * 60 * 1000 });
   return user;
 }
@@ -287,22 +336,8 @@ app.get("/api/me", async (req, res) => {
   });
 });
 
-/* ── Debug: Who Am I (UUID checker) ─────────────────── */
-app.get("/api/whoami", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login dulu" });
-  const supabase = getAdminClient();
-  if (!supabase) return res.status(500).json({ error: "Server config error" });
-  const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: "Token tidak valid" });
-  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-  const roleList = roles?.map(r => r.role) ?? [];
-  res.json({ uuid: user.id, email: user.email, roles: roleList });
-});
-
 /* ── Bootstrap: Claim Admin (only works if no admin exists yet) ── */
-app.post("/api/setup/claim-admin", async (req, res) => {
+app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login dulu" });
   const supabase = getAdminClient();
@@ -339,41 +374,53 @@ app.post("/api/setup/claim-admin", async (req, res) => {
 });
 
 /* ── AI Chat ─────────────────────────────────────────── */
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", chatLimiter, async (req, res) => {
+  // Auth is required — unauthenticated requests must not reach OpenRouter
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan untuk menggunakan chat" });
+
   const { messages, userProfile } = req.body;
   if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: "messages array required" });
+  if (messages.length > 50) return res.status(400).json({ error: "Terlalu banyak pesan dalam satu permintaan" });
+
+  // Validate each message content length
+  for (const m of messages) {
+    if (typeof m?.content === "string" && m.content.length > 8000) {
+      return res.status(400).json({ error: "Pesan terlalu panjang" });
+    }
+  }
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "OPENROUTER_API_KEY not configured" });
 
   const supabaseAdmin = getAdminClient();
-  const authHeader = req.headers.authorization;
-  if (supabaseAdmin && authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-    if (user) {
-      const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id);
-      const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
+  if (!supabaseAdmin) return res.status(500).json({ error: "Server config error" });
 
-      if (!isPaidUser) {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const { count } = await supabaseAdmin
-          .from("messages")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .eq("role", "user")
-          .gte("created_at", todayStart.toISOString());
+  // Verify token and apply per-user daily rate limit
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
 
-        console.log(`Rate limit check: user ${user.id} used ${count}/${DAILY_FREE_LIMIT} messages today`);
+  const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id);
+  const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
 
-        if ((count ?? 0) >= DAILY_FREE_LIMIT) {
-          return res.status(429).json({
-            error: "Batas chat harian tercapai",
-            limitReached: true,
-          });
-        }
-      }
+  if (!isPaidUser) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const { count } = await supabaseAdmin
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("role", "user")
+      .gte("created_at", todayStart.toISOString());
+
+    console.log(`Rate limit check: user ${user.id} used ${count}/${DAILY_FREE_LIMIT} messages today`);
+
+    if ((count ?? 0) >= DAILY_FREE_LIMIT) {
+      return res.status(429).json({
+        error: "Batas chat harian tercapai",
+        limitReached: true,
+      });
     }
   }
 
@@ -508,7 +555,15 @@ ATURAN KERAS — WAJIB DIIKUTI:
 });
 
 /* ── Upload Avatar ───────────────────────────────────── */
-app.post("/api/upload-avatar", async (req, res) => {
+const ALLOWED_IMAGE_TYPES = new Map([
+  ["image/jpeg", "jpg"],
+  ["image/jpg",  "jpg"],
+  ["image/png",  "png"],
+  ["image/webp", "webp"],
+  ["image/gif",  "gif"],
+]);
+
+app.post("/api/upload-avatar", uploadLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
 
@@ -522,18 +577,26 @@ app.post("/api/upload-avatar", async (req, res) => {
   const { imageBase64, mimeType } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "imageBase64 required" });
 
+  // Whitelist MIME type — never trust the client blindly
+  const safeMime = typeof mimeType === "string" ? mimeType.toLowerCase() : "image/jpeg";
+  const ext = ALLOWED_IMAGE_TYPES.get(safeMime);
+  if (!ext) return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan JPEG, PNG, WebP, atau GIF." });
+
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const buffer = Buffer.from(base64Data, "base64");
-  const ext = (mimeType || "image/jpeg").split("/")[1] || "jpg";
-  const path = `${user.id}/avatar.${ext}`;
+
+  // Extra size guard (buffer should be ≤ 2MB after base64 decode)
+  if (buffer.length > 2 * 1024 * 1024) return res.status(400).json({ error: "Ukuran gambar maksimal 2MB" });
+
+  const storagePath = `${user.id}/avatar.${ext}`;
 
   const { error: uploadErr } = await supabase.storage
     .from("avatars")
-    .upload(path, buffer, { contentType: mimeType || "image/jpeg", upsert: true });
+    .upload(storagePath, buffer, { contentType: safeMime, upsert: true });
 
   if (uploadErr) return res.status(500).json({ error: uploadErr.message });
 
-  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+  const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(storagePath);
   res.json({ url: publicUrl });
 });
 
@@ -886,9 +949,10 @@ app.get("/api/threads", async (req, res) => {
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { category, page = "1" } = req.query;
+  const { category } = req.query;
+  const pageNum = Math.max(1, parseInt(req.query.page) || 1);
   const limit = 30;
-  const offset = (parseInt(page) - 1) * limit;
+  const offset = (pageNum - 1) * limit;
 
   let query = supabase
     .from("threads")
@@ -917,12 +981,14 @@ app.get("/api/threads", async (req, res) => {
   })));
 });
 
-app.post("/api/threads", async (req, res) => {
+app.post("/api/threads", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const { title, content, category } = req.body;
   if (!title?.trim() || !content?.trim() || !category) return res.status(400).json({ error: "title, content, category required" });
+  if (title.trim().length > 200) return res.status(400).json({ error: "Judul terlalu panjang (maks 200 karakter)" });
+  if (content.trim().length > 10000) return res.status(400).json({ error: "Konten terlalu panjang (maks 10.000 karakter)" });
   const valid = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
   if (!valid.includes(category)) return res.status(400).json({ error: "Invalid category" });
 
@@ -964,12 +1030,13 @@ app.get("/api/threads/:id", async (req, res) => {
   });
 });
 
-app.post("/api/threads/:id/replies", async (req, res) => {
+app.post("/api/threads/:id/replies", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const { content } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: "content required" });
+  if (content.trim().length > 2000) return res.status(400).json({ error: "Balasan terlalu panjang (maks 2.000 karakter)" });
 
   const supabase = getAdminClient();
   const { id } = req.params;
@@ -1057,27 +1124,31 @@ function saveFeedback(items) {
   writeFileSync(FEEDBACK_FILE, JSON.stringify(items, null, 2));
 }
 
-app.post("/api/feedback", async (req, res) => {
+app.post("/api/feedback", feedbackLimiter, async (req, res) => {
+  // Require authentication to prevent anonymous spam
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan untuk mengirim feedback" });
+
   const { type, message } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: "message required" });
+  if (message.trim().length > 2000) return res.status(400).json({ error: "Feedback terlalu panjang (maks 2.000 karakter)" });
 
   const validTypes = ["bug", "suggestion", "general"];
   const feedbackType = validTypes.includes(type) ? type : "general";
 
   let userEmail = null;
   let userId = null;
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    const supabase = getAdminClient();
-    if (supabase) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
-      if (user) {
-        userEmail = user.email;
-        userId = user.id;
-      }
+  const supabase = getAdminClient();
+  if (supabase) {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user } } = await supabase.auth.getUser(token);
+    if (user) {
+      userEmail = user.email;
+      userId = user.id;
     }
   }
+
+  if (!userId) return res.status(401).json({ error: "Token tidak valid" });
 
   const entry = {
     id: Date.now().toString(),
@@ -1092,7 +1163,7 @@ app.post("/api/feedback", async (req, res) => {
   items.unshift(entry);
   saveFeedback(items);
 
-  console.log(`[FEEDBACK] [${feedbackType}] from ${userEmail ?? "anonymous"}: ${message.slice(0, 80)}`);
+  console.log(`[FEEDBACK] [${feedbackType}] from ${userEmail}: ${message.slice(0, 80)}`);
   res.json({ success: true });
 });
 
@@ -1244,13 +1315,15 @@ app.get("/api/admin/chats", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { search = "", limit = 50, offset = 0 } = req.query;
+  const rawSearch = typeof req.query.search === "string" ? req.query.search.slice(0, 200) : "";
+  const safeLimit = Math.min(Math.max(1, parseInt(req.query.limit) || 50), 100);
+  const safeOffset = Math.max(0, parseInt(req.query.offset) || 0);
 
   const { data: chats, error } = await supabase
     .from("chats")
     .select("id, title, user_id, created_at, updated_at")
     .order("updated_at", { ascending: false })
-    .range(Number(offset), Number(offset) + Number(limit) - 1);
+    .range(safeOffset, safeOffset + safeLimit - 1);
 
   if (error) return res.status(500).json({ error: error.message });
   if (!chats || chats.length === 0) return res.json([]);
@@ -1277,8 +1350,8 @@ app.get("/api/admin/chats", async (req, res) => {
       lastUserMessage: lastMsgMap[c.id] ?? null,
     }))
     .filter(c => {
-      if (!search) return true;
-      const q = String(search).toLowerCase();
+      if (!rawSearch) return true;
+      const q = rawSearch.toLowerCase();
       return (
         c.title?.toLowerCase().includes(q) ||
         c.profile?.full_name?.toLowerCase().includes(q) ||
@@ -1401,7 +1474,7 @@ app.delete("/api/admin/pinned-updates/:id", async (req, res) => {
 });
 
 /* ── Report Message ──────────────────────────────────── */
-app.post("/api/report-message", async (req, res) => {
+app.post("/api/report-message", writeLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
 
@@ -1414,6 +1487,7 @@ app.post("/api/report-message", async (req, res) => {
 
   const { message_id, message_content, reason } = req.body;
   if (!reason?.trim()) return res.status(400).json({ error: "reason required" });
+  if (reason.trim().length > 500) return res.status(400).json({ error: "Alasan terlalu panjang (maks 500 karakter)" });
 
   try {
     const { data, error } = await supabase
