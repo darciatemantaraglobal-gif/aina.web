@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "postgresql-16"]
+modules = ["nodejs-20", "web"]
 [agent]
 expertMode = true
 integrations = ["javascript_database:1.0.0"]
@@ -41,7 +41,7 @@ waitForPort = 5000
 PORT = "3001"
 EMAIL_FROM = "AINA <noreply@ainalabs.pro>"
 VITE_SUPABASE_URL = "https://qyzimrshfcenpwvuownz.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsaWJzamh3bXR1cndmYWRxa2t6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMjEyOTIsImV4cCI6MjA4ODg5NzI5Mn0.BzAZKpc1Ygux7MSScbLPqq0wmgmgrTcqqRZi2q_iLLs"
+VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5emltcnNoZmNlbnB3dnVvd256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMjE4NTYsImV4cCI6MjA4ODg5Nzg1Nn0.a0MiB-xfTCXa6MBUi4Vbxw5Uf0v7j5vK91BF3rXZdoo"
 VITE_SUPABASE_PROJECT_ID = "qyzimrshfcenpwvuownz"
 SUPABASE_URL = "https://qyzimrshfcenpwvuownz.supabase.co"
 MASTER_ADMIN_IDS = "38a8f526-b1a7-47ef-9a04-ecc8b2b63f27"
