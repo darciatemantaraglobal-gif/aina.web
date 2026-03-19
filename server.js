@@ -155,10 +155,16 @@ async function verifyAdminUser(authHeader) {
   return user;
 }
 
+function isMasterAdminId(userId) {
+  // If MASTER_ADMIN_IDS is not configured, any admin is a master admin
+  if (MASTER_ADMIN_IDS.size === 0) return true;
+  return MASTER_ADMIN_IDS.has(userId);
+}
+
 async function verifyMasterAdmin(authHeader) {
   const user = await verifyAdminUser(authHeader);
   if (!user) return null;
-  if (!MASTER_ADMIN_IDS.has(user.id)) return null;
+  if (!isMasterAdminId(user.id)) return null;
   return user;
 }
 
@@ -229,9 +235,10 @@ app.get("/api/me", async (req, res) => {
 
   const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
   const roleList = roles?.map(r => r.role) ?? ["user"];
-  const isMasterAdmin = MASTER_ADMIN_IDS.has(user.id);
+  const isAdmin = roleList.includes("admin");
+  const isMasterAdmin = isAdmin && isMasterAdminId(user.id);
 
-  console.log(`[/api/me] user.id=${user.id} email=${user.email} isMasterAdmin=${isMasterAdmin} MASTER_ADMIN_IDS=${[...MASTER_ADMIN_IDS].join(",")}`);
+  console.log(`[/api/me] user.id=${user.id} email=${user.email} isAdmin=${isAdmin} isMasterAdmin=${isMasterAdmin} MASTER_ADMIN_IDS=[${[...MASTER_ADMIN_IDS].join(",") || "empty=all admins"}]`);
 
   res.json({
     id: user.id,
@@ -239,6 +246,18 @@ app.get("/api/me", async (req, res) => {
     roles: roleList,
     isMasterAdmin,
   });
+});
+
+/* ── Debug: Who Am I (UUID checker) ─────────────────── */
+app.get("/api/whoami", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login dulu" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Token tidak valid" });
+  res.json({ uuid: user.id, email: user.email });
 });
 
 /* ── AI Chat ─────────────────────────────────────────── */
