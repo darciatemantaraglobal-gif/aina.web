@@ -1597,6 +1597,161 @@ app.patch("/api/admin/reports/:id", async (req, res) => {
   }
 });
 
+/* ── Migration SQL — admin helper ───────────────────────*/
+// Returns the SQL needed to create any missing tables.
+// Admin can paste this into the Supabase SQL editor.
+app.get("/api/admin/migration-sql", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+
+  // Check which tables are missing
+  const tableChecks = [
+    "threads", "thread_replies", "pinned_updates",
+    "message_reports", "notifications", "user_badges",
+  ];
+  const missing = [];
+  for (const table of tableChecks) {
+    const { error } = await supabase.from(table).select("*").limit(0);
+    if (error && (error.code === "42P01" || error.message?.includes("does not exist"))) {
+      missing.push(table);
+    }
+  }
+
+  const sqlBlocks = {
+    threads: `-- Threads & replies
+CREATE TABLE IF NOT EXISTS public.threads (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title        TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  category     TEXT NOT NULL CHECK (category IN ('Administrasi','Akademik','Kehidupan Mesir','Transport','Tempat Tinggal','Kuliner')),
+  reply_count  INTEGER NOT NULL DEFAULT 0,
+  promoted_to_kb BOOLEAN NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.threads ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Authenticated users can view threads" ON public.threads FOR SELECT TO authenticated USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Authenticated users can create threads" ON public.threads FOR INSERT WITH CHECK (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Authors can delete own threads" ON public.threads FOR DELETE USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Admins can manage all threads" ON public.threads FOR ALL USING (public.has_role(auth.uid(), 'admin')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_threads_category ON public.threads(category, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_threads_user ON public.threads(user_id);`,
+
+    thread_replies: `CREATE TABLE IF NOT EXISTS public.thread_replies (
+  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id UUID REFERENCES public.threads(id) ON DELETE CASCADE NOT NULL,
+  user_id   UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  content   TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.thread_replies ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Authenticated users can view replies" ON public.thread_replies FOR SELECT TO authenticated USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Authenticated users can create replies" ON public.thread_replies FOR INSERT WITH CHECK (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Authors can delete own replies" ON public.thread_replies FOR DELETE USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Admins can manage all replies" ON public.thread_replies FOR ALL USING (public.has_role(auth.uid(), 'admin')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_thread_replies_thread ON public.thread_replies(thread_id, created_at ASC);
+CREATE OR REPLACE FUNCTION public.update_thread_reply_count()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE public.threads SET reply_count = reply_count + 1, updated_at = now() WHERE id = NEW.thread_id;
+  ELSIF TG_OP = 'DELETE' THEN
+    UPDATE public.threads SET reply_count = GREATEST(reply_count - 1, 0), updated_at = now() WHERE id = OLD.thread_id;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+DROP TRIGGER IF EXISTS update_threads_reply_count ON public.thread_replies;
+CREATE TRIGGER update_threads_reply_count
+  AFTER INSERT OR DELETE ON public.thread_replies
+  FOR EACH ROW EXECUTE FUNCTION public.update_thread_reply_count();`,
+
+    pinned_updates: `-- Pinned / breaking updates
+CREATE TABLE IF NOT EXISTS public.pinned_updates (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  topic      TEXT NOT NULL,
+  content    TEXT NOT NULL,
+  active     BOOLEAN NOT NULL DEFAULT true,
+  expires_at TIMESTAMPTZ,
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.pinned_updates ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Admin can manage pinned_updates" ON public.pinned_updates FOR ALL USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Server can read pinned_updates" ON public.pinned_updates FOR SELECT USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_pinned_updates_active ON public.pinned_updates(active, expires_at);`,
+
+    message_reports: `-- Message reports
+CREATE TABLE IF NOT EXISTS public.message_reports (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  message_id      TEXT,
+  message_content TEXT,
+  reason          TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','reviewed','dismissed')),
+  admin_note      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.message_reports ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Users can insert own reports" ON public.message_reports FOR INSERT WITH CHECK (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Admin can manage all reports" ON public.message_reports FOR ALL USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_message_reports_status ON public.message_reports(status, created_at DESC);`,
+
+    notifications: `-- Notifications
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title      TEXT NOT NULL,
+  message    TEXT NOT NULL,
+  type       TEXT NOT NULL DEFAULT 'info' CHECK (type IN ('info','success','warning')),
+  read       BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Users can view own notifications" ON public.notifications FOR SELECT USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can update own notifications" ON public.notifications FOR UPDATE USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Server can insert notifications" ON public.notifications FOR INSERT WITH CHECK (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications(user_id, created_at DESC);`,
+
+    user_badges: `-- User badges
+CREATE TABLE IF NOT EXISTS public.user_badges (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  badge_type  TEXT NOT NULL,
+  awarded_by  UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  awarded_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, badge_type)
+);
+ALTER TABLE public.user_badges ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Users can view own badges" ON public.user_badges FOR SELECT USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Admins can manage badges" ON public.user_badges FOR ALL USING (public.has_role(auth.uid(), 'admin')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_user_badges_user ON public.user_badges(user_id);`,
+  };
+
+  // Also include profile + article_type columns migration
+  const columnsSql = `-- Extended profile fields (safe to re-run)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS faculty TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS study_field TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS arrival_year INTEGER;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS origin_city TEXT;
+
+-- Article type column
+ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS article_type TEXT NOT NULL DEFAULT 'narrative'
+  CHECK (article_type IN ('narrative', 'step_by_step'));`;
+
+  const neededSql = missing.map(t => sqlBlocks[t]).filter(Boolean).join("\n\n");
+  const fullSql = [neededSql, columnsSql].filter(Boolean).join("\n\n");
+
+  res.json({
+    missingTables: missing,
+    allTablesOk: missing.length === 0,
+    sql: fullSql || "-- All tables already exist. Run the column migration below to be safe:\n\n" + columnsSql,
+  });
+});
+
 /* ── Security Logs — master admin only ───────────────── */
 app.get("/api/admin/security-logs", strictLimiter, async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
@@ -1623,6 +1778,48 @@ app.delete("/api/admin/security-logs", strictLimiter, async (req, res) => {
   console.log(`[SECURITY] Log cleared by master admin ${admin.email}`);
   res.json({ success: true });
 });
+
+/* ── Global JSON error handler ───────────────────────── */
+// Must be registered AFTER all routes. Ensures all unhandled errors
+// return JSON (not Express's default HTML page) so the client never
+// sees "Request failed" due to a non-JSON error body.
+app.use((err, req, res, _next) => {
+  console.error("[UNHANDLED ERROR]", req.method, req.path, err.message);
+  res.status(err.status || err.statusCode || 500).json({
+    error: err.message || "Internal server error",
+  });
+});
+
+/* ── Startup: check required tables exist ────────────── */
+async function checkRequiredTables() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+
+  const tables = [
+    "profiles", "user_roles", "chats", "messages",
+    "knowledge_base", "contributor_requests", "tasks",
+    "threads", "thread_replies",
+    "pinned_updates", "message_reports",
+    "notifications", "user_badges",
+  ];
+
+  const missing = [];
+  for (const table of tables) {
+    const { error } = await supabase.from(table).select("*").limit(0);
+    // PGRST116 = 0 rows (fine); 42P01 = table doesn't exist
+    if (error && (error.code === "42P01" || error.message?.includes("does not exist"))) {
+      missing.push(table);
+    }
+  }
+
+  if (missing.length > 0) {
+    console.warn(`[MIGRATIONS] ⚠️  Missing tables: ${missing.join(", ")}`);
+    console.warn("[MIGRATIONS] Run the SQL from GET /api/admin/migration-sql in your Supabase SQL editor.");
+  } else {
+    console.log("[MIGRATIONS] ✓ All required tables exist");
+  }
+}
+checkRequiredTables();
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`AINA API server running on port ${PORT}`);
