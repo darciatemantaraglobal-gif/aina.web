@@ -122,31 +122,20 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Silakan login terlebih dahulu"); return; }
 
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const ext = file.type.split("/")[1] || "jpg";
+      const filePath = `${session.user.id}/avatar.${ext}`;
 
-      const res = await fetch("/api/upload-avatar", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
-      });
+      const { error: uploadErr } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { contentType: file.type, upsert: true });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Upload gagal");
-      }
+      if (uploadErr) throw new Error(uploadErr.message);
 
-      const { url } = await res.json();
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(filePath);
 
-      await supabase.from("profiles").update({ avatar_url: url }).eq("user_id", session.user.id);
-      setProfile((prev: any) => ({ ...prev, avatar_url: url }));
+      const cacheBustedUrl = `${publicUrl}?t=${Date.now()}`;
+      await supabase.from("profiles").update({ avatar_url: cacheBustedUrl }).eq("user_id", session.user.id);
+      setProfile((prev: any) => ({ ...prev, avatar_url: cacheBustedUrl }));
       toast.success("Foto profil berhasil diperbarui!");
     } catch (err: any) {
       toast.error(err.message || "Gagal mengupload foto");
