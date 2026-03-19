@@ -16,12 +16,14 @@ app.use(helmet({
 /* ── CORS — exact origin matching only ──────────────── */
 const allowedOrigins = new Set([
   process.env.CLIENT_URL,
+  // Vercel injects VERCEL_URL automatically (format: hostname only, no https://)
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
   "http://localhost:5000",
   "http://localhost:3000",
   process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null,
 ].filter(Boolean));
 
-// Also allow *.replit.dev, *.replit.app, and *.vercel.app subdomains (exact suffix, not substring)
+// Allow *.replit.dev, *.replit.app, and *.vercel.app subdomains
 function isAllowedOrigin(origin) {
   if (!origin) return true; // same-origin / non-browser requests
   if (allowedOrigins.has(origin)) return true;
