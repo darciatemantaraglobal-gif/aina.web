@@ -112,10 +112,10 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
         if (s?.access_token) {
           const [badgeRes, meRes] = await Promise.all([
             fetch("/api/my-badges", { headers: { Authorization: `Bearer ${s.access_token}` } }),
-            !userIdProp ? fetch("/api/me", { headers: { Authorization: `Bearer ${s.access_token}` } }) : Promise.resolve(null),
+            fetch("/api/me", { headers: { Authorization: `Bearer ${s.access_token}` } }),
           ]);
           if (badgeRes.ok) setBadges(await badgeRes.json());
-          if (meRes?.ok) {
+          if (meRes.ok) {
             const me = await meRes.json();
             setIsMasterAdmin(me.isMasterAdmin ?? false);
           }
