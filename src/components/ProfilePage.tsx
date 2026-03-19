@@ -44,6 +44,8 @@ async function getCroppedBlob(image: HTMLImageElement, crop: PixelCrop): Promise
   });
 }
 
+const EQUIPPED_BADGE_KEY = "aina_equipped_badge";
+
 const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [profile, setProfile] = useState<any>(null);
   const [roles, setRoles] = useState<string[]>([]);
@@ -51,6 +53,9 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [badges, setBadges] = useState<Array<{badge_type: string; name: string; emoji: string; rare: boolean; awarded_at: string}>>([]);
+  const [equippedBadge, setEquippedBadge] = useState<string | null>(
+    () => localStorage.getItem(EQUIPPED_BADGE_KEY)
+  );
 
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -159,6 +164,16 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.success("Profil diperbarui");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleEquipBadge = (badgeType: string) => {
+    if (equippedBadge === badgeType) {
+      setEquippedBadge(null);
+      localStorage.removeItem(EQUIPPED_BADGE_KEY);
+    } else {
+      setEquippedBadge(badgeType);
+      localStorage.setItem(EQUIPPED_BADGE_KEY, badgeType);
     }
   };
 
@@ -331,8 +346,8 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
                 />
               </div>
 
-              {/* Role badge */}
-              <div className="relative z-10 mt-3">
+              {/* Role badge + equipped badge */}
+              <div className="relative z-10 mt-3 flex items-center gap-2">
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                   topRole === "Admin"
                     ? "bg-red-500/15 text-red-400 border border-red-500/20"
@@ -345,6 +360,22 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
                   <Shield className="h-3 w-3" />
                   {topRole}
                 </span>
+                {(() => {
+                  const active = badges.find(b => b.badge_type === equippedBadge);
+                  if (!active) return null;
+                  return (
+                    <span
+                      title={active.name}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                        active.rare
+                          ? "border-violet-500/30 bg-violet-900/20 text-violet-300"
+                          : "border-border bg-secondary text-muted-foreground"
+                      }`}
+                    >
+                      {active.emoji} {active.name}
+                    </span>
+                  );
+                })()}
               </div>
 
               {/* Name & email */}
@@ -420,62 +451,80 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
           {badges.length > 0 && (
             <Card className="border-border bg-card overflow-hidden">
               <CardContent className="p-5">
-                <div className="mb-3 flex items-center gap-2">
+                <div className="mb-1 flex items-center gap-2">
                   <Award className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-semibold text-foreground">Badges</h3>
                   <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
                     {badges.length}
                   </span>
                 </div>
+                <p className="mb-3 text-[11px] text-muted-foreground/70">
+                  Klik badge untuk dipasang di profil. Klik lagi untuk melepas.
+                </p>
 
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                  {badges.map((badge) => (
-                    <div
-                      key={badge.badge_type}
-                      className={`group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl border p-3 text-center transition-transform hover:scale-[1.02] ${
-                        badge.rare
-                          ? "border-violet-500/30 bg-gradient-to-b from-violet-900/20 to-purple-900/10"
-                          : "border-border bg-secondary/40"
-                      }`}
-                    >
-                      {/* Rare shimmer effect */}
-                      {badge.rare && (
-                        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
-                          <div className="absolute inset-0 bg-gradient-to-br from-violet-400/5 via-transparent to-fuchsia-400/5" />
-                          <div
-                            className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0%,transparent_40%,hsl(270_80%_65%/0.08)_50%,transparent_60%,transparent_100%)]"
-                            style={{ animation: "chatbox-spin 6s linear infinite" }}
-                          />
+                  {badges.map((badge) => {
+                    const isEquipped = equippedBadge === badge.badge_type;
+                    return (
+                      <button
+                        key={badge.badge_type}
+                        onClick={() => handleEquipBadge(badge.badge_type)}
+                        className={`group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl border p-3 text-center transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                          isEquipped
+                            ? badge.rare
+                              ? "border-violet-400/60 bg-gradient-to-b from-violet-900/30 to-purple-900/20 ring-2 ring-violet-500/30"
+                              : "border-primary/50 bg-primary/10 ring-2 ring-primary/20"
+                            : badge.rare
+                            ? "border-violet-500/30 bg-gradient-to-b from-violet-900/20 to-purple-900/10"
+                            : "border-border bg-secondary/40"
+                        }`}
+                      >
+                        {/* Equipped checkmark */}
+                        {isEquipped && (
+                          <span className="absolute right-2 top-2 z-20 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] text-white shadow">
+                            <Check className="h-2.5 w-2.5" />
+                          </span>
+                        )}
+
+                        {/* Rare shimmer effect */}
+                        {badge.rare && (
+                          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+                            <div className="absolute inset-0 bg-gradient-to-br from-violet-400/5 via-transparent to-fuchsia-400/5" />
+                            <div
+                              className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0%,transparent_40%,hsl(270_80%_65%/0.08)_50%,transparent_60%,transparent_100%)]"
+                              style={{ animation: "chatbox-spin 6s linear infinite" }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Emoji */}
+                        <div className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${
+                          badge.rare
+                            ? "bg-gradient-to-br from-violet-700/30 to-purple-800/30 shadow-lg shadow-purple-900/20"
+                            : "bg-secondary"
+                        }`}>
+                          {badge.emoji}
                         </div>
-                      )}
 
-                      {/* Emoji */}
-                      <div className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${
-                        badge.rare
-                          ? "bg-gradient-to-br from-violet-700/30 to-purple-800/30 shadow-lg shadow-purple-900/20"
-                          : "bg-secondary"
-                      }`}>
-                        {badge.emoji}
-                      </div>
+                        {/* Name */}
+                        <p className="relative z-10 text-xs font-semibold leading-tight text-foreground">
+                          {badge.name}
+                        </p>
 
-                      {/* Name */}
-                      <p className="relative z-10 text-xs font-semibold leading-tight text-foreground">
-                        {badge.name}
-                      </p>
+                        {/* Rare label */}
+                        {badge.rare && (
+                          <span className="relative z-10 rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-violet-300">
+                            EKSKLUSIF
+                          </span>
+                        )}
 
-                      {/* Rare label */}
-                      {badge.rare && (
-                        <span className="relative z-10 rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-violet-300">
-                          EKSKLUSIF
-                        </span>
-                      )}
-
-                      {/* Awarded date tooltip on hover */}
-                      <p className="relative z-10 text-[10px] text-muted-foreground/60">
-                        {new Date(badge.awarded_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-                      </p>
-                    </div>
-                  ))}
+                        {/* Equip status */}
+                        <p className={`relative z-10 text-[10px] font-medium ${isEquipped ? "text-primary" : "text-muted-foreground/60"}`}>
+                          {isEquipped ? "Terpasang ✓" : new Date(badge.awarded_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      </button>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
