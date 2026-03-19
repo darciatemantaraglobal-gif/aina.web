@@ -168,10 +168,31 @@ async function verifyMasterAdmin(authHeader) {
   return user;
 }
 
+/* ── Article type column detection (cached) ──────────── */
+let _hasArticleTypeCol = null; // null=unknown, true/false=detected
+
+async function detectArticleTypeCol(supabase) {
+  if (_hasArticleTypeCol !== null) return _hasArticleTypeCol;
+  const { error } = await supabase
+    .from("knowledge_base")
+    .select("article_type")
+    .limit(1);
+  _hasArticleTypeCol = !error;
+  if (!_hasArticleTypeCol) {
+    console.warn("[schema] 'article_type' column not found — run migration in Supabase dashboard");
+  }
+  return _hasArticleTypeCol;
+}
+
 /* ── Fetch relevant knowledge base articles ──────────── */
 async function fetchRelevantArticles(userQuestion) {
   const supabase = getAdminClient();
   if (!supabase) return [];
+
+  const hasTypeCol = await detectArticleTypeCol(supabase);
+  const selectCols = hasTypeCol
+    ? "title, content, category, article_type"
+    : "title, content, category";
 
   const keywords = userQuestion
     .toLowerCase()
@@ -183,7 +204,7 @@ async function fetchRelevantArticles(userQuestion) {
   if (keywords.length === 0) {
     const { data } = await supabase
       .from("knowledge_base")
-      .select("title, content, category")
+      .select(selectCols)
       .eq("status", "approved")
       .order("created_at", { ascending: false })
       .limit(5);
@@ -197,7 +218,7 @@ async function fetchRelevantArticles(userQuestion) {
 
   const { data: matched } = await supabase
     .from("knowledge_base")
-    .select("title, content, category")
+    .select(selectCols)
     .eq("status", "approved")
     .or(orFilter)
     .limit(5);
@@ -207,7 +228,7 @@ async function fetchRelevantArticles(userQuestion) {
   // Fallback: return recent articles
   const { data: recent } = await supabase
     .from("knowledge_base")
-    .select("title, content, category")
+    .select(selectCols)
     .eq("status", "approved")
     .order("created_at", { ascending: false })
     .limit(3);
@@ -301,7 +322,7 @@ app.post("/api/setup/claim-admin", async (req, res) => {
 
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", async (req, res) => {
-  const { messages } = req.body;
+  const { messages, userProfile } = req.body;
   if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: "messages array required" });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -354,12 +375,31 @@ app.post("/api/chat", async (req, res) => {
   const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
   const articles = await fetchRelevantArticles(lastUserMessage);
 
+  // Build knowledge context with article-type-aware formatting hints
   let knowledgeContext = "";
   if (articles.length > 0) {
-    const articlesText = articles.map((a, i) =>
-      `### Artikel ${i + 1}: ${a.title} [${a.category}]\n${a.content}`
-    ).join("\n\n");
-    knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Jangan gunakan pengetahuan umummu jika jawabannya sudah ada di sini. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.\n\n${articlesText}\n---`;
+    const articlesText = articles.map((a, i) => {
+      const typeHint = a.article_type === "step_by_step"
+        ? " [FORMAT: Panduan Langkah-langkah — WAJIB jawab dalam format langkah bernomor: **Langkah 1**, **Langkah 2**, dst.]"
+        : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
+      return `### Artikel ${i + 1}: ${a.title} [${a.category}]${typeHint}\n${a.content}`;
+    }).join("\n\n");
+    knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.\n\n${articlesText}\n---`;
+  }
+
+  // Build user personalization context
+  let personalizationContext = "";
+  if (userProfile) {
+    const parts = [];
+    if (userProfile.full_name) parts.push(`Nama: ${userProfile.full_name}`);
+    if (userProfile.level && userProfile.level !== "User") parts.push(`Level: ${userProfile.level}`);
+    if (userProfile.arrival_year) parts.push(`Angkatan/tahun tiba: ${userProfile.arrival_year}`);
+    if (userProfile.faculty) parts.push(`Fakultas: ${userProfile.faculty}`);
+    if (userProfile.study_field) parts.push(`Jurusan: ${userProfile.study_field}`);
+    if (userProfile.origin_city) parts.push(`Kota asal: ${userProfile.origin_city}`);
+    if (parts.length > 0) {
+      personalizationContext = `\n\n---\n## Profil User Saat Ini\n${parts.join("\n")}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
+    }
   }
 
   const systemPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Mesir (Masisir).
@@ -368,15 +408,16 @@ Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidu
 
 ATURAN KERAS — WAJIB DIIKUTI:
 - PRIORITAS JAWABAN: Gunakan Knowledge Base terlebih dahulu. Gunakan pengetahuan umum hanya jika topik tidak tercakup di Knowledge Base.
-- Jawab minimal 3 paragraf pendek — pastikan informasi tersampaikan jelas tapi tidak bertele-tele.
-- Setiap paragraf fokus pada satu poin utama. Hindari pengulangan dan elaborasi berlebihan.
+- IKUTI FORMAT dari petunjuk artikel: jika artikel bertipe Panduan Langkah-langkah, WAJIB gunakan **Langkah 1**, **Langkah 2**, dst. Jika bertipe Informasi Umum, gunakan paragraf.
+- Jawab minimal 3 paragraf pendek atau 3 langkah — pastikan informasi tersampaikan jelas tapi tidak bertele-tele.
+- Setiap paragraf/langkah fokus pada satu poin utama. Hindari pengulangan dan elaborasi berlebihan.
 - Untuk syarat, dokumen, atau daftar ketentuan → gunakan format poin (bullet \`-\`) bukan paragraf.
 - DILARANG menggunakan format tabel dalam jawaban apapun.
 - Gunakan format Markdown yang rapi: judul bagian pakai **bold**, isi pakai paragraf atau poin.
 - DILARANG memberi pengantar, basa-basi, atau kesimpulan yang tidak diminta.
 - DILARANG mengulang pertanyaan user.
 - Jika tidak tahu, jawab: "Maaf, saya belum punya info ini."
-- WAJIB cantumkan sumber di akhir setiap jawaban dalam format: *Sumber: [nama sumber/instansi/artikel]* — jika dari knowledge base gunakan judul artikelnya, jika dari pengetahuan umum tulis "Pengetahuan umum", jika dari pengalaman komunitas tulis "Komunitas Masisir"${knowledgeContext}`;
+- WAJIB cantumkan sumber di akhir setiap jawaban dalam format: *Sumber: [nama sumber/instansi/artikel]* — jika dari knowledge base gunakan judul artikelnya, jika dari pengetahuan umum tulis "Pengetahuan umum", jika dari pengalaman komunitas tulis "Komunitas Masisir"${personalizationContext}${knowledgeContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 

@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut, GraduationCap, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 function centerAspectCrop(mediaWidth: number, mediaHeight: number, aspect: number): Crop {
@@ -61,6 +61,13 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [editingStudy, setEditingStudy] = useState(false);
+  const [editFaculty, setEditFaculty] = useState("");
+  const [editStudyField, setEditStudyField] = useState("");
+  const [editArrivalYear, setEditArrivalYear] = useState("");
+  const [editOriginCity, setEditOriginCity] = useState("");
+  const [savingStudy, setSavingStudy] = useState(false);
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +174,54 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.success("Profil diperbarui");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startEditStudy = () => {
+    setEditFaculty(profile?.faculty || "");
+    setEditStudyField(profile?.study_field || "");
+    setEditArrivalYear(profile?.arrival_year ? String(profile.arrival_year) : "");
+    setEditOriginCity(profile?.origin_city || "");
+    setEditingStudy(true);
+  };
+
+  const cancelEditStudy = () => setEditingStudy(false);
+
+  const saveStudyProfile = async () => {
+    setSavingStudy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const year = editArrivalYear ? parseInt(editArrivalYear) : null;
+      if (editArrivalYear && (isNaN(year!) || year! < 2000 || year! > 2035)) {
+        toast.error("Tahun tiba tidak valid (2000–2035)");
+        return;
+      }
+
+      const updates: Record<string, any> = {
+        faculty: editFaculty.trim() || null,
+        study_field: editStudyField.trim() || null,
+        arrival_year: year,
+        origin_city: editOriginCity.trim() || null,
+      };
+
+      const { error } = await supabase.from("profiles").update(updates).eq("user_id", session.user.id);
+
+      if (error) {
+        if (error.message?.includes("column") || error.code === "42703") {
+          toast.error("Fitur profil studi belum aktif. Admin perlu menjalankan migrasi database.");
+        } else {
+          toast.error("Gagal menyimpan: " + error.message);
+        }
+        return;
+      }
+
+      setProfile((prev: any) => ({ ...prev, ...updates }));
+      setEditingStudy(false);
+      toast.success("Profil studi diperbarui");
+    } finally {
+      setSavingStudy(false);
     }
   };
 
@@ -450,6 +505,87 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
                   </span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Info Studi Card */}
+          <Card className="border-border bg-card overflow-hidden">
+            <CardContent className="p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Info Studi</h3>
+                </div>
+                {!editingStudy ? (
+                  <button
+                    onClick={startEditStudy}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Button size="icon" variant="ghost" onClick={saveStudyProfile} disabled={savingStudy} className="h-7 w-7 text-green-500 hover:bg-green-500/10">
+                      {savingStudy ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-green-500 border-t-transparent" /> : <Check className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={cancelEditStudy} disabled={savingStudy} className="h-7 w-7 text-destructive hover:bg-destructive/10">
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {editingStudy ? (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Fakultas (misal: Syariah, Ushuluddin)"
+                    value={editFaculty}
+                    onChange={(e) => setEditFaculty(e.target.value)}
+                    className="h-8 bg-secondary text-xs"
+                  />
+                  <Input
+                    placeholder="Jurusan (misal: Syariah Islamiyah)"
+                    value={editStudyField}
+                    onChange={(e) => setEditStudyField(e.target.value)}
+                    className="h-8 bg-secondary text-xs"
+                  />
+                  <Input
+                    placeholder="Tahun tiba di Mesir (misal: 2022)"
+                    value={editArrivalYear}
+                    onChange={(e) => setEditArrivalYear(e.target.value)}
+                    className="h-8 bg-secondary text-xs"
+                  />
+                  <Input
+                    placeholder="Kota asal (misal: Jakarta, Surabaya)"
+                    value={editOriginCity}
+                    onChange={(e) => setEditOriginCity(e.target.value)}
+                    className="h-8 bg-secondary text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground/60">
+                    Info ini membantu AINA memberikan jawaban yang lebih relevan untukmu.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[
+                    { icon: GraduationCap, label: "Fakultas", value: profile?.faculty },
+                    { icon: FileText, label: "Jurusan", value: profile?.study_field },
+                    { icon: Calendar, label: "Tahun tiba", value: profile?.arrival_year },
+                    { icon: MapPin, label: "Kota asal", value: profile?.origin_city },
+                  ].map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="flex items-center justify-between rounded-xl bg-secondary/60 px-3 py-2.5">
+                      <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </span>
+                      <span className="text-xs font-medium text-foreground">
+                        {value || <span className="text-muted-foreground/50 italic">Belum diisi</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

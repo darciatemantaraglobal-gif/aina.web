@@ -10,6 +10,10 @@ import { toast } from "sonner";
 import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+const articleTypes = [
+  { value: "narrative", label: "Informasi Umum", desc: "Penjelasan/narasi tentang topik tertentu" },
+  { value: "step_by_step", label: "Panduan Langkah-langkah", desc: "Prosedur yang bisa langsung diikuti" },
+];
 
 interface ChatMessage {
   id: string;
@@ -152,6 +156,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [artTitle, setArtTitle] = useState("");
   const [artContent, setArtContent] = useState("");
   const [artCategory, setArtCategory] = useState("");
+  const [artType, setArtType] = useState("narrative");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -265,12 +270,27 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       }
       if (!uid) return;
 
-      const { data, error } = await supabase.from("knowledge_base").insert({
+      const payload: Record<string, any> = {
         author_id: uid,
         title: artTitle.trim(),
         content: artContent.trim(),
         category: artCategory,
-      }).select().single();
+        article_type: artType,
+      };
+
+      let { data, error } = await supabase.from("knowledge_base").insert(payload).select().single();
+
+      // If article_type column doesn't exist yet, retry without it
+      if (error && error.message?.includes("article_type")) {
+        const { data: d2, error: e2 } = await supabase.from("knowledge_base").insert({
+          author_id: uid,
+          title: artTitle.trim(),
+          content: artContent.trim(),
+          category: artCategory,
+        }).select().single();
+        data = d2;
+        error = e2;
+      }
 
       if (error) {
         toast.error(`Gagal mengirim artikel: ${error.message}`);
@@ -280,6 +300,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       setArtTitle("");
       setArtContent("");
       setArtCategory("");
+      setArtType("narrative");
       setDialogOpen(false);
       toast.success("Artikel dikirim! Menunggu persetujuan admin.");
     } catch {
@@ -424,8 +445,30 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                         ))}
                       </SelectContent>
                     </Select>
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Tipe Artikel</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {articleTypes.map((t) => (
+                          <button
+                            key={t.value}
+                            type="button"
+                            onClick={() => setArtType(t.value)}
+                            className={`rounded-xl border p-3 text-left transition-all ${
+                              artType === t.value
+                                ? "border-primary bg-primary/10 text-foreground"
+                                : "border-border bg-secondary text-muted-foreground hover:border-border/80 hover:text-foreground"
+                            }`}
+                          >
+                            <p className="text-xs font-semibold">{t.label}</p>
+                            <p className="mt-0.5 text-[10px] leading-tight opacity-70">{t.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <Textarea
-                      placeholder="Tulis konten artikel..."
+                      placeholder={artType === "step_by_step"
+                        ? "Tulis langkah-langkah secara urut...\nContoh:\n1. Siapkan dokumen X\n2. Kunjungi kantor Y\n3. Isi formulir Z"
+                        : "Tulis konten artikel..."}
                       value={artContent}
                       onChange={(e) => setArtContent(e.target.value)}
                       className="min-h-[150px] bg-secondary"

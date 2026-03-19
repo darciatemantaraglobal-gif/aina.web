@@ -113,6 +113,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [limitReached, setLimitReached] = useState(false);
   const [dailyCount, setDailyCount] = useState<number | null>(null);
   const [isPaidUser, setIsPaidUser] = useState(false);
+  const [userProfile, setUserProfile] = useState<Record<string, any> | null>(null);
   const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -169,7 +170,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch daily chat count and check paid status on mount
+  // Fetch daily chat count, paid status, and user profile on mount
   useEffect(() => {
     const fetchDailyUsage = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -177,15 +178,20 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
       const userId = session.user.id;
 
-      // Check if paid user (contributor/senior_contributor/admin)
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId);
-      const paid = roles?.some(r =>
+      // Parallel: fetch roles and profile
+      const [rolesRes, profileRes] = await Promise.all([
+        supabase.from("user_roles").select("role").eq("user_id", userId),
+        supabase.from("profiles").select("*").eq("user_id", userId).single(),
+      ]);
+
+      const paid = rolesRes.data?.some(r =>
         ["contributor", "senior_contributor", "admin"].includes(r.role)
       ) ?? false;
       setIsPaidUser(paid);
+
+      if (profileRes.data) {
+        setUserProfile(profileRes.data);
+      }
 
       if (!paid) {
         const todayStart = new Date();
@@ -296,7 +302,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             "Content-Type": "application/json",
             ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
           },
-          body: JSON.stringify({ messages: history }),
+          body: JSON.stringify({ messages: history, userProfile }),
         });
       } catch (fetchErr: any) {
         if (fetchErr.name === "AbortError") {
