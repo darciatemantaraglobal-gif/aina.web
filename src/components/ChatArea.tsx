@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface Message {
   id: string;
@@ -251,7 +252,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     setSubmittingReport(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      await fetch("/api/report-message", {
+      const res = await fetch("/api/report-message", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -259,11 +260,16 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         },
         body: JSON.stringify({ message_id: msgId, message_content: msgContent, reason: reportReason }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Gagal mengirim laporan" }));
+        throw new Error(err.error || "Gagal mengirim laporan");
+      }
       setReportedMsgIds(prev => new Set(prev).add(msgId));
       setReportingMsgId(null);
       setReportReason("");
-    } catch {
-      // silently fail
+      toast.success("Laporan berhasil dikirim");
+    } catch (e: any) {
+      toast.error(e.message || "Gagal mengirim laporan, coba lagi");
     } finally {
       setSubmittingReport(false);
     }
