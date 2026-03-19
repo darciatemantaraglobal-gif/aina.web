@@ -37,18 +37,32 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setUserId(session.user.id);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
     fetchNotifications();
 
     const channel = supabase
-      .channel("notifications")
+      .channel(`notifications:${userId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications" },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
         (payload) => {
           const newNotif = payload.new as Notification;
           setNotifications(prev => [newNotif, ...prev]);
@@ -61,7 +75,7 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
