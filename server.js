@@ -58,6 +58,75 @@ initStorage();
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
+console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
+
+/* ── Email via Resend ─────────────────────────────────── */
+async function getUserEmail(userId) {
+  const supabase = getAdminClient();
+  if (!supabase) return null;
+  const { data } = await supabase.from("profiles").select("email, full_name").eq("user_id", userId).single();
+  return data ?? null;
+}
+
+async function sendEmail({ to, name, subject, html }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const from = process.env.EMAIL_FROM || "AINA <onboarding@resend.dev>";
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from, to: `${name} <${to}>`, subject, html }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn("Resend error:", err);
+    } else {
+      console.log(`Email sent to ${to}: ${subject}`);
+    }
+  } catch (e) {
+    console.warn("Email send failed:", e.message);
+  }
+}
+
+function emailTemplate({ title, body, ctaText, ctaUrl }) {
+  return `<!DOCTYPE html>
+<html lang="id">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0f0f13;font-family:'Segoe UI',Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f13;padding:32px 16px">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#1a1a24;border-radius:16px;border:1px solid #2a2a3a;overflow:hidden;max-width:100%">
+        <tr>
+          <td style="background:linear-gradient(135deg,#7c3aed,#a855f7);padding:28px 32px;text-align:center">
+            <h1 style="margin:0;color:#fff;font-size:24px;font-weight:800;letter-spacing:-0.5px">AINA</h1>
+            <p style="margin:4px 0 0;color:rgba(255,255,255,0.75);font-size:13px">Asisten Pintar Masisir</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px">
+            <h2 style="margin:0 0 12px;color:#f1f1f5;font-size:18px;font-weight:700">${title}</h2>
+            <div style="color:#a0a0b8;font-size:14px;line-height:1.7">${body}</div>
+            ${ctaText && ctaUrl ? `
+            <div style="margin-top:28px;text-align:center">
+              <a href="${ctaUrl}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:600;font-size:14px">${ctaText}</a>
+            </div>` : ""}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 32px 24px;border-top:1px solid #2a2a3a;text-align:center">
+            <p style="margin:0;color:#5a5a72;font-size:12px">Email ini dikirim otomatis oleh AINA. Jangan balas email ini.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
 
 const _adminCache = new Map();
 async function verifyAdminUser(authHeader) {
@@ -391,6 +460,11 @@ app.post("/api/admin/requests/:id/review", async (req, res) => {
 
   await supabase.from("contributor_requests").update({ status }).eq("id", id);
 
+  const userInfo = await getUserEmail(request.user_id);
+  const appUrl = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : "https://aina.replit.app";
+
   if (status === "approved") {
     await supabase.from("user_roles").upsert({ user_id: request.user_id, role: "contributor" }, { onConflict: "user_id,role" });
     await supabase.from("profiles").update({ level: "Contributor" }).eq("user_id", request.user_id);
@@ -400,6 +474,25 @@ app.post("/api/admin/requests/:id/review", async (req, res) => {
       message: "Permintaanmu untuk menjadi kontributor telah disetujui. Kamu sekarang bisa menulis dan mengirim artikel ke Knowledge Base AINA.",
       type: "success",
     }).catch(() => {});
+    if (userInfo?.email) {
+      await sendEmail({
+        to: userInfo.email,
+        name: userInfo.full_name || "Masisir",
+        subject: "Selamat! Kamu resmi jadi Kontributor AINA 🎉",
+        html: emailTemplate({
+          title: "Permintaanmu disetujui!",
+          body: `Halo <strong>${userInfo.full_name || "Masisir"}</strong>,<br><br>
+Kabar gembira! Tim admin AINA telah menyetujui permintaanmu untuk menjadi <strong>Kontributor</strong>.<br><br>
+Sebagai kontributor, kamu sekarang bisa:<br>
+• Menulis dan mengirim artikel ke Knowledge Base AINA<br>
+• Membantu sesama Masisir dengan pengalaman dan pengetahuanmu<br>
+• Mendapatkan status <em>Senior Contributor</em> setelah 10 artikel disetujui<br><br>
+Yuk, mulai berkontribusi sekarang!`,
+          ctaText: "Buka Dashboard AINA",
+          ctaUrl: `${appUrl}/dashboard`,
+        }),
+      });
+    }
   } else {
     await supabase.from("notifications").insert({
       user_id: request.user_id,
@@ -407,6 +500,22 @@ app.post("/api/admin/requests/:id/review", async (req, res) => {
       message: "Permintaanmu untuk menjadi kontributor belum bisa disetujui saat ini. Kamu tetap bisa menggunakan semua fitur AINA.",
       type: "warning",
     }).catch(() => {});
+    if (userInfo?.email) {
+      await sendEmail({
+        to: userInfo.email,
+        name: userInfo.full_name || "Masisir",
+        subject: "Update permintaan kontributor AINA",
+        html: emailTemplate({
+          title: "Permintaan kontributor belum disetujui",
+          body: `Halo <strong>${userInfo.full_name || "Masisir"}</strong>,<br><br>
+Setelah ditinjau, permintaanmu untuk menjadi kontributor AINA belum bisa disetujui saat ini.<br><br>
+Kamu tetap bisa menggunakan semua fitur AINA seperti biasa. Jika ada pertanyaan, silakan hubungi tim kami.<br><br>
+Terima kasih sudah tertarik berkontribusi untuk komunitas Masisir!`,
+          ctaText: "Kembali ke AINA",
+          ctaUrl: `${appUrl}/dashboard`,
+        }),
+      });
+    }
   }
 
   res.json({ success: true });
@@ -438,6 +547,12 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
   const { data: articleData } = await supabase.from("knowledge_base").select("title").eq("id", id).single();
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
+  const authorInfo = await getUserEmail(article.author_id);
+  const appUrl = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : "https://aina.replit.app";
+  const articleTitle = articleData?.title ?? "artikelmu";
+
   if (status === "approved") {
     const { data: profile } = await supabase.from("profiles").select("contribution_count").eq("user_id", article.author_id).single();
     if (profile) {
@@ -449,25 +564,73 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
         await supabase.from("notifications").insert({
           user_id: article.author_id,
           title: "Selamat! Kamu naik jadi Senior Contributor 🌟",
-          message: `Artikelmu "${articleData?.title ?? ""}" telah disetujui. Kamu kini berstatus Senior Contributor karena sudah ${newCount} artikel disetujui!`,
+          message: `Artikelmu "${articleTitle}" telah disetujui. Kamu kini berstatus Senior Contributor karena sudah ${newCount} artikel disetujui!`,
           type: "success",
         }).catch(() => {});
+        if (authorInfo?.email) {
+          await sendEmail({
+            to: authorInfo.email,
+            name: authorInfo.full_name || "Kontributor",
+            subject: `Artikel disetujui + Naik jadi Senior Contributor! 🌟`,
+            html: emailTemplate({
+              title: "Artikel disetujui & kamu naik level!",
+              body: `Halo <strong>${authorInfo.full_name || "Kontributor"}</strong>,<br><br>
+Artikel <strong>"${articleTitle}"</strong> telah disetujui dan kini tersedia di Knowledge Base AINA.<br><br>
+Lebih dari itu — dengan <strong>${newCount} artikel disetujui</strong>, kamu resmi naik ke status <strong>Senior Contributor</strong>! Pencapaian luar biasa untuk komunitas Masisir. 🌟<br><br>
+Terus berkontribusi dan bantu sesama mahasiswa Indonesia di Mesir!`,
+              ctaText: "Lihat Kontribusimu",
+              ctaUrl: `${appUrl}/dashboard`,
+            }),
+          });
+        }
       } else {
         await supabase.from("notifications").insert({
           user_id: article.author_id,
           title: "Artikel kamu disetujui! ✅",
-          message: `Artikel "${articleData?.title ?? ""}" telah disetujui dan kini tersedia di Knowledge Base AINA. Total kontribusimu: ${newCount} artikel.`,
+          message: `Artikel "${articleTitle}" telah disetujui dan kini tersedia di Knowledge Base AINA. Total kontribusimu: ${newCount} artikel.`,
           type: "success",
         }).catch(() => {});
+        if (authorInfo?.email) {
+          await sendEmail({
+            to: authorInfo.email,
+            name: authorInfo.full_name || "Kontributor",
+            subject: `Artikel "${articleTitle}" disetujui! ✅`,
+            html: emailTemplate({
+              title: "Artikelmu telah disetujui!",
+              body: `Halo <strong>${authorInfo.full_name || "Kontributor"}</strong>,<br><br>
+Artikel <strong>"${articleTitle}"</strong> telah ditinjau dan disetujui oleh tim admin AINA. Artikel kamu kini tersedia di Knowledge Base dan bisa diakses oleh seluruh Masisir.<br><br>
+Total artikel yang sudah disetujui: <strong>${newCount} artikel</strong>.<br><br>
+Terima kasih sudah berkontribusi untuk komunitas Masisir!`,
+              ctaText: "Lihat Knowledge Base",
+              ctaUrl: `${appUrl}/dashboard`,
+            }),
+          });
+        }
       }
     }
   } else {
     await supabase.from("notifications").insert({
       user_id: article.author_id,
       title: "Artikel belum bisa disetujui",
-      message: `Artikel "${articleData?.title ?? ""}" belum bisa dipublikasikan saat ini. Silakan perbaiki dan kirim ulang.`,
+      message: `Artikel "${articleTitle}" belum bisa dipublikasikan saat ini. Silakan perbaiki dan kirim ulang.`,
       type: "warning",
     }).catch(() => {});
+    if (authorInfo?.email) {
+      await sendEmail({
+        to: authorInfo.email,
+        name: authorInfo.full_name || "Kontributor",
+        subject: `Update artikel "${articleTitle}"`,
+        html: emailTemplate({
+          title: "Artikel belum bisa dipublikasikan",
+          body: `Halo <strong>${authorInfo.full_name || "Kontributor"}</strong>,<br><br>
+Setelah ditinjau, artikel <strong>"${articleTitle}"</strong> belum bisa dipublikasikan di Knowledge Base AINA saat ini.<br><br>
+Kamu bisa merevisi artikel dan mengirimnya kembali melalui dashboard. Kami menghargai setiap kontribusimu untuk komunitas Masisir.<br><br>
+Jika ada pertanyaan, jangan ragu untuk menghubungi tim admin.`,
+          ctaText: "Kirim Artikel Baru",
+          ctaUrl: `${appUrl}/dashboard`,
+        }),
+      });
+    }
   }
 
   res.json({ success: true });
