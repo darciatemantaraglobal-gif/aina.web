@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, User, AlertCircle, Menu, Plus, Zap } from "lucide-react";
+import { Send, User, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -423,22 +423,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             )}
 
             {limitReached && (
-              <div className="flex flex-col items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-6 py-6 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-purple">
-                  <Zap className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground">Batas chat harian tercapai</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Kamu sudah menggunakan 3 chat gratis hari ini. Upgrade ke AINA Pro untuk chat tanpa batas!
-                  </p>
-                </div>
-                <button
-                  onClick={() => navigate("/pricing")}
-                  className="mt-1 rounded-xl bg-gradient-purple px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                >
-                  Lihat Paket Upgrade →
-                </button>
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+                <Zap className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <p className="text-sm text-amber-300/90">
+                  Batas 3 chat gratis hari ini sudah habis. Upgrade atau jadi Kontributor untuk chat tanpa batas.
+                </p>
               </div>
             )}
 
@@ -447,11 +436,103 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         )}
       </div>
 
+      {/* Limit Reached Modal */}
+      {limitReached && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md rounded-3xl border border-border bg-card shadow-2xl overflow-hidden">
+            {/* Purple glow top bar */}
+            <div className="h-1 w-full bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500" />
+
+            <div className="p-6">
+              {/* Header */}
+              <div className="mb-5 flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 shadow-lg shadow-purple-900/40">
+                    <Zap className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">Batas Harian Tercapai</p>
+                    <p className="text-xs text-muted-foreground">3/3 chat gratis hari ini</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setLimitReached(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="mb-5 text-sm text-muted-foreground leading-relaxed">
+                Kamu sudah menggunakan <span className="font-semibold text-foreground">3 chat gratis</span> hari ini. Pilih salah satu cara berikut untuk terus menggunakan AINA tanpa batas:
+              </p>
+
+              {/* Progress indicator */}
+              <div className="mb-5 flex gap-1.5">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-1.5 flex-1 rounded-full bg-amber-500" />
+                ))}
+              </div>
+
+              {/* CTA Options */}
+              <div className="space-y-3">
+                {/* Upgrade option */}
+                <button
+                  onClick={() => navigate("/pricing")}
+                  className="group w-full rounded-2xl border border-purple-500/30 bg-gradient-to-br from-violet-600/10 to-purple-700/10 p-4 text-left transition-all hover:border-purple-500/60 hover:from-violet-600/20 hover:to-purple-700/20"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-700">
+                      <Crown className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground">Upgrade ke AINA Pro</p>
+                      <p className="text-xs text-muted-foreground">Chat tanpa batas + fitur eksklusif</p>
+                    </div>
+                    <span className="shrink-0 text-xs font-semibold text-purple-400 group-hover:text-purple-300">
+                      Lihat Paket →
+                    </span>
+                  </div>
+                </button>
+
+                {/* Contributor option */}
+                <button
+                  onClick={() => navigate("/contributor")}
+                  className="group w-full rounded-2xl border border-border bg-secondary/50 p-4 text-left transition-all hover:border-border/80 hover:bg-secondary"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted">
+                      <BookOpen className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground">Jadi Kontributor</p>
+                      <p className="text-xs text-muted-foreground">Tulis artikel dan dapatkan akses penuh gratis</p>
+                    </div>
+                    <span className="shrink-0 text-xs font-semibold text-muted-foreground group-hover:text-foreground">
+                      Daftar →
+                    </span>
+                  </div>
+                </button>
+              </div>
+
+              <p className="mt-4 text-center text-xs text-muted-foreground/60">
+                Batas akan direset setiap hari pukul 00.00 waktu Kairo
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Input bar — always at bottom */}
       <div className="shrink-0 px-3 pb-4 pt-2 md:px-6 md:pb-6">
         {limitReached ? (
-          <div className="mx-auto max-w-2xl rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-center text-sm text-muted-foreground">
-            Chat dinonaktifkan hari ini. <button onClick={() => navigate("/pricing")} className="font-semibold text-primary underline-offset-2 hover:underline">Upgrade sekarang</button> untuk lanjut.
+          <div
+            onClick={() => setLimitReached(true)}
+            className="mx-auto flex max-w-2xl cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400 transition-colors hover:border-amber-500/40"
+          >
+            <Zap className="h-4 w-4 shrink-0" />
+            <span>Batas harian tercapai — <span className="font-semibold underline-offset-2 hover:underline">Upgrade atau jadi Kontributor</span></span>
           </div>
         ) : (
           <form onSubmit={handleFormSubmit} className="mx-auto max-w-2xl">
