@@ -740,6 +740,141 @@ app.get("/api/admin/feedback", async (req, res) => {
   res.json(items);
 });
 
+// ─── BADGE SYSTEM ──────────────────────────────────────────────────────────
+
+const BADGE_DEFS = {
+  beta_tester:          { name: "Beta Tester",          emoji: "🧪", rare: true  },
+  early_adopter:        { name: "Early Adopter",         emoji: "⚡", rare: false },
+  first_contribution:   { name: "Kontributor Pertama",   emoji: "✍️", rare: false },
+  prolific_contributor: { name: "Prolific Contributor",  emoji: "🌟", rare: true  },
+  community_pillar:     { name: "Community Pillar",      emoji: "🏛️", rare: true  },
+};
+
+const BETA_MODE = true; // set false when public launch
+
+// Helper: auto-award logic for a user
+async function autoAwardBadges(supabaseAdmin, userId, articleCount = 0) {
+  const awards = [];
+
+  if (BETA_MODE) {
+    awards.push({ user_id: userId, badge_type: "beta_tester" });
+  }
+
+  if (articleCount >= 1) {
+    awards.push({ user_id: userId, badge_type: "first_contribution" });
+  }
+  if (articleCount >= 5) {
+    awards.push({ user_id: userId, badge_type: "prolific_contributor" });
+  }
+
+  if (awards.length > 0) {
+    await supabaseAdmin
+      .from("user_badges")
+      .upsert(awards, { onConflict: "user_id,badge_type", ignoreDuplicates: true });
+  }
+}
+
+// GET /api/my-badges — returns current user's badges (auto-awards where eligible)
+app.get("/api/my-badges", async (req, res) => {
+  const supabaseAdmin = getAdminClient();
+  if (!supabaseAdmin) return res.status(500).json({ error: "Server config error" });
+
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+
+  const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  // Count approved articles for auto-award
+  const { count: articleCount } = await supabaseAdmin
+    .from("knowledge_base")
+    .select("*", { count: "exact", head: true })
+    .eq("author_id", user.id)
+    .eq("status", "approved");
+
+  await autoAwardBadges(supabaseAdmin, user.id, articleCount ?? 0);
+
+  const { data: badges, error } = await supabaseAdmin
+    .from("user_badges")
+    .select("badge_type, awarded_at")
+    .eq("user_id", user.id)
+    .order("awarded_at", { ascending: true });
+
+  // If table doesn't exist yet, return empty (non-fatal)
+  if (error) {
+    if (error.code === "42P01") return res.json([]); // table not found
+    return res.status(500).json({ error: error.message });
+  }
+
+  const enriched = (badges ?? []).map(b => ({
+    ...b,
+    ...(BADGE_DEFS[b.badge_type] ?? { name: b.badge_type, emoji: "🏅", rare: false }),
+  }));
+
+  res.json(enriched);
+});
+
+// POST /api/admin/badges/award — admin awards a badge manually
+app.post("/api/admin/badges/award", async (req, res) => {
+  const supabaseAdmin = getAdminClient();
+  if (!supabaseAdmin) return res.status(500).json({ error: "Server config error" });
+
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { userId, badgeType } = req.body;
+  if (!userId || !badgeType) return res.status(400).json({ error: "userId and badgeType required" });
+  if (!BADGE_DEFS[badgeType]) return res.status(400).json({ error: `Unknown badge: ${badgeType}` });
+
+  const { error } = await supabaseAdmin
+    .from("user_badges")
+    .upsert({ user_id: userId, badge_type: badgeType, awarded_by: admin.id },
+      { onConflict: "user_id,badge_type", ignoreDuplicates: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+  console.log(`[BADGES] Admin ${admin.email} awarded "${badgeType}" to user ${userId}`);
+  res.json({ success: true });
+});
+
+// DELETE /api/admin/badges/revoke — admin revokes a badge
+app.delete("/api/admin/badges/revoke", async (req, res) => {
+  const supabaseAdmin = getAdminClient();
+  if (!supabaseAdmin) return res.status(500).json({ error: "Server config error" });
+
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { userId, badgeType } = req.body;
+  if (!userId || !badgeType) return res.status(400).json({ error: "userId and badgeType required" });
+
+  const { error } = await supabaseAdmin
+    .from("user_badges")
+    .delete()
+    .eq("user_id", userId)
+    .eq("badge_type", badgeType);
+
+  if (error) return res.status(500).json({ error: error.message });
+  console.log(`[BADGES] Admin ${admin.email} revoked "${badgeType}" from user ${userId}`);
+  res.json({ success: true });
+});
+
+// GET /api/admin/badges/all — list all badge assignments
+app.get("/api/admin/badges/all", async (req, res) => {
+  const supabaseAdmin = getAdminClient();
+  if (!supabaseAdmin) return res.status(500).json({ error: "Server config error" });
+
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { data, error } = await supabaseAdmin
+    .from("user_badges")
+    .select("*, profiles(full_name, email)")
+    .order("awarded_at", { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`AINA API server running on port ${PORT}`);
 });

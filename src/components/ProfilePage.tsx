@@ -50,6 +50,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [articleCount, setArticleCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [badges, setBadges] = useState<Array<{badge_type: string; name: string; emoji: string; rare: boolean; awarded_at: string}>>([]);
 
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -98,6 +99,23 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       if (profileRes.data) setProfile(profileRes.data);
       if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
       if (articlesRes.data) setArticleCount(articlesRes.data.length);
+
+      // Fetch badges (non-blocking, fails silently)
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        if (s?.access_token) {
+          const badgeRes = await fetch("/api/my-badges", {
+            headers: { Authorization: `Bearer ${s.access_token}` },
+          });
+          if (badgeRes.ok) {
+            const badgeData = await badgeRes.json();
+            setBadges(badgeData);
+          }
+        }
+      } catch {
+        // Badges are non-critical, ignore error
+      }
+
       setLoading(false);
     } catch (err) {
       console.error(`ProfilePage error (attempt ${attempt}):`, err);
@@ -397,6 +415,71 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Badges Card */}
+          {badges.length > 0 && (
+            <Card className="border-border bg-card overflow-hidden">
+              <CardContent className="p-5">
+                <div className="mb-3 flex items-center gap-2">
+                  <Award className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Badges</h3>
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+                    {badges.length}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  {badges.map((badge) => (
+                    <div
+                      key={badge.badge_type}
+                      className={`group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl border p-3 text-center transition-transform hover:scale-[1.02] ${
+                        badge.rare
+                          ? "border-violet-500/30 bg-gradient-to-b from-violet-900/20 to-purple-900/10"
+                          : "border-border bg-secondary/40"
+                      }`}
+                    >
+                      {/* Rare shimmer effect */}
+                      {badge.rare && (
+                        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+                          <div className="absolute inset-0 bg-gradient-to-br from-violet-400/5 via-transparent to-fuchsia-400/5" />
+                          <div
+                            className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0%,transparent_40%,hsl(270_80%_65%/0.08)_50%,transparent_60%,transparent_100%)]"
+                            style={{ animation: "chatbox-spin 6s linear infinite" }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Emoji */}
+                      <div className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${
+                        badge.rare
+                          ? "bg-gradient-to-br from-violet-700/30 to-purple-800/30 shadow-lg shadow-purple-900/20"
+                          : "bg-secondary"
+                      }`}>
+                        {badge.emoji}
+                      </div>
+
+                      {/* Name */}
+                      <p className="relative z-10 text-xs font-semibold leading-tight text-foreground">
+                        {badge.name}
+                      </p>
+
+                      {/* Rare label */}
+                      {badge.rare && (
+                        <span className="relative z-10 rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-violet-300">
+                          EKSKLUSIF
+                        </span>
+                      )}
+
+                      {/* Awarded date tooltip on hover */}
+                      <p className="relative z-10 text-[10px] text-muted-foreground/60">
+                        {new Date(badge.awarded_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 
