@@ -257,7 +257,46 @@ app.get("/api/whoami", async (req, res) => {
   const token = authHeader.replace("Bearer ", "");
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: "Token tidak valid" });
-  res.json({ uuid: user.id, email: user.email });
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const roleList = roles?.map(r => r.role) ?? [];
+  res.json({ uuid: user.id, email: user.email, roles: roleList });
+});
+
+/* ── Bootstrap: Claim Admin (only works if no admin exists yet) ── */
+app.post("/api/setup/claim-admin", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login dulu" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Token tidak valid" });
+
+  // Only allow if NO admin exists in the system
+  const { data: existingAdmins } = await supabase
+    .from("user_roles")
+    .select("user_id")
+    .eq("role", "admin")
+    .limit(1);
+
+  if (existingAdmins && existingAdmins.length > 0) {
+    return res.status(403).json({ error: "Admin sudah ada. Endpoint ini hanya untuk setup pertama kali." });
+  }
+
+  // Upsert admin role for this user
+  const { error: upsertErr } = await supabase.from("user_roles").upsert(
+    { user_id: user.id, role: "admin" },
+    { onConflict: "user_id,role" }
+  );
+
+  if (upsertErr) {
+    console.error("[claim-admin] upsert error:", upsertErr);
+    return res.status(500).json({ error: "Gagal set role admin: " + upsertErr.message });
+  }
+
+  console.log(`[claim-admin] ${user.email} (${user.id}) berhasil jadi admin pertama`);
+  res.json({ success: true, message: `${user.email} sekarang jadi admin!`, uuid: user.id });
 });
 
 /* ── AI Chat ─────────────────────────────────────────── */

@@ -617,6 +617,108 @@ function KnowledgeBaseTab() {
   );
 }
 
+/* ─── Master Admin Banner (shown to admins who aren't master admin yet) ── */
+function MasterAdminBanner() {
+  const [info, setInfo] = useState<{ uuid: string; email: string; roles: string[] } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch("/api/whoami", { headers: { Authorization: `Bearer ${session.access_token}` } });
+      if (res.ok) setInfo(await res.json());
+    })();
+  }, []);
+
+  return (
+    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-amber-400">Akses Master Admin Belum Aktif</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Tab <strong>Users</strong> belum muncul karena UUID kamu belum terdaftar sebagai Master Admin.
+            Salin UUID di bawah, lalu set sebagai <code className="rounded bg-muted px-1">MASTER_ADMIN_IDS</code> di environment variable (Vercel / Replit).
+          </p>
+          {info && (
+            <div className="mt-3 rounded-lg border border-border bg-muted/50 px-3 py-2 font-mono text-xs">
+              <div className="text-muted-foreground">Email: <span className="text-foreground">{info.email}</span></div>
+              <div className="mt-1 text-muted-foreground">UUID: <span className="text-foreground break-all">{info.uuid}</span></div>
+              <div className="mt-1 text-muted-foreground">Roles: <span className="text-foreground">{info.roles.join(", ") || "none"}</span></div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── No Admin Screen (first-time setup) ─────────────── */
+function NoAdminScreen({ onClaimed }: { onClaimed: () => void }) {
+  const [claiming, setClaiming] = useState(false);
+  const [info, setInfo] = useState<{ uuid: string; email: string } | null>(null);
+
+  const checkWhoami = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch("/api/whoami", { headers: { Authorization: `Bearer ${session.access_token}` } });
+      if (res.ok) setInfo(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { checkWhoami(); }, []);
+
+  const claimAdmin = async () => {
+    setClaiming(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Login dulu"); setClaiming(false); return; }
+      const res = await fetch("/api/setup/claim-admin", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message ?? "Berhasil jadi admin!");
+        onClaimed();
+      } else {
+        toast.error(data.error ?? "Gagal claim admin");
+      }
+    } catch {
+      toast.error("Terjadi kesalahan");
+    }
+    setClaiming(false);
+  };
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center text-center p-6 gap-4">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10">
+        <Shield className="h-8 w-8 text-amber-400" />
+      </div>
+      <div>
+        <h2 className="font-display text-xl font-bold text-foreground">Setup Admin Pertama</h2>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          Belum ada admin di sistem. Klik tombol di bawah untuk menjadikan akun kamu sebagai admin pertama.
+        </p>
+      </div>
+      {info && (
+        <div className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-left text-xs font-mono w-full max-w-sm">
+          <div className="text-muted-foreground mb-1">Akun yang sedang login:</div>
+          <div className="text-foreground font-semibold">{info.email}</div>
+          <div className="text-muted-foreground mt-1 break-all">UUID: {info.uuid}</div>
+        </div>
+      )}
+      <Button onClick={claimAdmin} disabled={claiming} className="bg-amber-500 hover:bg-amber-400 text-black font-bold">
+        {claiming ? "Memproses..." : "Jadikan Saya Admin Pertama"}
+      </Button>
+      <p className="text-xs text-muted-foreground max-w-xs">
+        Tombol ini hanya berfungsi sekali — ketika belum ada admin di sistem.
+      </p>
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
 type Tab = "overview" | "users" | "requests" | "knowledge";
 
@@ -659,15 +761,7 @@ const AdminPage = () => {
   }
 
   if (!isAdmin) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center text-center p-6">
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10">
-          <Shield className="h-8 w-8 text-destructive" />
-        </div>
-        <h2 className="font-display text-xl font-bold text-foreground">Akses Ditolak</h2>
-        <p className="mt-2 max-w-xs text-sm text-muted-foreground">Halaman ini hanya dapat diakses oleh admin.</p>
-      </div>
-    );
+    return <NoAdminScreen onClaimed={() => window.location.reload()} />;
   }
 
   const navItems: Array<{ id: Tab; label: string; icon: React.ElementType; badge?: number }> = [
@@ -712,6 +806,7 @@ const AdminPage = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
+        {!isMasterAdmin && <MasterAdminBanner />}
         {activeTab === "overview" && <OverviewTab stats={stats} loading={statsLoading} />}
         {activeTab === "users" && isMasterAdmin && <UsersTab />}
         {activeTab === "requests" && <RequestsTab />}
