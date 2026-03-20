@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot } from "lucide-react";
+import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot, Upload, X } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
 const articleTypes = [
@@ -159,6 +159,9 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [artType, setArtType] = useState("narrative");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
@@ -252,6 +255,44 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Koneksi gagal. Coba lagi.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!e.target) return;
+    e.target.value = "";
+    if (!file) return;
+
+    const allowed = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowed.includes(file.type)) {
+      toast.error("Format tidak didukung. Gunakan PDF, DOCX, atau TXT.");
+      return;
+    }
+
+    setExtracting(true);
+    setUploadedFilename(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/extract-file", {
+        method: "POST",
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Gagal mengekstrak file");
+
+      setArtContent(json.text);
+      setUploadedFilename(json.filename);
+      toast.success(`Berhasil membaca ${json.chars.toLocaleString("id-ID")} karakter dari ${json.filename}`);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membaca file, coba lagi.");
+    } finally {
+      setExtracting(false);
     }
   };
 
@@ -422,14 +463,14 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
           <>
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg font-semibold text-foreground">Artikel Knowledge Base</h2>
-              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setUploadedFilename(null); }}>
                 <DialogTrigger asChild>
                   <Button variant="hero" size="sm" className="gap-1.5">
                     <Plus className="h-4 w-4" />
                     Tulis Artikel
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-card border-border">
+                <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle className="font-display">Tulis Artikel Baru</DialogTitle>
                   </DialogHeader>
@@ -465,10 +506,58 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                         ))}
                       </div>
                     </div>
+                    {/* File upload */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-muted-foreground">Konten Artikel</p>
+                        <div className="flex items-center gap-2">
+                          {uploadedFilename && (
+                            <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] text-green-400">
+                              <FileText className="h-2.5 w-2.5" />
+                              {uploadedFilename}
+                              <button
+                                type="button"
+                                onClick={() => { setUploadedFilename(null); setArtContent(""); }}
+                                className="ml-0.5 hover:text-green-200"
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </span>
+                          )}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".pdf,.txt,.docx"
+                            className="hidden"
+                            onChange={handleFileUpload}
+                          />
+                          <button
+                            type="button"
+                            disabled={extracting}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+                          >
+                            {extracting ? (
+                              <>
+                                <span className="h-3 w-3 animate-spin rounded-full border border-muted-foreground border-t-transparent" />
+                                Membaca...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="h-3 w-3" />
+                                Upload File
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/60">Tulis langsung atau upload PDF / DOCX / TXT — teks diekstrak otomatis</p>
+                    </div>
+
                     <Textarea
                       placeholder={artType === "step_by_step"
                         ? "Tulis langkah-langkah secara urut...\nContoh:\n1. Siapkan dokumen X\n2. Kunjungi kantor Y\n3. Isi formulir Z"
-                        : "Tulis konten artikel..."}
+                        : "Tulis konten artikel atau upload file di atas..."}
                       value={artContent}
                       onChange={(e) => setArtContent(e.target.value)}
                       className="min-h-[150px] bg-secondary"

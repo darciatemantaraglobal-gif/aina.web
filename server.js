@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
+import multer from "multer";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -663,6 +664,77 @@ app.post("/api/upload-avatar", uploadLimiter, async (req, res) => {
 
   const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(storagePath);
   res.json({ url: publicUrl });
+});
+
+/* ── File text extraction ────────────────────────────── */
+const fileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Format tidak didukung. Gunakan PDF, DOCX, atau TXT."));
+  },
+});
+
+app.post("/api/extract-file", uploadLimiter, fileUpload.single("file"), async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
+
+  // Only contributors, senior_contributors, or admins can upload
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
+  if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa mengupload file" });
+
+  if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+  const { buffer, mimetype, originalname } = req.file;
+  let extractedText = "";
+
+  try {
+    if (mimetype === "text/plain") {
+      extractedText = buffer.toString("utf-8");
+    } else if (mimetype === "application/pdf") {
+      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+      const result = await pdfParse(buffer);
+      extractedText = result.text;
+    } else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer });
+      extractedText = result.value;
+    } else {
+      return res.status(400).json({ error: "Format file tidak dikenali" });
+    }
+  } catch (e) {
+    console.error("[extract-file] parse error:", e.message);
+    return res.status(422).json({ error: `Gagal membaca file: ${e.message}` });
+  }
+
+  // Sanitise: collapse excessive blank lines and trim
+  extractedText = extractedText
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+
+  if (!extractedText || extractedText.length < 20) {
+    return res.status(422).json({ error: "File tidak mengandung teks yang cukup untuk diekstrak" });
+  }
+
+  // Cap at 20 000 chars to avoid bloating the knowledge base
+  if (extractedText.length > 20_000) {
+    extractedText = extractedText.slice(0, 20_000) + "\n\n[...konten dipotong karena terlalu panjang]";
+  }
+
+  console.log(`[extract-file] ${user.id} extracted ${extractedText.length} chars from ${originalname}`);
+  res.json({ text: extractedText, filename: originalname, chars: extractedText.length });
 });
 
 /* ── Admin: Stats ────────────────────────────────────── */
