@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getPersonalization } from "@/components/DashboardSidebar";
 
 interface Message {
   id: string;
@@ -332,7 +333,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             "Content-Type": "application/json",
             ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
           },
-          body: JSON.stringify({ messages: history, userProfile }),
+          body: JSON.stringify({ messages: history, userProfile: { ...userProfile, ...getPersonalization() } }),
         });
       } catch (fetchErr: any) {
         if (fetchErr.name === "AbortError") {

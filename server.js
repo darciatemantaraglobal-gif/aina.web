@@ -538,8 +538,17 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (faculty) parts.push(`Fakultas: ${faculty}`);
     if (field) parts.push(`Jurusan: ${field}`);
     if (city) parts.push(`Kota asal: ${city}`);
+    const chatStyle = sanitize(userProfile.chatStyle);
+    const responseLength = sanitize(userProfile.responseLength);
+    const userName = sanitize(userProfile.userName);
+    if (userName) parts.push(`Panggil user dengan: "${userName}"`);
     if (parts.length > 0) {
-      personalizationContext = `\n\n---\n## Profil User Saat Ini\n${parts.join("\n")}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
+      let styleNote = "";
+      if (chatStyle === "formal") styleNote += "\nGunakan bahasa yang formal dan sopan dalam setiap jawaban.";
+      else styleNote += "\nGunakan bahasa yang santai, akrab, dan bersahabat (bisa pakai 'kamu', 'nih', 'ya', dsb).";
+      if (responseLength === "ringkas") styleNote += "\nBerikan jawaban yang RINGKAS dan to-the-point. Maksimal 3 poin/paragraf singkat.";
+      else styleNote += "\nBerikan jawaban yang LENGKAP dan mendetail sesuai kebutuhan.";
+      personalizationContext = `\n\n---\n## Profil & Preferensi User\n${parts.join("\n")}${styleNote}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
     }
   }
 
