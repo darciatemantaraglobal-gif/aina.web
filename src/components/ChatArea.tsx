@@ -283,9 +283,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     const userId = session?.user?.id;
     if (!userId) return;
 
+    // Block immediately if we already know the limit is reached
+    if (!isPaidUser && limitReached) return;
+
     setInput("");
     setError(null);
-    setLimitReached(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     const userMsg: Message = {
@@ -313,13 +315,6 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         activeChatIdRef.current = currentChatId;
         onChatCreated(newChat.id, newChat.title);
       }
-
-      await supabase.from("messages").insert({
-        chat_id: currentChatId,
-        user_id: userId,
-        role: "user",
-        content: userText,
-      });
 
       const allMessages = [...messages, userMsg];
       const history = allMessages.map((m) => ({ role: m.role, content: m.content }));
@@ -350,6 +345,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         const errData = await res.json().catch(() => ({}));
         if (res.status === 429 && errData.limitReached) {
           setLimitReached(true);
+          setDailyCount(DAILY_LIMIT);
           return;
         }
         throw new Error(errData.error || `Server error ${res.status}`);
@@ -359,10 +355,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       const fullContent = cleanMarkdown(data.reply);
       const msgId = (Date.now() + 1).toString();
 
-      // Increment daily count
-      setDailyCount(prev => (prev ?? 0) + 1);
+      // Save user message to DB only after server confirms success
+      await supabase.from("messages").insert({
+        chat_id: currentChatId,
+        user_id: userId,
+        role: "user",
+        content: userText,
+      });
 
-      // Save to DB immediately (full content)
+      // Increment daily count
+      setDailyCount(prev => {
+        const next = (prev ?? 0) + 1;
+        if (!isPaidUser && next >= DAILY_LIMIT) setLimitReached(true);
+        return next;
+      });
+
+      // Save assistant reply to DB
       await supabase.from("messages").insert({
         chat_id: currentChatId,
         user_id: userId,
