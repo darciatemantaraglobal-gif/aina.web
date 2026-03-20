@@ -168,12 +168,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     }
   }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const initialMessageFired = useRef(false);
   useEffect(() => {
-    if (initialMessage) {
-      const timer = setTimeout(() => handleSend(initialMessage), 400);
+    if (initialMessage && !initialMessageFired.current) {
+      initialMessageFired.current = true;
+      const timer = setTimeout(() => handleSend(initialMessage), 300);
       return () => clearTimeout(timer);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch daily chat count, paid status, and user profile on mount
   useEffect(() => {
