@@ -843,7 +843,7 @@ app.post("/api/admin/requests/:id/review", async (req, res) => {
       title: "Selamat! Kamu jadi Kontributor 🎉",
       message: "Permintaanmu untuk menjadi kontributor telah disetujui. Kamu sekarang bisa menulis dan mengirim artikel ke Knowledge Base AINA.",
       type: "success",
-    }).catch(() => {});
+    }).then(undefined, () => {});
     if (userInfo?.email) {
       await sendEmail({
         to: userInfo.email,
@@ -869,7 +869,7 @@ Yuk, mulai berkontribusi sekarang!`,
       title: "Permintaan kontributor ditolak",
       message: "Permintaanmu untuk menjadi kontributor belum bisa disetujui saat ini. Kamu tetap bisa menggunakan semua fitur AINA.",
       type: "warning",
-    }).catch(() => {});
+    }).then(undefined, () => {});
     if (userInfo?.email) {
       await sendEmail({
         to: userInfo.email,
@@ -958,7 +958,7 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
           title: "Selamat! Kamu naik jadi Senior Contributor 🌟",
           message: `Artikelmu "${articleTitle}" telah disetujui. Kamu kini berstatus Senior Contributor karena sudah ${newCount} artikel disetujui!`,
           type: "success",
-        }).catch(() => {});
+        }).then(undefined, () => {});
         if (authorInfo?.email) {
           await sendEmail({
             to: authorInfo.email,
@@ -981,7 +981,7 @@ Terus berkontribusi dan bantu sesama mahasiswa Indonesia di Mesir!`,
           title: "Artikel kamu disetujui! ✅",
           message: `Artikel "${articleTitle}" telah disetujui dan kini tersedia di Knowledge Base AINA. Total kontribusimu: ${newCount} artikel.`,
           type: "success",
-        }).catch(() => {});
+        }).then(undefined, () => {});
         if (authorInfo?.email) {
           await sendEmail({
             to: authorInfo.email,
@@ -1006,7 +1006,7 @@ Terima kasih sudah berkontribusi untuk komunitas Masisir!`,
       title: "Artikel belum bisa disetujui",
       message: `Artikel "${articleTitle}" belum bisa dipublikasikan saat ini. Silakan perbaiki dan kirim ulang.`,
       type: "warning",
-    }).catch(() => {});
+    }).then(undefined, () => {});
     if (authorInfo?.email) {
       await sendEmail({
         to: authorInfo.email,
