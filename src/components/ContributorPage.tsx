@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot, Upload, X } from "lucide-react";
+import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot, Upload, X, RefreshCw, Sparkles } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
 const articleTypes = [
@@ -147,6 +147,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [loadError, setLoadError] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [submitterName, setSubmitterName] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const [regName, setRegName] = useState("");
   const [regEdu, setRegEdu] = useState("");
@@ -210,6 +211,30 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       setLoadError(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshRoles = async () => {
+    setRefreshing(true);
+    try {
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) return;
+      const { data: rolesData } = await supabase.from("user_roles").select("role").eq("user_id", uid);
+      if (rolesData) {
+        const roleNames = rolesData.map((r) => r.role);
+        const isNowContributor = roleNames.includes("contributor") || roleNames.includes("senior_contributor") || roleNames.includes("admin");
+        setIsContributor(isNowContributor);
+        if (isNowContributor) toast.success("Akses kontributor aktif! Kamu sekarang bisa submit artikel.");
+        else toast.info("Akses belum aktif. Hubungi admin jika ini terjadi terus.");
+      }
+    } catch {
+      toast.error("Gagal memuat ulang, coba lagi.");
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -415,23 +440,53 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             <CardContent className="space-y-4">
               {hasRequest ? (
                 <>
-                  <div className="flex items-center gap-3 rounded-xl bg-secondary p-4">
-                    {statusIcon(requestStatus)}
-                    <div>
-                      <p className="text-sm font-medium text-foreground capitalize">
-                        Status: {requestStatus}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {requestStatus === "pending"
-                          ? "Permintaanmu sedang ditinjau admin."
-                          : requestStatus === "approved"
-                          ? "Selamat! Kamu sudah menjadi kontributor."
-                          : "Maaf, permintaanmu ditolak."}
-                      </p>
+                  {requestStatus === "approved" ? (
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-3 rounded-xl bg-green-500/10 border border-green-500/20 p-4">
+                        <CheckCircle className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-green-400">Permintaanmu disetujui!</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Kamu sekarang bisa mulai mengirim artikel ke Knowledge Base AINA.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="hero"
+                        className="w-full gap-2"
+                        onClick={refreshRoles}
+                        disabled={refreshing}
+                      >
+                        {refreshing ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                            Mengaktifkan akses...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="h-4 w-4" />
+                            Aktifkan Akses & Mulai Berkontribusi
+                          </>
+                        )}
+                      </Button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-3 rounded-xl bg-secondary p-4">
+                      {statusIcon(requestStatus)}
+                      <div>
+                        <p className="text-sm font-medium text-foreground capitalize">
+                          Status: {requestStatus}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {requestStatus === "pending"
+                            ? "Permintaanmu sedang ditinjau admin."
+                            : "Maaf, permintaanmu ditolak."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-                  {justSubmitted && <WelcomeChat name={submitterName} />}
+                  {justSubmitted && requestStatus === "pending" && <WelcomeChat name={submitterName} />}
                 </>
               ) : (
                 <div className="space-y-3">
@@ -461,11 +516,35 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         {/* Article Submission (contributor only) */}
         {isContributor && (
           <>
+            {/* Welcome banner with primary CTA */}
+            <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-purple">
+                  <Sparkles className="h-5 w-5 text-primary-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-display text-base font-bold text-foreground">Kamu adalah Kontributor AINA!</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Bagikan pengetahuanmu tentang kehidupan di Mesir. Artikel yang disetujui akan langsung digunakan AINA untuk menjawab pertanyaan ribuan Masisir.
+                  </p>
+                  <Button
+                    variant="hero"
+                    size="sm"
+                    className="mt-3 gap-1.5"
+                    onClick={() => setDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Tulis Artikel Baru
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-semibold text-foreground">Artikel Knowledge Base</h2>
+              <h2 className="font-display text-lg font-semibold text-foreground">Artikelku</h2>
               <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setUploadedFilename(null); }}>
                 <DialogTrigger asChild>
-                  <Button variant="hero" size="sm" className="gap-1.5">
+                  <Button variant="outline" size="sm" className="gap-1.5">
                     <Plus className="h-4 w-4" />
                     Tulis Artikel
                   </Button>
