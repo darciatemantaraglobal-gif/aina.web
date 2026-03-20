@@ -1111,10 +1111,19 @@ app.get("/api/threads", async (req, res) => {
   const profileMap = {};
   (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
 
+  const threadIds = threads.map(t => t.id);
+  const { data: userVoteRows } = await supabase
+    .from("thread_votes")
+    .select("thread_id")
+    .eq("user_id", user.id)
+    .in("thread_id", threadIds);
+  const userVotedSet = new Set((userVoteRows ?? []).map(v => v.thread_id));
+
   res.json(threads.map(t => ({
     ...t,
     author_name: profileMap[t.user_id]?.full_name ?? null,
     author_avatar: profileMap[t.user_id]?.avatar_url ?? null,
+    user_voted: userVotedSet.has(t.id),
   })));
 });
 
@@ -1151,7 +1160,10 @@ app.get("/api/threads/:id", async (req, res) => {
   if (!thread) return res.status(404).json({ error: "Thread not found" });
 
   const userIds = [...new Set([thread.user_id, ...(replies ?? []).map(r => r.user_id)])];
-  const { data: profiles } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", userIds);
+  const [{ data: profiles }, { data: myVote }] = await Promise.all([
+    supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", userIds),
+    supabase.from("thread_votes").select("id").eq("user_id", user.id).eq("thread_id", id).maybeSingle(),
+  ]);
   const profileMap = {};
   (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
 
@@ -1159,6 +1171,7 @@ app.get("/api/threads/:id", async (req, res) => {
     ...thread,
     author_name: profileMap[thread.user_id]?.full_name ?? null,
     author_avatar: profileMap[thread.user_id]?.avatar_url ?? null,
+    user_voted: !!myVote,
     replies: (replies ?? []).map(r => ({
       ...r,
       author_name: profileMap[r.user_id]?.full_name ?? null,
@@ -1244,6 +1257,130 @@ app.post("/api/admin/threads/:id/promote", async (req, res) => {
   await supabase.from("threads").update({ promoted_to_kb: true }).eq("id", id);
   console.log(`[PROMOTE] Thread "${thread.title}" promoted to KB pending by admin ${admin.id}`);
   res.json({ success: true });
+});
+
+/* ── Thread Upvote (toggle) ─────────────────────────────── */
+app.post("/api/threads/:id/vote", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+
+  const { data: thread } = await supabase.from("threads").select("id").eq("id", id).single();
+  if (!thread) return res.status(404).json({ error: "Thread not found" });
+
+  const { error: insertErr } = await supabase
+    .from("thread_votes")
+    .insert({ user_id: user.id, thread_id: id });
+
+  if (insertErr) {
+    if (insertErr.code === "23505") {
+      await supabase.from("thread_votes").delete().eq("user_id", user.id).eq("thread_id", id);
+      const { data: updated } = await supabase.from("threads").select("vote_count").eq("id", id).single();
+      return res.json({ voted: false, vote_count: updated?.vote_count ?? 0 });
+    }
+    return res.status(500).json({ error: insertErr.message });
+  }
+
+  const { data: updated } = await supabase.from("threads").select("vote_count").eq("id", id).single();
+  return res.json({ voted: true, vote_count: updated?.vote_count ?? 0 });
+});
+
+/* ── Article Upvote (toggle) ────────────────────────────── */
+app.post("/api/articles/:id/vote", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+
+  const { data: article } = await supabase.from("knowledge_base").select("id, status").eq("id", id).single();
+  if (!article) return res.status(404).json({ error: "Article not found" });
+  if (article.status !== "approved") return res.status(400).json({ error: "Hanya artikel yang disetujui yang bisa diupvote" });
+
+  const { error: insertErr } = await supabase
+    .from("article_votes")
+    .insert({ user_id: user.id, article_id: id });
+
+  if (insertErr) {
+    if (insertErr.code === "23505") {
+      await supabase.from("article_votes").delete().eq("user_id", user.id).eq("article_id", id);
+      const { data: updated } = await supabase.from("knowledge_base").select("vote_count").eq("id", id).single();
+      return res.json({ voted: false, vote_count: updated?.vote_count ?? 0 });
+    }
+    return res.status(500).json({ error: insertErr.message });
+  }
+
+  const { data: updated } = await supabase.from("knowledge_base").select("vote_count").eq("id", id).single();
+  return res.json({ voted: true, vote_count: updated?.vote_count ?? 0 });
+});
+
+/* ── Leaderboard ─────────────────────────────────────────── */
+app.get("/api/leaderboard", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+
+  const [{ data: topProfiles }, { data: topArticles }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("user_id, full_name, avatar_url, contribution_count")
+      .order("contribution_count", { ascending: false })
+      .gt("contribution_count", 0)
+      .limit(20),
+    supabase
+      .from("knowledge_base")
+      .select("id, title, category, article_type, vote_count, created_at, author_id")
+      .eq("status", "approved")
+      .order("vote_count", { ascending: false })
+      .limit(20),
+  ]);
+
+  const profileIds = (topProfiles ?? []).map(p => p.user_id);
+  let roleMap = {};
+  if (profileIds.length > 0) {
+    const { data: roles } = await supabase.from("user_roles").select("user_id, role").in("user_id", profileIds);
+    const LEVEL = { user: 0, contributor: 1, senior_contributor: 2, admin: 3 };
+    (roles ?? []).forEach(r => {
+      const cur = roleMap[r.user_id];
+      if (!cur || (LEVEL[r.role] ?? 0) > (LEVEL[cur] ?? 0)) roleMap[r.user_id] = r.role;
+    });
+  }
+
+  const articleIds = (topArticles ?? []).map(a => a.id);
+  let userArticleVotedSet = new Set();
+  if (articleIds.length > 0) {
+    const { data: myVotes } = await supabase
+      .from("article_votes")
+      .select("article_id")
+      .eq("user_id", user.id)
+      .in("article_id", articleIds);
+    (myVotes ?? []).forEach(v => userArticleVotedSet.add(v.article_id));
+  }
+
+  const authorIds = [...new Set((topArticles ?? []).map(a => a.author_id).filter(Boolean))];
+  let authorMap = {};
+  if (authorIds.length > 0) {
+    const { data: authors } = await supabase.from("profiles").select("user_id, full_name").in("user_id", authorIds);
+    (authors ?? []).forEach(a => { authorMap[a.user_id] = a.full_name; });
+  }
+
+  res.json({
+    contributors: (topProfiles ?? []).map(p => ({
+      user_id: p.user_id,
+      full_name: p.full_name,
+      avatar_url: p.avatar_url,
+      contribution_count: p.contribution_count ?? 0,
+      role: roleMap[p.user_id] ?? "user",
+    })),
+    articles: (topArticles ?? []).map(a => ({
+      ...a,
+      user_voted: userArticleVotedSet.has(a.id),
+      author_name: authorMap[a.author_id] ?? null,
+    })),
+  });
 });
 
 /* ── Beta Feedback (stored in Supabase, not local files) ─ */

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import {
   MessageSquare, Plus, Search, Send, Trash2, RefreshCw,
-  BookMarked, ArrowLeft, CheckCircle, Clock, MessageCircle,
+  BookMarked, ArrowLeft, CheckCircle, Clock, MessageCircle, ThumbsUp,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -19,6 +19,8 @@ interface Thread {
   content: string;
   category: string;
   reply_count: number;
+  vote_count: number;
+  user_voted: boolean;
   promoted_to_kb: boolean;
   created_at: string;
   updated_at: string;
@@ -195,19 +197,23 @@ function CreateThreadDialog({ open, onClose, onCreated }: {
 }
 
 /* ─── Thread Detail Dialog ───────────────────────────── */
-function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDeleted, onPromoted }: {
+function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDeleted, onPromoted, onVoteChange }: {
   threadId: string;
   currentUserId: string | undefined;
   isAdmin: boolean;
   onClose: () => void;
   onDeleted: (id: string) => void;
   onPromoted: (id: string) => void;
+  onVoteChange: (id: string, voted: boolean, voteCount: number) => void;
 }) {
   const [thread, setThread] = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
   const [sending, setSending] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [voting, setVoting] = useState(false);
+  const [localVoted, setLocalVoted] = useState(false);
+  const [localVoteCount, setLocalVoteCount] = useState(0);
   const repliesEndRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -226,10 +232,38 @@ function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDelet
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    if (thread) {
+      setLocalVoted(thread.user_voted ?? false);
+      setLocalVoteCount(thread.vote_count ?? 0);
+    }
+  }, [thread]);
+
+  useEffect(() => {
     if (!loading) {
       repliesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [loading, thread?.replies?.length]);
+
+  const handleVote = async () => {
+    if (voting || !thread) return;
+    setVoting(true);
+    const prevVoted = localVoted;
+    const prevCount = localVoteCount;
+    setLocalVoted(!localVoted);
+    setLocalVoteCount(localVoted ? localVoteCount - 1 : localVoteCount + 1);
+    try {
+      const res = await threadsFetch(`/api/threads/${threadId}/vote`, { method: "POST" });
+      setLocalVoted(res.voted);
+      setLocalVoteCount(res.vote_count);
+      onVoteChange(threadId, res.voted, res.vote_count);
+    } catch (e: any) {
+      toast.error(e.message);
+      setLocalVoted(prevVoted);
+      setLocalVoteCount(prevCount);
+    } finally {
+      setVoting(false);
+    }
+  };
 
   const handleReply = async () => {
     if (!replyContent.trim()) return;
@@ -322,7 +356,22 @@ function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDelet
                     <span>{fmtDate(thread.created_at)}</span>
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 items-center gap-2">
+                  {/* Upvote button */}
+                  <button
+                    onClick={handleVote}
+                    disabled={voting}
+                    className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                      localVoted
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:text-primary"
+                    }`}
+                    title={localVoted ? "Batalkan upvote" : "Upvote thread ini"}
+                  >
+                    <ThumbsUp className={`h-3.5 w-3.5 ${localVoted ? "fill-primary" : ""}`} />
+                    <span>{localVoteCount}</span>
+                  </button>
+
                   {isAdmin && !thread.promoted_to_kb && (
                     <Button
                       size="sm"
@@ -434,6 +483,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [votingId, setVotingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -468,6 +518,33 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
 
   const handlePromoted = (id: string) => {
     setThreads(prev => prev.map(t => t.id === id ? { ...t, promoted_to_kb: true } : t));
+  };
+
+  const handleVoteChange = useCallback((id: string, voted: boolean, voteCount: number) => {
+    setThreads(prev => prev.map(t => t.id === id ? { ...t, user_voted: voted, vote_count: voteCount } : t));
+  }, []);
+
+  const handleVote = async (e: { stopPropagation(): void }, threadId: string) => {
+    e.stopPropagation();
+    if (votingId) return;
+    setVotingId(threadId);
+    const prev = threads.find(t => t.id === threadId);
+    if (!prev) { setVotingId(null); return; }
+    setThreads(list =>
+      list.map(t => t.id === threadId
+        ? { ...t, user_voted: !t.user_voted, vote_count: t.user_voted ? t.vote_count - 1 : t.vote_count + 1 }
+        : t
+      )
+    );
+    try {
+      const res = await threadsFetch(`/api/threads/${threadId}/vote`, { method: "POST" });
+      setThreads(list => list.map(t => t.id === threadId ? { ...t, user_voted: res.voted, vote_count: res.vote_count } : t));
+    } catch (e: any) {
+      toast.error(e.message);
+      setThreads(list => list.map(t => t.id === threadId ? prev : t));
+    } finally {
+      setVotingId(null);
+    }
   };
 
   return (
@@ -568,10 +645,10 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
               </button>
             </div>
             {filtered.map(thread => (
-              <button
+              <div
                 key={thread.id}
                 onClick={() => setSelectedThreadId(thread.id)}
-                className="flex w-full items-start gap-4 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-card/80"
+                className="flex w-full items-start gap-4 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer"
               >
                 {/* Left: avatar */}
                 <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} />
@@ -596,13 +673,24 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
                       <MessageCircle className="h-3 w-3" />
                       {thread.reply_count}
                     </span>
+                    <button
+                      onClick={e => handleVote(e, thread.id)}
+                      disabled={votingId === thread.id}
+                      className={`flex items-center gap-1 transition-colors disabled:opacity-50 ${
+                        thread.user_voted ? "text-primary" : "hover:text-primary"
+                      }`}
+                      title={thread.user_voted ? "Batalkan upvote" : "Upvote thread ini"}
+                    >
+                      <ThumbsUp className={`h-3 w-3 ${thread.user_voted ? "fill-primary" : ""}`} />
+                      {thread.vote_count ?? 0}
+                    </button>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       {fmtDate(thread.updated_at)}
                     </span>
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -623,6 +711,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
           onClose={() => setSelectedThreadId(null)}
           onDeleted={handleDeleted}
           onPromoted={handlePromoted}
+          onVoteChange={handleVoteChange}
         />
       )}
     </div>

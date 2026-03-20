@@ -41,6 +41,8 @@ Managed entirely by Supabase. Schema is in `supabase/migrations/`. Tables:
 - `tasks` — personal productivity tasks
 - `user_badges` — badge/achievement system
 - `notifications` — in-app notifications
+- `thread_votes` — upvotes on threads (user_id + thread_id, UNIQUE; triggers update `threads.vote_count`)
+- `article_votes` — upvotes on KB articles (user_id + article_id, UNIQUE; triggers update `knowledge_base.vote_count`)
 
 ## Security Measures (server.js)
 
@@ -76,6 +78,8 @@ npm run dev   # Start both backend (port 3001) and frontend (port 5000)
 - **RBAC** — user / contributor / senior_contributor / admin; rate limit 3 msgs/day for free users
 - **Badges** — Achievement system stored in `user_badges`
 - **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Laporan tabs
+- **Leaderboard** — Top contributors ranked by article count + top voted KB articles with live upvote toggle
+- **Upvote System** — Toggle upvotes on threads (list + detail view) and approved KB articles; counts maintained via DB triggers
 
 ## Key Files
 

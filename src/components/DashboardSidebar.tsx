@@ -16,6 +16,7 @@ import {
   Trash2,
   Home,
   Hash,
+  Trophy,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -44,6 +45,7 @@ const baseMenuItems = [
   { id: "productivity", label: "Productivity", icon: LayoutDashboard },
   { id: "berita", label: "Berita Masisir", icon: Newspaper },
   { id: "threads", label: "Threads", icon: Hash },
+  { id: "leaderboard", label: "Leaderboard", icon: Trophy },
   { id: "contributor", label: "Contributor", icon: Users },
   { id: "profile", label: "Profile", icon: UserCircle },
 ];
