@@ -65,16 +65,43 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
         },
         (payload) => {
           const newNotif = payload.new as Notification;
-          setNotifications(prev => [newNotif, ...prev]);
+          setNotifications(prev => {
+            if (prev.some(n => n.id === newNotif.id)) return prev;
+            return [newNotif, ...prev];
+          });
           toast[newNotif.type === "success" ? "success" : newNotif.type === "warning" ? "warning" : "info"](
             newNotif.title,
-            { description: newNotif.message, duration: 5000 }
+            { description: newNotif.message, duration: 6000 }
           );
         }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    const pollInterval = setInterval(async () => {
+      const { data } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (!data) return;
+      setNotifications(prev => {
+        const newOnes = data.filter((n: Notification) => !prev.some(p => p.id === n.id));
+        newOnes.forEach((n: Notification) => {
+          if (!n.read) {
+            toast[n.type === "success" ? "success" : n.type === "warning" ? "warning" : "info"](
+              n.title,
+              { description: n.message, duration: 6000 }
+            );
+          }
+        });
+        return data as Notification[];
+      });
+    }, 30_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+    };
   }, [userId]);
 
   useEffect(() => {

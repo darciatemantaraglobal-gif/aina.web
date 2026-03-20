@@ -644,11 +644,12 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
             </div>
-            {filtered.map(thread => (
+            {filtered.map((thread, idx) => (
               <div
                 key={thread.id}
                 onClick={() => setSelectedThreadId(thread.id)}
-                className="flex w-full items-start gap-4 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer"
+                style={{ animationDelay: `${idx * 40}ms`, animationFillMode: "both" }}
+                className="flex w-full items-start gap-4 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer animate-in fade-in slide-in-from-bottom-3 duration-300"
               >
                 {/* Left: avatar */}
                 <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} />

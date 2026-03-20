@@ -44,7 +44,7 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 }
 
 const ROLE_LABEL: Record<string, { label: string; color: string }> = {
-  admin:               { label: "Admin",              color: "text-red-400 bg-red-500/10 border-red-500/30" },
+  admin:               { label: "Senior Kontributor", color: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
   senior_contributor:  { label: "Senior Kontributor", color: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
   contributor:         { label: "Kontributor",        color: "text-violet-400 bg-violet-500/10 border-violet-500/30" },
   user:                { label: "User",               color: "text-muted-foreground bg-secondary border-border" },
