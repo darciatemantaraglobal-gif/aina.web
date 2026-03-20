@@ -1647,6 +1647,35 @@ app.get("/api/admin/chats/:chatId/messages", async (req, res) => {
   res.json(data ?? []);
 });
 
+/* ── Bulk Delete Users (Master Admin only) ───────────── */
+app.post("/api/admin/users/bulk-delete", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { userIds } = req.body;
+  if (!Array.isArray(userIds) || userIds.length === 0)
+    return res.status(400).json({ error: "userIds harus berupa array yang tidak kosong" });
+
+  const supabase = getAdminClient();
+  const results = { success: [], failed: [] };
+
+  for (const userId of userIds) {
+    if (userId === admin.id) {
+      results.failed.push({ userId, reason: "Tidak bisa menghapus akun sendiri" });
+      continue;
+    }
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) {
+      results.failed.push({ userId, reason: error.message });
+    } else {
+      results.success.push(userId);
+      console.log(`[ADMIN] User ${userId} bulk-deleted by admin ${admin.email}`);
+    }
+  }
+
+  res.json(results);
+});
+
 /* ── Delete User (Master Admin only) ─────────────────── */
 app.delete("/api/admin/users/:userId", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);

@@ -262,12 +262,16 @@ function UsersTab() {
   const [viewProfile, setViewProfile] = useState<Profile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await adminFetch("/api/admin/users");
       setUsers(data);
+      setSelected(new Set());
     } catch (e: any) { toast.error(e.message); }
     setLoading(false);
   }, []);
@@ -295,7 +299,7 @@ function UsersTab() {
       await adminFetch(`/api/admin/users/${deleteConfirm.user_id}`, { method: "DELETE" });
       toast.success(`Akun ${deleteConfirm.full_name ?? deleteConfirm.email} berhasil dihapus`);
       setDeleteConfirm(null);
-      load();
+      await load();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -303,11 +307,63 @@ function UsersTab() {
     }
   };
 
+  const toggleSelect = (userId: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(userId) ? next.delete(userId) : next.add(userId);
+      return next;
+    });
+  };
+
   const filtered = users.filter(u =>
     !search ||
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const filteredIds = filtered.map(u => u.user_id);
+  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selected.has(id));
+  const someFilteredSelected = filteredIds.some(id => selected.has(id));
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const bulkDelete = async () => {
+    setBulkDeleting(true);
+    try {
+      const userIds = Array.from(selected);
+      const result = await adminFetch("/api/admin/users/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ userIds }),
+      });
+      const successCount = result.success?.length ?? 0;
+      const failCount = result.failed?.length ?? 0;
+      if (successCount > 0) toast.success(`${successCount} akun berhasil dihapus`);
+      if (failCount > 0) toast.error(`${failCount} akun gagal dihapus`);
+      setBulkConfirm(false);
+      setSelected(new Set());
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const selectedUsersInfo = users.filter(u => selected.has(u.user_id));
 
   return (
     <>
@@ -317,32 +373,88 @@ function UsersTab() {
             <h2 className="font-display text-lg font-bold text-foreground">Manajemen User</h2>
             <p className="text-sm text-muted-foreground">{users.length} akun terdaftar</p>
           </div>
-          <button onClick={load} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {selected.size > 0 && (
+              <Button
+                size="sm"
+                className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-8 text-xs"
+                onClick={() => setBulkConfirm(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Hapus {selected.size} User
+              </Button>
+            )}
+            <button onClick={load} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama atau email..."
-            className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
+
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama atau email..."
+              className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
+          </div>
+          {filtered.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              className={`flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
+                allFilteredSelected
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : someFilteredSelected
+                  ? "border-primary/20 bg-primary/5 text-primary/80"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <div className={`flex h-4 w-4 items-center justify-center rounded border ${
+                allFilteredSelected ? "border-primary bg-primary" : someFilteredSelected ? "border-primary/60 bg-primary/20" : "border-border"
+              }`}>
+                {allFilteredSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                {someFilteredSelected && !allFilteredSelected && <div className="h-1.5 w-1.5 rounded-sm bg-primary" />}
+              </div>
+              Pilih Semua
+            </button>
+          )}
         </div>
+
         {loading ? (
           <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 animate-pulse rounded-2xl bg-card" />)}</div>
         ) : (
           <div className="space-y-2">
             {filtered.map(u => {
               const role = topRole(u.roles);
+              const isSelected = selected.has(u.user_id);
               return (
-                <button key={u.id} onClick={() => setViewProfile(u)}
-                  className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-left hover:border-primary/30 hover:bg-card/80 transition-colors">
-                  <div className="flex min-w-0 items-center gap-3">
+                <div
+                  key={u.id}
+                  className={`flex w-full items-center gap-2 rounded-2xl border bg-card px-3 py-3 transition-colors ${
+                    isSelected ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/20 hover:bg-card/80"
+                  }`}
+                >
+                  {/* Checkbox */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(u.user_id); }}
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                      isSelected ? "border-primary bg-primary" : "border-border hover:border-primary/60"
+                    }`}
+                  >
+                    {isSelected && <Check className="h-3 w-3 text-white" />}
+                  </button>
+
+                  {/* User info — clickable to view profile */}
+                  <button
+                    onClick={() => setViewProfile(u)}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
                     <AvatarDisplay name={u.full_name} avatarUrl={u.avatar_url} size={9} />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{u.full_name ?? "—"}</p>
                       <p className="truncate text-xs text-muted-foreground">{u.email ?? "—"}</p>
                     </div>
-                  </div>
-                  <div className="ml-3 flex shrink-0 items-center gap-2">
+                  </button>
+
+                  <div className="ml-1 flex shrink-0 items-center gap-2">
                     <span className="hidden text-xs text-muted-foreground sm:block">{fmtDate(u.created_at)}</span>
                     {u.contribution_count > 0 && (
                       <span className="hidden rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary sm:block">
@@ -353,7 +465,7 @@ function UsersTab() {
                       {ROLE_LABELS[role]}
                     </span>
                   </div>
-                </button>
+                </div>
               );
             })}
             {filtered.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada user ditemukan.</p>}
@@ -370,7 +482,7 @@ function UsersTab() {
         />
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* Single Delete Confirmation */}
       <Dialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open && !deleting) setDeleteConfirm(null); }}>
         <DialogContent className="max-w-sm gap-4 p-5">
           <DialogHeader>
@@ -392,6 +504,42 @@ function UsersTab() {
             </Button>
             <Button size="sm" className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={deleteUser} disabled={deleting}>
               {deleting ? <><span className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Menghapus...</> : "Ya, Hapus Akun"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation */}
+      <Dialog open={bulkConfirm} onOpenChange={(open) => { if (!open && !bulkDeleting) setBulkConfirm(false); }}>
+        <DialogContent className="max-w-sm gap-4 p-5">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-destructive">
+              <Trash2 className="h-4 w-4" />
+              Hapus {selected.size} Akun Sekaligus
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-48 overflow-y-auto space-y-1.5 rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+            {selectedUsersInfo.map(u => (
+              <div key={u.user_id} className="flex items-center gap-2">
+                <AvatarDisplay name={u.full_name} avatarUrl={u.avatar_url} size={9} />
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-medium text-foreground">{u.full_name ?? "—"}</p>
+                  <p className="truncate text-[10px] text-muted-foreground">{u.email ?? "—"}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Semua akun di atas akan dihapus permanen beserta seluruh data terkait. <span className="font-medium text-foreground">Tindakan ini tidak bisa dibatalkan.</span>
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="flex-1" onClick={() => setBulkConfirm(false)} disabled={bulkDeleting}>
+              Batal
+            </Button>
+            <Button size="sm" className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={bulkDelete} disabled={bulkDeleting}>
+              {bulkDeleting
+                ? <><span className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Menghapus...</>
+                : `Hapus ${selected.size} Akun`}
             </Button>
           </div>
         </DialogContent>
