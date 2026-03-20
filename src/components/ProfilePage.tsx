@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut, GraduationCap, MapPin } from "lucide-react";
+import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut, GraduationCap, MapPin, Brain, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 function centerAspectCrop(mediaWidth: number, mediaHeight: number, aspect: number): Crop {
@@ -69,6 +69,10 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [editOriginCity, setEditOriginCity] = useState("");
   const [savingStudy, setSavingStudy] = useState(false);
 
+  const [memories, setMemories] = useState<Array<{id: string; memory: string; created_at: string}>>([]);
+  const [deletingMemoryId, setDeletingMemoryId] = useState<string | null>(null);
+  const [clearingMemories, setClearingMemories] = useState(false);
+
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,19 +117,21 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       if (rolesRes.data) setRoles(rolesRes.data.map((r) => r.role));
       if (articlesRes.data) setArticleCount(articlesRes.data.length);
 
-      // Fetch badges + master admin status (non-blocking, fails silently)
+      // Fetch badges, master admin status & memories (non-blocking, fail silently)
       try {
         const { data: { session: s } } = await supabase.auth.getSession();
         if (s?.access_token) {
-          const [badgeRes, meRes] = await Promise.all([
+          const [badgeRes, meRes, memoriesRes] = await Promise.all([
             fetch("/api/my-badges", { headers: { Authorization: `Bearer ${s.access_token}` } }),
             fetch("/api/me", { headers: { Authorization: `Bearer ${s.access_token}` } }),
+            fetch("/api/memories", { headers: { Authorization: `Bearer ${s.access_token}` } }),
           ]);
           if (badgeRes.ok) setBadges(await badgeRes.json());
           if (meRes.ok) {
             const me = await meRes.json();
             setIsMasterAdmin(me.isMasterAdmin ?? false);
           }
+          if (memoriesRes.ok) setMemories(await memoriesRes.json());
         }
       } catch {
         // Non-critical, ignore error
@@ -310,6 +316,46 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
     setCrop(undefined);
     setCompletedCrop(undefined);
     setScale(1);
+  };
+
+  const deleteMemory = async (id: string) => {
+    setDeletingMemoryId(id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`/api/memories/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        setMemories(prev => prev.filter(m => m.id !== id));
+        toast.success("Memori dihapus");
+      }
+    } catch {
+      toast.error("Gagal menghapus memori");
+    } finally {
+      setDeletingMemoryId(null);
+    }
+  };
+
+  const clearAllMemories = async () => {
+    setClearingMemories(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch("/api/memories", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        setMemories([]);
+        toast.success("Semua memori dihapus");
+      }
+    } catch {
+      toast.error("Gagal menghapus memori");
+    } finally {
+      setClearingMemories(false);
+    }
   };
 
   if (loading) {
@@ -671,6 +717,73 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
               </CardContent>
             </Card>
           )}
+
+          {/* Memory Card */}
+          <Card className="border-border bg-card overflow-hidden">
+            <CardContent className="p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Memori AINA</h3>
+                  {memories.length > 0 && (
+                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+                      {memories.length}
+                    </span>
+                  )}
+                </div>
+                {memories.length > 0 && (
+                  <button
+                    onClick={clearAllMemories}
+                    disabled={clearingMemories}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                  >
+                    {clearingMemories
+                      ? <span className="h-3 w-3 animate-spin rounded-full border border-destructive border-t-transparent" />
+                      : <Trash2 className="h-3 w-3" />
+                    }
+                    Hapus semua
+                  </button>
+                )}
+              </div>
+
+              {memories.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-4 text-center">
+                  <Brain className="h-8 w-8 text-muted-foreground/30" />
+                  <p className="text-xs text-muted-foreground/60">
+                    AINA belum menyimpan memori apapun tentang kamu.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground/40">
+                    Memori akan muncul setelah kamu chat dengan AINA.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="mb-2 text-[11px] text-muted-foreground/60">
+                    Hal-hal yang diingat AINA dari percakapanmu.
+                  </p>
+                  {memories.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-start justify-between gap-2 rounded-xl bg-secondary/60 px-3 py-2.5"
+                    >
+                      <p className="flex-1 text-xs text-foreground leading-relaxed">{m.memory}</p>
+                      <button
+                        onClick={() => deleteMemory(m.id)}
+                        disabled={deletingMemoryId === m.id}
+                        className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                        title="Hapus memori ini"
+                      >
+                        {deletingMemoryId === m.id
+                          ? <span className="block h-3 w-3 animate-spin rounded-full border border-destructive border-t-transparent" />
+                          : <X className="h-3 w-3" />
+                        }
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
 

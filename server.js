@@ -345,6 +345,116 @@ async function fetchPinnedUpdates() {
   }
 }
 
+/* ── Fetch user memories ─────────────────────────────── */
+async function fetchUserMemories(userId) {
+  const supabase = getAdminClient();
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from("user_memories")
+      .select("id, memory")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error && (error.code === "42P01" || error.message?.includes("does not exist"))) {
+      return []; // Table not yet created — degrade gracefully
+    }
+    return data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/* ── Background: Extract & save memories from conversation ── */
+async function extractAndSaveMemories(userId, conversation, apiKey) {
+  try {
+    const MAX_MEMORIES = 20;
+    const supabase = getAdminClient();
+    if (!supabase) return;
+
+    // Only analyse the last 6 messages to keep cost minimal
+    const recent = conversation.slice(-6);
+    const convText = recent
+      .map(m => `${m.role === "user" ? "User" : "AINA"}: ${m.content.slice(0, 500)}`)
+      .join("\n");
+
+    const extractionPrompt = `Dari percakapan berikut, ekstrak fakta-fakta penting yang perlu diingat tentang user untuk percakapan di masa depan. Contoh: nama panggilan, kota tempat tinggal di Mesir, jurusan/universitas, preferensi khusus yang disebutkan, situasi spesifik (baru tiba, mau ujian, dll).
+
+Format output: JSON array of strings, masing-masing max 120 karakter. Jika tidak ada fakta baru yang perlu disimpan, kembalikan array kosong [].
+
+ATURAN:
+- Hanya fakta yang eksplisit disebutkan user dalam percakapan ini
+- Maksimal 3 fakta baru dari satu percakapan
+- Jangan duplikasi hal umum seperti "user mahasiswa Al-Azhar"
+- Contoh valid: ["Tinggal di Hay Asyir", "Suka jawaban singkat", "Baru tiba Maret 2026", "Ambil jurusan Syariah Islamiyah"]
+- Balas HANYA dengan JSON array, tidak ada teks lain
+
+Percakapan:
+${convText}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    let newMemories = [];
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN || "https://aina.replit.app",
+          "X-Title": "AINA - Memory Extraction",
+        },
+        body: JSON.stringify({
+          model: "meta-llama/llama-3.2-3b-instruct:free",
+          messages: [{ role: "user", content: extractionPrompt }],
+          max_tokens: 250,
+          temperature: 0.1,
+        }),
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) return;
+      const data = await response.json();
+      const raw = data.choices?.[0]?.message?.content?.trim() ?? "[]";
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (!match) return;
+      const parsed = JSON.parse(match[0]);
+      if (!Array.isArray(parsed)) return;
+      newMemories = parsed
+        .filter(m => typeof m === "string" && m.trim().length > 5)
+        .map(m => m.trim().slice(0, 150))
+        .slice(0, 3);
+    } catch {
+      clearTimeout(timeoutId);
+      return;
+    }
+
+    if (newMemories.length === 0) return;
+
+    // Evict oldest if we'd exceed the cap
+    const { data: existing } = await supabase
+      .from("user_memories")
+      .select("id")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+
+    const currentCount = existing?.length ?? 0;
+    const toDelete = currentCount + newMemories.length - MAX_MEMORIES;
+    if (toDelete > 0 && existing) {
+      const idsToDelete = existing.slice(0, toDelete).map(m => m.id);
+      await supabase.from("user_memories").delete().in("id", idsToDelete);
+    }
+
+    await supabase.from("user_memories").insert(
+      newMemories.map(memory => ({ user_id: userId, memory }))
+    );
+    console.log(`[memory] saved ${newMemories.length} new memories for user ${userId}: ${JSON.stringify(newMemories)}`);
+  } catch (e) {
+    console.warn("[memory] extraction error:", e.message);
+  }
+}
+
 /* ── Health check ────────────────────────────────────── */
 app.get("/api/ping", (_req, res) => {
   res.json({ status: "ok" });
@@ -457,7 +567,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
   if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
 
-  const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id);
+  const [rolesRes, userMemories] = await Promise.all([
+    supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id),
+    fetchUserMemories(user.id),
+  ]);
+  const roles = rolesRes.data;
   const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
 
   if (!isPaidUser) {
@@ -552,6 +666,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     }
   }
 
+  let memoryContext = "";
+  if (userMemories.length > 0) {
+    const memList = userMemories.map(m => `- ${m.memory}`).join("\n");
+    memoryContext = `\n\n---\n## Memori tentang User Ini\nKamu telah menyimpan hal-hal berikut tentang user ini dari percakapan sebelumnya. Gunakan untuk memberi jawaban yang lebih personal:\n${memList}\n---`;
+  }
+
   const systemPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Mesir (Masisir).
 
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
@@ -567,7 +687,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
 - DILARANG memberi pengantar, basa-basi, atau kesimpulan yang tidak diminta.
 - DILARANG mengulang pertanyaan user.
 - Jika tidak tahu, jawab: "Maaf, saya belum punya info ini."
-- WAJIB cantumkan sumber di akhir setiap jawaban dalam format: *Sumber: [nama sumber/instansi/artikel]* — jika dari knowledge base gunakan judul artikelnya, jika dari pengetahuan umum tulis "Pengetahuan umum", jika dari pengalaman komunitas tulis "Komunitas Masisir"${pinnedContext}${personalizationContext}${knowledgeContext}`;
+- WAJIB cantumkan sumber di akhir setiap jawaban dalam format: *Sumber: [nama sumber/instansi/artikel]* — jika dari knowledge base gunakan judul artikelnya, jika dari pengetahuan umum tulis "Pengetahuan umum", jika dari pengalaman komunitas tulis "Komunitas Masisir"${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
@@ -622,11 +742,78 @@ ATURAN KERAS — WAJIB DIIKUTI:
 
   try {
     const result = await Promise.any(MODELS.map(tryModel));
+    const reply = cleanReply(result.reply);
     console.log(`Responded using model: ${result.model}`);
-    return res.json({ reply: cleanReply(result.reply), model: result.model });
+    res.json({ reply, model: result.model });
+    // Fire-and-forget: extract memories from this conversation in the background
+    setImmediate(() => extractAndSaveMemories(
+      user.id,
+      [...messages, { role: "assistant", content: reply }],
+      apiKey
+    ));
   } catch {
     return res.status(503).json({ error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik." });
   }
+});
+
+/* ── User Memories CRUD ──────────────────────────────── */
+app.get("/api/memories", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { data, error: fetchErr } = await supabase
+    .from("user_memories")
+    .select("id, memory, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (fetchErr && (fetchErr.code === "42P01" || fetchErr.message?.includes("does not exist"))) {
+    return res.json([]); // Table not yet created
+  }
+  res.json(data ?? []);
+});
+
+app.delete("/api/memories/:id", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { error: delErr } = await supabase
+    .from("user_memories")
+    .delete()
+    .eq("id", req.params.id)
+    .eq("user_id", user.id); // Prevent deleting other users' memories
+
+  if (delErr) return res.status(500).json({ error: delErr.message });
+  res.json({ success: true });
+});
+
+app.delete("/api/memories", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  await supabase.from("user_memories").delete().eq("user_id", user.id);
+  res.json({ success: true });
 });
 
 /* ── Upload Avatar ───────────────────────────────────── */
@@ -1876,7 +2063,7 @@ app.get("/api/admin/migration-sql", async (req, res) => {
   // Check which tables are missing
   const tableChecks = [
     "threads", "thread_replies", "pinned_updates",
-    "message_reports", "notifications", "user_badges",
+    "message_reports", "notifications", "user_badges", "user_memories",
   ];
   const missing = [];
   for (const table of tableChecks) {
@@ -1996,6 +2183,17 @@ ALTER TABLE public.user_badges ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN CREATE POLICY "Users can view own badges" ON public.user_badges FOR SELECT USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE POLICY "Admins can manage badges" ON public.user_badges FOR ALL USING (public.has_role(auth.uid(), 'admin')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE INDEX IF NOT EXISTS idx_user_badges_user ON public.user_badges(user_id);`,
+
+    user_memories: `-- User memories (AINA remembers facts about each user)
+CREATE TABLE IF NOT EXISTS public.user_memories (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  memory     TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.user_memories ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Users can manage own memories" ON public.user_memories FOR ALL USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_user_memories_user ON public.user_memories(user_id, created_at DESC);`,
   };
 
   // Also include profile + article_type columns migration
@@ -2068,7 +2266,7 @@ async function checkRequiredTables() {
     "threads", "thread_replies",
     "pinned_updates", "message_reports",
     "notifications", "user_badges",
-    "beta_feedback",
+    "beta_feedback", "user_memories",
   ];
 
   const missing = [];
