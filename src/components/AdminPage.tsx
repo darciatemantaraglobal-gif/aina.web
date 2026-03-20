@@ -1626,10 +1626,10 @@ const AdminPage = () => {
         </div>
       </div>
 
-      <div className="flex border-b border-border px-5">
+      <div className="flex overflow-x-auto border-b border-border px-5 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
         {navItems.map(item => (
           <button key={item.id} onClick={() => setActiveTab(item.id)}
-            className={`relative flex items-center gap-1.5 border-b-2 px-3 py-3 text-xs font-medium transition-colors ${activeTab === item.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+            className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-medium transition-colors ${activeTab === item.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
             <item.icon className="h-3.5 w-3.5" />
             {item.label}
             {item.badge !== undefined && item.badge > 0 && (
