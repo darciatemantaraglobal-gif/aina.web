@@ -64,8 +64,16 @@ Managed entirely by Supabase. Schema is in `supabase/migrations/`. Tables:
 
 ```bash
 npm install   # Install dependencies
-npm run dev   # Start both backend (port 3001) and frontend (port 5000)
+npm run dev   # Start both backend (port 3001) and frontend (port 5000) using concurrently
 ```
+
+## Replit Setup Notes
+
+- `concurrently` is installed as a dependency to run backend + frontend in one command
+- All environment variables are set via Replit's environment (not `.env` file in production)
+- Secrets stored in Replit Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`
+- Public env vars stored in Replit shared env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `MASTER_ADMIN_IDS`, `EMAIL_FROM`, `PORT`
+- Supabase Storage bucket `avatars` is auto-created on server startup if missing
 
 ## Features
 
