@@ -329,40 +329,18 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
     setSubmitting(true);
     try {
-      let uid = userIdProp;
-      if (!uid) {
-        const { data: { session } } = await supabase.auth.getSession();
-        uid = session?.user?.id;
-      }
-      if (!uid) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { toast.error("Sesi berakhir, login ulang."); return; }
 
-      const payload: Record<string, any> = {
-        author_id: uid,
-        title: artTitle.trim(),
-        content: artContent.trim(),
-        category: artCategory,
-        article_type: artType,
-      };
+      const res = await fetch("/api/articles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(`Gagal mengirim artikel: ${json.error || res.statusText}`); return; }
 
-      let { data, error } = await supabase.from("knowledge_base").insert(payload).select().single();
-
-      // If article_type column doesn't exist yet, retry without it
-      if (error && error.message?.includes("article_type")) {
-        const { data: d2, error: e2 } = await supabase.from("knowledge_base").insert({
-          author_id: uid,
-          title: artTitle.trim(),
-          content: artContent.trim(),
-          category: artCategory,
-        }).select().single();
-        data = d2;
-        error = e2;
-      }
-
-      if (error) {
-        toast.error(`Gagal mengirim artikel: ${error.message}`);
-        return;
-      }
-      if (data) setArticles((prev) => [data, ...prev]);
+      setArticles((prev) => [json, ...prev]);
       setArtTitle("");
       setArtContent("");
       setArtCategory("");

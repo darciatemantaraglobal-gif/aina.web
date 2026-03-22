@@ -1277,6 +1277,40 @@ async function verifyAuth(authHeader) {
   return user;
 }
 
+/* ── Contributor: Submit Article ─────────────────────────── */
+app.post("/api/articles", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+
+  // Verify contributor/admin role server-side
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
+  if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa mengirim artikel" });
+
+  const { title, content, category, article_type } = req.body;
+  if (!title?.trim() || !content?.trim() || !category) return res.status(400).json({ error: "title, content, category required" });
+  if (title.trim().length > 200) return res.status(400).json({ error: "Judul terlalu panjang (maks 200 karakter)" });
+  if (content.trim().length > 50000) return res.status(400).json({ error: "Konten terlalu panjang (maks 50.000 karakter)" });
+  const validCategories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+  if (!validCategories.includes(category)) return res.status(400).json({ error: "Kategori tidak valid" });
+  const validTypes = ["narrative", "step_by_step"];
+  const safeType = validTypes.includes(article_type) ? article_type : "narrative";
+
+  const payload = { author_id: user.id, title: title.trim(), content: content.trim(), category, article_type: safeType };
+  const { data, error } = await supabase.from("knowledge_base").insert(payload).select().single();
+  if (error) {
+    if (error.message?.includes("article_type")) {
+      const { data: d2, error: e2 } = await supabase.from("knowledge_base").insert({ author_id: user.id, title: title.trim(), content: content.trim(), category }).select().single();
+      if (e2) return res.status(500).json({ error: e2.message });
+      return res.json(d2);
+    }
+    return res.status(500).json({ error: error.message });
+  }
+  res.json(data);
+});
+
 app.get("/api/threads", async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -1396,7 +1430,7 @@ app.post("/api/threads/:id/replies", writeLimiter, async (req, res) => {
   res.json(data);
 });
 
-app.delete("/api/threads/:id/replies/:replyId", async (req, res) => {
+app.delete("/api/threads/:id/replies/:replyId", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
@@ -1413,7 +1447,7 @@ app.delete("/api/threads/:id/replies/:replyId", async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/threads/:id", async (req, res) => {
+app.delete("/api/threads/:id", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
@@ -1470,17 +1504,23 @@ app.post("/api/threads/:id/vote", writeLimiter, async (req, res) => {
     .from("thread_votes")
     .insert({ user_id: user.id, thread_id: id });
 
+  let voted;
   if (insertErr) {
     if (insertErr.code === "23505") {
       await supabase.from("thread_votes").delete().eq("user_id", user.id).eq("thread_id", id);
-      const { data: updated } = await supabase.from("threads").select("vote_count").eq("id", id).single();
-      return res.json({ voted: false, vote_count: updated?.vote_count ?? 0 });
+      voted = false;
+    } else {
+      return res.status(500).json({ error: insertErr.message });
     }
-    return res.status(500).json({ error: insertErr.message });
+  } else {
+    voted = true;
   }
 
-  const { data: updated } = await supabase.from("threads").select("vote_count").eq("id", id).single();
-  return res.json({ voted: true, vote_count: updated?.vote_count ?? 0 });
+  // Count real votes and sync the column
+  const { count } = await supabase.from("thread_votes").select("*", { count: "exact", head: true }).eq("thread_id", id);
+  const vote_count = count ?? 0;
+  await supabase.from("threads").update({ vote_count }).eq("id", id);
+  return res.json({ voted, vote_count });
 });
 
 /* ── Article Upvote (toggle) ────────────────────────────── */
@@ -1499,17 +1539,23 @@ app.post("/api/articles/:id/vote", writeLimiter, async (req, res) => {
     .from("article_votes")
     .insert({ user_id: user.id, article_id: id });
 
+  let voted;
   if (insertErr) {
     if (insertErr.code === "23505") {
       await supabase.from("article_votes").delete().eq("user_id", user.id).eq("article_id", id);
-      const { data: updated } = await supabase.from("knowledge_base").select("vote_count").eq("id", id).single();
-      return res.json({ voted: false, vote_count: updated?.vote_count ?? 0 });
+      voted = false;
+    } else {
+      return res.status(500).json({ error: insertErr.message });
     }
-    return res.status(500).json({ error: insertErr.message });
+  } else {
+    voted = true;
   }
 
-  const { data: updated } = await supabase.from("knowledge_base").select("vote_count").eq("id", id).single();
-  return res.json({ voted: true, vote_count: updated?.vote_count ?? 0 });
+  // Count real votes and sync the column
+  const { count } = await supabase.from("article_votes").select("*", { count: "exact", head: true }).eq("article_id", id);
+  const vote_count = count ?? 0;
+  await supabase.from("knowledge_base").update({ vote_count }).eq("id", id);
+  return res.json({ voted, vote_count });
 });
 
 /* ── Leaderboard ─────────────────────────────────────────── */
