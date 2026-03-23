@@ -910,6 +910,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [reformatLoading, setReformatLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -923,6 +924,17 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setSelected(new Set()); }, [categoryFilter]);
+
+  const handleReformatAll = async () => {
+    if (!confirm(`Yakin ingin reformat semua artikel yang sudah disetujui? AI akan merapikan struktur tulisan tanpa mengubah isi. Proses ini butuh waktu beberapa menit.`)) return;
+    setReformatLoading(true);
+    try {
+      const result = await adminFetch("/api/admin/articles/reformat-all", { method: "POST" });
+      toast.success(`Selesai! ${result.reformatted} artikel berhasil diformat${result.failed > 0 ? `, ${result.failed} gagal` : ""}.`);
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    setReformatLoading(false);
+  };
 
   const handleReview = async (id: string, status: "approved" | "rejected") => {
     try {
@@ -1052,24 +1064,37 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {isMasterAdmin && (
-            <Button
-              variant="outline" size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={async () => {
-                try {
-                  const authHeader = await getAuthHeader();
-                  const res = await fetch("/api/admin/export/articles", { headers: { Authorization: authHeader } });
-                  if (!res.ok) throw new Error("Gagal export");
-                  const blob = await res.blob();
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url; a.download = `aina_articles_${Date.now()}.csv`; a.click();
-                  URL.revokeObjectURL(url);
-                } catch (e: any) { toast.error(e.message); }
-              }}
-            >
-              <Download className="h-3.5 w-3.5" /> Export CSV
-            </Button>
+            <>
+              <Button
+                variant="outline" size="sm"
+                className="h-8 gap-1.5 text-xs"
+                disabled={reformatLoading}
+                onClick={handleReformatAll}
+              >
+                {reformatLoading
+                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Memformat...</>
+                  : <><RefreshCw className="h-3.5 w-3.5" /> Reformat Semua</>
+                }
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={async () => {
+                  try {
+                    const authHeader = await getAuthHeader();
+                    const res = await fetch("/api/admin/export/articles", { headers: { Authorization: authHeader } });
+                    if (!res.ok) throw new Error("Gagal export");
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = `aina_articles_${Date.now()}.csv`; a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (e: any) { toast.error(e.message); }
+                }}
+              >
+                <Download className="h-3.5 w-3.5" /> Export CSV
+              </Button>
+            </>
           )}
           <Button onClick={() => setAddOpen(true)} size="sm" className="gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
             <Plus className="h-4 w-4" /> Tambah Artikel

@@ -1625,6 +1625,91 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ── Master Admin: Reformat All Articles ────────────── */
+app.post("/api/admin/articles/reformat-all", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa melakukan reformat massal" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
+
+  const supabase = getAdminClient();
+  const { data: articles } = await supabase
+    .from("knowledge_base")
+    .select("id, title, content, category")
+    .eq("status", "approved")
+    .order("created_at", { ascending: true });
+
+  if (!articles || articles.length === 0) return res.json({ reformatted: 0, failed: 0 });
+
+  let reformatted = 0;
+  let failed = 0;
+
+  for (const art of articles) {
+    const prompt = `Kamu adalah editor konten untuk knowledge base mahasiswa Indonesia di Mesir.
+
+Tugasmu: Rapikan dan format ulang konten artikel berikut menjadi Markdown yang terstruktur, rapi, dan mudah dibaca. JANGAN mengubah informasi — hanya perbaiki format dan struktur tulisan.
+
+Judul artikel: "${art.title}"
+Kategori: "${art.category}"
+
+Konten asli:
+<KONTEN>
+${art.content.slice(0, 10000)}
+</KONTEN>
+
+Aturan format yang WAJIB diikuti:
+- Gunakan ## untuk subjudul/bagian utama (JANGAN gunakan # karena judul sudah terpisah)
+- Pisahkan setiap paragraf dengan satu baris kosong
+- Gunakan - untuk poin-poin dalam list
+- Gunakan 1. 2. 3. untuk langkah berurutan
+- Gunakan **teks** untuk istilah penting
+- Jangan gunakan tabel
+- Jika konten sudah cukup bagus, bisa pertahankan sebagian besar strukturnya
+- Tulis dalam bahasa Indonesia yang natural dan mudah dipahami
+
+Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan apapun). Langsung isi kontennya saja.`;
+
+    try {
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://ainalabs.pro",
+          "X-Title": "AINA Article Reformatter",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.0-flash-001",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 4000,
+        }),
+      });
+
+      const data = await resp.json();
+      if (data.error) { failed++; continue; }
+
+      const newContent = data.choices?.[0]?.message?.content?.trim();
+      if (!newContent || newContent.length < 50) { failed++; continue; }
+
+      const { error } = await supabase
+        .from("knowledge_base")
+        .update({ content: newContent })
+        .eq("id", art.id);
+
+      if (error) { failed++; } else { reformatted++; }
+
+      // Small delay to avoid rate limiting
+      await new Promise(r => setTimeout(r, 300));
+    } catch {
+      failed++;
+    }
+  }
+
+  console.log(`[REFORMAT] master=${admin.id} | done=${reformatted} failed=${failed} total=${articles.length}`);
+  res.json({ reformatted, failed, total: articles.length });
+});
+
 /* ── Master Admin: Waitlist Pro ──────────────────────── */
 app.get("/api/admin/waitlist", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
