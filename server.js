@@ -2344,6 +2344,29 @@ app.delete("/api/admin/pinned-updates/:id", async (req, res) => {
   }
 });
 
+/* ── Active Breaking Updates (public, auth required) ─── */
+app.get("/api/active-updates", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server not configured" });
+
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("pinned_updates")
+      .select("id, topic, content, created_at")
+      .eq("active", true)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* ── Report Message ──────────────────────────────────── */
 app.post("/api/report-message", writeLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;

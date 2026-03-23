@@ -4,6 +4,7 @@ import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
 import FeedbackButton from "@/components/FeedbackButton";
 import WelcomeModal from "@/components/WelcomeModal";
+import BreakingUpdatesBanner from "@/components/BreakingUpdatesBanner";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -258,9 +259,11 @@ const Dashboard = () => {
         />
       </div>
 
-      <main className="flex-1 overflow-hidden min-w-0">
+      <main className="flex-1 overflow-hidden min-w-0 flex flex-col">
+        <BreakingUpdatesBanner />
+
         {/* Chat — always mounted, hidden when not active */}
-        <div className={activeTab === "chat" ? "h-full" : "hidden"}>
+        <div className={activeTab === "chat" ? "flex-1 min-h-0" : "hidden"}>
           <ChatArea
             onMenuClick={() => setSidebarOpen(true)}
             chatId={activeChatId}
@@ -272,7 +275,7 @@ const Dashboard = () => {
 
         {/* Non-chat tabs — only the active one is mounted at a time */}
         {activeTab !== "chat" && (
-          <div className="h-full flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col">
             {/* Mobile header */}
             <header className="safe-top flex items-center gap-3 border-b border-border px-4 md:hidden shrink-0 min-h-14">
               <button
