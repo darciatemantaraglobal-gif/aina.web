@@ -1192,9 +1192,10 @@ app.get("/api/admin/users", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const [{ data: profiles }, { data: allRoles }] = await Promise.all([
+  const [{ data: profiles }, { data: allRoles }, { data: subs }] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("user_roles").select("user_id, role"),
+    supabase.from("subscriptions").select("user_id, plan, expires_at").catch(() => ({ data: [] })),
   ]);
 
   const roleMap = {};
@@ -1203,7 +1204,21 @@ app.get("/api/admin/users", async (req, res) => {
     roleMap[r.user_id].push(r.role);
   });
 
-  const users = (profiles ?? []).map(p => ({ ...p, roles: roleMap[p.user_id] ?? ["user"] }));
+  const subsMap = {};
+  (subs ?? []).forEach(s => { subsMap[s.user_id] = s; });
+
+  const now = new Date();
+  const users = (profiles ?? []).map(p => {
+    const sub = subsMap[p.user_id];
+    const isPro = sub ? new Date(sub.expires_at) > now : false;
+    return {
+      ...p,
+      roles: roleMap[p.user_id] ?? ["user"],
+      is_pro: isPro,
+      pro_expires_at: sub?.expires_at ?? null,
+    };
+  });
+
   res.json(users);
 });
 
@@ -1562,6 +1577,11 @@ app.delete("/api/admin/articles/:id", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
+  const { data: art } = await supabase.from("knowledge_base").select("status").eq("id", req.params.id).single();
+  if (art?.status === "approved" && !isMasterAdminId(admin.id)) {
+    return res.status(403).json({ error: "Hanya master admin yang bisa menghapus artikel yang sudah disetujui" });
+  }
+
   await supabase.from("knowledge_base").delete().eq("id", req.params.id);
   res.json({ success: true });
 });
@@ -1575,10 +1595,22 @@ app.post("/api/admin/articles/bulk-delete", async (req, res) => {
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
 
   const supabase = getAdminClient();
-  const { error, count } = await supabase.from("knowledge_base").delete({ count: "exact" }).in("id", ids);
+  const isMaster = isMasterAdminId(admin.id);
+
+  let allowedIds = ids;
+  if (!isMaster) {
+    const { data: arts } = await supabase.from("knowledge_base").select("id, status").in("id", ids);
+    const approved = (arts ?? []).filter(a => a.status === "approved").map(a => a.id);
+    if (approved.length > 0) {
+      return res.status(403).json({ error: "Hanya master admin yang bisa menghapus artikel yang sudah disetujui" });
+    }
+    allowedIds = ids;
+  }
+
+  const { error, count } = await supabase.from("knowledge_base").delete({ count: "exact" }).in("id", allowedIds);
   if (error) return res.status(500).json({ error: error.message });
 
-  res.json({ deleted: count ?? ids.length });
+  res.json({ deleted: count ?? allowedIds.length });
 });
 
 /* ── Admin: Edit Article ──────────────────────────────── */
@@ -1591,6 +1623,163 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   const { error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+/* ── Master Admin: Waitlist Pro ──────────────────────── */
+app.get("/api/admin/waitlist", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa melihat waitlist" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("beta_feedback")
+    .select("*")
+    .ilike("message", "[WAITLIST PRO]%")
+    .order("created_at", { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const entries = (data ?? []).map(row => ({
+    id: row.id,
+    email: row.email ?? row.user_email ?? null,
+    user_id: row.user_id ?? null,
+    created_at: row.created_at,
+  }));
+
+  res.json(entries);
+});
+
+/* ── Master Admin: Grant / Revoke Pro ────────────────── */
+app.post("/api/admin/users/:userId/grant-pro", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa memberikan akses Pro" });
+
+  const { userId } = req.params;
+  const { plan = "pro_monthly", days = 30 } = req.body;
+  const supabase = getAdminClient();
+
+  const expiresAt = new Date(Date.now() + days * 86400 * 1000).toISOString();
+  const { error } = await supabase.from("subscriptions").upsert({
+    user_id: userId,
+    plan,
+    order_id: `manual_${admin.id}_${Date.now()}`,
+    amount: 0,
+    expires_at: expiresAt,
+    activated_at: new Date().toISOString(),
+  }, { onConflict: "user_id" });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  await supabase.from("notifications").insert({
+    user_id: userId,
+    title: "AINA Pro Aktif!",
+    message: `Akses Pro kamu telah diaktifkan oleh admin hingga ${new Date(expiresAt).toLocaleDateString("id-ID")}.`,
+    type: "success",
+  }).catch(() => {});
+
+  console.log(`[GRANT PRO] master=${admin.id} → user=${userId} plan=${plan} days=${days} expires=${expiresAt}`);
+  res.json({ success: true, expires_at: expiresAt });
+});
+
+app.delete("/api/admin/users/:userId/grant-pro", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mencabut akses Pro" });
+
+  const { userId } = req.params;
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("subscriptions").delete().eq("user_id", userId);
+  if (error) return res.status(500).json({ error: error.message });
+
+  await supabase.from("notifications").insert({
+    user_id: userId,
+    title: "Akses Pro Dicabut",
+    message: "Akses Pro kamu telah dicabut oleh admin.",
+    type: "info",
+  }).catch(() => {});
+
+  console.log(`[REVOKE PRO] master=${admin.id} → user=${userId}`);
+  res.json({ success: true });
+});
+
+/* ── Master Admin: Export CSV ────────────────────────── */
+function toCSV(rows, columns) {
+  const header = columns.map(c => `"${c.label}"`).join(",");
+  const lines = rows.map(row =>
+    columns.map(c => {
+      const val = row[c.key] ?? "";
+      return `"${String(val).replace(/"/g, '""')}"`;
+    }).join(",")
+  );
+  return [header, ...lines].join("\n");
+}
+
+app.get("/api/admin/export/users", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mengekspor data" });
+
+  const supabase = getAdminClient();
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("user_id, full_name, email, level, origin_city, faculty, study_field, arrival_year, contribution_count, created_at, is_banned")
+    .order("created_at", { ascending: false });
+
+  const csv = toCSV(profiles ?? [], [
+    { key: "user_id",           label: "User ID" },
+    { key: "full_name",         label: "Nama" },
+    { key: "email",             label: "Email" },
+    { key: "level",             label: "Level" },
+    { key: "origin_city",       label: "Kota Asal" },
+    { key: "faculty",           label: "Fakultas" },
+    { key: "study_field",       label: "Jurusan" },
+    { key: "arrival_year",      label: "Tahun Datang" },
+    { key: "contribution_count",label: "Jumlah Artikel" },
+    { key: "is_banned",         label: "Dibanned" },
+    { key: "created_at",        label: "Tanggal Daftar" },
+  ]);
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="aina_users_${Date.now()}.csv"`);
+  res.send(csv);
+});
+
+app.get("/api/admin/export/articles", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mengekspor data" });
+
+  const supabase = getAdminClient();
+  const { data: articles } = await supabase
+    .from("knowledge_base")
+    .select("id, title, category, status, hidden, created_at, author_id")
+    .order("created_at", { ascending: false });
+
+  const authorIds = [...new Set((articles ?? []).map(a => a.author_id).filter(Boolean))];
+  const { data: profiles } = authorIds.length
+    ? await supabase.from("profiles").select("user_id, full_name, email").in("user_id", authorIds)
+    : { data: [] };
+
+  const profileMap = {};
+  (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
+
+  const rows = (articles ?? []).map(a => ({
+    ...a,
+    author_name: profileMap[a.author_id]?.full_name ?? "",
+    author_email: profileMap[a.author_id]?.email ?? "",
+  }));
+
+  const csv = toCSV(rows, [
+    { key: "id",           label: "ID" },
+    { key: "title",        label: "Judul" },
+    { key: "category",     label: "Kategori" },
+    { key: "status",       label: "Status" },
+    { key: "hidden",       label: "Disembunyikan" },
+    { key: "author_name",  label: "Nama Penulis" },
+    { key: "author_email", label: "Email Penulis" },
+    { key: "created_at",   label: "Tanggal" },
+  ]);
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="aina_articles_${Date.now()}.csv"`);
+  res.send(csv);
 });
 
 /* ── Threads ─────────────────────────────────────────── */

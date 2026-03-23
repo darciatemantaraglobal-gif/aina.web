@@ -11,7 +11,7 @@ import {
   MessageSquare, BookOpen, Clock, Search,
   RefreshCw, TrendingUp, UserCheck, Plus,
   Pencil, Trash2, Eye, EyeOff, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
-  ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck,
+  ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -19,6 +19,7 @@ interface Profile {
   id: string; user_id: string; full_name: string | null;
   email: string | null; avatar_url: string | null; level: string; contribution_count: number;
   created_at: string; roles: string[]; is_banned?: boolean;
+  is_pro?: boolean; pro_expires_at?: string | null;
 }
 interface ContributorRequest {
   id: string; user_id: string; full_name: string; education: string;
@@ -99,11 +100,12 @@ function AvatarDisplay({ name, avatarUrl, size = 9 }: { name: string | null; ava
 }
 
 /* ─── User Profile Modal (Master Admin only) ─────────── */
-function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
+function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle, onProToggle }: {
   user: Profile; onClose: () => void;
   onSetRole: (userId: string, role: string) => Promise<void>;
   onDelete: (user: Profile) => void;
   onBanToggle: (user: Profile) => void;
+  onProToggle: (user: Profile) => void;
 }) {
   const [settingRole, setSettingRole] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -161,6 +163,11 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
               <p className="text-xs text-muted-foreground truncate">{user.email ?? "—"}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <span className={`rounded-full border px-2 py-0.5 text-xs ${ROLE_COLORS[role]}`}>{ROLE_LABELS[role]}</span>
+                {user.is_pro && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">
+                    <Crown className="h-2.5 w-2.5" /> Pro
+                  </span>
+                )}
                 {user.is_banned && (
                   <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Banned</span>
                 )}
@@ -180,6 +187,12 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Level</span>
               <span className="text-foreground">{user.level}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Status Pro</span>
+              <span className={user.is_pro ? "text-amber-400 font-medium" : "text-muted-foreground"}>
+                {user.is_pro ? `Aktif${user.pro_expires_at ? ` s/d ${fmtDate(user.pro_expires_at)}` : ""}` : "Tidak Aktif"}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Bergabung</span>
@@ -209,6 +222,17 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
               ? <><ShieldCheck className="h-3.5 w-3.5" /> Cabut Ban</>
               : <><ShieldOff className="h-3.5 w-3.5" /> Ban Akun</>
             }
+          </button>
+          <button
+            onClick={() => { onClose(); onProToggle(user); }}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border py-2 text-xs font-medium transition-colors ${
+              user.is_pro
+                ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+            }`}
+          >
+            <Crown className="h-3.5 w-3.5" />
+            {user.is_pro ? "Cabut Akses Pro" : "Beri Akses Pro (30 hari)"}
           </button>
           <button onClick={() => { onClose(); onDelete(user); }}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors">
@@ -315,6 +339,8 @@ function UsersTab() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [banConfirm, setBanConfirm] = useState<Profile | null>(null);
   const [banning, setBanning] = useState(false);
+  const [proConfirm, setProConfirm] = useState<Profile | null>(null);
+  const [proLoading, setProLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -371,6 +397,44 @@ function UsersTab() {
     } finally {
       setBanning(false);
     }
+  };
+
+  const executeProToggle = async () => {
+    if (!proConfirm) return;
+    setProLoading(true);
+    const isPro = proConfirm.is_pro;
+    const name = proConfirm.full_name ?? proConfirm.email ?? "User";
+    try {
+      if (isPro) {
+        await adminFetch(`/api/admin/users/${proConfirm.user_id}/grant-pro`, { method: "DELETE" });
+        toast.success(`Akses Pro dicabut dari ${name}`);
+      } else {
+        await adminFetch(`/api/admin/users/${proConfirm.user_id}/grant-pro`, {
+          method: "POST",
+          body: JSON.stringify({ plan: "pro_monthly", days: 30 }),
+        });
+        toast.success(`Akses Pro 30 hari diberikan ke ${name}`);
+      }
+      setProConfirm(null);
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setProLoading(false);
+    }
+  };
+
+  const exportUsersCSV = async () => {
+    try {
+      const authHeader = await getAuthHeader();
+      const res = await fetch("/api/admin/export/users", { headers: { Authorization: authHeader } });
+      if (!res.ok) throw new Error("Gagal export");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `aina_users_${Date.now()}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { toast.error(e.message); }
   };
 
   const toggleSelect = (userId: string) => {
@@ -450,6 +514,9 @@ function UsersTab() {
                 Hapus {selected.size} User
               </Button>
             )}
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={exportUsersCSV}>
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </Button>
             <button onClick={load} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
@@ -551,8 +618,41 @@ function UsersTab() {
           onSetRole={setRole}
           onDelete={u => { setViewProfile(null); setDeleteConfirm(u); }}
           onBanToggle={u => { setViewProfile(null); setBanConfirm(u); }}
+          onProToggle={u => { setViewProfile(null); setProConfirm(u); }}
         />
       )}
+
+      {/* Grant / Revoke Pro Confirmation */}
+      <Dialog open={!!proConfirm} onOpenChange={(open) => { if (!open && !proLoading) setProConfirm(null); }}>
+        <DialogContent className="max-w-sm gap-4 p-5">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-amber-400">
+              <Crown className="h-4 w-4" />
+              {proConfirm?.is_pro ? "Cabut Akses Pro" : "Beri Akses Pro"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+            <p className="text-sm font-medium text-foreground">{proConfirm?.full_name ?? "—"}</p>
+            <p className="text-xs text-muted-foreground">{proConfirm?.email ?? "—"}</p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {proConfirm?.is_pro
+              ? "Akses Pro akan segera dicabut dan user kembali ke akun Free."
+              : "User akan mendapatkan akses Pro selama 30 hari tanpa biaya (manual grant)."}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="flex-1" onClick={() => setProConfirm(null)} disabled={proLoading}>
+              Batal
+            </Button>
+            <Button size="sm" className="flex-1 bg-amber-600 hover:bg-amber-600/90 text-white" onClick={executeProToggle} disabled={proLoading}>
+              {proLoading
+                ? <><span className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Memproses...</>
+                : proConfirm?.is_pro ? "Ya, Cabut Pro" : "Ya, Beri Pro 30 Hari"
+              }
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Ban / Unban Confirmation */}
       <Dialog open={!!banConfirm} onOpenChange={(open) => { if (!open && !banning) setBanConfirm(null); }}>
@@ -950,9 +1050,31 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
           <h2 className="font-display text-lg font-bold text-foreground">Moderasi Knowledge Base</h2>
           <p className="text-sm text-muted-foreground">Review, terbitkan, dan tambah artikel langsung.</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} size="sm" className="shrink-0 gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
-          <Plus className="h-4 w-4" /> Tambah Artikel
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {isMasterAdmin && (
+            <Button
+              variant="outline" size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={async () => {
+                try {
+                  const authHeader = await getAuthHeader();
+                  const res = await fetch("/api/admin/export/articles", { headers: { Authorization: authHeader } });
+                  if (!res.ok) throw new Error("Gagal export");
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url; a.download = `aina_articles_${Date.now()}.csv`; a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e: any) { toast.error(e.message); }
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </Button>
+          )}
+          <Button onClick={() => setAddOpen(true)} size="sm" className="gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
+            <Plus className="h-4 w-4" /> Tambah Artikel
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
@@ -1021,14 +1143,16 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                   </Button>
                 </>
               )}
-              <Button
-                size="sm" disabled={bulkLoading}
-                className="h-7 gap-1.5 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs"
-                variant="outline"
-                onClick={handleBulkDelete}
-              >
-                <Trash2 className="h-3 w-3" /> Hapus {selected.size}
-              </Button>
+              {(filter !== "approved" || isMasterAdmin) && (
+                <Button
+                  size="sm" disabled={bulkLoading}
+                  className="h-7 gap-1.5 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs"
+                  variant="outline"
+                  onClick={handleBulkDelete}
+                >
+                  <Trash2 className="h-3 w-3" /> Hapus {selected.size}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -1123,9 +1247,11 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                     <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => setEditArticle(art)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handleDelete(art.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {(art.status !== "approved" || isMasterAdmin) && (
+                      <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handleDelete(art.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1834,8 +1960,87 @@ function SecurityLogsTab() {
   );
 }
 
+/* ─── Waitlist Pro Tab (Master Admin only) ───────────── */
+interface WaitlistEntry { id: string; email: string | null; user_id: string | null; created_at: string; }
+
+function WaitlistTab() {
+  const [entries, setEntries] = useState<WaitlistEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await adminFetch("/api/admin/waitlist");
+      setEntries(data);
+    } catch (e: any) { toast.error(e.message); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const exportCSV = () => {
+    const rows = entries.map(e => `"${e.email ?? ""}","${fmtDate(e.created_at)}"`);
+    const csv = `"Email","Tanggal Daftar"\n${rows.join("\n")}`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `waitlist_pro_${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-display text-lg font-bold text-foreground">Waitlist Pro</h2>
+          <p className="text-sm text-muted-foreground">{entries.length} pendaftar</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={load} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+          {entries.length > 0 && (
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={exportCSV}>
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </Button>
+          )}
+        </div>
+      </div>
+      {loading ? (
+        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-card" />)}</div>
+      ) : entries.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-12 text-center">
+          <ListChecks className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">Belum ada pendaftar waitlist Pro</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-card">
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">#</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Email</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Tanggal Daftar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={e.id} className="border-b border-border/50 last:border-0 hover:bg-card/60">
+                  <td className="px-4 py-2.5 text-muted-foreground">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-medium text-foreground">{e.email ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(e.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1887,6 +2092,7 @@ const AdminPage = () => {
     { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
     { id: "updates", label: "Breaking Updates", icon: Zap },
     { id: "reports", label: "Laporan", icon: Flag },
+    ...(isMasterAdmin ? [{ id: "waitlist" as Tab, label: "Waitlist Pro", icon: Crown }] : []),
     ...(isMasterAdmin ? [{ id: "security" as Tab, label: "Security", icon: ShieldAlert }] : []),
   ];
 
@@ -1932,6 +2138,7 @@ const AdminPage = () => {
         {activeTab === "knowledge" && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
         {activeTab === "updates" && <PinnedUpdatesTab />}
         {activeTab === "reports" && <ReportsTab />}
+        {activeTab === "waitlist" && isMasterAdmin && <WaitlistTab />}
         {activeTab === "security" && isMasterAdmin && <SecurityLogsTab />}
       </div>
     </div>
