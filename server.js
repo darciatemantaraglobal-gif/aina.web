@@ -898,8 +898,10 @@ app.post("/api/extract-file", uploadLimiter, fileUpload.single("file"), async (r
     if (mimetype === "text/plain") {
       extractedText = buffer.toString("utf-8");
     } else if (mimetype === "application/pdf") {
-      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
-      const result = await pdfParse(buffer);
+      const { PDFParse } = await import("pdf-parse");
+      const parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      await parser.destroy();
       extractedText = result.text;
     } else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       const mammoth = await import("mammoth");
