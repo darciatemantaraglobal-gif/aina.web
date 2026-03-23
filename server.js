@@ -1312,11 +1312,12 @@ app.get("/api/admin/users", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const [{ data: profiles }, { data: allRoles }, { data: subs }] = await Promise.all([
+  const [{ data: profiles }, { data: allRoles }, subsResult] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("user_roles").select("user_id, role"),
-    supabase.from("subscriptions").select("user_id, plan, expires_at").catch(() => ({ data: [] })),
+    Promise.resolve(supabase.from("subscriptions").select("user_id, plan, expires_at")).catch(() => ({ data: [] })),
   ]);
+  const subs = subsResult?.data ?? [];
 
   const roleMap = {};
   (allRoles ?? []).forEach(r => {
