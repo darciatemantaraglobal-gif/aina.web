@@ -13,21 +13,32 @@ const FACULTIES = [
   "Lainnya",
 ];
 
+interface InitialValues {
+  fullName?: string;
+  originCity?: string;
+  faculty?: string;
+  studyField?: string;
+  arrivalYear?: string;
+}
+
 interface SetupProfileModalProps {
   userId: string;
   onComplete: () => void;
+  initialValues?: InitialValues;
 }
+
+const SETUP_DONE_KEY = (uid: string) => `aina_setup_done_${uid}`;
 
 const currentYear = new Date().getFullYear();
 const YEARS = Array.from({ length: currentYear - 1999 }, (_, i) => String(currentYear - i));
 
-export default function SetupProfileModal({ userId, onComplete }: SetupProfileModalProps) {
+export default function SetupProfileModal({ userId, onComplete, initialValues }: SetupProfileModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [fullName, setFullName] = useState("");
-  const [originCity, setOriginCity] = useState("");
-  const [faculty, setFaculty] = useState("");
-  const [studyField, setStudyField] = useState("");
-  const [arrivalYear, setArrivalYear] = useState("");
+  const [fullName, setFullName] = useState(initialValues?.fullName ?? "");
+  const [originCity, setOriginCity] = useState(initialValues?.originCity ?? "");
+  const [faculty, setFaculty] = useState(initialValues?.faculty ?? "");
+  const [studyField, setStudyField] = useState(initialValues?.studyField ?? "");
+  const [arrivalYear, setArrivalYear] = useState(initialValues?.arrivalYear ?? "");
   const [saving, setSaving] = useState(false);
   const [visible, setVisible] = useState(false);
 
@@ -64,6 +75,7 @@ export default function SetupProfileModal({ userId, onComplete }: SetupProfileMo
           throw error;
         }
       }
+      localStorage.setItem(SETUP_DONE_KEY(userId), "1");
       toast.success("Profil berhasil disimpan!");
       onComplete();
     } catch (e: any) {

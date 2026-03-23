@@ -95,6 +95,10 @@ const Dashboard = () => {
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [profileInitial, setProfileInitial] = useState<{
+    fullName?: string; originCity?: string; faculty?: string;
+    studyField?: string; arrivalYear?: string;
+  }>({});
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -120,12 +124,23 @@ const Dashboard = () => {
 
         const [{ data: roles }, { data: profile }] = await Promise.all([
           supabase.from("user_roles").select("role").eq("user_id", uid),
-          supabase.from("profiles").select("full_name").eq("user_id", uid).single(),
+          supabase.from("profiles").select("full_name, origin_city, faculty, study_field, arrival_year").eq("user_id", uid).single(),
         ]);
 
         setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
 
-        if (!profile?.full_name?.trim()) {
+        const setupDoneKey = `aina_setup_done_${uid}`;
+        const localSetupDone = !!localStorage.getItem(setupDoneKey);
+        const hasName = !!profile?.full_name?.trim();
+
+        if (!hasName || !localSetupDone) {
+          setProfileInitial({
+            fullName: profile?.full_name ?? "",
+            originCity: profile?.origin_city ?? "",
+            faculty: profile?.faculty ?? "",
+            studyField: profile?.study_field ?? "",
+            arrivalYear: profile?.arrival_year ? String(profile.arrival_year) : "",
+          });
           setShowSetup(true);
         }
 
@@ -360,6 +375,7 @@ const Dashboard = () => {
         <SetupProfileModal
           userId={userId}
           onComplete={() => setShowSetup(false)}
+          initialValues={profileInitial}
         />
       )}
       <FeedbackButton />

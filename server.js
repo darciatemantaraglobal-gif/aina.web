@@ -2741,6 +2741,10 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS study_field TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS arrival_year INTEGER;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS origin_city TEXT;
 
+-- Setup completed flag (safe to re-run)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS setup_completed BOOLEAN DEFAULT FALSE;
+UPDATE public.profiles SET setup_completed = TRUE WHERE full_name IS NOT NULL AND full_name != '' AND setup_completed = FALSE;
+
 -- Article type column
 ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS article_type TEXT NOT NULL DEFAULT 'narrative'
   CHECK (article_type IN ('narrative', 'step_by_step'));`;
@@ -2823,6 +2827,7 @@ async function checkRequiredTables() {
     console.log("[MIGRATIONS] ✓ All required tables exist");
   }
 }
+
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
   checkRequiredTables();
