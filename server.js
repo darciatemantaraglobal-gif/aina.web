@@ -889,7 +889,53 @@ app.post("/api/upload-avatar", uploadLimiter, async (req, res) => {
   res.json({ url: publicUrl });
 });
 
-/* ── File text extraction ────────────────────────────── */
+/* ── PDF text extraction + OCR ──────────────────────── */
+// ocrPdf: renders each page via pdfjs-dist + @napi-rs/canvas → Tesseract.js.
+// Used automatically when normal text extraction yields nothing (scanned PDFs).
+const MAX_OCR_PAGES = 5; // Cap to stay inside Vercel's 60 s timeout
+
+async function ocrPdf(buffer) {
+  const { createCanvas } = await import("@napi-rs/canvas");
+  const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { createWorker } = await import("tesseract.js");
+
+  // Point pdfjs to its worker file (required; empty string throws)
+  GlobalWorkerOptions.workerSrc = new URL(
+    "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+    import.meta.url
+  ).href;
+
+  const pdf = await getDocument({ data: new Uint8Array(buffer) }).promise;
+  const numPages = Math.min(pdf.numPages, MAX_OCR_PAGES);
+
+  // Render all pages first, then OCR in one worker session
+  const pngBuffers = [];
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 }); // 2× scale → better OCR accuracy
+    const canvas = createCanvas(viewport.width, viewport.height);
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    pngBuffers.push(canvas.toBuffer("image/png"));
+    page.cleanup();
+  }
+
+  const worker = await createWorker("eng", 1, { logger: () => {} });
+  const parts = [];
+  for (const png of pngBuffers) {
+    const { data: { text } } = await worker.recognize(png);
+    if (text.trim()) parts.push(text.trim());
+  }
+  await worker.terminate();
+
+  const combined = numPages < pdf.numPages
+    ? parts.join("\n\n") + `\n\n[...${pdf.numPages - numPages} halaman berikutnya tidak di-OCR]`
+    : parts.join("\n\n");
+
+  return combined;
+}
+
+/* ── File upload ─────────────────────────────────────── */
 const fileUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB max (Vercel serverless cap is 4.5 MB)
@@ -932,10 +978,17 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
     if (mimetype === "text/plain") {
       extractedText = buffer.toString("utf-8");
     } else if (mimetype === "application/pdf") {
-      // Import from lib/ to avoid v1's test-file side effect on startup
+      // Step 1: Try regular text extraction (fast, works for text-based PDFs)
       const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
       const result = await pdfParse(buffer);
       extractedText = result.text;
+
+      // Step 2: If no text found, auto-run OCR (handles scanned/image PDFs)
+      if (!extractedText || extractedText.trim().length < 20) {
+        console.log(`[extract-file] No text found in PDF — running OCR on ${originalname}`);
+        extractedText = await ocrPdf(buffer);
+        if (extractedText) extractedText = "[OCR] " + extractedText;
+      }
     } else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer });
@@ -955,11 +1008,11 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
     .replace(/\n{4,}/g, "\n\n\n")
     .trim();
 
-  if (!extractedText || extractedText.length < 20) {
+  if (!extractedText || extractedText.trim().length < 20) {
     const isPdf = mimetype === "application/pdf";
     return res.status(422).json({
       error: isPdf
-        ? "PDF ini tidak mengandung teks yang bisa dibaca. Kemungkinan PDF scan/gambar — coba konversi ke PDF teks terlebih dahulu, atau ketik kontennya secara manual."
+        ? "PDF ini tidak mengandung teks yang bisa dibaca bahkan setelah OCR. Coba simpan ulang file PDF-nya atau ketik kontennya secara manual."
         : "File tidak mengandung teks yang cukup untuk diekstrak",
     });
   }
