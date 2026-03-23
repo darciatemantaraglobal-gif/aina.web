@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
 
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Users can view own subscription" ON public.subscriptions;
+DROP POLICY IF EXISTS "Admins can manage subscriptions" ON public.subscriptions;
+
 -- Users can view their own subscription
 CREATE POLICY "Users can view own subscription"
   ON public.subscriptions FOR SELECT
