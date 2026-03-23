@@ -1,0 +1,34 @@
+{
+  "name": "AINA — Asisten Pintar Masisir",
+  "short_name": "AINA",
+  "description": "Asisten AI khusus untuk mahasiswa Indonesia di Mesir",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#7c3aed",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/aina-icon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "AINA Dashboard"
+    }
+  ],
+  "categories": ["education", "productivity", "utilities"],
+  "lang": "id"
+}

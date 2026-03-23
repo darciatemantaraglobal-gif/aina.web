@@ -97,6 +97,13 @@ const Dashboard = () => {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
 
+  // Persist last active chat across page reloads
+  useEffect(() => {
+    if (activeChatId) {
+      localStorage.setItem("aina_last_chat_id", activeChatId);
+    }
+  }, [activeChatId]);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -133,17 +140,20 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (authReady) {
-      loadChats();
       const stored = sessionStorage.getItem("pendingMessage");
-      if (stored) {
+      const hasPending = !!stored;
+      if (hasPending) {
         sessionStorage.removeItem("pendingMessage");
         setPendingMessage(stored);
+        loadChats(false);
+      } else {
+        loadChats(true);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
 
-  const loadChats = useCallback(async () => {
+  const loadChats = useCallback(async (restoreLast = false) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
@@ -154,7 +164,14 @@ const Dashboard = () => {
         .order("updated_at", { ascending: false })
         .limit(40);
       if (error) throw error;
-      if (data) setChats(data);
+      if (data) {
+        setChats(data);
+        if (restoreLast && data.length > 0) {
+          const lastId = localStorage.getItem("aina_last_chat_id");
+          const found = lastId && data.find((c) => c.id === lastId);
+          setActiveChatId(found ? found.id : data[0].id);
+        }
+      }
     } catch {
       // Silent — sidebar just shows empty if chats can't load
     }
@@ -162,6 +179,7 @@ const Dashboard = () => {
 
   const handleNewChat = useCallback(() => {
     setActiveChatId(null);
+    localStorage.removeItem("aina_last_chat_id");
     setActiveTab("chat");
     setSidebarOpen(false);
   }, []);
