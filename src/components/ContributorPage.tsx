@@ -327,8 +327,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Format tidak didukung. Gunakan PDF, DOCX, atau TXT.");
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
-      toast.error(`File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal 4 MB.`);
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error(`File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal 10 MB.`);
       return;
     }
 
@@ -345,7 +345,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         body: formData,
       });
       const json = await res.json().catch(() => ({
-        error: res.status === 413 ? "File terlalu besar. Maksimal 4 MB." : `Gagal mengekstrak file (${res.status})`,
+        error: res.status === 413 ? "File terlalu besar. Maksimal 10 MB." : `Gagal mengekstrak file (${res.status})`,
       }));
       if (!res.ok) throw new Error(json.error || "Gagal mengekstrak file");
       setPdfText(json.text);
@@ -650,7 +650,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                           </div>
                           <div className="text-center">
                             <p className="text-sm font-medium text-foreground">Pilih file untuk diupload</p>
-                            <p className="mt-1 text-xs text-muted-foreground">PDF · DOCX · TXT — maks. 4 MB</p>
+                            <p className="mt-1 text-xs text-muted-foreground">PDF · DOCX · TXT — maks. 10 MB</p>
                           </div>
                         </>
                       )}

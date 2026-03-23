@@ -963,7 +963,7 @@ async function ocrPdf(buffer) {
 /* ── File upload ─────────────────────────────────────── */
 const fileUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB max (Vercel serverless cap is 4.5 MB)
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter: (_req, file, cb) => {
     const allowed = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if (allowed.includes(file.mimetype)) cb(null, true);
