@@ -45,7 +45,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi
 VITE_SUPABASE_PROJECT_ID = "alibsjhwmturwfadqkkz"
 SUPABASE_URL = "https://alibsjhwmturwfadqkkz.supabase.co"
 MASTER_ADMIN_IDS = "38a8f526-b1a7-47ef-9a04-ecc8b2b63f27"
-CLIENT_URL = ""
+CLIENT_URL = "https://ainalabs.pro"
 
 [[ports]]
 localPort = 3001
