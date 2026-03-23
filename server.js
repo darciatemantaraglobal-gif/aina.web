@@ -1544,6 +1544,21 @@ app.delete("/api/admin/articles/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ── Admin: Bulk Delete Articles ─────────────────────── */
+app.post("/api/admin/articles/bulk-delete", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
+
+  const supabase = getAdminClient();
+  const { error, count } = await supabase.from("knowledge_base").delete({ count: "exact" }).in("id", ids);
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ deleted: count ?? ids.length });
+});
+
 /* ── Admin: Edit Article ──────────────────────────────── */
 app.patch("/api/admin/articles/:id", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);

@@ -746,6 +746,21 @@ function KnowledgeBaseTab() {
     setBulkLoading(false);
   };
 
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Yakin hapus ${selected.size} artikel sekaligus? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkLoading(true);
+    try {
+      const { deleted } = await adminFetch("/api/admin/articles/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      });
+      toast.success(`${deleted} artikel berhasil dihapus`);
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    setBulkLoading(false);
+  };
+
   const handleAdd = async (data: { title: string; content: string; category: string }) => {
     try {
       await adminFetch("/api/admin/articles", { method: "POST", body: JSON.stringify(data) });
@@ -851,7 +866,7 @@ function KnowledgeBaseTab() {
         </Select>
       </div>
 
-      {filter === "pending" && !loading && filtered.length > 0 && (
+      {!loading && filtered.length > 0 && (
         <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-2">
           <button
             onClick={toggleSelectAll}
@@ -870,21 +885,33 @@ function KnowledgeBaseTab() {
 
           {selected.size > 0 && (
             <div className="flex gap-2">
-              <Button
-                size="sm" disabled={bulkLoading}
-                className="h-7 gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 text-xs"
-                variant="outline"
-                onClick={() => handleBulkReview("approved")}
-              >
-                <Check className="h-3 w-3" /> Setujui {selected.size}
-              </Button>
+              {filter === "pending" && (
+                <>
+                  <Button
+                    size="sm" disabled={bulkLoading}
+                    className="h-7 gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 text-xs"
+                    variant="outline"
+                    onClick={() => handleBulkReview("approved")}
+                  >
+                    <Check className="h-3 w-3" /> Setujui {selected.size}
+                  </Button>
+                  <Button
+                    size="sm" disabled={bulkLoading}
+                    className="h-7 gap-1.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 text-xs"
+                    variant="outline"
+                    onClick={() => handleBulkReview("rejected")}
+                  >
+                    <X className="h-3 w-3" /> Tolak {selected.size}
+                  </Button>
+                </>
+              )}
               <Button
                 size="sm" disabled={bulkLoading}
                 className="h-7 gap-1.5 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs"
                 variant="outline"
-                onClick={() => handleBulkReview("rejected")}
+                onClick={handleBulkDelete}
               >
-                <X className="h-3 w-3" /> Tolak {selected.size}
+                <Trash2 className="h-3 w-3" /> Hapus {selected.size}
               </Button>
             </div>
           )}
@@ -915,16 +942,14 @@ function KnowledgeBaseTab() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
-                    {filter === "pending" && (
-                      <button
-                        onClick={() => toggleSelect(art.id)}
-                        className={`mt-0.5 shrink-0 h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          isSelected ? "border-primary bg-primary" : "border-border hover:border-primary/60"
-                        }`}
-                      >
-                        {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => toggleSelect(art.id)}
+                      className={`mt-0.5 shrink-0 h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
+                        isSelected ? "border-primary bg-primary" : "border-border hover:border-primary/60"
+                      }`}
+                    >
+                      {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                    </button>
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[art.category] ?? "bg-secondary text-muted-foreground"}`}>
