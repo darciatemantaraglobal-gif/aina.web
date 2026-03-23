@@ -637,12 +637,12 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                 {pdfStep === "upload" && (
                   <div className="space-y-4">
                     <p className="text-sm text-muted-foreground">
-                      Upload PDF, DOCX, atau TXT yang berisi informasi tentang kehidupan di Mesir. AI akan membaca dan mengkategorikan isinya secara otomatis.
+                      Upload PDF, DOCX, TXT, atau foto dokumen (PNG/JPG). AI akan membaca dan mengkategorikan isinya secara otomatis. Foto dokumen akan di-OCR oleh AI.
                     </p>
                     <input
                       ref={pdfInputRef}
                       type="file"
-                      accept=".pdf,.txt,.docx"
+                      accept=".pdf,.txt,.docx,image/jpeg,image/png,image/webp"
                       className="hidden"
                       onChange={handlePdfUpload}
                     />
@@ -665,7 +665,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                           </div>
                           <div className="text-center">
                             <p className="text-sm font-medium text-foreground">Pilih file untuk diupload</p>
-                            <p className="mt-1 text-xs text-muted-foreground">PDF · DOCX · TXT — maks. 10 MB</p>
+                            <p className="mt-1 text-xs text-muted-foreground">PDF · DOCX · TXT · PNG · JPG — maks. 10 MB</p>
                           </div>
                         </>
                       )}
