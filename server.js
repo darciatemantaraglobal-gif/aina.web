@@ -156,10 +156,15 @@ async function initStorage() {
   if (!supabase) { console.warn("Storage init skipped: no admin client"); return; }
   try {
     const { data: buckets } = await supabase.storage.listBuckets();
-    const exists = buckets?.some(b => b.name === "avatars");
-    if (!exists) {
+    const names = buckets?.map(b => b.name) || [];
+
+    if (!names.includes("avatars")) {
       await supabase.storage.createBucket("avatars", { public: true, fileSizeLimit: 2097152 });
       console.log("Storage bucket 'avatars' created");
+    }
+    if (!names.includes("temp-uploads")) {
+      await supabase.storage.createBucket("temp-uploads", { public: false, fileSizeLimit: 20971520 }); // 20 MB cap
+      console.log("Storage bucket 'temp-uploads' created");
     }
   } catch (e) {
     console.warn("Storage init warning:", e.message);
@@ -1048,6 +1053,111 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
   }
 
   console.log(`[extract-file] ${user.id} extracted ${extractedText.length} chars from ${originalname}`);
+  res.json({ text: extractedText, filename: originalname, chars: extractedText.length });
+});
+
+/* ── Upload: Get presigned URL (file goes directly to Supabase, bypasses Vercel) ── */
+app.post("/api/upload-url", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
+  if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa mengupload file" });
+
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ error: "filename diperlukan" });
+
+  const ext = filename.split(".").pop()?.toLowerCase() || "bin";
+  const allowed = ["pdf", "txt", "docx"];
+  if (!allowed.includes(ext)) return res.status(400).json({ error: "Format tidak didukung. Gunakan PDF, DOCX, atau TXT." });
+
+  const storagePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { data, error } = await supabase.storage.from("temp-uploads").createSignedUploadUrl(storagePath);
+  if (error) {
+    console.error("[upload-url] error:", error.message);
+    return res.status(500).json({ error: "Gagal membuat URL upload: " + error.message });
+  }
+
+  return res.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
+});
+
+/* ── Extract: Process file from Supabase Storage ─────── */
+app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
+  if (!hasAccess) return res.status(403).json({ error: "Akses tidak diizinkan" });
+
+  const { path, filename } = req.body;
+  if (!path) return res.status(400).json({ error: "path diperlukan" });
+
+  // Download the file from Supabase Storage
+  const { data: fileData, error: downloadErr } = await supabase.storage.from("temp-uploads").download(path);
+  if (downloadErr) {
+    console.error("[extract-from-storage] download error:", downloadErr.message);
+    return res.status(500).json({ error: "Gagal mengambil file dari storage: " + downloadErr.message });
+  }
+
+  const buffer = Buffer.from(await fileData.arrayBuffer());
+  const ext = path.split(".").pop()?.toLowerCase();
+  const mimetype = ext === "pdf"
+    ? "application/pdf"
+    : ext === "txt"
+    ? "text/plain"
+    : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const originalname = filename || path.split("/").pop() || "file";
+
+  let extractedText = "";
+  try {
+    if (mimetype === "text/plain") {
+      extractedText = buffer.toString("utf-8");
+    } else if (mimetype === "application/pdf") {
+      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+      const result = await pdfParse(buffer);
+      extractedText = result.text;
+      if (!extractedText || extractedText.trim().length < 20) {
+        console.log(`[extract-from-storage] No text in PDF — running OCR on ${originalname}`);
+        extractedText = await ocrPdf(buffer);
+        if (extractedText) extractedText = "[OCR] " + extractedText;
+      }
+    } else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer });
+      extractedText = result.value;
+    } else {
+      return res.status(400).json({ error: "Format file tidak dikenali" });
+    }
+  } catch (e) {
+    console.error("[extract-from-storage] parse error:", e.message);
+    return res.status(422).json({ error: `Gagal membaca file: ${e.message}` });
+  } finally {
+    // Always delete temp file from storage
+    supabase.storage.from("temp-uploads").remove([path]).catch(() => {});
+  }
+
+  extractedText = extractedText
+    .replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n{4,}/g, "\n\n\n").trim();
+
+  if (!extractedText || extractedText.trim().length < 20) {
+    const isPdf = mimetype === "application/pdf";
+    return res.status(422).json({
+      error: isPdf
+        ? "PDF ini tidak mengandung teks yang bisa dibaca bahkan setelah OCR. Coba simpan ulang file PDF-nya atau ketik kontennya secara manual."
+        : "File tidak mengandung teks yang cukup untuk diekstrak",
+    });
+  }
+
+  if (extractedText.length > 20_000) {
+    extractedText = extractedText.slice(0, 20_000) + "\n\n[...konten dipotong karena terlalu panjang]";
+  }
+
+  console.log(`[extract-from-storage] ${user.id} extracted ${extractedText.length} chars from ${originalname}`);
   res.json({ text: extractedText, filename: originalname, chars: extractedText.length });
 });
 

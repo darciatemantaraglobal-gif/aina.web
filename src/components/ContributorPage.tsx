@@ -315,7 +315,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
     }
   };
 
-  // PDF upload & extraction
+  // PDF upload & extraction — file goes directly to Supabase Storage (no Vercel size limit)
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!e.target) return;
@@ -337,23 +337,40 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
     setPdfText("");
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/extract-file", {
+      const authHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} as Record<string, string>;
+
+      // Step 1: Get a presigned upload URL from our server
+      const urlRes = await fetch("/api/upload-url", {
         method: "POST",
-        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-        body: formData,
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ filename: file.name }),
       });
-      const json = await res.json().catch(() => ({
-        error: res.status === 413 ? "File terlalu besar. Maksimal 10 MB." : `Gagal mengekstrak file (${res.status})`,
-      }));
-      if (!res.ok) throw new Error(json.error || "Gagal mengekstrak file");
+      const urlJson = await urlRes.json().catch(() => ({ error: "Gagal mendapatkan URL upload" }));
+      if (!urlRes.ok) throw new Error(urlJson.error || "Gagal mendapatkan URL upload");
+
+      // Step 2: Upload file DIRECTLY to Supabase Storage (bypasses Vercel completely)
+      const uploadRes = await fetch(urlJson.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error(`Gagal mengupload file (${uploadRes.status}). Coba lagi.`);
+
+      // Step 3: Tell our server to extract text from the uploaded file
+      const extractRes = await fetch("/api/extract-from-storage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ path: urlJson.path, filename: file.name }),
+      });
+      const json = await extractRes.json().catch(() => ({ error: `Gagal mengekstrak file (${extractRes.status})` }));
+      if (!extractRes.ok) throw new Error(json.error || "Gagal mengekstrak teks dari file");
+
       setPdfText(json.text);
       setPdfFilename(json.filename);
       setPdfChars(json.chars);
       setPdfStep("preview");
     } catch (err: any) {
-      toast.error(err.message || "Gagal membaca file, coba lagi.");
+      toast.error(err.message || "Gagal memproses file, coba lagi.");
     } finally {
       setPdfExtracting(false);
     }
