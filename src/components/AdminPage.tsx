@@ -11,14 +11,14 @@ import {
   MessageSquare, BookOpen, Clock, Search,
   RefreshCw, TrendingUp, UserCheck, Plus,
   Pencil, Trash2, Eye, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
-  ShieldAlert, Filter, Trash,
+  ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
 interface Profile {
   id: string; user_id: string; full_name: string | null;
   email: string | null; avatar_url: string | null; level: string; contribution_count: number;
-  created_at: string; roles: string[];
+  created_at: string; roles: string[]; is_banned?: boolean;
 }
 interface ContributorRequest {
   id: string; user_id: string; full_name: string; education: string;
@@ -98,10 +98,11 @@ function AvatarDisplay({ name, avatarUrl, size = 9 }: { name: string | null; ava
 }
 
 /* ─── User Profile Modal (Master Admin only) ─────────── */
-function UserProfileModal({ user, onClose, onSetRole, onDelete }: {
+function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
   user: Profile; onClose: () => void;
   onSetRole: (userId: string, role: string) => Promise<void>;
   onDelete: (user: Profile) => void;
+  onBanToggle: (user: Profile) => void;
 }) {
   const [settingRole, setSettingRole] = useState(false);
   const topRole = (roles: string[]) => {
@@ -130,6 +131,9 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete }: {
               <p className="text-xs text-muted-foreground truncate">{user.email ?? "—"}</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 <span className={`rounded-full border px-2 py-0.5 text-xs ${ROLE_COLORS[role]}`}>{ROLE_LABELS[role]}</span>
+                {user.is_banned && (
+                  <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Banned</span>
+                )}
                 {user.contribution_count > 0 && (
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{user.contribution_count} artikel</span>
                 )}
@@ -163,6 +167,19 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete }: {
               ))}
             </div>
           </div>
+          <button
+            onClick={() => { onClose(); onBanToggle(user); }}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border py-2 text-xs font-medium transition-colors ${
+              user.is_banned
+                ? "border-green-500/30 text-green-400 hover:bg-green-500/10"
+                : "border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+            }`}
+          >
+            {user.is_banned
+              ? <><ShieldCheck className="h-3.5 w-3.5" /> Cabut Ban</>
+              : <><ShieldOff className="h-3.5 w-3.5" /> Ban Akun</>
+            }
+          </button>
           <button onClick={() => { onClose(); onDelete(user); }}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors">
             <Trash2 className="h-3.5 w-3.5" /> Hapus Akun
@@ -265,6 +282,8 @@ function UsersTab() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [banConfirm, setBanConfirm] = useState<Profile | null>(null);
+  const [banning, setBanning] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -304,6 +323,22 @@ function UsersTab() {
       toast.error(e.message);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const executeBanToggle = async () => {
+    if (!banConfirm) return;
+    setBanning(true);
+    const isBanned = banConfirm.is_banned;
+    try {
+      await adminFetch(`/api/admin/users/${banConfirm.user_id}/${isBanned ? "unban" : "ban"}`, { method: "POST" });
+      toast.success(isBanned ? `Ban dicabut dari ${banConfirm.full_name ?? banConfirm.email}` : `${banConfirm.full_name ?? banConfirm.email} berhasil dibanned`);
+      setBanConfirm(null);
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBanning(false);
     }
   };
 
@@ -461,6 +496,11 @@ function UsersTab() {
                         {u.contribution_count} artikel
                       </span>
                     )}
+                    {u.is_banned && (
+                      <span className="flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400">
+                        <ShieldOff className="h-3 w-3" /> Banned
+                      </span>
+                    )}
                     <span className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${ROLE_COLORS[role]}`}>
                       {ROLE_LABELS[role]}
                     </span>
@@ -479,8 +519,41 @@ function UsersTab() {
           onClose={() => setViewProfile(null)}
           onSetRole={setRole}
           onDelete={u => { setViewProfile(null); setDeleteConfirm(u); }}
+          onBanToggle={u => { setViewProfile(null); setBanConfirm(u); }}
         />
       )}
+
+      {/* Ban / Unban Confirmation */}
+      <Dialog open={!!banConfirm} onOpenChange={(open) => { if (!open && !banning) setBanConfirm(null); }}>
+        <DialogContent className="max-w-sm gap-4 p-5">
+          <DialogHeader>
+            <DialogTitle className={`flex items-center gap-2 text-base ${banConfirm?.is_banned ? "text-green-400" : "text-orange-400"}`}>
+              {banConfirm?.is_banned ? <ShieldCheck className="h-4 w-4" /> : <ShieldOff className="h-4 w-4" />}
+              {banConfirm?.is_banned ? "Cabut Ban" : "Ban Akun"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className={`rounded-xl border p-3 ${banConfirm?.is_banned ? "border-green-500/20 bg-green-500/5" : "border-orange-500/20 bg-orange-500/5"}`}>
+            <p className="text-sm font-medium text-foreground">{banConfirm?.full_name ?? "—"}</p>
+            <p className="text-xs text-muted-foreground">{banConfirm?.email ?? "—"}</p>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {banConfirm?.is_banned
+              ? "User ini akan bisa login dan menggunakan AINA lagi."
+              : "User ini tidak akan bisa mengakses dashboard dan semua fitur AINA."}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="flex-1" onClick={() => setBanConfirm(null)} disabled={banning}>
+              Batal
+            </Button>
+            <Button size="sm" className={`flex-1 ${banConfirm?.is_banned ? "bg-green-600 hover:bg-green-600/90" : "bg-orange-600 hover:bg-orange-600/90"} text-white`} onClick={executeBanToggle} disabled={banning}>
+              {banning
+                ? <><span className="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />{banConfirm?.is_banned ? "Mencabut..." : "Memban..."}</>
+                : banConfirm?.is_banned ? "Ya, Cabut Ban" : "Ya, Ban Akun"
+              }
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Single Delete Confirmation */}
       <Dialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open && !deleting) setDeleteConfirm(null); }}>

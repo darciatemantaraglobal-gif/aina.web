@@ -18,6 +18,7 @@ const TermsPage = lazy(() => import("./pages/TermsPage.tsx"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage.tsx"));
 const AboutPage = lazy(() => import("./pages/AboutPage.tsx"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage.tsx"));
+const BannedPage = lazy(() => import("./pages/BannedPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 const queryClient = new QueryClient({
@@ -65,6 +66,7 @@ const App = () => (
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/banned" element={<BannedPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

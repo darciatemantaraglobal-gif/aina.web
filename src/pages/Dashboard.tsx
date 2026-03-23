@@ -124,8 +124,14 @@ const Dashboard = () => {
 
         const [{ data: roles }, { data: profile }] = await Promise.all([
           supabase.from("user_roles").select("role").eq("user_id", uid),
-          supabase.from("profiles").select("full_name, origin_city, faculty, study_field, arrival_year").eq("user_id", uid).single(),
+          supabase.from("profiles").select("*").eq("user_id", uid).single(),
         ]);
+
+        if (profile?.is_banned) {
+          await supabase.auth.signOut();
+          navigate("/banned");
+          return;
+        }
 
         setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
 

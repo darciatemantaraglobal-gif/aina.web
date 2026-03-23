@@ -2396,6 +2396,34 @@ app.delete("/api/admin/users/:userId", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ── Admin: Ban / Unban User ─────────────────────────── */
+app.post("/api/admin/users/:userId/ban", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { userId } = req.params;
+  if (userId === admin.id) return res.status(400).json({ error: "Tidak bisa memban diri sendiri" });
+
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("profiles").update({ is_banned: true }).eq("user_id", userId);
+  if (error) return res.status(500).json({ error: error.message });
+
+  console.log(`[ADMIN] User ${userId} BANNED by ${admin.email}`);
+  res.json({ success: true });
+});
+
+app.post("/api/admin/users/:userId/unban", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { userId } = req.params;
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("profiles").update({ is_banned: false }).eq("user_id", userId);
+  if (error) return res.status(500).json({ error: error.message });
+
+  console.log(`[ADMIN] User ${userId} UNBANNED by ${admin.email}`);
+  res.json({ success: true });
+});
 
 /* ── Pinned Updates (Breaking Updates) ───────────────── */
 app.get("/api/admin/pinned-updates", async (req, res) => {
@@ -2744,6 +2772,9 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS origin_city TEXT;
 -- Setup completed flag (safe to re-run)
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS setup_completed BOOLEAN DEFAULT FALSE;
 UPDATE public.profiles SET setup_completed = TRUE WHERE full_name IS NOT NULL AND full_name != '' AND setup_completed = FALSE;
+
+-- Ban flag (safe to re-run)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
 
 -- Article type column
 ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS article_type TEXT NOT NULL DEFAULT 'narrative'
