@@ -8,9 +8,8 @@ import multer from "multer";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Polyfill DOMMatrix for Node.js — required by pdfjs-dist (used inside pdf-parse v2).
-// pdfjs-dist uses DOMMatrix for coordinate transforms during text extraction.
-// We only need a stub that returns identity-like values and never throws.
+// Polyfill DOMMatrix for Node.js — older pdfjs-dist versions (used by pdf-parse)
+// may reference DOMMatrix. Stub it so it never throws in a serverless environment.
 if (typeof globalThis.DOMMatrix === "undefined") {
   globalThis.DOMMatrix = class DOMMatrix {
     constructor() {
@@ -926,10 +925,9 @@ app.post("/api/extract-file", uploadLimiter, fileUpload.single("file"), async (r
     if (mimetype === "text/plain") {
       extractedText = buffer.toString("utf-8");
     } else if (mimetype === "application/pdf") {
-      const { PDFParse } = await import("pdf-parse");
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      await parser.destroy();
+      // Import from lib/ to avoid v1's test-file side effect on startup
+      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+      const result = await pdfParse(buffer);
       extractedText = result.text;
     } else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
       const mammoth = await import("mammoth");
