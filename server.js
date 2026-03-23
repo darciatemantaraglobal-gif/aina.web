@@ -577,7 +577,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan untuk menggunakan chat" });
 
-  const { messages, userProfile } = req.body;
+  const { messages, userProfile, attachedFile } = req.body;
   if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: "messages array required" });
   if (messages.length > 50) return res.status(400).json({ error: "Terlalu banyak pesan dalam satu permintaan" });
 
@@ -585,6 +585,23 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   for (const m of messages) {
     if (typeof m?.content === "string" && m.content.length > 8000) {
       return res.status(400).json({ error: "Pesan terlalu panjang" });
+    }
+  }
+
+  // Validate attached file if present
+  if (attachedFile) {
+    if (!["image", "pdf"].includes(attachedFile?.type)) {
+      return res.status(400).json({ error: "Tipe file tidak valid" });
+    }
+    if (attachedFile.type === "image") {
+      const dataUrl = attachedFile.dataUrl ?? "";
+      if (!dataUrl.startsWith("data:image/")) return res.status(400).json({ error: "Format gambar tidak valid" });
+      // Cap image data URL at 4 MB
+      if (dataUrl.length > 4 * 1024 * 1024) return res.status(400).json({ error: "Gambar terlalu besar (maks 4 MB)" });
+    }
+    if (attachedFile.type === "pdf") {
+      const text = attachedFile.text ?? "";
+      if (text.length > 30_000) return res.status(400).json({ error: "Konten PDF terlalu panjang" });
     }
   }
 
@@ -639,7 +656,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     "nvidia/nemotron-3-super-120b-a12b:free",
   ];
 
-  const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+  // Extract plain text from last user message (content may be string or multimodal array)
+  const rawLastContent = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+  const lastUserMessage = Array.isArray(rawLastContent)
+    ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
+    : rawLastContent;
+
   const [articles, pinnedUpdates] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
     fetchPinnedUpdates(),
@@ -723,6 +745,37 @@ ATURAN KERAS — WAJIB DIIKUTI:
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
+  // ── Build final messages array, injecting attachedFile if present ──────────
+  let finalSystemPrompt = systemPrompt;
+  let finalMessages = [...messages];
+  let useVisionModel = false;
+
+  if (attachedFile?.type === "pdf" && attachedFile.text) {
+    const pdfCtx = `\n\n---\n## Dokumen yang Diupload User (${attachedFile.name ?? "file.pdf"})\nAnalisis dokumen berikut sesuai pertanyaan user:\n\n${attachedFile.text.slice(0, 20_000)}\n---`;
+    finalSystemPrompt = finalSystemPrompt + pdfCtx;
+  }
+
+  if (attachedFile?.type === "image" && attachedFile.dataUrl) {
+    // Replace the last user message with multimodal content
+    useVisionModel = true;
+    const lastUserIdx = [...finalMessages].map((m, i) => ({ m, i })).reverse().find(({ m }) => m.role === "user")?.i;
+    if (lastUserIdx !== undefined) {
+      const lastMsg = finalMessages[lastUserIdx];
+      const textContent = typeof lastMsg.content === "string" ? lastMsg.content : lastUserMessage;
+      finalMessages = [
+        ...finalMessages.slice(0, lastUserIdx),
+        {
+          role: "user",
+          content: [
+            ...(textContent ? [{ type: "text", text: textContent }] : []),
+            { type: "image_url", image_url: { url: attachedFile.dataUrl } },
+          ],
+        },
+        ...finalMessages.slice(lastUserIdx + 1),
+      ];
+    }
+  }
+
   const cleanReply = (raw) => raw
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?p>/gi, "\n")
@@ -742,6 +795,9 @@ ATURAN KERAS — WAJIB DIIKUTI:
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
+  // Vision-capable model for image uploads; free model chain for text
+  const VISION_MODEL = "google/gemini-2.0-flash-001";
+
   const tryModel = async (model) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 25000);
@@ -757,7 +813,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: "system", content: systemPrompt }, ...messages],
+          messages: [{ role: "system", content: finalSystemPrompt }, ...finalMessages],
           max_tokens: 8000,
           temperature: 0.5,
         }),
@@ -773,7 +829,9 @@ ATURAN KERAS — WAJIB DIIKUTI:
   };
 
   try {
-    const result = await Promise.any(MODELS.map(tryModel));
+    const result = useVisionModel
+      ? await tryModel(VISION_MODEL)
+      : await Promise.any(MODELS.map(tryModel));
     const reply = cleanReply(result.reply);
     console.log(`Responded using model: ${result.model}`);
     res.json({ reply, model: result.model });
@@ -1053,6 +1111,68 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
   }
 
   console.log(`[extract-file] ${user.id} extracted ${extractedText.length} chars from ${originalname}`);
+  res.json({ text: extractedText, filename: originalname, chars: extractedText.length });
+});
+
+/* ── Chat: PDF/TXT extraction (any authenticated user) ──────── */
+const chatFileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["application/pdf", "text/plain"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Hanya PDF atau TXT yang didukung untuk chat"));
+  },
+});
+
+app.post("/api/chat/extract-pdf", uploadLimiter, (req, res, next) => {
+  chatFileUpload.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "File terlalu besar. Maksimal 10 MB." });
+    return res.status(400).json({ error: err.message || "Gagal mengupload file" });
+  });
+}, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
+
+  if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+  const { buffer, mimetype, originalname } = req.file;
+  let extractedText = "";
+
+  try {
+    if (mimetype === "text/plain") {
+      extractedText = buffer.toString("utf-8");
+    } else if (mimetype === "application/pdf") {
+      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+      const result = await pdfParse(buffer);
+      extractedText = result.text;
+      if (!extractedText || extractedText.trim().length < 20) {
+        extractedText = await ocrPdf(buffer);
+        if (extractedText) extractedText = "[OCR] " + extractedText;
+      }
+    }
+  } catch (e) {
+    return res.status(422).json({ error: `Gagal membaca file: ${e.message}` });
+  }
+
+  extractedText = extractedText
+    .replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n{4,}/g, "\n\n\n").trim();
+
+  if (!extractedText || extractedText.trim().length < 10) {
+    return res.status(422).json({ error: "PDF tidak mengandung teks yang bisa dibaca. Coba file lain." });
+  }
+
+  if (extractedText.length > 25_000) {
+    extractedText = extractedText.slice(0, 25_000) + "\n\n[...konten dipotong]";
+  }
+
+  console.log(`[chat/extract-pdf] ${user.id} → ${originalname} → ${extractedText.length} chars`);
   res.json({ text: extractedText, filename: originalname, chars: extractedText.length });
 });
 
@@ -1623,6 +1743,77 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   const { error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+/* ── Master Admin: Reformat Single Article ──────────── */
+app.post("/api/admin/articles/:id/reformat", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
+
+  const supabase = getAdminClient();
+  const { data: art } = await supabase
+    .from("knowledge_base")
+    .select("id, title, content, category")
+    .eq("id", req.params.id)
+    .single();
+  if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
+
+  const prompt = `Kamu adalah editor konten untuk knowledge base mahasiswa Indonesia di Mesir.
+
+Tugasmu: Rapikan dan format ulang konten artikel berikut menjadi Markdown yang terstruktur, rapi, dan mudah dibaca. JANGAN mengubah informasi — hanya perbaiki format dan struktur tulisan.
+
+Judul artikel: "${art.title}"
+Kategori: "${art.category}"
+
+Konten asli:
+<KONTEN>
+${art.content.slice(0, 10000)}
+</KONTEN>
+
+Aturan format yang WAJIB diikuti:
+- Gunakan ## untuk subjudul/bagian utama (JANGAN gunakan # karena judul sudah terpisah)
+- Pisahkan setiap paragraf dengan satu baris kosong
+- Gunakan - untuk poin-poin dalam list
+- Gunakan 1. 2. 3. untuk langkah berurutan
+- Gunakan **teks** untuk istilah penting
+- Jangan gunakan tabel
+- Tulis dalam bahasa Indonesia yang natural dan mudah dipahami
+
+Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan). Langsung isi kontennya saja.`;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Article Reformatter",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-001",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4000,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) return res.status(500).json({ error: data.error.message || "AI error" });
+
+    const newContent = data.choices?.[0]?.message?.content?.trim();
+    if (!newContent || newContent.length < 50) return res.status(500).json({ error: "Hasil reformat kosong" });
+
+    const { error } = await supabase
+      .from("knowledge_base").update({ content: newContent }).eq("id", art.id);
+    if (error) return res.status(500).json({ error: error.message });
+
+    console.log(`[REFORMAT-ONE] master=${admin.id} article=${art.id}`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 /* ── Master Admin: Reformat All Articles ────────────── */

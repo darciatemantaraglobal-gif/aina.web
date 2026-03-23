@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, User, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check } from "lucide-react";
+import { Send, User, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,6 +12,16 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  imageDataUrl?: string;
+  fileName?: string;
+}
+
+interface AttachedFile {
+  type: "image" | "pdf";
+  dataUrl?: string;
+  text?: string;
+  name: string;
+  sizeKb: number;
 }
 
 interface ChatAreaProps {
@@ -121,8 +131,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [reportedMsgIds, setReportedMsgIds] = useState<Set<string>>(new Set());
   const [submittingReport, setSubmittingReport] = useState(false);
   const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChatIdRef = useRef<string | null>(chatId);
 
   const scrollToBottom = useCallback(() => {
@@ -278,9 +291,58 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!e.target) return;
+    (e.target as HTMLInputElement).value = "";
+    if (!file) return;
+
+    const sizeKb = Math.round(file.size / 1024);
+    const isImage = file.type.startsWith("image/");
+    const isPdf = file.type === "application/pdf" || file.type === "text/plain";
+
+    if (!isImage && !isPdf) {
+      toast.error("Format tidak didukung. Gunakan gambar (JPG/PNG/WebP) atau PDF/TXT.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File terlalu besar. Maksimal 10 MB.");
+      return;
+    }
+
+    if (isImage) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        setAttachedFile({ type: "image", dataUrl, name: file.name, sizeKb });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setIsUploadingFile(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/chat/extract-pdf", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal membaca file");
+        setAttachedFile({ type: "pdf", text: data.text, name: data.filename, sizeKb });
+        toast.success(`PDF berhasil dibaca (${data.chars.toLocaleString()} karakter)`);
+      } catch (e: any) {
+        toast.error(e.message || "Gagal mengupload file");
+      } finally {
+        setIsUploadingFile(false);
+      }
+    }
+  };
+
   const handleSend = async (text?: string) => {
     const userText = (text ?? input).trim();
-    if (!userText || isLoading) return;
+    if ((!userText && !attachedFile) || isLoading) return;
 
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id;
@@ -289,15 +351,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     // Block immediately if we already know the limit is reached
     if (!isPaidUser && limitReached) return;
 
+    const fileToSend = attachedFile;
     setInput("");
+    setAttachedFile(null);
     setError(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: userText,
+      content: userText || (fileToSend?.type === "pdf" ? `[PDF: ${fileToSend.name}]` : ""),
       timestamp: new Date(),
+      ...(fileToSend?.type === "image" ? { imageDataUrl: fileToSend.dataUrl, fileName: fileToSend.name } : {}),
+      ...(fileToSend?.type === "pdf" ? { fileName: fileToSend.name } : {}),
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -322,8 +388,15 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       const allMessages = [...messages, userMsg];
       const history = allMessages.map((m) => ({ role: m.role, content: m.content }));
 
+      // Build attached file payload for the API (image as dataUrl or PDF as extracted text)
+      const attachedFilePayload = fileToSend
+        ? fileToSend.type === "image"
+          ? { type: "image", dataUrl: fileToSend.dataUrl, name: fileToSend.name }
+          : { type: "pdf", text: fileToSend.text, name: fileToSend.name }
+        : undefined;
+
       const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 30000);
+      const fetchTimeout = setTimeout(() => controller.abort(), 60000);
       let res: Response;
       try {
         res = await fetch(API_URL, {
@@ -333,7 +406,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             "Content-Type": "application/json",
             ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
           },
-          body: JSON.stringify({ messages: history, userProfile: { ...userProfile, ...getPersonalization() } }),
+          body: JSON.stringify({
+            messages: history,
+            userProfile: { ...userProfile, ...getPersonalization() },
+            ...(attachedFilePayload ? { attachedFile: attachedFilePayload } : {}),
+          }),
         });
       } catch (fetchErr: any) {
         if (fetchErr.name === "AbortError") {
@@ -470,8 +547,25 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 )}
 
                 {msg.role === "user" ? (
-                  <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground whitespace-pre-wrap break-words">
-                    {msg.content}
+                  <div className="max-w-[80%] space-y-2">
+                    {msg.imageDataUrl && (
+                      <img
+                        src={msg.imageDataUrl}
+                        alt={msg.fileName ?? "Gambar"}
+                        className="rounded-xl max-h-64 object-contain border border-border"
+                      />
+                    )}
+                    {msg.fileName && !msg.imageDataUrl && (
+                      <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                        <FileText className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="truncate max-w-[200px]">{msg.fileName}</span>
+                      </div>
+                    )}
+                    {msg.content && (
+                      <div className="rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground whitespace-pre-wrap break-words">
+                        {msg.content}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1">
@@ -685,7 +779,61 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : (
           <form onSubmit={handleFormSubmit} className="mx-auto max-w-2xl">
+            {/* File preview above textarea */}
+            {(attachedFile || isUploadingFile) && (
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-3 py-2">
+                {isUploadingFile ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
+                    <span className="text-xs text-muted-foreground">Membaca PDF...</span>
+                  </>
+                ) : attachedFile?.type === "image" ? (
+                  <>
+                    <img src={attachedFile.dataUrl} alt="preview" className="h-10 w-10 rounded-lg object-cover border border-border shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-foreground">{attachedFile.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{attachedFile.sizeKb} KB · Gambar</p>
+                    </div>
+                    <button type="button" onClick={() => setAttachedFile(null)} className="ml-auto shrink-0 text-muted-foreground hover:text-foreground">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                ) : attachedFile?.type === "pdf" ? (
+                  <>
+                    <FileText className="h-5 w-5 shrink-0 text-primary" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-foreground">{attachedFile.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{attachedFile.sizeKb} KB · PDF siap dianalisis</p>
+                    </div>
+                    <button type="button" onClick={() => setAttachedFile(null)} className="ml-auto shrink-0 text-muted-foreground hover:text-foreground">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            )}
             <div className="relative rounded-2xl border border-border bg-card p-1.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp,.pdf,text/plain"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              {/* Paperclip button */}
+              <button
+                type="button"
+                disabled={isLoading || isUploadingFile}
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                title="Lampirkan gambar atau PDF"
+              >
+                {isUploadingFile
+                  ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  : <Paperclip className="h-4 w-4" />
+                }
+              </button>
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -698,11 +846,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 }}
                 placeholder="Tanyakan sesuatu kepada AINA..."
                 rows={1}
-                className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pl-12 pr-14 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
               <button
                 type="submit"
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || (!input.trim() && !attachedFile)}
                 className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-30"
               >
                 <Send className="h-4 w-4" />

@@ -911,6 +911,17 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [reformatLoading, setReformatLoading] = useState(false);
+  const [reformattingId, setReformattingId] = useState<string | null>(null);
+
+  const handleReformatOne = async (id: string) => {
+    setReformattingId(id);
+    try {
+      await adminFetch(`/api/admin/articles/${id}/reformat`, { method: "POST" });
+      toast.success("Artikel berhasil diformat ulang");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    setReformattingId(null);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1267,6 +1278,20 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                         title={art.hidden ? "Tampilkan ke publik" : "Sembunyikan dari publik"}
                       >
                         {art.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                      </Button>
+                    )}
+                    {isMasterAdmin && art.status === "approved" && (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-8 gap-1 text-muted-foreground hover:text-foreground"
+                        disabled={reformattingId === art.id}
+                        onClick={() => handleReformatOne(art.id)}
+                        title="Reformat artikel ini dengan AI"
+                      >
+                        {reformattingId === art.id
+                          ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                          : <RefreshCw className="h-3.5 w-3.5" />
+                        }
                       </Button>
                     )}
                     <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => setEditArticle(art)}>
