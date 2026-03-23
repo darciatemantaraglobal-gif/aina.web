@@ -72,17 +72,17 @@ const PrivacyPage = () => {
                 </p>
                 <p>Data dapat dibagikan hanya dalam kondisi berikut:</p>
                 <ul className="ml-4 list-disc space-y-1.5">
-                  <li><strong className="text-foreground">Penyedia layanan teknis:</strong> Supabase (database & autentikasi) dan OpenRouter (pemrosesan AI) yang terikat perjanjian kerahasiaan data.</li>
+                  <li><strong className="text-foreground">Penyedia layanan teknis:</strong> Layanan database & autentikasi kami, serta layanan AI pihak ketiga untuk pemrosesan, yang semuanya terikat perjanjian kerahasiaan data.</li>
                   <li><strong className="text-foreground">Kewajiban hukum:</strong> Jika diwajibkan oleh hukum yang berlaku atau perintah pengadilan yang sah.</li>
                 </ul>
                 <p>
-                  Pertanyaanmu ke AINA dikirimkan ke layanan AI pihak ketiga (OpenRouter) untuk diproses. Hindari mengirimkan informasi sensitif seperti nomor KTP, password, atau data keuangan dalam chat.
+                  Pertanyaanmu ke AINA dikirimkan ke layanan AI pihak ketiga untuk diproses. Hindari mengirimkan informasi sensitif seperti nomor KTP, password, atau data keuangan dalam chat.
                 </p>
               </Section>
 
               <Section title="4. Penyimpanan dan Keamanan Data">
                 <p>
-                  Data disimpan secara aman menggunakan layanan Supabase dengan enkripsi standar industri. Kami menerapkan Row-Level Security (RLS) sehingga data setiap pengguna hanya dapat diakses oleh pengguna itu sendiri.
+                  Data disimpan secara aman menggunakan layanan database kami dengan enkripsi standar industri. Kami menerapkan sistem keamanan berlapis sehingga data setiap pengguna hanya dapat diakses oleh pengguna itu sendiri.
                 </p>
                 <p>
                   Meskipun kami berupaya keras menjaga keamanan data, tidak ada sistem yang 100% kebal. Kami menyarankan kamu untuk tidak berbagi informasi sensitif melalui platform ini.

@@ -237,7 +237,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
     },
     {
       q: "Data saya aman?",
-      a: "Ya, semua data disimpan secara aman di Supabase dengan autentikasi yang terenkripsi. Kami tidak menjual data pengguna.",
+      a: "Ya, semua data disimpan secara aman di database kami dengan autentikasi yang terenkripsi. Kami tidak menjual data pengguna.",
     },
   ];
 

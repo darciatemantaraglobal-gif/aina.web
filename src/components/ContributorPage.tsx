@@ -495,11 +495,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         <div>
           <p className="font-semibold text-foreground">Koneksi ke database gagal</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Supabase project mungkin sedang tidur (free tier). Buka{" "}
-            <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-primary underline">
-              supabase.com/dashboard
-            </a>{" "}
-            dan pastikan project tidak di-pause, lalu coba lagi.
+            Server database sedang tidak merespons. Silakan coba beberapa saat lagi atau hubungi admin jika masalah berlanjut.
           </p>
         </div>
         <button
