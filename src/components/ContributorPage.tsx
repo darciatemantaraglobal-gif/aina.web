@@ -324,9 +324,9 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
     e.target.value = "";
     if (!file) return;
 
-    const allowed = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    const allowed = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/jpeg", "image/png", "image/webp"];
     if (!allowed.includes(file.type)) {
-      toast.error("Format tidak didukung. Gunakan PDF, DOCX, atau TXT.");
+      toast.error("Format tidak didukung. Gunakan PDF, DOCX, TXT, PNG, atau JPG.");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {

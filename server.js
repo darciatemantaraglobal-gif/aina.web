@@ -1230,8 +1230,8 @@ app.post("/api/upload-url", async (req, res) => {
   if (!filename) return res.status(400).json({ error: "filename diperlukan" });
 
   const ext = filename.split(".").pop()?.toLowerCase() || "bin";
-  const allowed = ["pdf", "txt", "docx"];
-  if (!allowed.includes(ext)) return res.status(400).json({ error: "Format tidak didukung. Gunakan PDF, DOCX, atau TXT." });
+  const allowed = ["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"];
+  if (!allowed.includes(ext)) return res.status(400).json({ error: "Format tidak didukung. Gunakan PDF, DOCX, TXT, PNG, atau JPG." });
 
   const storagePath = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
