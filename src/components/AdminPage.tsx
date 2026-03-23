@@ -1070,12 +1070,12 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-2">
         <div>
-          <h2 className="font-display text-lg font-bold text-foreground">Moderasi Knowledge Base</h2>
-          <p className="text-sm text-muted-foreground">Review, terbitkan, dan tambah artikel langsung.</p>
+          <h2 className="font-display text-base font-bold text-foreground sm:text-lg">Moderasi Knowledge Base</h2>
+          <p className="text-xs text-muted-foreground sm:text-sm">Review, terbitkan, dan tambah artikel langsung.</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isMasterAdmin && (
             <>
               <Button
@@ -1086,7 +1086,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
               >
                 {reformatLoading
                   ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Memformat...</>
-                  : <><RefreshCw className="h-3.5 w-3.5" /> Reformat Semua</>
+                  : <><RefreshCw className="h-3.5 w-3.5" /> Reformat</>
                 }
               </Button>
               <Button
@@ -1143,7 +1143,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       </div>
 
       {!loading && filtered.length > 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card/60 px-3 py-2">
           <button
             onClick={toggleSelectAll}
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -1160,7 +1160,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
           </button>
 
           {selected.size > 0 && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {filter === "pending" && (
                 <>
                   <Button
