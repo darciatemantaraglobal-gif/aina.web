@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1250,9 +1252,23 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                           )}
                         </p>
                       )}
-                      <p className={`mt-1 text-sm text-muted-foreground ${expanded === art.id ? "" : "line-clamp-2"}`}>
-                        {art.content}
-                      </p>
+                      {expanded === art.id ? (
+                        <div className="mt-2 text-sm text-muted-foreground prose prose-sm prose-invert max-w-none
+                          prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1
+                          prose-p:my-1 prose-p:leading-relaxed
+                          prose-ul:my-1 prose-ul:pl-4 prose-li:my-0.5
+                          prose-ol:my-1 prose-ol:pl-4
+                          prose-strong:text-foreground prose-strong:font-semibold
+                          prose-em:text-muted-foreground/80
+                          prose-code:text-primary prose-code:bg-secondary prose-code:px-1 prose-code:rounded prose-code:text-xs
+                          prose-hr:border-border">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{art.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                          {art.content}
+                        </p>
+                      )}
                       <button onClick={() => setExpanded(expanded === art.id ? null : art.id)} className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline">
                         <Eye className="h-3 w-3" />
                         {expanded === art.id ? "Tampilkan lebih sedikit" : "Baca selengkapnya"}
