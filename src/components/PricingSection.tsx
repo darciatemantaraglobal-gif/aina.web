@@ -137,12 +137,6 @@ const PricingSection = () => {
           <div className={`relative flex flex-col rounded-2xl border border-primary/50 bg-card/40 p-5 backdrop-blur-xl transition-all duration-700 delay-300 sm:p-8 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
             <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/12 via-transparent to-purple-glow/8" />
 
-            {/* Most popular badge */}
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-              <div className="rounded-full bg-gradient-purple px-4 py-1 text-[11px] font-bold uppercase tracking-widest text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.4)]">
-                Paling Populer
-              </div>
-            </div>
 
             <div className="relative mb-4 sm:mb-6">
               <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/15 sm:h-10 sm:w-10">
@@ -158,10 +152,7 @@ const PricingSection = () => {
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">Untuk yang butuh lebih dari sekadar dasar</p>
               <div className="mt-4 sm:mt-6">
-                <div className="flex items-end gap-1">
-                  <span className="font-display text-4xl font-bold text-foreground sm:text-5xl">—</span>
-                  <span className="mb-1 text-xs text-muted-foreground sm:mb-2 sm:text-sm">/ bulan</span>
-                </div>
+                <span className="font-display text-3xl font-bold text-primary/60 sm:text-4xl">Coming Soon</span>
               </div>
             </div>
 
@@ -187,8 +178,17 @@ const PricingSection = () => {
           </div>
 
           {/* Contributor */}
-          <div className={`flex flex-col rounded-2xl border border-border/60 bg-card/40 p-5 backdrop-blur-xl transition-all duration-700 sm:p-8 ${visible ? "opacity-100 translate-y-0 delay-500" : "opacity-0 translate-y-6"}`}>
-            <div className="mb-4 sm:mb-6">
+          <div className={`relative flex flex-col rounded-2xl border border-amber-500/50 bg-card/40 p-5 backdrop-blur-xl transition-all duration-700 sm:p-8 ${visible ? "opacity-100 translate-y-0 delay-500" : "opacity-0 translate-y-6"}`}>
+            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-amber-500/10 via-transparent to-amber-400/5" />
+
+            {/* Most popular badge */}
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+              <div className="rounded-full bg-gradient-to-r from-amber-500 to-amber-400 px-4 py-1 text-[11px] font-bold uppercase tracking-widest text-white shadow-[0_0_16px_hsl(38_95%_55%/0.4)]">
+                Paling Populer
+              </div>
+            </div>
+
+            <div className="relative mb-4 sm:mb-6">
               <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 sm:h-10 sm:w-10">
                 <Star className="h-4 w-4 text-amber-400 sm:h-5 sm:w-5" />
               </div>
@@ -216,29 +216,6 @@ const PricingSection = () => {
                 Daftar Jadi Kontributor
               </button>
             </Link>
-          </div>
-        </div>
-
-        {/* Payment methods section */}
-        <div className={`mt-8 transition-all duration-700 delay-500 sm:mt-14 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <p className="mb-4 text-center text-xs text-muted-foreground sm:text-sm">
-            Metode pembayaran yang akan tersedia
-          </p>
-          <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-3 sm:gap-4">
-            {[
-              { label: "GoPay", color: "text-green-400 border-green-500/20 bg-green-500/5" },
-              { label: "OVO", color: "text-purple-400 border-purple-500/20 bg-purple-500/5" },
-              { label: "ShopeePay", color: "text-orange-400 border-orange-500/20 bg-orange-500/5" },
-              { label: "DANA", color: "text-blue-400 border-blue-500/20 bg-blue-500/5" },
-              { label: "QRIS", color: "text-red-400 border-red-500/20 bg-red-500/5" },
-              { label: "BCA Virtual Account", color: "text-blue-300 border-blue-400/20 bg-blue-400/5" },
-              { label: "BRI Virtual Account", color: "text-sky-400 border-sky-500/20 bg-sky-500/5" },
-              { label: "Mandiri", color: "text-yellow-400 border-yellow-500/20 bg-yellow-500/5" },
-            ].map(({ label, color }) => (
-              <div key={label} className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${color}`}>
-                {label}
-              </div>
-            ))}
           </div>
         </div>
 
