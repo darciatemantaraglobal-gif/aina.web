@@ -2896,11 +2896,6 @@ if (PAYMENT_ENABLED) {
         item_details: [
           { id: plan_id, price: plan.price, quantity: 1, name: plan.label },
         ],
-        enabled_payments: [
-          "gopay", "shopeepay", "dana", "ovo",
-          "qris",
-          "bca_va", "bri_va", "bni_va", "permata_va", "echannel",
-        ],
         callbacks: {
           finish: `${process.env.CLIENT_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`}/dashboard?payment=success`,
           error:  `${process.env.CLIENT_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`}/pricing?payment=error`,
