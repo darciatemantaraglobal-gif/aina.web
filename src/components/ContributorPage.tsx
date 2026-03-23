@@ -5,9 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot, Upload, X, RefreshCw, Sparkles } from "lucide-react";
+import {
+  Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot,
+  Upload, X, RefreshCw, Sparkles, Pencil, Check, ChevronDown, ChevronUp,
+} from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
 const articleTypes = [
@@ -76,7 +79,6 @@ function WelcomeChat({ name }: { name: string }) {
 
   useEffect(() => {
     let timeouts: ReturnType<typeof setTimeout>[] = [];
-
     WELCOME_MESSAGES.forEach((msg, i) => {
       const showTyping = setTimeout(() => setTyping(true), msg.delay - 200 < 0 ? 0 : msg.delay - 200);
       const showMsg = setTimeout(() => {
@@ -85,7 +87,6 @@ function WelcomeChat({ name }: { name: string }) {
       }, msg.delay + (i === 0 ? 0 : 600));
       timeouts.push(showTyping, showMsg);
     });
-
     return () => timeouts.forEach(clearTimeout);
   }, []);
 
@@ -104,7 +105,6 @@ function WelcomeChat({ name }: { name: string }) {
           <p className="text-xs text-muted-foreground">Panduan Kontributor</p>
         </div>
       </div>
-
       <div className="flex max-h-[420px] flex-col gap-3 overflow-y-auto pr-1">
         {visibleMessages.map((msg) => (
           <div key={msg.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -116,7 +116,6 @@ function WelcomeChat({ name }: { name: string }) {
             </div>
           </div>
         ))}
-
         {typing && (
           <div className="flex gap-3 animate-in fade-in duration-200">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-purple">
@@ -131,12 +130,13 @@ function WelcomeChat({ name }: { name: string }) {
             </div>
           </div>
         )}
-
         <div ref={bottomRef} />
       </div>
     </div>
   );
 }
+
+type ParsedArticle = { title: string; category: string; article_type: string; content: string };
 
 const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [hasRequest, setHasRequest] = useState(false);
@@ -154,19 +154,29 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [regYear, setRegYear] = useState("");
   const [regExpertise, setRegExpertise] = useState("");
 
+  // Manual article write dialog
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [artTitle, setArtTitle] = useState("");
   const [artContent, setArtContent] = useState("");
   const [artCategory, setArtCategory] = useState("");
   const [artType, setArtType] = useState("narrative");
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [extracting, setExtracting] = useState(false);
-  const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  type ParsedArticle = { title: string; category: string; article_type: string; content: string };
+  // PDF upload dialog
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfStep, setPdfStep] = useState<"upload" | "preview" | "parsing">("upload");
+  const [pdfExtracting, setPdfExtracting] = useState(false);
+  const [pdfFilename, setPdfFilename] = useState<string | null>(null);
+  const [pdfChars, setPdfChars] = useState(0);
+  const [pdfText, setPdfText] = useState("");
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  // Parsed article cards
   const [parsedArticles, setParsedArticles] = useState<ParsedArticle[]>([]);
-  const [isParsing, setIsParsing] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editCard, setEditCard] = useState<ParsedArticle>({ title: "", category: "", article_type: "narrative", content: "" });
+  const [cardSubmitting, setCardSubmitting] = useState<number | null>(null);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -180,7 +190,6 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         uid = session?.user?.id;
       }
       if (!uid) { setLoading(false); return; }
-      const user = { id: uid };
 
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 10000)
@@ -188,9 +197,9 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
       const [reqRes, rolesRes, articlesRes] = await Promise.race([
         Promise.all([
-          supabase.from("contributor_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1),
-          supabase.from("user_roles").select("role").eq("user_id", user.id),
-          supabase.from("knowledge_base").select("*").eq("author_id", user.id).order("created_at", { ascending: false }),
+          supabase.from("contributor_requests").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1),
+          supabase.from("user_roles").select("role").eq("user_id", uid),
+          supabase.from("knowledge_base").select("*").eq("author_id", uid).order("created_at", { ascending: false }),
         ]),
         timeout,
       ]);
@@ -199,7 +208,6 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         setHasRequest(true);
         setRequestStatus(reqRes.data[0].status);
       }
-
       if (rolesRes.data) {
         const roleNames = rolesRes.data.map((r) => r.role);
         setIsContributor(
@@ -208,7 +216,6 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
           roleNames.includes("admin")
         );
       }
-
       if (articlesRes.data) setArticles(articlesRes.data);
     } catch (err: any) {
       console.error("ContributorPage error:", err);
@@ -230,9 +237,9 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       const { data: rolesData } = await supabase.from("user_roles").select("role").eq("user_id", uid);
       if (rolesData) {
         const roleNames = rolesData.map((r) => r.role);
-        const isNowContributor = roleNames.includes("contributor") || roleNames.includes("senior_contributor") || roleNames.includes("admin");
-        setIsContributor(isNowContributor);
-        if (isNowContributor) toast.success("Akses kontributor aktif! Kamu sekarang bisa submit artikel.");
+        const isNow = roleNames.includes("contributor") || roleNames.includes("senior_contributor") || roleNames.includes("admin");
+        setIsContributor(isNow);
+        if (isNow) toast.success("Akses kontributor aktif! Kamu sekarang bisa submit artikel.");
         else toast.info("Akses belum aktif. Hubungi admin jika ini terjadi terus.");
       }
     } catch {
@@ -252,7 +259,6 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Tahun masuk tidak valid");
       return;
     }
-
     setSubmitting(true);
     try {
       let uid = userIdProp;
@@ -261,7 +267,6 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         uid = session?.user?.id;
       }
       if (!uid) return;
-
       const { error } = await supabase.from("contributor_requests").insert({
         user_id: uid,
         full_name: regName.trim(),
@@ -269,25 +274,49 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         enrollment_year: year,
         expertise: regExpertise.trim(),
       });
-
-      if (error) {
-        toast.error("Gagal mengirim permintaan: " + error.message);
-        return;
-      }
-
+      if (error) { toast.error("Gagal mengirim permintaan: " + error.message); return; }
       setSubmitterName(regName.trim());
       setHasRequest(true);
       setRequestStatus("pending");
       setJustSubmitted(true);
       toast.success("Permintaan berhasil dikirim! Menunggu persetujuan admin.");
-    } catch (err: any) {
+    } catch {
       toast.error("Koneksi gagal. Coba lagi.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Manual article submit
+  const submitArticle = async () => {
+    if (!artTitle.trim() || !artContent.trim() || !artCategory) {
+      toast.error("Semua field harus diisi");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { toast.error("Sesi berakhir, login ulang."); return; }
+      const res = await fetch("/api/articles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(`Gagal mengirim artikel: ${json.error || res.statusText}`); return; }
+      setArticles((prev) => [json, ...prev]);
+      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative");
+      setDialogOpen(false);
+      toast.success("Artikel dikirim! Menunggu persetujuan admin.");
+    } catch {
+      toast.error("Koneksi gagal. Coba lagi.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // PDF upload & extraction
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!e.target) return;
     e.target.value = "";
@@ -298,80 +327,42 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Format tidak didukung. Gunakan PDF, DOCX, atau TXT.");
       return;
     }
-
-    const MAX_MB = 4;
-    if (file.size > MAX_MB * 1024 * 1024) {
-      toast.error(`File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal ${MAX_MB} MB.`);
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error(`File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal 4 MB.`);
       return;
     }
 
-    setExtracting(true);
-    setUploadedFilename(null);
+    setPdfExtracting(true);
+    setPdfFilename(null);
+    setPdfText("");
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const formData = new FormData();
       formData.append("file", file);
-
       const res = await fetch("/api/extract-file", {
         method: "POST",
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
         body: formData,
       });
-
       const json = await res.json().catch(() => ({
-        error: res.status === 413
-          ? "File terlalu besar. Maksimal 4 MB."
-          : `Gagal mengekstrak file (${res.status})`,
+        error: res.status === 413 ? "File terlalu besar. Maksimal 4 MB." : `Gagal mengekstrak file (${res.status})`,
       }));
       if (!res.ok) throw new Error(json.error || "Gagal mengekstrak file");
-
-      setArtContent(json.text);
-      setUploadedFilename(json.filename);
-      toast.success(`Berhasil membaca ${json.chars.toLocaleString("id-ID")} karakter dari ${json.filename}`);
+      setPdfText(json.text);
+      setPdfFilename(json.filename);
+      setPdfChars(json.chars);
+      setPdfStep("preview");
     } catch (err: any) {
       toast.error(err.message || "Gagal membaca file, coba lagi.");
     } finally {
-      setExtracting(false);
+      setPdfExtracting(false);
     }
   };
 
-  const submitArticle = async () => {
-    if (!artTitle.trim() || !artContent.trim() || !artCategory) {
-      toast.error("Semua field harus diisi");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) { toast.error("Sesi berakhir, login ulang."); return; }
-
-      const res = await fetch("/api/articles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType }),
-      });
-      const json = await res.json();
-      if (!res.ok) { toast.error(`Gagal mengirim artikel: ${json.error || res.statusText}`); return; }
-
-      setArticles((prev) => [json, ...prev]);
-      setArtTitle("");
-      setArtContent("");
-      setArtCategory("");
-      setArtType("narrative");
-      setDialogOpen(false);
-      toast.success("Artikel dikirim! Menunggu persetujuan admin.");
-    } catch {
-      toast.error("Koneksi gagal. Coba lagi.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleParseArticles = async () => {
-    if (!artContent.trim()) return;
-    setIsParsing(true);
-    setDialogOpen(false);
+  // Categorize extracted PDF text with AI
+  const handleCategorize = async () => {
+    if (!pdfText.trim()) return;
+    setPdfStep("parsing");
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/parse-articles", {
@@ -380,33 +371,85 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
           "Content-Type": "application/json",
           ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
         },
-        body: JSON.stringify({ text: artContent, filename: uploadedFilename }),
+        body: JSON.stringify({ text: pdfText, filename: pdfFilename }),
       });
       const json = await res.json().catch(() => ({ error: "Gagal memparse respons" }));
-      if (!res.ok) throw new Error(json.error || "Gagal mengurai dokumen");
+      if (!res.ok) throw new Error(json.error || "Gagal mengategorikan dokumen");
       const arts: ParsedArticle[] = json.articles || [];
       if (arts.length === 0) throw new Error("AI tidak menemukan topik yang bisa dipisah dari teks ini");
-      setParsedArticles(arts);
-      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setUploadedFilename(null);
+      setParsedArticles((prev) => [...prev, ...arts]);
+      setPdfDialogOpen(false);
+      setPdfStep("upload");
+      setPdfText(""); setPdfFilename(null); setPdfChars(0);
       toast.success(`${arts.length} topik berhasil dideteksi dari dokumen`);
     } catch (err: any) {
-      toast.error(err.message || "Gagal mengurai dokumen");
-      setDialogOpen(true);
-    } finally {
-      setIsParsing(false);
+      toast.error(err.message || "Gagal mengategorikan dokumen");
+      setPdfStep("preview");
     }
   };
 
-  const handleEditParsed = (article: ParsedArticle) => {
-    setArtTitle(article.title);
-    setArtContent(article.content);
-    setArtCategory(article.category);
-    setArtType(article.article_type === "step_by_step" ? "step_by_step" : "narrative");
-    setDialogOpen(true);
+  const closePdfDialog = () => {
+    if (pdfStep === "parsing") return;
+    setPdfDialogOpen(false);
+    setPdfStep("upload");
+    setPdfText(""); setPdfFilename(null); setPdfChars(0);
   };
 
-  const handleRemoveParsed = (i: number) =>
+  // Submit a single parsed card directly
+  const submitParsedCard = async (i: number) => {
+    const article = editingIndex === i ? editCard : parsedArticles[i];
+    if (!article.title.trim() || !article.content.trim() || !article.category) {
+      toast.error("Judul, kategori, dan konten harus diisi");
+      return;
+    }
+    setCardSubmitting(i);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { toast.error("Sesi berakhir, login ulang."); return; }
+      const res = await fetch("/api/articles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          title: article.title.trim(),
+          content: article.content.trim(),
+          category: article.category,
+          article_type: article.article_type,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(`Gagal kirim: ${json.error || res.statusText}`); return; }
+      setArticles((prev) => [json, ...prev]);
+      setParsedArticles((prev) => prev.filter((_, j) => j !== i));
+      if (editingIndex === i) { setEditingIndex(null); }
+      if (expandedIndex === i) { setExpandedIndex(null); }
+      toast.success("Artikel dikirim! Menunggu persetujuan admin.");
+    } catch {
+      toast.error("Koneksi gagal. Coba lagi.");
+    } finally {
+      setCardSubmitting(null);
+    }
+  };
+
+  const startEdit = (i: number) => {
+    setEditCard({ ...parsedArticles[i] });
+    setEditingIndex(i);
+    setExpandedIndex(i);
+  };
+
+  const saveEdit = (i: number) => {
+    setParsedArticles((prev) => prev.map((a, j) => j === i ? { ...editCard } : a));
+    setEditingIndex(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+  };
+
+  const removeParsed = (i: number) => {
     setParsedArticles((prev) => prev.filter((_, j) => j !== i));
+    if (editingIndex === i) setEditingIndex(null);
+    if (expandedIndex === i) setExpandedIndex(null);
+  };
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -483,12 +526,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="hero"
-                        className="w-full gap-2"
-                        onClick={refreshRoles}
-                        disabled={refreshing}
-                      >
+                      <Button variant="hero" className="w-full gap-2" onClick={refreshRoles} disabled={refreshing}>
                         {refreshing ? (
                           <>
                             <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
@@ -506,18 +544,13 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     <div className="flex items-center gap-3 rounded-xl bg-secondary p-4">
                       {statusIcon(requestStatus)}
                       <div>
-                        <p className="text-sm font-medium text-foreground capitalize">
-                          Status: {requestStatus}
-                        </p>
+                        <p className="text-sm font-medium text-foreground capitalize">Status: {requestStatus}</p>
                         <p className="text-xs text-muted-foreground">
-                          {requestStatus === "pending"
-                            ? "Permintaanmu sedang ditinjau admin."
-                            : "Maaf, permintaanmu ditolak."}
+                          {requestStatus === "pending" ? "Permintaanmu sedang ditinjau admin." : "Maaf, permintaanmu ditolak."}
                         </p>
                       </div>
                     </div>
                   )}
-
                   {justSubmitted && requestStatus === "pending" && <WelcomeChat name={submitterName} />}
                 </>
               ) : (
@@ -545,10 +578,10 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
           </Card>
         )}
 
-        {/* Article Submission (contributor only) */}
+        {/* Contributor area */}
         {isContributor && (
           <>
-            {/* Welcome banner with primary CTA */}
+            {/* Welcome banner */}
             <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-purple">
@@ -559,232 +592,400 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Bagikan pengetahuanmu tentang kehidupan di Mesir. Artikel yang disetujui akan langsung digunakan AINA untuk menjawab pertanyaan ribuan Masisir.
                   </p>
-                  <Button
-                    variant="hero"
-                    size="sm"
-                    className="mt-3 gap-1.5"
-                    onClick={() => setDialogOpen(true)}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Tulis Artikel Baru
-                  </Button>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="hero" size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
+                      <Plus className="h-4 w-4" />
+                      Tulis Artikel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                      onClick={() => { setPdfStep("upload"); setPdfDialogOpen(true); }}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Upload PDF / Dokumen
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Parsed articles from document — shown after "Urai per Kategori" */}
-            {(parsedArticles.length > 0 || isParsing) && (
+            {/* ── PDF Upload Dialog ─────────────────────────── */}
+            <Dialog open={pdfDialogOpen} onOpenChange={(open) => { if (!open) closePdfDialog(); }}>
+              <DialogContent className="bg-card border-border sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-display">Upload Dokumen</DialogTitle>
+                </DialogHeader>
+
+                {/* Step: upload */}
+                {pdfStep === "upload" && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Upload PDF, DOCX, atau TXT yang berisi informasi tentang kehidupan di Mesir. AI akan membaca dan mengkategorikan isinya secara otomatis.
+                    </p>
+                    <input
+                      ref={pdfInputRef}
+                      type="file"
+                      accept=".pdf,.txt,.docx"
+                      className="hidden"
+                      onChange={handlePdfUpload}
+                    />
+                    <button
+                      type="button"
+                      disabled={pdfExtracting}
+                      onClick={() => pdfInputRef.current?.click()}
+                      className="flex w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary/50 py-10 transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:opacity-60"
+                    >
+                      {pdfExtracting ? (
+                        <>
+                          <span className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                          <p className="text-sm font-medium text-muted-foreground">Membaca dokumen...</p>
+                          <p className="text-xs text-muted-foreground/60">Ini mungkin butuh beberapa saat</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                            <Upload className="h-6 w-6 text-primary" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-medium text-foreground">Pilih file untuk diupload</p>
+                            <p className="mt-1 text-xs text-muted-foreground">PDF · DOCX · TXT — maks. 4 MB</p>
+                          </div>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Step: preview — file read, ready to categorize */}
+                {pdfStep === "preview" && pdfFilename && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/10 p-3">
+                      <FileText className="h-5 w-5 shrink-0 text-green-400" />
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-sm font-medium text-green-300">{pdfFilename}</p>
+                        <p className="text-xs text-muted-foreground">{pdfChars.toLocaleString("id-ID")} karakter berhasil dibaca</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setPdfStep("upload"); setPdfText(""); setPdfFilename(null); setPdfChars(0); }}
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-secondary/50 p-3">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60 mb-1.5">Preview teks</p>
+                      <p className="line-clamp-5 text-xs text-muted-foreground leading-relaxed">
+                        {pdfText.slice(0, 600)}{pdfText.length > 600 ? "..." : ""}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCategorize}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-purple py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-opacity hover:opacity-90"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Kategorikan dengan AI
+                    </button>
+                    <p className="text-center text-[10px] text-muted-foreground/60">
+                      AI akan memisahkan isi dokumen menjadi kartu-kartu artikel per topik
+                    </p>
+                  </div>
+                )}
+
+                {/* Step: parsing in progress */}
+                {pdfStep === "parsing" && (
+                  <div className="flex flex-col items-center gap-4 py-8">
+                    <div className="relative flex h-16 w-16 items-center justify-center">
+                      <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-purple">
+                        <Sparkles className="h-6 w-6 text-white" />
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-foreground">AI sedang membaca dokumen...</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Mengidentifikasi dan mengkategorikan setiap informasi</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:0ms]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:150ms]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* ── Parsed article cards ──────────────────────── */}
+            {parsedArticles.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="font-display text-base font-semibold text-foreground">
-                      {isParsing ? "Mengurai dokumen..." : `${parsedArticles.length} Topik Terdeteksi`}
+                      {parsedArticles.length} Topik Siap Dikirim
                     </h2>
-                    {!isParsing && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Review setiap topik, edit jika perlu, lalu kirim satu per satu
-                      </p>
-                    )}
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Review setiap topik — edit jika perlu, lalu kirim satu per satu
+                    </p>
                   </div>
-                  {!isParsing && parsedArticles.length > 0 && (
-                    <button
-                      onClick={() => setParsedArticles([])}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      Hapus semua
-                    </button>
-                  )}
+                  <button
+                    onClick={() => { setParsedArticles([]); setEditingIndex(null); setExpandedIndex(null); }}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Hapus semua
+                  </button>
                 </div>
 
-                {isParsing ? (
-                  <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-secondary/50 py-10">
-                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    <span className="text-sm text-muted-foreground">AI sedang mengurai dan mengkategorikan dokumen...</span>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {parsedArticles.map((article, i) => (
-                      <div key={i} className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-foreground leading-tight">{article.title}</p>
-                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
-                                {article.category}
-                              </span>
-                              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
-                                {article.article_type === "step_by_step" ? "Panduan Langkah" : "Informasi Umum"}
-                              </span>
+                <div className="space-y-3">
+                  {parsedArticles.map((article, i) => {
+                    const isEditing = editingIndex === i;
+                    const isExpanded = expandedIndex === i;
+                    const isSubmitting = cardSubmitting === i;
+                    const display = isEditing ? editCard : article;
+
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-2xl border bg-card transition-all ${
+                          isEditing ? "border-primary/40 shadow-md shadow-primary/10" : "border-border"
+                        }`}
+                      >
+                        {/* Card header — always visible */}
+                        <div className="p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              {isEditing ? (
+                                <Input
+                                  value={editCard.title}
+                                  onChange={(e) => setEditCard((c) => ({ ...c, title: e.target.value }))}
+                                  placeholder="Judul artikel"
+                                  className="bg-secondary text-sm font-semibold"
+                                />
+                              ) : (
+                                <p className="font-semibold text-foreground leading-tight">{display.title}</p>
+                              )}
+
+                              {!isEditing && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                                    {display.category}
+                                  </span>
+                                  <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                                    {display.article_type === "step_by_step" ? "Panduan Langkah" : "Informasi Umum"}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                            <p className="mt-2 line-clamp-3 text-xs text-muted-foreground leading-relaxed">
-                              {article.content}
+
+                            {/* Action buttons (right side) */}
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              {!isEditing && (
+                                <button
+                                  onClick={() => setExpandedIndex(isExpanded ? null : i)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-secondary text-muted-foreground transition-colors hover:text-foreground"
+                                >
+                                  {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                </button>
+                              )}
+                              {!isEditing && (
+                                <button
+                                  onClick={() => startEdit(i)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-secondary text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => removeParsed(i)}
+                                disabled={isSubmitting}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-secondary text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive disabled:opacity-40"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Collapsed preview */}
+                          {!isEditing && !isExpanded && (
+                            <p className="mt-2 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+                              {display.content}
                             </p>
-                          </div>
-                          <div className="flex shrink-0 flex-col gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="hero"
-                              className="h-7 px-3 text-xs"
-                              onClick={() => handleEditParsed(article)}
-                            >
-                              Edit & Kirim
-                            </Button>
-                            <button
-                              onClick={() => handleRemoveParsed(i)}
-                              className="flex h-7 items-center justify-center rounded-lg border border-border bg-secondary px-3 text-xs text-muted-foreground hover:text-foreground"
-                            >
-                              Hapus
-                            </button>
-                          </div>
+                          )}
                         </div>
+
+                        {/* Expanded / edit area */}
+                        {(isEditing || isExpanded) && (
+                          <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
+                            {isEditing ? (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <Select
+                                    value={editCard.category}
+                                    onValueChange={(v) => setEditCard((c) => ({ ...c, category: v }))}
+                                  >
+                                    <SelectTrigger className="bg-secondary text-xs">
+                                      <SelectValue placeholder="Kategori" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {categories.map((cat) => (
+                                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Select
+                                    value={editCard.article_type}
+                                    onValueChange={(v) => setEditCard((c) => ({ ...c, article_type: v }))}
+                                  >
+                                    <SelectTrigger className="bg-secondary text-xs">
+                                      <SelectValue placeholder="Tipe" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="narrative">Informasi Umum</SelectItem>
+                                      <SelectItem value="step_by_step">Panduan Langkah</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <Textarea
+                                  value={editCard.content}
+                                  onChange={(e) => setEditCard((c) => ({ ...c, content: e.target.value }))}
+                                  placeholder="Konten artikel..."
+                                  className="min-h-[140px] bg-secondary text-xs"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => saveEdit(i)}
+                                    className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                    Simpan
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelEdit}
+                                    className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                  >
+                                    Batal
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{display.content}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Submit button — full width at bottom */}
+                        {!isEditing && (
+                          <div className="border-t border-border px-4 py-3">
+                            <Button
+                              variant="hero"
+                              size="sm"
+                              className="w-full gap-1.5"
+                              disabled={isSubmitting}
+                              onClick={() => submitParsedCard(i)}
+                            >
+                              {isSubmitting ? (
+                                <>
+                                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                                  Mengirim...
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="h-3.5 w-3.5" />
+                                  Kirim Artikel
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
               </div>
             )}
 
+            {/* ── Artikelku ─────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg font-semibold text-foreground">Artikelku</h2>
-              <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setUploadedFilename(null); }}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <Plus className="h-4 w-4" />
-                    Tulis Artikel
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle className="font-display">Tulis Artikel Baru</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-3">
-                    <Input placeholder="Judul artikel" value={artTitle} onChange={(e) => setArtTitle(e.target.value)} className="bg-secondary" />
-                    <Select value={artCategory} onValueChange={setArtCategory}>
-                      <SelectTrigger className="bg-secondary">
-                        <SelectValue placeholder="Pilih kategori" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-muted-foreground">Tipe Artikel</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {articleTypes.map((t) => (
-                          <button
-                            key={t.value}
-                            type="button"
-                            onClick={() => setArtType(t.value)}
-                            className={`rounded-xl border p-3 text-left transition-all ${
-                              artType === t.value
-                                ? "border-primary bg-primary/10 text-foreground"
-                                : "border-border bg-secondary text-muted-foreground hover:border-border/80 hover:text-foreground"
-                            }`}
-                          >
-                            <p className="text-xs font-semibold">{t.label}</p>
-                            <p className="mt-0.5 text-[10px] leading-tight opacity-70">{t.desc}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {/* File upload */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium text-muted-foreground">Konten Artikel</p>
-                        <div className="flex items-center gap-2">
-                          {uploadedFilename && (
-                            <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] text-green-400">
-                              <FileText className="h-2.5 w-2.5" />
-                              {uploadedFilename}
-                              <button
-                                type="button"
-                                onClick={() => { setUploadedFilename(null); setArtContent(""); }}
-                                className="ml-0.5 hover:text-green-200"
-                              >
-                                <X className="h-2.5 w-2.5" />
-                              </button>
-                            </span>
-                          )}
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".pdf,.txt,.docx"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                          />
-                          <button
-                            type="button"
-                            disabled={extracting}
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
-                          >
-                            {extracting ? (
-                              <>
-                                <span className="h-3 w-3 animate-spin rounded-full border border-muted-foreground border-t-transparent" />
-                                Membaca...
-                              </>
-                            ) : (
-                              <>
-                                <Upload className="h-3 w-3" />
-                                Upload File
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground/60">Tulis langsung atau upload PDF / DOCX / TXT — teks diekstrak otomatis</p>
-                    </div>
-
-                    <Textarea
-                      placeholder={artType === "step_by_step"
-                        ? "Tulis langkah-langkah secara urut...\nContoh:\n1. Siapkan dokumen X\n2. Kunjungi kantor Y\n3. Isi formulir Z"
-                        : "Tulis konten artikel atau upload file di atas..."}
-                      value={artContent}
-                      onChange={(e) => setArtContent(e.target.value)}
-                      className="min-h-[150px] bg-secondary"
-                    />
-
-                    {/* Urai per Kategori button — visible when there's substantial text */}
-                    {artContent.trim().length > 100 && (
-                      <button
-                        type="button"
-                        onClick={handleParseArticles}
-                        disabled={isParsing || submitting}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/70 hover:bg-primary/10 disabled:opacity-50"
-                      >
-                        {isParsing ? (
-                          <>
-                            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                            Mengurai per kategori...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Urai per Kategori dengan AI
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                    <Button variant="hero" onClick={submitArticle} disabled={submitting} className="w-full gap-1.5">
-                      {submitting ? (
-                        <>
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                          Mengirim...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4" />
-                          Kirim Artikel
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Tulis Artikel
+              </Button>
             </div>
+
+            {/* Manual write dialog */}
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); } }}>
+              <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="font-display">Tulis Artikel Baru</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <Input
+                    placeholder="Judul artikel"
+                    value={artTitle}
+                    onChange={(e) => setArtTitle(e.target.value)}
+                    className="bg-secondary"
+                  />
+                  <Select value={artCategory} onValueChange={setArtCategory}>
+                    <SelectTrigger className="bg-secondary">
+                      <SelectValue placeholder="Pilih kategori" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">Tipe Artikel</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {articleTypes.map((t) => (
+                        <button
+                          key={t.value}
+                          type="button"
+                          onClick={() => setArtType(t.value)}
+                          className={`rounded-xl border p-3 text-left transition-all ${
+                            artType === t.value
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border bg-secondary text-muted-foreground hover:border-border/80 hover:text-foreground"
+                          }`}
+                        >
+                          <p className="text-xs font-semibold">{t.label}</p>
+                          <p className="mt-0.5 text-[10px] leading-tight opacity-70">{t.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <Textarea
+                    placeholder={artType === "step_by_step"
+                      ? "Tulis langkah-langkah secara urut...\nContoh:\n1. Siapkan dokumen X\n2. Kunjungi kantor Y\n3. Isi formulir Z"
+                      : "Tulis konten artikel di sini..."}
+                    value={artContent}
+                    onChange={(e) => setArtContent(e.target.value)}
+                    className="min-h-[150px] bg-secondary"
+                  />
+                  <Button variant="hero" onClick={submitArticle} disabled={submitting} className="w-full gap-1.5">
+                    {submitting ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                        Mengirim...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Kirim Artikel
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {articles.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Belum ada artikel. Tulis artikel pertamamu!</p>
