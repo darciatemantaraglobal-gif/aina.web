@@ -8,30 +8,52 @@ const AuthCallback = () => {
   const [status, setStatus] = useState<"loading" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
 
+  const syncGoogleAvatar = async (session: any) => {
+    try {
+      const user = session.user;
+      const provider = user.app_metadata?.provider;
+      const googleAvatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
+      if (provider !== "google" || !googleAvatar) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!profile?.avatar_url) {
+        await supabase
+          .from("profiles")
+          .update({ avatar_url: googleAvatar })
+          .eq("user_id", user.id);
+      }
+    } catch {
+      // Non-fatal — silently skip
+    }
+  };
+
   useEffect(() => {
-    // Supabase JS v2 automatically parses the token from the URL hash/query.
-    // We listen for the auth state change — SIGNED_IN fires once session is ready.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session) {
+        await syncGoogleAvatar(session);
         navigate("/dashboard", { replace: true });
       } else if (event === "PASSWORD_RECOVERY") {
         navigate("/reset-password", { replace: true });
       }
     });
 
-    // Also try getSession immediately in case the client already parsed the token
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         setStatus("error");
         setErrorMsg(error.message);
         return;
       }
       if (session) {
+        await syncGoogleAvatar(session);
         navigate("/dashboard", { replace: true });
       }
     });
 
-    // Timeout fallback — if nothing fires after 8s, show error
     const timeout = setTimeout(() => {
       setStatus("error");
       setErrorMsg("Verifikasi membutuhkan waktu terlalu lama. Coba login kembali.");
@@ -57,7 +79,6 @@ const AuthCallback = () => {
 
       {status === "loading" && (
         <div className="flex flex-col items-center gap-3 text-center">
-          {/* Spinner */}
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
           <p className="text-sm font-medium text-foreground">Memverifikasi akun...</p>
           <p className="text-xs text-muted-foreground">Mohon tunggu sebentar</p>

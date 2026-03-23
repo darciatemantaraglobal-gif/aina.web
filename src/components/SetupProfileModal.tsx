@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { User, MapPin, GraduationCap, BookOpen, Calendar, ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { User, MapPin, GraduationCap, BookOpen, Calendar, ChevronRight, Loader2, Sparkles, Camera } from "lucide-react";
 import ainaLogo from "@/assets/aina-logo.png";
 
 const FACULTIES = [
@@ -19,6 +19,7 @@ interface InitialValues {
   faculty?: string;
   studyField?: string;
   arrivalYear?: string;
+  avatarUrl?: string;
 }
 
 interface SetupProfileModalProps {
@@ -42,10 +43,37 @@ export default function SetupProfileModal({ userId, onComplete, initialValues }:
   const [saving, setSaving] = useState(false);
   const [visible, setVisible] = useState(false);
 
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>(initialValues?.avatarUrl ?? "");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 100);
     return () => clearTimeout(t);
   }, []);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran foto maksimal 5MB");
+      return;
+    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const uploadAvatar = async (): Promise<string | null> => {
+    if (!avatarFile) return null;
+    const ext = avatarFile.name.split(".").pop() ?? "jpg";
+    const filePath = `${userId}/avatar.${ext}`;
+    const { error } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, avatarFile, { contentType: avatarFile.type, upsert: true });
+    if (error) throw new Error(error.message);
+    const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(filePath);
+    return `${publicUrl}?t=${Date.now()}`;
+  };
 
   const handleNext = () => {
     if (!fullName.trim()) {
@@ -59,6 +87,11 @@ export default function SetupProfileModal({ userId, onComplete, initialValues }:
     if (!fullName.trim()) { toast.error("Nama lengkap wajib diisi"); return; }
     setSaving(true);
     try {
+      let newAvatarUrl: string | null = null;
+      if (avatarFile) {
+        newAvatarUrl = await uploadAvatar();
+      }
+
       const year = arrivalYear ? parseInt(arrivalYear) : null;
       const updates: Record<string, any> = {
         full_name: fullName.trim(),
@@ -67,6 +100,8 @@ export default function SetupProfileModal({ userId, onComplete, initialValues }:
         study_field: studyField.trim() || null,
         arrival_year: year,
       };
+      if (newAvatarUrl) updates.avatar_url = newAvatarUrl;
+
       const { error } = await supabase.from("profiles").update(updates).eq("user_id", userId);
       if (error) {
         if (error.message?.includes("column") || error.code === "42703") {
@@ -137,9 +172,44 @@ export default function SetupProfileModal({ userId, onComplete, initialValues }:
             )}
           </div>
 
-          {/* Step 1: Basic Info */}
+          {/* Step 1: Basic Info + Avatar */}
           {step === 1 && (
             <div className="space-y-4">
+              {/* Avatar picker */}
+              <div className="flex flex-col items-center gap-2">
+                <div className="relative">
+                  <div
+                    className="h-20 w-20 rounded-full overflow-hidden border-2 border-border bg-secondary flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <User className="h-8 w-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary border-2 border-background hover:bg-primary/90 transition-colors"
+                  >
+                    <Camera className="h-3.5 w-3.5 text-white" />
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarChange}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {avatarPreview
+                    ? <span className="text-primary/80">Foto terpilih — klik untuk ganti</span>
+                    : "Upload foto profil (opsional)"}
+                </p>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                   <User className="h-3.5 w-3.5 text-primary" />

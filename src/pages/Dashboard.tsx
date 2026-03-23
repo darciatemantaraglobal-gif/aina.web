@@ -97,7 +97,7 @@ const Dashboard = () => {
   const [showSetup, setShowSetup] = useState(false);
   const [profileInitial, setProfileInitial] = useState<{
     fullName?: string; originCity?: string; faculty?: string;
-    studyField?: string; arrivalYear?: string;
+    studyField?: string; arrivalYear?: string; avatarUrl?: string;
   }>({});
 
   const [chats, setChats] = useState<Chat[]>([]);
@@ -140,12 +140,17 @@ const Dashboard = () => {
         const hasName = !!profile?.full_name?.trim();
 
         if (!hasName || !localSetupDone) {
+          const googleAvatar =
+            session.user.user_metadata?.avatar_url ||
+            session.user.user_metadata?.picture ||
+            "";
           setProfileInitial({
             fullName: profile?.full_name ?? "",
             originCity: profile?.origin_city ?? "",
             faculty: profile?.faculty ?? "",
             studyField: profile?.study_field ?? "",
             arrivalYear: profile?.arrival_year ? String(profile.arrival_year) : "",
+            avatarUrl: profile?.avatar_url || googleAvatar || "",
           });
           setShowSetup(true);
         }
