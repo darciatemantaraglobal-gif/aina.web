@@ -890,16 +890,15 @@ app.post("/api/upload-avatar", uploadLimiter, async (req, res) => {
 });
 
 /* ── PDF text extraction + OCR ──────────────────────── */
-// ocrPdf: renders each page via pdfjs-dist + @napi-rs/canvas → Tesseract.js.
-// Used automatically when normal text extraction yields nothing (scanned PDFs).
-const MAX_OCR_PAGES = 5; // Cap to stay inside Vercel's 60 s timeout
+// ocrPdf: renders each page via pdfjs-dist + @napi-rs/canvas → JPEG base64,
+// then sends all pages in parallel to an OpenRouter vision model for text extraction.
+// Much faster than local Tesseract (no model download, parallelised API calls).
+const MAX_OCR_PAGES = 5; // Cap to stay within Vercel's 60 s timeout
 
 async function ocrPdf(buffer) {
   const { createCanvas } = await import("@napi-rs/canvas");
   const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const { createWorker } = await import("tesseract.js");
 
-  // Point pdfjs to its worker file (required; empty string throws)
   GlobalWorkerOptions.workerSrc = new URL(
     "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
     import.meta.url
@@ -908,31 +907,57 @@ async function ocrPdf(buffer) {
   const pdf = await getDocument({ data: new Uint8Array(buffer) }).promise;
   const numPages = Math.min(pdf.numPages, MAX_OCR_PAGES);
 
-  // Render all pages first, then OCR in one worker session
-  const pngBuffers = [];
+  // Render pages to JPEG base64 (JPEG is smaller → faster API transfer)
+  const pageImages = [];
   for (let i = 1; i <= numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 }); // 2× scale → better OCR accuracy
+    const viewport = page.getViewport({ scale: 1.5 }); // 1.5× → good quality/size balance
     const canvas = createCanvas(viewport.width, viewport.height);
     const ctx = canvas.getContext("2d");
     await page.render({ canvasContext: ctx, viewport }).promise;
-    pngBuffers.push(canvas.toBuffer("image/png"));
+    const b64 = canvas.toBuffer("image/jpeg", { quality: 80 }).toString("base64");
+    pageImages.push(`data:image/jpeg;base64,${b64}`);
     page.cleanup();
   }
 
-  const worker = await createWorker("eng", 1, { logger: () => {} });
-  const parts = [];
-  for (const png of pngBuffers) {
-    const { data: { text } } = await worker.recognize(png);
-    if (text.trim()) parts.push(text.trim());
-  }
-  await worker.terminate();
+  // Send all pages to vision model in parallel
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY tidak dikonfigurasi di server");
 
-  const combined = numPages < pdf.numPages
-    ? parts.join("\n\n") + `\n\n[...${pdf.numPages - numPages} halaman berikutnya tidak di-OCR]`
-    : parts.join("\n\n");
+  const results = await Promise.all(
+    pageImages.map(async (imgUrl) => {
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://ainalabs.pro",
+          "X-Title": "AINA PDF OCR",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-flash-1.5",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: imgUrl } },
+              {
+                type: "text",
+                text: "Ekstrak semua teks dari gambar dokumen ini. Kembalikan HANYA teks yang diekstrak, pertahankan paragraf dan struktur. Jangan tambahkan komentar atau penjelasan apapun.",
+              },
+            ],
+          }],
+          max_tokens: 2000,
+        }),
+      });
+      const data = await resp.json();
+      return data.choices?.[0]?.message?.content?.trim() || "";
+    })
+  );
 
-  return combined;
+  const combined = results.filter(Boolean).join("\n\n");
+  return numPages < pdf.numPages
+    ? combined + `\n\n[...${pdf.numPages - numPages} halaman berikutnya tidak di-OCR karena batas halaman]`
+    : combined;
 }
 
 /* ── File upload ─────────────────────────────────────── */
