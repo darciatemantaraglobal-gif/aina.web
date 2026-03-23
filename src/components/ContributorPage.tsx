@@ -376,7 +376,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       const json = await res.json().catch(() => ({ error: "Gagal memparse respons" }));
       if (!res.ok) throw new Error(json.error || "Gagal mengategorikan dokumen");
       const arts: ParsedArticle[] = json.articles || [];
-      if (arts.length === 0) throw new Error("AI tidak menemukan topik yang bisa dipisah dari teks ini");
+      if (arts.length === 0) throw new Error("AI tidak berhasil mengekstrak topik dari dokumen ini. Pastikan isi dokumen memiliki informasi yang cukup, lalu coba lagi.");
       setParsedArticles((prev) => [...prev, ...arts]);
       setPdfDialogOpen(false);
       setPdfStep("upload");

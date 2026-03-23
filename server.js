@@ -1411,24 +1411,29 @@ app.post("/api/parse-articles", writeLimiter, async (req, res) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
 
-  const truncated = text.slice(0, 12000);
+  // Strip OCR prefix marker and trim
+  const cleanText = text.replace(/^\[OCR\]\s*/i, "").trim();
+  const isOcr = /^\[OCR\]/i.test(text);
+  const truncated = cleanText.slice(0, 14000);
   const fileNote = filename ? ` dari file "${filename}"` : "";
+  const ocrNote = isOcr ? "\nCatatan: Teks ini berasal dari OCR (scan dokumen), mungkin ada noise/karakter aneh — abaikan noise, fokus pada informasi yang bermakna." : "";
 
   const prompt = `Kamu adalah asisten yang membantu mengorganisasi informasi tentang kehidupan mahasiswa Indonesia di Mesir (Masisir).
 
-Diberikan teks berikut${fileNote}:
+Diberikan teks berikut${fileNote}:${ocrNote}
 
 <TEKS>
 ${truncated}
 </TEKS>
 
-Tugasmu: Identifikasi dan ekstrak SEMUA topik informasi yang berbeda dalam teks, pisahkan menjadi artikel terstruktur yang siap dikirim ke knowledge base.
+Tugasmu: Baca seluruh teks, lalu identifikasi dan ekstrak SEMUA topik informasi yang berbeda. Pisahkan menjadi artikel terstruktur yang siap dikirim ke knowledge base.
 
-Aturan:
-- Setiap artikel harus fokus pada SATU topik saja
-- Tulis ulang konten agar jelas, rapi, dan informatif (minimal 80 kata per artikel)
-- Gunakan bahasa Indonesia yang natural
-- Jika ada langkah-langkah/prosedur, gunakan article_type "step_by_step", lainnya "narrative"
+Aturan penting:
+- Setiap artikel fokus pada SATU topik
+- Tulis ulang konten agar jelas, rapi, dan informatif dalam bahasa Indonesia yang natural (minimal 80 kata per artikel)
+- Jika teks mengandung langkah-langkah/prosedur, gunakan article_type "step_by_step", selainnya "narrative"
+- Jika hanya ada satu topik dalam teks, buat satu artikel saja
+- Jangan biarkan array articles kosong — selama ada informasi apapun yang berguna, buat artikelnya
 
 Kategori yang tersedia (pilih yang paling sesuai):
 - "Administrasi" — iqomah, visa, paspor, KTP, surat-surat resmi
@@ -1438,7 +1443,7 @@ Kategori yang tersedia (pilih yang paling sesuai):
 - "Tempat Tinggal" — sewa flat, lokasi, harga, kontrak
 - "Kuliner" — restoran halal, masakan, harga makanan, dapur
 
-Kembalikan HANYA JSON berikut tanpa penjelasan apapun:
+Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun:
 {"articles":[{"title":"...","category":"...","article_type":"narrative|step_by_step","content":"..."}]}`;
 
   try {
@@ -1453,20 +1458,50 @@ Kembalikan HANYA JSON berikut tanpa penjelasan apapun:
       body: JSON.stringify({
         model: "google/gemini-flash-1.5",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 4000,
-        response_format: { type: "json_object" },
+        max_tokens: 8000,
       }),
     });
 
     const data = await resp.json();
-    const raw = data.choices?.[0]?.message?.content || "{}";
-    const parsed = JSON.parse(raw);
+
+    // Detect API-level errors from OpenRouter
+    if (data.error) {
+      console.error("[parse-articles] OpenRouter error:", JSON.stringify(data.error));
+      return res.status(502).json({ error: "Layanan AI error: " + (data.error.message || JSON.stringify(data.error)) });
+    }
+
+    const raw = data.choices?.[0]?.message?.content || "";
+    console.log("[parse-articles] raw response length:", raw.length, "| preview:", raw.slice(0, 200));
+
+    if (!raw.trim()) {
+      console.error("[parse-articles] empty response. Full data:", JSON.stringify(data).slice(0, 500));
+      return res.status(502).json({ error: "AI tidak memberikan respons. Coba lagi." });
+    }
+
+    // Extract JSON — try direct parse first, then regex fallback
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { parsed = JSON.parse(match[0]); } catch { /* fall through */ }
+      }
+    }
+
+    if (!parsed) {
+      console.error("[parse-articles] JSON parse failed. raw:", raw.slice(0, 500));
+      return res.status(502).json({ error: "Respons AI tidak valid, coba lagi." });
+    }
+
     const articles = (parsed.articles || []).filter(
-      (a) => a.title && a.category && a.content
+      (a) => a.title?.trim() && a.category && a.content?.trim()
     );
+
+    console.log("[parse-articles] articles found:", articles.length);
     return res.json({ articles });
   } catch (e) {
-    console.error("[parse-articles] error:", e.message);
+    console.error("[parse-articles] exception:", e.message);
     return res.status(500).json({ error: "Gagal mengurai dokumen: " + e.message });
   }
 });
