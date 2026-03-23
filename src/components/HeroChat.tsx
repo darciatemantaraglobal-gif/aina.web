@@ -26,6 +26,30 @@ const HeroChat = () => {
   }, []);
 
   const [egpToIdr, setEgpToIdr] = useState(245);
+  const [rateFetched, setRateFetched] = useState(false);
+  const [rateLoading, setRateLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRate = async () => {
+      try {
+        const res = await fetch("https://open.er-api.com/v6/latest/EGP");
+        if (!res.ok) throw new Error("fetch failed");
+        const data = await res.json();
+        const rate = data?.rates?.IDR;
+        if (rate && typeof rate === "number") {
+          const rounded = Math.round(rate);
+          setEgpToIdr(rounded);
+          setCurrencies({ egp: "1", idr: String(rounded) });
+          setRateFetched(true);
+        }
+      } catch {
+        // keep default 245
+      } finally {
+        setRateLoading(false);
+      }
+    };
+    fetchRate();
+  }, []);
 
   const [currencies, setCurrencies] = useState({ egp: "1", idr: "245" });
   const [focusedCurrency, setFocusedCurrency] = useState<string | null>(null);
@@ -286,6 +310,9 @@ const HeroChat = () => {
             >
               <ArrowRightLeft className="h-3.5 w-3.5" />
               <span className="font-modernist text-xs font-bold text-foreground">Kurs</span>
+              {rateFetched && !rateLoading && (
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" title="Kurs live dari API" />
+              )}
             </button>
 
             <div className="h-4 w-px bg-border/60" />
@@ -321,7 +348,15 @@ const HeroChat = () => {
             {rateOpen && (
               <div className="absolute bottom-full left-0 z-50 mb-2 w-56 overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-xl shadow-black/50 backdrop-blur-xl">
                 <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Atur Kurs</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Atur Kurs</span>
+                    {rateFetched && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-green-500">
+                        <span className="h-1 w-1 rounded-full bg-green-500" />
+                        Live
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={() => setRateOpen(false)}
                     className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"

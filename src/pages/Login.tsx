@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Mail, Lock, ArrowRight, ArrowLeft, X, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,33 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+  const handleResend = async () => {
+    if (resendCooldown > 0 || resendLoading) return;
+    setResendLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: window.location.origin + "/auth/callback" },
+      });
+      if (error) throw error;
+      toast.success("Email verifikasi dikirim ulang!");
+      setResendCooldown(60);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengirim ulang email");
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   const resetForm = () => {
     setEmail("");
@@ -238,23 +265,63 @@ const Login = () => {
 
             {/* Email verification success state */}
             {verificationSent ? (
-              <div className="flex flex-col items-center gap-4 py-4 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
-                  <CheckCircle className="h-8 w-8 text-green-500" />
+              <div className="flex flex-col items-center gap-5 py-2 text-center">
+                {/* Icon */}
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 ring-4 ring-primary/20">
+                  <Mail className="h-9 w-9 text-primary" />
+                  <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 ring-2 ring-background">
+                    <CheckCircle className="h-3.5 w-3.5 text-white" />
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-foreground">Cek email kamu!</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Kami mengirim link verifikasi ke{" "}
-                    <span className="font-medium text-foreground">{email}</span>. Klik link tersebut untuk mengaktifkan akun.
+
+                {/* Text */}
+                <div className="space-y-1.5">
+                  <p className="text-lg font-bold text-foreground">Cek inbox email kamu!</p>
+                  <p className="text-sm text-muted-foreground">
+                    Link verifikasi dikirim ke
+                  </p>
+                  <p className="rounded-lg border border-border bg-secondary/40 px-3 py-1.5 text-sm font-semibold text-foreground">
+                    {email}
                   </p>
                 </div>
-                <button
-                  onClick={() => { setVerificationSent(false); setView("main"); }}
-                  className="mt-2 text-sm text-primary hover:underline"
-                >
-                  Kembali ke halaman login
-                </button>
+
+                {/* Steps */}
+                <div className="w-full space-y-2 rounded-xl border border-border/50 bg-secondary/20 p-4 text-left">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Langkah selanjutnya</p>
+                  {[
+                    "Buka email kamu (cek juga folder Spam/Junk)",
+                    "Klik link \"Confirm your mail\" di email dari AINA",
+                    "Kamu akan langsung masuk ke dashboard",
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary">
+                        {i + 1}
+                      </span>
+                      <p className="text-xs text-muted-foreground">{step}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Resend + back */}
+                <div className="flex w-full flex-col gap-2">
+                  <button
+                    onClick={handleResend}
+                    disabled={resendCooldown > 0 || resendLoading}
+                    className="w-full rounded-lg border border-border bg-secondary/40 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resendLoading
+                      ? "Mengirim..."
+                      : resendCooldown > 0
+                      ? `Kirim ulang (${resendCooldown}s)`
+                      : "Tidak menerima email? Kirim ulang"}
+                  </button>
+                  <button
+                    onClick={() => { setVerificationSent(false); setView("main"); }}
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Kembali ke halaman login
+                  </button>
+                </div>
               </div>
             ) : (
               <form onSubmit={mode === "register" ? handleRegister : handleLogin} className="space-y-3">
