@@ -140,18 +140,25 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="pointer-events-none absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
-        {/* Handle bar on mobile */}
-        <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-border sm:hidden" />
+      <div
+        className="relative z-10 flex w-full max-w-lg flex-col rounded-t-[28px] sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-[60%] sm:slide-in-from-bottom-4 sm:zoom-in-95 duration-300"
+        style={{ maxHeight: "90dvh" }}
+      >
+        {/* Handle bar — tap to close on mobile */}
+        <div className="sm:hidden shrink-0 flex items-center justify-center pt-3 pb-1 cursor-grab" onClick={onClose}>
+          <div className="h-1 w-12 rounded-full bg-border/80" />
+        </div>
 
-        <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3 sm:pt-5">
+        {/* Header */}
+        <div className="shrink-0 flex items-center justify-between gap-3 px-5 pt-3 pb-3 sm:pt-5 border-b border-border">
           <h2 className="font-display text-base font-bold text-foreground">Buat Thread Baru</h2>
           <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="space-y-3 px-5 pb-5 sm:pb-6">
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Judul</label>
             <Input
@@ -174,15 +181,22 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Isi</label>
+            <label className="text-xs font-medium text-muted-foreground">Isi Thread</label>
             <Textarea
               placeholder="Bagikan informasi, pengalaman, atau pertanyaanmu..."
               value={content}
               onChange={e => setContent(e.target.value)}
-              className="min-h-[120px] bg-card resize-none"
+              className="min-h-[130px] bg-card resize-none"
             />
           </div>
-          <div className="flex gap-2 pt-1">
+        </div>
+
+        {/* Fixed footer */}
+        <div
+          className="shrink-0 border-t border-border px-5 pt-3 pb-4"
+          style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
+        >
+          <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} className="flex-1" disabled={saving}>
               Batal
             </Button>
@@ -334,11 +348,14 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
     >
       <div className="pointer-events-none absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
-      <div className="relative z-10 flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
-        style={{ maxHeight: "92dvh" }}>
-
-        {/* Handle bar on mobile */}
-        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-border sm:hidden" />
+      <div
+        className="relative z-10 flex w-full max-w-2xl flex-col rounded-t-[28px] sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-[60%] sm:slide-in-from-bottom-4 sm:zoom-in-95 duration-300"
+        style={{ maxHeight: "92dvh" }}
+      >
+        {/* Handle bar — mobile only, tappable area */}
+        <div className="sm:hidden shrink-0 flex items-center justify-center pt-3 pb-1 cursor-grab active:cursor-grabbing" onClick={onClose}>
+          <div className="h-1 w-12 rounded-full bg-border/80" />
+        </div>
 
         {loading ? (
           <div className="flex h-56 items-center justify-center">
@@ -346,123 +363,142 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
           </div>
         ) : thread ? (
           <>
-            {/* Header */}
-            <div className="shrink-0 border-b border-border px-4 pt-3 pb-4 sm:px-5 sm:pt-5">
-              {/* Top row: category badges + close btn */}
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[thread.category] ?? "bg-secondary text-muted-foreground"}`}>
-                    {thread.category}
-                  </span>
-                  {thread.promoted_to_kb && (
-                    <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-400">
-                      <CheckCircle className="h-3 w-3" />
-                      <span className="hidden sm:inline">Dipromosikan ke KB</span>
-                      <span className="sm:hidden">KB</span>
+            {/* ── Fixed top bar: compact header ── */}
+            <div className="shrink-0 border-b border-border px-4 pt-2 pb-3 sm:px-5 sm:pt-4 sm:pb-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  {/* Category + KB badge */}
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[thread.category] ?? "bg-secondary text-muted-foreground"}`}>
+                      {thread.category}
                     </span>
-                  )}
+                    {thread.promoted_to_kb && (
+                      <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-400">
+                        <CheckCircle className="h-3 w-3" />
+                        KB
+                      </span>
+                    )}
+                  </div>
+                  {/* Title — capped at 2 lines on mobile so header stays compact */}
+                  <h2 className="font-display text-sm font-bold leading-snug text-foreground line-clamp-2 sm:line-clamp-none sm:text-base">
+                    {thread.title}
+                  </h2>
                 </div>
                 <button
                   onClick={onClose}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
-
-              {/* Title */}
-              <h2 className="font-display text-base font-bold leading-snug text-foreground">{thread.title}</h2>
-
-              {/* Author row */}
-              <div className="mt-1.5 flex items-center gap-2">
-                <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} size="sm" />
-                <span className="text-xs font-medium text-foreground/80">{thread.author_name ?? "Pengguna"}</span>
-                <span className="text-xs text-muted-foreground/60">·</span>
-                <span className="text-xs text-muted-foreground">{fmtDate(thread.created_at)}</span>
-              </div>
-
-              {/* Content */}
-              <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
-                {thread.content}
-              </p>
-
-              {/* Action row */}
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={handleVote}
-                  disabled={voting}
-                  className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-                    localVoted
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:text-primary"
-                  }`}
-                >
-                  <ThumbsUp className={`h-3.5 w-3.5 ${localVoted ? "fill-primary" : ""}`} />
-                  <span>{localVoteCount}</span>
-                </button>
-
-                {isAdmin && !thread.promoted_to_kb && (
-                  <button
-                    onClick={handlePromote}
-                    disabled={promoting}
-                    className="flex items-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/5 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-50"
-                  >
-                    <BookMarked className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">{promoting ? "Memproses..." : "Promosikan ke KB"}</span>
-                    <span className="sm:hidden">{promoting ? "..." : "Ke KB"}</span>
-                  </button>
-                )}
-
-                {canDeleteThread && (
-                  <button
-                    onClick={handleDeleteThread}
-                    className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Hapus</span>
-                  </button>
-                )}
-              </div>
             </div>
 
-            {/* Replies */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 space-y-4">
-              {thread.replies.length === 0 ? (
-                <div className="flex flex-col items-center py-10 text-center">
-                  <MessageCircle className="mb-2 h-8 w-8 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">Belum ada balasan. Jadilah yang pertama!</p>
+            {/* ── Scrollable body: author + content + actions + replies ── */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Thread body */}
+              <div className="px-4 py-4 sm:px-5 border-b border-border/40">
+                {/* Author row */}
+                <div className="flex items-center gap-2 mb-3">
+                  <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} size="sm" />
+                  <span className="text-xs font-semibold text-foreground/80">{thread.author_name ?? "Pengguna"}</span>
+                  <span className="text-xs text-muted-foreground/50">·</span>
+                  <span className="text-xs text-muted-foreground">{fmtDate(thread.created_at)}</span>
                 </div>
-              ) : (
-                thread.replies.map(reply => (
-                  <div key={reply.id} className="flex gap-3 group">
-                    <AvatarDisplay name={reply.author_name} avatarUrl={reply.author_avatar} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="text-xs font-semibold text-foreground">{reply.author_name ?? "Pengguna"}</span>
-                          <span className="ml-2 text-xs text-muted-foreground/60">{fmtTime(reply.created_at)}</span>
-                        </div>
-                        {(reply.user_id === currentUserId || isAdmin) && (
-                          <button
-                            onClick={() => handleDeleteReply(reply.id)}
-                            className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                      <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
-                        {reply.content}
-                      </p>
-                    </div>
+
+                {/* Content */}
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
+                  {thread.content}
+                </p>
+
+                {/* Action row */}
+                <div className="mt-4 flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={handleVote}
+                    disabled={voting}
+                    className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                      localVoted
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:text-primary"
+                    }`}
+                  >
+                    <ThumbsUp className={`h-3.5 w-3.5 ${localVoted ? "fill-primary" : ""}`} />
+                    <span>{localVoteCount}</span>
+                  </button>
+
+                  {isAdmin && !thread.promoted_to_kb && (
+                    <button
+                      onClick={handlePromote}
+                      disabled={promoting}
+                      className="flex items-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/5 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-50"
+                    >
+                      <BookMarked className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">{promoting ? "Memproses..." : "Promosikan ke KB"}</span>
+                      <span className="sm:hidden">{promoting ? "..." : "Ke KB"}</span>
+                    </button>
+                  )}
+
+                  {canDeleteThread && (
+                    <button
+                      onClick={handleDeleteThread}
+                      className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Hapus</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Replies section header */}
+              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 backdrop-blur-sm px-4 py-2.5 sm:px-5 border-b border-border/30">
+                <MessageCircle className="h-3.5 w-3.5 text-muted-foreground/60" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {thread.replies.length === 0 ? "Belum ada balasan" : `${thread.replies.length} Balasan`}
+                </span>
+              </div>
+
+              {/* Replies list */}
+              <div className="px-4 py-4 sm:px-5 space-y-5">
+                {thread.replies.length === 0 ? (
+                  <div className="flex flex-col items-center py-8 text-center">
+                    <MessageCircle className="mb-2 h-8 w-8 text-muted-foreground/20" />
+                    <p className="text-sm text-muted-foreground">Jadilah yang pertama membalas!</p>
                   </div>
-                ))
-              )}
-              <div ref={repliesEndRef} />
+                ) : (
+                  thread.replies.map(reply => (
+                    <div key={reply.id} className="flex gap-3 group">
+                      <AvatarDisplay name={reply.author_name} avatarUrl={reply.author_avatar} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold text-foreground">{reply.author_name ?? "Pengguna"}</span>
+                            <span className="ml-2 text-xs text-muted-foreground/60">{fmtTime(reply.created_at)}</span>
+                          </div>
+                          {(reply.user_id === currentUserId || isAdmin) && (
+                            <button
+                              onClick={() => handleDeleteReply(reply.id)}
+                              className="shrink-0 rounded-lg p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 sm:opacity-0"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
+                          {reply.content}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div ref={repliesEndRef} />
+              </div>
             </div>
 
-            {/* Reply Input */}
-            <div className="shrink-0 border-t border-border px-4 py-3 sm:px-5 sm:py-4">
+            {/* ── Fixed bottom: reply input ── */}
+            <div
+              className="shrink-0 border-t border-border bg-background px-4 pt-3 pb-3 sm:px-5 sm:pt-4 sm:pb-4"
+              style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
+            >
               <div className="flex gap-2 items-end">
                 <Textarea
                   ref={textareaRef}
@@ -475,13 +511,13 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                       handleReply();
                     }
                   }}
-                  className="min-h-[52px] max-h-[120px] resize-none bg-card text-sm"
-                  rows={2}
+                  className="min-h-[44px] max-h-[100px] resize-none bg-card text-sm leading-relaxed"
+                  rows={1}
                 />
                 <Button
                   onClick={handleReply}
                   disabled={sending || !replyContent.trim()}
-                  className="h-[52px] w-11 shrink-0 bg-gradient-purple px-0 text-primary-foreground hover:opacity-90"
+                  className="h-11 w-11 shrink-0 bg-gradient-purple px-0 text-primary-foreground hover:opacity-90 rounded-xl"
                 >
                   {sending
                     ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -489,7 +525,9 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                   }
                 </Button>
               </div>
-              <p className="mt-1.5 hidden sm:block text-xs text-muted-foreground">Enter untuk kirim · Shift+Enter untuk baris baru</p>
+              <p className="mt-1.5 hidden sm:block text-xs text-muted-foreground/60">
+                Enter untuk kirim · Shift+Enter untuk baris baru
+              </p>
             </div>
           </>
         ) : null}
