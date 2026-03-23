@@ -703,9 +703,13 @@ function KnowledgeBaseTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [editArticle, setEditArticle] = useState<Article | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setSelected(new Set());
     try {
       const data = await adminFetch(`/api/admin/articles?status=${filter}`);
       setArticles(data);
@@ -714,6 +718,7 @@ function KnowledgeBaseTab() {
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setSelected(new Set()); }, [categoryFilter]);
 
   const handleReview = async (id: string, status: "approved" | "rejected") => {
     try {
@@ -721,6 +726,24 @@ function KnowledgeBaseTab() {
       toast.success(status === "approved" ? "Artikel disetujui dan dipublikasikan" : "Artikel ditolak");
       load();
     } catch (e: any) { toast.error(e.message); }
+  };
+
+  const handleBulkReview = async (status: "approved" | "rejected") => {
+    if (selected.size === 0) return;
+    const label = status === "approved" ? "menyetujui" : "menolak";
+    if (!confirm(`Yakin ${label} ${selected.size} artikel sekaligus?`)) return;
+    setBulkLoading(true);
+    try {
+      const { updated } = await adminFetch("/api/admin/articles/bulk-review", {
+        method: "POST",
+        body: JSON.stringify({ ids: Array.from(selected), status }),
+      });
+      toast.success(status === "approved"
+        ? `${updated} artikel disetujui dan dipublikasikan`
+        : `${updated} artikel ditolak`);
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    setBulkLoading(false);
   };
 
   const handleAdd = async (data: { title: string; content: string; category: string }) => {
@@ -751,13 +774,43 @@ function KnowledgeBaseTab() {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   const tabs: Array<"pending" | "approved" | "rejected"> = ["pending", "approved", "rejected"];
 
-  const filtered = articles.filter(a =>
-    !searchQuery ||
-    a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.content.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = articles.filter(a => {
+    const matchSearch = !searchQuery ||
+      a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.content.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchCategory = categoryFilter === "all" || a.category === categoryFilter;
+    return matchSearch && matchCategory;
+  });
+
+  const filteredIds = filtered.map(a => a.id);
+  const allSelected = filteredIds.length > 0 && filteredIds.every(id => selected.has(id));
+  const someSelected = filteredIds.some(id => selected.has(id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -780,11 +833,63 @@ function KnowledgeBaseTab() {
         ))}
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Cari artikel..."
-          className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Cari artikel..."
+            className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
+        </div>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-auto min-w-[130px] rounded-xl border-border bg-card text-sm">
+            <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground shrink-0" />
+            <SelectValue placeholder="Semua Kategori" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Kategori</SelectItem>
+            {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
+
+      {filter === "pending" && !loading && filtered.length > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 px-3 py-2">
+          <button
+            onClick={toggleSelectAll}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <div className={`h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
+              allSelected ? "border-primary bg-primary" : someSelected ? "border-primary/60 bg-primary/20" : "border-border"
+            }`}>
+              {allSelected && <Check className="h-2.5 w-2.5 text-white" />}
+              {someSelected && !allSelected && <div className="h-1.5 w-1.5 rounded-sm bg-primary" />}
+            </div>
+            {selected.size > 0
+              ? `${selected.size} artikel dipilih`
+              : "Pilih semua"}
+          </button>
+
+          {selected.size > 0 && (
+            <div className="flex gap-2">
+              <Button
+                size="sm" disabled={bulkLoading}
+                className="h-7 gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 text-xs"
+                variant="outline"
+                onClick={() => handleBulkReview("approved")}
+              >
+                <Check className="h-3 w-3" /> Setujui {selected.size}
+              </Button>
+              <Button
+                size="sm" disabled={bulkLoading}
+                className="h-7 gap-1.5 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs"
+                variant="outline"
+                onClick={() => handleBulkReview("rejected")}
+              >
+                <X className="h-3 w-3" /> Tolak {selected.size}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-card" />)}</div>
@@ -792,62 +897,84 @@ function KnowledgeBaseTab() {
         <div className="flex flex-col items-center py-12 text-center">
           <BookOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
-            {searchQuery ? "Tidak ada artikel yang cocok." : `Tidak ada artikel ${filter === "pending" ? "menunggu review" : filter === "approved" ? "yang disetujui" : "yang ditolak"}.`}
+            {searchQuery || categoryFilter !== "all"
+              ? "Tidak ada artikel yang cocok dengan filter."
+              : `Tidak ada artikel ${filter === "pending" ? "menunggu review" : filter === "approved" ? "yang disetujui" : "yang ditolak"}.`}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(art => (
-            <div key={art.id} className="rounded-2xl border border-border bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[art.category] ?? "bg-secondary text-muted-foreground"}`}>
-                      {art.category}
-                    </span>
-                    <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_COLORS[art.status]}`}>
-                      {art.status === "pending" ? "Menunggu" : art.status === "approved" ? "Disetujui" : "Ditolak"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{fmtDate(art.created_at)}</span>
-                  </div>
-                  <h3 className="mt-1.5 font-medium text-foreground">{art.title}</h3>
-                  {(art.author_name || art.author_email) && (
-                    <p className="mt-0.5 text-xs text-muted-foreground/70">
-                      Oleh: <span className="font-medium text-muted-foreground">{art.author_name ?? art.author_email}</span>
-                      {art.author_name && art.author_email && (
-                        <span className="ml-1">({art.author_email})</span>
+          {filtered.map(art => {
+            const isSelected = selected.has(art.id);
+            return (
+              <div
+                key={art.id}
+                className={`rounded-2xl border bg-card p-4 transition-colors ${
+                  isSelected ? "border-primary/40 bg-primary/5" : "border-border"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    {filter === "pending" && (
+                      <button
+                        onClick={() => toggleSelect(art.id)}
+                        className={`mt-0.5 shrink-0 h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          isSelected ? "border-primary bg-primary" : "border-border hover:border-primary/60"
+                        }`}
+                      >
+                        {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                      </button>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[art.category] ?? "bg-secondary text-muted-foreground"}`}>
+                          {art.category}
+                        </span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_COLORS[art.status]}`}>
+                          {art.status === "pending" ? "Menunggu" : art.status === "approved" ? "Disetujui" : "Ditolak"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{fmtDate(art.created_at)}</span>
+                      </div>
+                      <h3 className="mt-1.5 font-medium text-foreground">{art.title}</h3>
+                      {(art.author_name || art.author_email) && (
+                        <p className="mt-0.5 text-xs text-muted-foreground/70">
+                          Oleh: <span className="font-medium text-muted-foreground">{art.author_name ?? art.author_email}</span>
+                          {art.author_name && art.author_email && (
+                            <span className="ml-1">({art.author_email})</span>
+                          )}
+                        </p>
                       )}
-                    </p>
-                  )}
-                  <p className={`mt-1 text-sm text-muted-foreground ${expanded === art.id ? "" : "line-clamp-2"}`}>
-                    {art.content}
-                  </p>
-                  <button onClick={() => setExpanded(expanded === art.id ? null : art.id)} className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline">
-                    <Eye className="h-3 w-3" />
-                    {expanded === art.id ? "Tampilkan lebih sedikit" : "Baca selengkapnya"}
-                  </button>
-                </div>
-                <div className="flex shrink-0 flex-col gap-2">
-                  {art.status === "pending" && (
-                    <>
-                      <Button size="sm" variant="outline" className="h-8 gap-1 border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => handleReview(art.id, "approved")}>
-                        <Check className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handleReview(art.id, "rejected")}>
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
-                  )}
-                  <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => setEditArticle(art)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handleDelete(art.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                      <p className={`mt-1 text-sm text-muted-foreground ${expanded === art.id ? "" : "line-clamp-2"}`}>
+                        {art.content}
+                      </p>
+                      <button onClick={() => setExpanded(expanded === art.id ? null : art.id)} className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline">
+                        <Eye className="h-3 w-3" />
+                        {expanded === art.id ? "Tampilkan lebih sedikit" : "Baca selengkapnya"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2">
+                    {art.status === "pending" && (
+                      <>
+                        <Button size="sm" variant="outline" className="h-8 gap-1 border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => handleReview(art.id, "approved")}>
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handleReview(art.id, "rejected")}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                    <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => setEditArticle(art)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handleDelete(art.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

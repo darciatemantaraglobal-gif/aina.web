@@ -1452,6 +1452,68 @@ Jika ada pertanyaan, jangan ragu untuk menghubungi tim admin.`,
   res.json({ success: true });
 });
 
+/* ── Admin: Bulk Review Articles ──────────────────── */
+app.post("/api/admin/articles/bulk-review", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { ids, status } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
+  if (!["approved", "rejected"].includes(status)) return res.status(400).json({ error: "Invalid status" });
+
+  const supabase = getAdminClient();
+  const { data: articles } = await supabase.from("knowledge_base").select("id, title, author_id, status").in("id", ids);
+  if (!articles?.length) return res.status(404).json({ error: "No articles found" });
+
+  const pendingArticles = articles.filter(a => a.status === "pending");
+  if (pendingArticles.length === 0) return res.json({ updated: 0 });
+
+  const pendingIds = pendingArticles.map(a => a.id);
+  await supabase.from("knowledge_base").update({ status }).in("id", pendingIds);
+
+  if (status === "approved") {
+    const authorGroups = {};
+    for (const art of pendingArticles) {
+      if (!authorGroups[art.author_id]) authorGroups[art.author_id] = [];
+      authorGroups[art.author_id].push(art);
+    }
+    for (const [authorId, arts] of Object.entries(authorGroups)) {
+      const { data: profile } = await supabase.from("profiles").select("contribution_count").eq("user_id", authorId).single();
+      const prev = profile?.contribution_count || 0;
+      const newCount = prev + arts.length;
+      const level = newCount >= 10 ? "Senior Contributor" : "Contributor";
+      await supabase.from("profiles").update({ contribution_count: newCount, level }).eq("user_id", authorId);
+      const titles = arts.map(a => `"${a.title}"`).join(", ");
+      await supabase.from("notifications").insert({
+        user_id: authorId,
+        title: arts.length > 1 ? `${arts.length} artikel kamu disetujui! ✅` : `Artikel kamu disetujui! ✅`,
+        message: arts.length > 1
+          ? `Artikel ${titles} telah disetujui dan kini tersedia di Knowledge Base AINA.`
+          : `Artikel ${titles} telah disetujui dan kini tersedia di Knowledge Base AINA.`,
+        type: "success",
+      }).then(undefined, () => {});
+    }
+  } else {
+    const authorGroups = {};
+    for (const art of pendingArticles) {
+      if (!authorGroups[art.author_id]) authorGroups[art.author_id] = [];
+      authorGroups[art.author_id].push(art);
+    }
+    for (const [authorId, arts] of Object.entries(authorGroups)) {
+      await supabase.from("notifications").insert({
+        user_id: authorId,
+        title: arts.length > 1 ? `${arts.length} artikel belum bisa disetujui` : "Artikel belum bisa disetujui",
+        message: arts.length > 1
+          ? `Artikel ${arts.map(a => `"${a.title}"`).join(", ")} belum bisa dipublikasikan saat ini.`
+          : `Artikel "${arts[0].title}" belum bisa dipublikasikan saat ini.`,
+        type: "warning",
+      }).then(undefined, () => {});
+    }
+  }
+
+  res.json({ updated: pendingIds.length });
+});
+
 /* ── Admin: Input Article Directly ──────────────────── */
 app.post("/api/admin/articles", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
