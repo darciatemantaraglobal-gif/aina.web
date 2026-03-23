@@ -1348,6 +1348,21 @@ app.get("/api/admin/articles", async (req, res) => {
   res.json(result);
 });
 
+app.patch("/api/admin/articles/:id/visibility", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mengubah visibilitas artikel" });
+
+  const { id } = req.params;
+  const { hidden } = req.body;
+  if (typeof hidden !== "boolean") return res.status(400).json({ error: "hidden (boolean) diperlukan" });
+
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("knowledge_base").update({ hidden }).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+
+  return res.json({ success: true, hidden });
+});
+
 app.post("/api/admin/articles/:id/review", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
@@ -2055,6 +2070,7 @@ app.get("/api/leaderboard", async (req, res) => {
       .from("knowledge_base")
       .select("id, title, category, article_type, vote_count, created_at, author_id")
       .eq("status", "approved")
+      .neq("hidden", true)
       .order("vote_count", { ascending: false })
       .limit(20),
   ]);
@@ -2790,7 +2806,10 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT F
 
 -- Article type column
 ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS article_type TEXT NOT NULL DEFAULT 'narrative'
-  CHECK (article_type IN ('narrative', 'step_by_step'));`;
+  CHECK (article_type IN ('narrative', 'step_by_step'));
+
+-- Hidden flag for articles (master admin can hide from public leaderboard, AI still uses them)
+ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;`;
 
   const neededSql = missing.map(t => sqlBlocks[t]).filter(Boolean).join("\n\n");
   const fullSql = [neededSql, columnsSql].filter(Boolean).join("\n\n");
@@ -3077,9 +3096,19 @@ async function checkRequiredTables() {
   }
 }
 
+async function runColumnMigrations() {
+  try {
+    const supabase = getAdminClient();
+    await supabase.rpc("exec_sql", { sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;" });
+  } catch {
+    // RPC may not exist — silently skip; admin can run migration-sql manually
+  }
+}
+
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
   checkRequiredTables();
+  runColumnMigrations();
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AINA API server running on port ${PORT}`);
   });

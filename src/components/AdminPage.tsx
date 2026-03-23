@@ -10,7 +10,7 @@ import {
   Shield, Users, FileText, Check, X, LayoutDashboard,
   MessageSquare, BookOpen, Clock, Search,
   RefreshCw, TrendingUp, UserCheck, Plus,
-  Pencil, Trash2, Eye, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
+  Pencil, Trash2, Eye, EyeOff, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck,
 } from "lucide-react";
 
@@ -28,6 +28,7 @@ interface Article {
   id: string; author_id: string; title: string; content: string;
   category: string; status: string; created_at: string;
   author_name: string | null; author_email: string | null;
+  hidden: boolean;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -768,7 +769,7 @@ function ArticleFormDialog({
 }
 
 /* ─── Knowledge Base Tab ─────────────────────────────── */
-function KnowledgeBaseTab() {
+function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
@@ -859,6 +860,18 @@ function KnowledgeBaseTab() {
       await adminFetch(`/api/admin/articles/${id}`, { method: "DELETE" });
       toast.success("Artikel dihapus");
       load();
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const handleToggleHidden = async (art: Article) => {
+    const newHidden = !art.hidden;
+    try {
+      await adminFetch(`/api/admin/articles/${art.id}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ hidden: newHidden }),
+      });
+      toast.success(newHidden ? "Artikel disembunyikan dari publik" : "Artikel ditampilkan kembali di publik");
+      setArticles(prev => prev.map(a => a.id === art.id ? { ...a, hidden: newHidden } : a));
     } catch (e: any) { toast.error(e.message); }
   };
 
@@ -1031,6 +1044,11 @@ function KnowledgeBaseTab() {
                         <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_COLORS[art.status]}`}>
                           {art.status === "pending" ? "Menunggu" : art.status === "approved" ? "Disetujui" : "Ditolak"}
                         </span>
+                        {art.hidden && (
+                          <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-400 flex items-center gap-1">
+                            <EyeOff className="h-2.5 w-2.5" /> Tersembunyi
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">{fmtDate(art.created_at)}</span>
                       </div>
                       <h3 className="mt-1.5 font-medium text-foreground">{art.title}</h3>
@@ -1061,6 +1079,16 @@ function KnowledgeBaseTab() {
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       </>
+                    )}
+                    {isMasterAdmin && art.status === "approved" && (
+                      <Button
+                        size="sm" variant="outline"
+                        className={`h-8 gap-1 ${art.hidden ? "border-orange-500/30 text-orange-400 hover:bg-orange-500/10" : "border-border text-muted-foreground hover:text-foreground"}`}
+                        onClick={() => handleToggleHidden(art)}
+                        title={art.hidden ? "Tampilkan ke publik" : "Sembunyikan dari publik"}
+                      >
+                        {art.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                      </Button>
                     )}
                     <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => setEditArticle(art)}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -1871,7 +1899,7 @@ const AdminPage = () => {
         {activeTab === "users" && isMasterAdmin && <UsersTab />}
         {activeTab === "monitor" && isMasterAdmin && <ChatMonitorTab />}
         {activeTab === "requests" && <RequestsTab />}
-        {activeTab === "knowledge" && <KnowledgeBaseTab />}
+        {activeTab === "knowledge" && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
         {activeTab === "updates" && <PinnedUpdatesTab />}
         {activeTab === "reports" && <ReportsTab />}
         {activeTab === "security" && isMasterAdmin && <SecurityLogsTab />}
