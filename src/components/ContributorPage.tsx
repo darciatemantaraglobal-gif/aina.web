@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -887,7 +889,9 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                                 </div>
                               </>
                             ) : (
-                              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{display.content}</p>
+                              <div className="prose prose-sm prose-invert max-w-none text-xs text-muted-foreground [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-foreground/90 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-foreground/80 [&_h3]:mt-2 [&_h3]:mb-1 [&_p]:mb-2 [&_p]:leading-relaxed [&_ul]:ml-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:leading-relaxed [&_strong]:font-semibold [&_strong]:text-foreground/90">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{display.content}</ReactMarkdown>
+                              </div>
                             )}
                           </div>
                         )}

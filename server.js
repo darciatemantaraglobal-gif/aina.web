@@ -947,7 +947,7 @@ async function ocrPdf(buffer) {
               { type: "image_url", image_url: { url: imgUrl } },
               {
                 type: "text",
-                text: "Ekstrak semua teks dari gambar dokumen ini. Kembalikan HANYA teks yang diekstrak, pertahankan paragraf dan struktur. Jangan tambahkan komentar atau penjelasan apapun.",
+                text: "Ekstrak semua teks dari gambar dokumen ini. Dokumen mungkin mengandung teks bahasa Arab (tulisan Arab, kanan ke kiri), Indonesia, atau campuran keduanya — ekstrak semuanya dengan akurat dan pertahankan urutan serta strukturnya. Kembalikan HANYA teks yang diekstrak, pertahankan paragraf dan struktur aslinya. Jangan tambahkan komentar atau penjelasan apapun.",
               },
             ],
           }],
@@ -1622,6 +1622,18 @@ Aturan penting:
 - Jika hanya ada satu topik dalam teks, buat satu artikel saja
 - Jangan biarkan array articles kosong — selama ada informasi apapun yang berguna, buat artikelnya
 
+FORMAT KONTEN ARTIKEL (wajib ikuti):
+- Gunakan Markdown di field "content"
+- Gunakan ## untuk subjudul/bagian utama (JANGAN gunakan # karena judul sudah terpisah)
+- Gunakan ### untuk sub-bagian yang lebih kecil jika perlu
+- Pisahkan setiap paragraf dengan satu baris kosong
+- Gunakan - untuk poin-poin dalam list
+- Gunakan 1. 2. 3. untuk langkah-langkah berurutan (khusus step_by_step)
+- Gunakan **teks** untuk istilah penting atau kata kunci
+- Jangan gunakan tabel
+- Pastikan ada spasi yang cukup antar bagian agar mudah dibaca
+- Konten minimal 3 paragraf atau 3 poin list
+
 Kategori yang tersedia (pilih yang paling sesuai):
 - "Administrasi" — iqomah, visa, paspor, KTP, surat-surat resmi
 - "Akademik" — perkuliahan Al-Azhar, pendaftaran, ujian, beasiswa
@@ -1630,7 +1642,7 @@ Kategori yang tersedia (pilih yang paling sesuai):
 - "Tempat Tinggal" — sewa flat, lokasi, harga, kontrak
 - "Kuliner" — restoran halal, masakan, harga makanan, dapur
 
-Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun:
+Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan \\n untuk newline dan \\n\\n untuk baris kosong antar paragraf:
 {"articles":[{"title":"...","category":"...","article_type":"narrative|step_by_step","content":"..."}]}`;
 
   try {
