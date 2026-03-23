@@ -1862,6 +1862,58 @@ app.post("/api/threads/:id/vote", writeLimiter, async (req, res) => {
 });
 
 /* ── Article Upvote (toggle) ────────────────────────────── */
+app.get("/api/articles/:id", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from("knowledge_base")
+      .select("id, title, category, article_type, content, vote_count, created_at, author_id")
+      .eq("id", id)
+      .eq("status", "approved")
+      .single();
+    if (error || !data) return res.status(404).json({ error: "Artikel tidak ditemukan" });
+
+    const { data: author } = await supabase.from("profiles").select("full_name").eq("user_id", data.author_id).single();
+    const { data: myVote } = await supabase.from("article_votes").select("id").eq("user_id", user.id).eq("article_id", id).maybeSingle();
+
+    res.json({ ...data, author_name: author?.full_name ?? null, user_voted: !!myVote });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/articles/:id/report", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const { reason } = req.body;
+  if (!reason?.trim()) return res.status(400).json({ error: "Alasan laporan wajib diisi" });
+  if (reason.trim().length > 500) return res.status(400).json({ error: "Alasan terlalu panjang (maks 500 karakter)" });
+
+  const { data: article } = await supabase.from("knowledge_base").select("title").eq("id", id).eq("status", "approved").single();
+  if (!article) return res.status(404).json({ error: "Artikel tidak ditemukan" });
+
+  try {
+    await supabase.from("message_reports").insert({
+      user_id: user.id,
+      message_id: `article:${id}`,
+      message_content: `[ARTIKEL] ${article.title}`,
+      reason: reason.trim(),
+      status: "pending",
+    });
+    console.log(`[REPORT] Article "${article.title}" (${id}) reported by ${user.id}: "${reason}"`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/articles/:id/vote", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });

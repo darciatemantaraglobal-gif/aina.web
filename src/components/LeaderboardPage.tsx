@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { ThumbsUp, Trophy, Medal, BookOpen, RefreshCw } from "lucide-react";
+import { ThumbsUp, Trophy, Medal, BookOpen, RefreshCw, BookOpenCheck, Flag, X, AlertTriangle, Send, Loader2 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
 interface Contributor {
@@ -22,6 +22,10 @@ interface Article {
   created_at: string;
   author_name: string | null;
   user_voted: boolean;
+}
+
+interface ArticleDetail extends Article {
+  content: string;
 }
 
 /* ─── Helpers ────────────────────────────────────────── */
@@ -90,6 +94,191 @@ function AvatarDisplay({ name, avatarUrl }: { name: string | null; avatarUrl: st
   );
 }
 
+/* ─── Article Detail Modal ───────────────────────────── */
+function ArticleDetailModal({
+  articleId,
+  onClose,
+  onVote,
+  votingId,
+}: {
+  articleId: string;
+  onClose: () => void;
+  onVote: (id: string) => void;
+  votingId: string | null;
+}) {
+  const [article, setArticle] = useState<ArticleDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const [reported, setReported] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiFetch(`/api/articles/${articleId}`)
+      .then(data => { if (!cancelled) { setArticle(data); setLoading(false); } })
+      .catch(e => { if (!cancelled) { toast.error(e.message); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [articleId]);
+
+  const handleReport = async () => {
+    if (!reportReason.trim()) return toast.error("Tulis alasan laporan terlebih dahulu");
+    setSubmittingReport(true);
+    try {
+      await apiFetch(`/api/articles/${articleId}/report`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reportReason.trim() }),
+      });
+      setReported(true);
+      setShowReport(false);
+      toast.success("Laporan dikirim, terima kasih!");
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+    setSubmittingReport(false);
+  };
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+      <div className="relative z-10 flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-border bg-background shadow-2xl max-h-[92dvh] sm:max-h-[85vh]">
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="flex items-center gap-2">
+            <BookOpenCheck className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold text-foreground">Baca Artikel</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          {loading ? (
+            <div className="flex flex-col gap-3">
+              <div className="h-6 w-3/4 animate-pulse rounded-xl bg-card" />
+              <div className="h-4 w-1/3 animate-pulse rounded-xl bg-card" />
+              <div className="mt-4 space-y-2">
+                {[...Array(6)].map((_, i) => <div key={i} className="h-4 animate-pulse rounded-lg bg-card" />)}
+              </div>
+            </div>
+          ) : article ? (
+            <div>
+              {/* Meta */}
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${CATEGORY_COLORS[article.category] ?? "bg-secondary text-muted-foreground"}`}>
+                  {article.category}
+                </span>
+                <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] text-muted-foreground">
+                  {article.article_type}
+                </span>
+              </div>
+
+              <h2 className="font-display text-xl font-bold leading-snug text-foreground mb-1">
+                {article.title}
+              </h2>
+              <p className="text-xs text-muted-foreground mb-5">
+                oleh <span className="font-medium text-foreground">{article.author_name ?? "Kontributor"}</span>
+                {" · "}{fmtDate(article.created_at)}
+              </p>
+
+              <div className="prose prose-sm prose-invert max-w-none text-foreground/90 leading-relaxed whitespace-pre-wrap text-sm">
+                {article.content}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center py-12 text-center">
+              <AlertTriangle className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Gagal memuat artikel</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {article && (
+          <div className="shrink-0 border-t border-border px-5 py-4">
+            {!showReport ? (
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={() => { if (!reported) setShowReport(true); }}
+                  disabled={reported}
+                  className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+                    reported
+                      ? "border-green-500/30 bg-green-500/10 text-green-400 cursor-default"
+                      : "border-border text-muted-foreground hover:border-red-500/30 hover:bg-red-500/5 hover:text-red-400"
+                  }`}
+                >
+                  <Flag className="h-3.5 w-3.5" />
+                  {reported ? "Sudah dilaporkan" : "Laporkan inakurasi"}
+                </button>
+
+                <button
+                  onClick={() => onVote(article.id)}
+                  disabled={votingId === article.id}
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
+                    article.user_voted
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:text-primary"
+                  } disabled:opacity-50`}
+                >
+                  <ThumbsUp className={`h-4 w-4 ${article.user_voted ? "fill-primary" : ""}`} />
+                  {article.vote_count} Upvote
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Flag className="h-3.5 w-3.5 text-red-400" />
+                  <p className="text-xs font-semibold text-foreground">Laporkan inakurasi pada artikel ini</p>
+                </div>
+                <textarea
+                  value={reportReason}
+                  onChange={e => setReportReason(e.target.value)}
+                  placeholder="Jelaskan bagian mana yang tidak akurat dan mengapa..."
+                  rows={3}
+                  maxLength={500}
+                  className="w-full resize-none rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-muted-foreground">{reportReason.length}/500</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowReport(false); setReportReason(""); }}
+                      className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      onClick={handleReport}
+                      disabled={submittingReport || !reportReason.trim()}
+                      className="flex items-center gap-1.5 rounded-xl bg-red-500/10 border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+                    >
+                      {submittingReport ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                      Kirim Laporan
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Contributor Card ───────────────────────────────── */
 function ContributorCard({ contributor, rank }: { contributor: Contributor; rank: number }) {
   const roleInfo = ROLE_LABEL[contributor.role] ?? ROLE_LABEL.user;
@@ -117,11 +306,13 @@ function ArticleCard({
   rank,
   onVote,
   voting,
+  onRead,
 }: {
   article: Article;
   rank: number;
   onVote: (id: string) => void;
   voting: boolean;
+  onRead: (id: string) => void;
 }) {
   return (
     <div className={`flex items-center gap-3 rounded-2xl border p-4 transition-colors ${rank <= 3 ? "border-primary/20 bg-primary/5" : "border-border bg-card"}`}>
@@ -134,6 +325,13 @@ function ArticleCard({
         </div>
         <p className="font-semibold text-sm text-foreground line-clamp-2 leading-snug">{article.title}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">oleh {article.author_name ?? "Kontributor"}</p>
+        <button
+          onClick={() => onRead(article.id)}
+          className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+        >
+          <BookOpen className="h-3 w-3" />
+          Baca artikel
+        </button>
       </div>
       <button
         onClick={() => onVote(article.id)}
@@ -158,6 +356,7 @@ export default function LeaderboardPage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [votingId, setVotingId] = useState<string | null>(null);
+  const [readingId, setReadingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -200,6 +399,11 @@ export default function LeaderboardPage() {
     } finally {
       setVotingId(null);
     }
+  };
+
+  const handleVoteFromModal = async (articleId: string) => {
+    await handleArticleVote(articleId);
+    setArticles(prev => [...prev]);
   };
 
   return (
@@ -267,7 +471,7 @@ export default function LeaderboardPage() {
           <TabsContent value="articles" className="flex-1 overflow-y-auto px-4 pb-6 pt-4 md:px-6">
             {loading ? (
               <div className="space-y-2">
-                {[...Array(6)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}
+                {[...Array(6)].map((_, i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-card" />)}
               </div>
             ) : articles.length === 0 ? (
               <div className="flex flex-col items-center py-16 text-center">
@@ -285,6 +489,7 @@ export default function LeaderboardPage() {
                     rank={i + 1}
                     onVote={handleArticleVote}
                     voting={votingId === a.id}
+                    onRead={setReadingId}
                   />
                 ))}
               </div>
@@ -292,6 +497,16 @@ export default function LeaderboardPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Article Detail Modal */}
+      {readingId && (
+        <ArticleDetailModal
+          articleId={readingId}
+          onClose={() => setReadingId(null)}
+          onVote={handleVoteFromModal}
+          votingId={votingId}
+        />
+      )}
     </div>
   );
 }
