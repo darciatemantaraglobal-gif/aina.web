@@ -1890,6 +1890,8 @@ app.post("/api/admin/users/bulk-delete", async (req, res) => {
   const { userIds } = req.body;
   if (!Array.isArray(userIds) || userIds.length === 0)
     return res.status(400).json({ error: "userIds harus berupa array yang tidak kosong" });
+  if (userIds.length > 100)
+    return res.status(400).json({ error: "Maksimal 100 user per request" });
 
   const supabase = getAdminClient();
   const results = { success: [], failed: [] };
