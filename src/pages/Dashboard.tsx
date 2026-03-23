@@ -274,7 +274,7 @@ const Dashboard = () => {
         {activeTab !== "chat" && (
           <div className="h-full flex flex-col">
             {/* Mobile header */}
-            <header className="flex h-14 items-center gap-3 border-b border-border px-4 md:hidden shrink-0">
+            <header className="safe-top flex items-center gap-3 border-b border-border px-4 md:hidden shrink-0 min-h-14">
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"

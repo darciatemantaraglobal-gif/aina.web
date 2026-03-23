@@ -460,7 +460,7 @@ const DashboardSidebar = ({
       }`}
     >
       {/* ── Header ─────────────────────────────────────── */}
-      <div className={`flex h-14 shrink-0 items-center border-b border-sidebar-border px-3 ${collapsed ? "justify-center" : "justify-between"}`}>
+      <div className={`safe-top flex shrink-0 items-center border-b border-sidebar-border px-3 min-h-14 ${collapsed ? "justify-center" : "justify-between"}`}>
         {!collapsed && (
           <div className="flex items-center gap-2 pl-1">
             <img src="/aina-icon.png" alt="AINA" className="h-7 w-7 object-contain" />

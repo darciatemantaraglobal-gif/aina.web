@@ -405,7 +405,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   return (
     <div className="flex h-full flex-col bg-background">
       {/* Mobile top header */}
-      <header className="flex h-14 items-center justify-between border-b border-border px-4 md:hidden shrink-0">
+      <header className="safe-top flex items-center justify-between border-b border-border px-4 md:hidden shrink-0 min-h-14">
         <button
           onClick={onMenuClick}
           className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
