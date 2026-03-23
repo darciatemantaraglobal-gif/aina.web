@@ -1320,13 +1320,20 @@ app.get("/api/admin/articles", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
+  const masterAdmin = isMasterAdminId(admin.id);
   const supabase = getAdminClient();
   const { status = "pending" } = req.query;
-  const { data: articles } = await supabase
+  let query = supabase
     .from("knowledge_base")
     .select("*")
     .eq("status", status)
     .order("created_at", { ascending: false });
+
+  if (!masterAdmin) {
+    query = query.neq("hidden", true);
+  }
+
+  const { data: articles } = await query;
 
   if (!articles || articles.length === 0) return res.json([]);
 

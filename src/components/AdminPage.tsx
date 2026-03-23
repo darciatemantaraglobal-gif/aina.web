@@ -106,6 +106,7 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
   onBanToggle: (user: Profile) => void;
 }) {
   const [settingRole, setSettingRole] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const topRole = (roles: string[]) => {
     const order = ["admin", "senior_contributor", "contributor", "user"];
     return order.find(r => roles.includes(r)) ?? "user";
@@ -119,6 +120,28 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
   };
 
   return (
+    <>
+      {photoOpen && user.avatar_url && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setPhotoOpen(false)}
+        >
+          <div className="relative max-w-xs w-full mx-4" onClick={e => e.stopPropagation()}>
+            <img
+              src={user.avatar_url}
+              alt={user.full_name ?? "foto profil"}
+              className="w-full rounded-2xl object-cover shadow-2xl"
+            />
+            <p className="mt-3 text-center text-sm font-medium text-white">{user.full_name ?? "—"}</p>
+            <button
+              onClick={() => setPhotoOpen(false)}
+              className="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     <Dialog open onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-sm gap-0 p-0 overflow-hidden">
         <div className="bg-gradient-to-br from-violet-600/20 to-purple-600/10 p-5 pb-4">
@@ -126,7 +149,13 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
             <DialogTitle className="sr-only">Profil User</DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-4">
-            <AvatarDisplay name={user.full_name} avatarUrl={user.avatar_url} size={16} />
+            <button
+              className={user.avatar_url ? "cursor-pointer hover:opacity-80 transition-opacity" : "cursor-default"}
+              onClick={() => user.avatar_url && setPhotoOpen(true)}
+              title={user.avatar_url ? "Lihat foto penuh" : undefined}
+            >
+              <AvatarDisplay name={user.full_name} avatarUrl={user.avatar_url} size={16} />
+            </button>
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-foreground truncate">{user.full_name ?? "—"}</p>
               <p className="text-xs text-muted-foreground truncate">{user.email ?? "—"}</p>
@@ -188,6 +217,7 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle }: {
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
