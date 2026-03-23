@@ -956,7 +956,12 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
     .trim();
 
   if (!extractedText || extractedText.length < 20) {
-    return res.status(422).json({ error: "File tidak mengandung teks yang cukup untuk diekstrak" });
+    const isPdf = mimetype === "application/pdf";
+    return res.status(422).json({
+      error: isPdf
+        ? "PDF ini tidak mengandung teks yang bisa dibaca. Kemungkinan PDF scan/gambar — coba konversi ke PDF teks terlebih dahulu, atau ketik kontennya secara manual."
+        : "File tidak mengandung teks yang cukup untuk diekstrak",
+    });
   }
 
   // Cap at 20 000 chars to avoid bloating the knowledge base

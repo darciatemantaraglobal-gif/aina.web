@@ -295,6 +295,12 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       return;
     }
 
+    const MAX_MB = 4;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      toast.error(`File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal ${MAX_MB} MB.`);
+      return;
+    }
+
     setExtracting(true);
     setUploadedFilename(null);
     try {
@@ -308,7 +314,11 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         body: formData,
       });
 
-      const json = await res.json().catch(() => ({ error: `Server error ${res.status}: ${res.statusText}` }));
+      const json = await res.json().catch(() => ({
+        error: res.status === 413
+          ? "File terlalu besar. Maksimal 4 MB."
+          : `Gagal mengekstrak file (${res.status})`,
+      }));
       if (!res.ok) throw new Error(json.error || "Gagal mengekstrak file");
 
       setArtContent(json.text);
