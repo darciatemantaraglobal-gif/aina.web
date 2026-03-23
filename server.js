@@ -2817,6 +2817,205 @@ app.delete("/api/admin/security-logs", strictLimiter, async (req, res) => {
   res.json({ success: true });
 });
 
+/* ══════════════════════════════════════════════════════
+   MIDTRANS PAYMENT ROUTES
+   Status: DISABLED (PAYMENT_ENABLED=false)
+   Untuk mengaktifkan:
+     1. Set PAYMENT_ENABLED=true di environment
+     2. Set MIDTRANS_SERVER_KEY & MIDTRANS_CLIENT_KEY (Sandbox atau Production)
+     3. Set MIDTRANS_IS_PRODUCTION=true saat siap live
+   ══════════════════════════════════════════════════════ */
+
+const PAYMENT_ENABLED = process.env.PAYMENT_ENABLED === "true";
+
+console.log(`Payment (Midtrans): ${PAYMENT_ENABLED ? "✓ enabled" : "✗ disabled — set PAYMENT_ENABLED=true to enable"}`);
+
+if (PAYMENT_ENABLED) {
+  const midtransClient = await import("midtrans-client").then(m => m.default ?? m);
+
+  const snap = new midtransClient.Snap({
+    isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
+    serverKey: process.env.MIDTRANS_SERVER_KEY,
+    clientKey: process.env.MIDTRANS_CLIENT_KEY,
+  });
+
+  const coreApi = new midtransClient.CoreApi({
+    isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
+    serverKey: process.env.MIDTRANS_SERVER_KEY,
+    clientKey: process.env.MIDTRANS_CLIENT_KEY,
+  });
+
+  /* -- Plan config ---------------------------------------- */
+  const PLANS = {
+    pro_monthly: { price: 29000, label: "AINA Pro — Bulanan", duration_days: 30 },
+    pro_annual:  { price: 249000, label: "AINA Pro — Tahunan", duration_days: 365 },
+  };
+
+  /* -- Create Snap payment token -------------------------- */
+  app.post("/api/payment/create-order", writeLimiter, async (req, res) => {
+    const supabase = getAdminClient();
+    if (!supabase) return res.status(503).json({ error: "Server tidak tersedia" });
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+    if (authErr || !user) return res.status(401).json({ error: "Sesi tidak valid" });
+
+    const { plan_id } = req.body;
+    const plan = PLANS[plan_id];
+    if (!plan) return res.status(400).json({ error: "Paket tidak ditemukan" });
+
+    const orderId = `AINA-${plan_id.toUpperCase()}-${user.id.slice(0, 8)}-${Date.now()}`;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("user_id", user.id)
+      .single();
+
+    try {
+      const snapToken = await snap.createTransactionToken({
+        transaction_details: {
+          order_id: orderId,
+          gross_amount: plan.price,
+        },
+        customer_details: {
+          first_name: profile?.full_name || "AINA User",
+          email: profile?.email || user.email,
+        },
+        item_details: [
+          { id: plan_id, price: plan.price, quantity: 1, name: plan.label },
+        ],
+        enabled_payments: [
+          "gopay", "shopeepay", "dana", "ovo",
+          "qris",
+          "bca_va", "bri_va", "bni_va", "permata_va", "echannel",
+        ],
+        callbacks: {
+          finish: `${process.env.CLIENT_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`}/dashboard?payment=success`,
+          error:  `${process.env.CLIENT_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`}/pricing?payment=error`,
+          pending:`${process.env.CLIENT_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`}/dashboard?payment=pending`,
+        },
+      });
+
+      console.log(`[PAYMENT] Snap token created: orderId=${orderId} plan=${plan_id} user=${user.id}`);
+      res.json({ token: snapToken, order_id: orderId });
+    } catch (e) {
+      console.error("[PAYMENT] Snap token error:", e.message);
+      res.status(500).json({ error: "Gagal membuat sesi pembayaran" });
+    }
+  });
+
+  /* -- Midtrans webhook (payment notification) ------------ */
+  app.post("/api/payment/webhook", async (req, res) => {
+    try {
+      const notification = await coreApi.transaction.notification(req.body);
+      const { order_id, transaction_status, fraud_status, gross_amount } = notification;
+
+      console.log(`[PAYMENT] Webhook: orderId=${order_id} status=${transaction_status} fraud=${fraud_status}`);
+
+      const isSuccess =
+        (transaction_status === "capture" && fraud_status === "accept") ||
+        transaction_status === "settlement";
+
+      if (isSuccess) {
+        // Parse userId and plan from orderId: AINA-PRO_MONTHLY-<8-char-uid>-<timestamp>
+        const parts = order_id.split("-");
+        const planKey = parts.slice(1, 3).join("_").toLowerCase(); // e.g. pro_monthly
+        const plan = PLANS[planKey];
+
+        if (plan) {
+          const supabase = getAdminClient();
+          // Find user by matching the 8-char uid prefix
+          const uidPrefix = parts[3];
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("user_id")
+            .ilike("user_id", `${uidPrefix}%`)
+            .limit(1);
+
+          const userId = profiles?.[0]?.user_id;
+          if (userId) {
+            const expiresAt = new Date(Date.now() + plan.duration_days * 86400 * 1000).toISOString();
+
+            // Store subscription (column: plan, expires_at — add via migration when enabling)
+            await supabase.from("subscriptions").upsert({
+              user_id: userId,
+              plan: planKey,
+              order_id,
+              amount: parseInt(gross_amount),
+              expires_at: expiresAt,
+              activated_at: new Date().toISOString(),
+            }, { onConflict: "user_id" });
+
+            // Notify user
+            await supabase.from("notifications").insert({
+              user_id: userId,
+              title: "AINA Pro Aktif! 🎉",
+              message: `Langganan ${plan.label} kamu berhasil. Nikmati akses penuh hingga ${new Date(expiresAt).toLocaleDateString("id-ID")}.`,
+              type: "success",
+            });
+
+            console.log(`[PAYMENT] ✓ Pro activated for user=${userId} plan=${planKey} expires=${expiresAt}`);
+          }
+        }
+      }
+
+      res.sendStatus(200);
+    } catch (e) {
+      console.error("[PAYMENT] Webhook error:", e.message);
+      res.sendStatus(200); // always 200 to Midtrans
+    }
+  });
+
+  /* -- Check order status --------------------------------- */
+  app.get("/api/payment/status/:orderId", writeLimiter, async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+    try {
+      const statusResponse = await coreApi.transaction.status(req.params.orderId);
+      res.json(statusResponse);
+    } catch (e) {
+      res.status(404).json({ error: "Order tidak ditemukan" });
+    }
+  });
+
+  /* -- Get user subscription status ----------------------- */
+  app.get("/api/payment/subscription", async (req, res) => {
+    const supabase = getAdminClient();
+    if (!supabase) return res.status(503).json({ error: "Server tidak tersedia" });
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: "Sesi tidak valid" });
+
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("plan, expires_at, activated_at")
+      .eq("user_id", user.id)
+      .single();
+
+    const isActive = sub && new Date(sub.expires_at) > new Date();
+    res.json({ subscription: isActive ? sub : null, is_active: !!isActive });
+  });
+
+} else {
+  /* -- Stub routes when payment is disabled --------------- */
+  app.post("/api/payment/create-order", (_req, res) =>
+    res.status(503).json({ error: "Fitur pembayaran belum aktif. Segera hadir!" })
+  );
+  app.post("/api/payment/webhook", (_req, res) => res.sendStatus(200));
+  app.get("/api/payment/status/:orderId", (_req, res) =>
+    res.status(503).json({ error: "Fitur pembayaran belum aktif." })
+  );
+  app.get("/api/payment/subscription", (_req, res) =>
+    res.json({ subscription: null, is_active: false })
+  );
+}
+
 /* ── Global JSON error handler ───────────────────────── */
 // Must be registered AFTER all routes. Ensures all unhandled errors
 // return JSON (not Express's default HTML page) so the client never

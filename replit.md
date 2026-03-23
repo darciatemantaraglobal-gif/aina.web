@@ -75,6 +75,16 @@ npm run dev   # Start both backend (port 3001) and frontend (port 5000) using co
 - Public env vars stored in Replit shared env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `MASTER_ADMIN_IDS`, `EMAIL_FROM`, `PORT`
 - Supabase Storage bucket `avatars` is auto-created on server startup if missing
 
+## Pricing & Payments
+
+- **Pricing page** has 3 tiers: Gratis (Rp 0), Pro (Rp 29.000/bln | Rp 249.000/thn), Contributor (gratis via kontribusi)
+- **Pro tier** is "Segera Hadir" — UI fully built, payment not yet active
+- **Payment gateway: Midtrans** — supports GoPay, OVO, ShopeePay, DANA, QRIS, VA BCA/BRI/BNI/Mandiri/Permata
+- **Activation**: Set `PAYMENT_ENABLED=true` + `MIDTRANS_SERVER_KEY` + `MIDTRANS_CLIENT_KEY` + `MIDTRANS_IS_PRODUCTION=true` (for production)
+- **Subscription table**: needs `subscriptions` table in Supabase before going live (schema in payment webhook code)
+- **Webhook**: `/api/payment/webhook` — Midtrans notifies this endpoint on successful payment
+- **PaymentModal**: `src/components/PaymentModal.tsx` — shows waitlist signup, coming soon notice, and payment methods
+
 ## Features
 
 - **AI Chat** — Multi-model fallback via OpenRouter (10 free models, `Promise.any()`)
