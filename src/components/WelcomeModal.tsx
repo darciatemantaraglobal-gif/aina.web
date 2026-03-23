@@ -59,7 +59,7 @@ const WelcomeModal = () => {
           {/* Beta badge */}
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-400 sm:mt-3 sm:px-3 sm:py-1">
             <Star className="h-3 w-3" />
-            Kamu adalah salah satu dari 20 Beta Tester pertama!
+            Kamu adalah Beta Tester awal AINA!
           </div>
         </div>
 

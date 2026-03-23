@@ -403,7 +403,7 @@ ${convText}`;
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN || "https://aina.replit.app",
+          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://aina.replit.app",
           "X-Title": "AINA - Memory Extraction",
         },
         body: JSON.stringify({
@@ -720,7 +720,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN || "https://aina.replit.app",
+          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://aina.replit.app",
           "X-Title": "AINA - Asisten Masisir",
         },
         body: JSON.stringify({
