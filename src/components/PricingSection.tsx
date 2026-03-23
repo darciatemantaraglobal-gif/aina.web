@@ -1,4 +1,4 @@
-import { Check, Zap, MessageSquare, LayoutDashboard, BookOpen, Star, Users, Shield, Lock, Upload, Infinity, Clock, Sparkles, Loader2 } from "lucide-react";
+import { Check, Zap, MessageSquare, LayoutDashboard, BookOpen, Star, Users, Shield, Lock, Upload, Infinity, Clock, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import PaymentModal from "./PaymentModal";
@@ -33,21 +33,10 @@ const PricingSection = () => {
   const [visible, setVisible] = useState(false);
   const [annual, setAnnual] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const { config, paying, pay } = usePayment();
+  const { config } = usePayment();
 
   useEffect(() => { setVisible(true); }, []);
 
-  const handleProClick = () => {
-    if (config?.enabled) {
-      pay(annual ? "pro_annual" : "pro_monthly");
-    } else {
-      setShowPaymentModal(true);
-    }
-  };
-
-  const monthlyPrice = 29000;
-  const annualPrice = 249000;
-  const annualMonthly = Math.round(annualPrice / 12);
 
   return (
     <section className="relative py-10 px-4 sm:py-20">
@@ -170,16 +159,9 @@ const PricingSection = () => {
               <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">Untuk yang butuh lebih dari sekadar dasar</p>
               <div className="mt-4 sm:mt-6">
                 <div className="flex items-end gap-1">
-                  <span className="font-display text-4xl font-bold text-foreground sm:text-5xl">
-                    Rp {annual ? annualMonthly.toLocaleString("id-ID") : monthlyPrice.toLocaleString("id-ID")}
-                  </span>
+                  <span className="font-display text-4xl font-bold text-foreground sm:text-5xl">—</span>
                   <span className="mb-1 text-xs text-muted-foreground sm:mb-2 sm:text-sm">/ bulan</span>
                 </div>
-                {annual && (
-                  <p className="mt-0.5 text-[11px] text-primary/80">
-                    Ditagih Rp {annualPrice.toLocaleString("id-ID")}/tahun · Hemat Rp {(monthlyPrice * 12 - annualPrice).toLocaleString("id-ID")}
-                  </p>
-                )}
               </div>
             </div>
 
@@ -194,25 +176,14 @@ const PricingSection = () => {
               ))}
             </ul>
 
-            {/* Payment / Coming Soon button */}
-            {config?.enabled ? (
-              <button
-                onClick={handleProClick}
-                disabled={paying}
-                className="relative w-full overflow-hidden rounded-xl bg-gradient-purple py-2.5 text-xs font-semibold text-primary-foreground shadow-[0_0_20px_hsl(270_80%_65%/0.3)] transition-all hover:scale-[1.02] hover:shadow-[0_0_28px_hsl(270_80%_65%/0.5)] disabled:opacity-70 disabled:cursor-not-allowed sm:py-3 sm:text-sm flex items-center justify-center gap-2"
-              >
-                {paying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                {paying ? "Memproses..." : `Upgrade ke Pro — Rp ${(annual ? annualPrice : monthlyPrice).toLocaleString("id-ID")}`}
-              </button>
-            ) : (
-              <button
-                onClick={handleProClick}
-                className="relative w-full overflow-hidden rounded-xl border border-primary/30 bg-primary/10 py-2.5 text-xs font-semibold text-primary/70 backdrop-blur-sm transition-all hover:bg-primary/15 sm:py-3 sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Lock className="h-3.5 w-3.5" />
-                Segera Hadir — Notifikasi Saya
-              </button>
-            )}
+            {/* Coming Soon button */}
+            <button
+              onClick={() => setShowPaymentModal(true)}
+              className="relative w-full overflow-hidden rounded-xl border border-primary/30 bg-primary/10 py-2.5 text-xs font-semibold text-primary/70 backdrop-blur-sm transition-all hover:bg-primary/15 sm:py-3 sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              Segera Hadir — Notifikasi Saya
+            </button>
           </div>
 
           {/* Contributor */}
