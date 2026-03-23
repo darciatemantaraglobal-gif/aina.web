@@ -935,7 +935,7 @@ async function ocrPdf(buffer) {
           "X-Title": "AINA PDF OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-flash-1.5",
+          model: "google/gemini-2.0-flash-001",
           messages: [{
             role: "user",
             content: [
@@ -1456,7 +1456,7 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun:
         "X-Title": "AINA Article Parser",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "google/gemini-2.0-flash-001",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 8000,
       }),
