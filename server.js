@@ -2851,6 +2851,15 @@ if (PAYMENT_ENABLED) {
     pro_annual:  { price: 249000, label: "AINA Pro — Tahunan", duration_days: 365 },
   };
 
+  /* -- Payment config (exposes client key & status safely) */
+  app.get("/api/payment/config", (_req, res) => {
+    res.json({
+      enabled: true,
+      client_key: process.env.MIDTRANS_CLIENT_KEY,
+      is_production: process.env.MIDTRANS_IS_PRODUCTION === "true",
+    });
+  });
+
   /* -- Create Snap payment token -------------------------- */
   app.post("/api/payment/create-order", writeLimiter, async (req, res) => {
     const supabase = getAdminClient();
@@ -3004,6 +3013,9 @@ if (PAYMENT_ENABLED) {
 
 } else {
   /* -- Stub routes when payment is disabled --------------- */
+  app.get("/api/payment/config", (_req, res) =>
+    res.json({ enabled: false, client_key: null, is_production: false })
+  );
   app.post("/api/payment/create-order", (_req, res) =>
     res.status(503).json({ error: "Fitur pembayaran belum aktif. Segera hadir!" })
   );
