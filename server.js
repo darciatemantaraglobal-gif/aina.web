@@ -8,6 +8,34 @@ import multer from "multer";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Polyfill DOMMatrix for Node.js — required by pdfjs-dist (used inside pdf-parse v2).
+// pdfjs-dist uses DOMMatrix for coordinate transforms during text extraction.
+// We only need a stub that returns identity-like values and never throws.
+if (typeof globalThis.DOMMatrix === "undefined") {
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor() {
+      this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+      this.m11 = 1; this.m12 = 0; this.m13 = 0; this.m14 = 0;
+      this.m21 = 0; this.m22 = 1; this.m23 = 0; this.m24 = 0;
+      this.m31 = 0; this.m32 = 0; this.m33 = 1; this.m34 = 0;
+      this.m41 = 0; this.m42 = 0; this.m43 = 0; this.m44 = 1;
+      this.is2D = true; this.isIdentity = true;
+    }
+    static fromMatrix() { return new DOMMatrix(); }
+    static fromFloat32Array() { return new DOMMatrix(); }
+    static fromFloat64Array() { return new DOMMatrix(); }
+    multiply() { return new DOMMatrix(); }
+    translate() { return new DOMMatrix(); }
+    scale() { return new DOMMatrix(); }
+    rotate() { return new DOMMatrix(); }
+    inverse() { return new DOMMatrix(); }
+    transformPoint(pt = {}) { return { x: pt.x || 0, y: pt.y || 0, z: 0, w: 1 }; }
+    toFloat32Array() { return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]); }
+    toFloat64Array() { return new Float64Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]); }
+    toString() { return "matrix(1, 0, 0, 1, 0, 0)"; }
+  };
+}
+
 /* ── Security headers ────────────────────────────────── */
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
