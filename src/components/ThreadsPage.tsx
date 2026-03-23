@@ -4,11 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   MessageSquare, Plus, Search, Send, Trash2, RefreshCw,
-  BookMarked, ArrowLeft, CheckCircle, Clock, MessageCircle, ThumbsUp,
+  BookMarked, CheckCircle, Clock, MessageCircle, ThumbsUp, X,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -79,34 +78,26 @@ async function threadsFetch(path: string, options: RequestInit = {}) {
   return res.json();
 }
 
-function Initials({ name }: { name: string | null }) {
-  const letters = (name ?? "?").split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase();
-  return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-purple text-xs font-bold text-white">
-      {letters}
-    </div>
-  );
-}
-
-function AvatarDisplay({ name, avatarUrl }: { name: string | null; avatarUrl: string | null }) {
+function AvatarDisplay({ name, avatarUrl, size = "md" }: { name: string | null; avatarUrl: string | null; size?: "sm" | "md" }) {
   const [imgError, setImgError] = useState(false);
   const letters = (name ?? "?").split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase();
+  const cls = size === "sm" ? "h-7 w-7 text-[10px]" : "h-8 w-8 text-xs";
   if (avatarUrl && !imgError) {
     return (
       <img src={avatarUrl} alt={name ?? "avatar"}
-        className="h-8 w-8 shrink-0 rounded-xl object-cover"
+        className={`${cls} shrink-0 rounded-xl object-cover`}
         onError={() => setImgError(true)} />
     );
   }
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-purple text-xs font-bold text-white">
+    <div className={`flex ${cls} shrink-0 items-center justify-center rounded-xl bg-gradient-purple font-bold text-white`}>
       {letters}
     </div>
   );
 }
 
-/* ─── Create Thread Dialog ───────────────────────────── */
-function CreateThreadDialog({ open, onClose, onCreated }: {
+/* ─── Create Thread Sheet ────────────────────────────── */
+function CreateThreadSheet({ open, onClose, onCreated }: {
   open: boolean;
   onClose: () => void;
   onCreated: (thread: Thread) => void;
@@ -141,27 +132,40 @@ function CreateThreadDialog({ open, onClose, onCreated }: {
     }
   };
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="bg-card border-border max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="font-display">Buat Thread Baru</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative z-10 w-full max-w-lg rounded-t-3xl sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+        {/* Handle bar on mobile */}
+        <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-border sm:hidden" />
+
+        <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3 sm:pt-5">
+          <h2 className="font-display text-base font-bold text-foreground">Buat Thread Baru</h2>
+          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 pb-5 sm:pb-6">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Judul</label>
             <Input
               placeholder="Tulis judul threadmu..."
               value={title}
               onChange={e => setTitle(e.target.value)}
-              className="bg-secondary"
+              className="bg-card"
               maxLength={200}
             />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Kategori</label>
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="bg-secondary">
+              <SelectTrigger className="bg-card">
                 <SelectValue placeholder="Pilih kategori" />
               </SelectTrigger>
               <SelectContent>
@@ -175,7 +179,7 @@ function CreateThreadDialog({ open, onClose, onCreated }: {
               placeholder="Bagikan informasi, pengalaman, atau pertanyaanmu..."
               value={content}
               onChange={e => setContent(e.target.value)}
-              className="min-h-[140px] bg-secondary resize-none"
+              className="min-h-[120px] bg-card resize-none"
             />
           </div>
           <div className="flex gap-2 pt-1">
@@ -191,13 +195,13 @@ function CreateThreadDialog({ open, onClose, onCreated }: {
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
 
-/* ─── Thread Detail Dialog ───────────────────────────── */
-function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDeleted, onPromoted, onVoteChange }: {
+/* ─── Thread Detail Sheet ────────────────────────────── */
+function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDeleted, onPromoted, onVoteChange }: {
   threadId: string;
   currentUserId: string | undefined;
   isAdmin: boolean;
@@ -215,6 +219,7 @@ function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDelet
   const [localVoted, setLocalVoted] = useState(false);
   const [localVoteCount, setLocalVoteCount] = useState(0);
   const repliesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -310,7 +315,7 @@ function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDelet
     setPromoting(true);
     try {
       await threadsFetch(`/api/admin/threads/${threadId}/promote`, { method: "POST" });
-      toast.success("Thread berhasil dipromosikan ke Knowledge Base! Admin perlu menyetujuinya di tab Knowledge Base.");
+      toast.success("Thread berhasil dipromosikan ke Knowledge Base!");
       onPromoted(threadId);
       setThread(prev => prev ? { ...prev, promoted_to_kb: true } : prev);
     } catch (e: any) {
@@ -323,105 +328,124 @@ function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDelet
   const canDeleteThread = thread && (thread.user_id === currentUserId || isAdmin);
 
   return (
-    <Dialog open onOpenChange={v => !v && onClose()}>
-      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col gap-0 p-0 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+      <div className="relative z-10 flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        style={{ maxHeight: "92dvh" }}>
+
+        {/* Handle bar on mobile */}
+        <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-border sm:hidden" />
+
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
+          <div className="flex h-56 items-center justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
           </div>
         ) : thread ? (
           <>
             {/* Header */}
-            <div className="shrink-0 border-b border-border p-5">
-              <DialogHeader>
-                <DialogTitle className="sr-only">Thread Detail</DialogTitle>
-              </DialogHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[thread.category] ?? "bg-secondary text-muted-foreground"}`}>
-                      {thread.category}
+            <div className="shrink-0 border-b border-border px-4 pt-3 pb-4 sm:px-5 sm:pt-5">
+              {/* Top row: category badges + close btn */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[thread.category] ?? "bg-secondary text-muted-foreground"}`}>
+                    {thread.category}
+                  </span>
+                  {thread.promoted_to_kb && (
+                    <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-400">
+                      <CheckCircle className="h-3 w-3" />
+                      <span className="hidden sm:inline">Dipromosikan ke KB</span>
+                      <span className="sm:hidden">KB</span>
                     </span>
-                    {thread.promoted_to_kb && (
-                      <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-400">
-                        <CheckCircle className="h-3 w-3" /> Dipromosikan ke KB
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="font-display text-base font-bold text-foreground">{thread.title}</h2>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                    <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} />
-                    <span className="font-medium text-foreground/80">{thread.author_name ?? "Pengguna"}</span>
-                    <span>·</span>
-                    <span>{fmtDate(thread.created_at)}</span>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {/* Upvote button */}
-                  <button
-                    onClick={handleVote}
-                    disabled={voting}
-                    className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-                      localVoted
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:text-primary"
-                    }`}
-                    title={localVoted ? "Batalkan upvote" : "Upvote thread ini"}
-                  >
-                    <ThumbsUp className={`h-3.5 w-3.5 ${localVoted ? "fill-primary" : ""}`} />
-                    <span>{localVoteCount}</span>
-                  </button>
-
-                  {isAdmin && !thread.promoted_to_kb && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 gap-1.5 border-green-500/30 text-green-400 hover:bg-green-500/10 text-xs"
-                      onClick={handlePromote}
-                      disabled={promoting}
-                    >
-                      <BookMarked className="h-3.5 w-3.5" />
-                      {promoting ? "..." : "Promosikan ke KB"}
-                    </Button>
-                  )}
-                  {canDeleteThread && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10"
-                      onClick={handleDeleteThread}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
                   )}
                 </div>
+                <button
+                  onClick={onClose}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
+
+              {/* Title */}
+              <h2 className="font-display text-base font-bold leading-snug text-foreground">{thread.title}</h2>
+
+              {/* Author row */}
+              <div className="mt-1.5 flex items-center gap-2">
+                <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} size="sm" />
+                <span className="text-xs font-medium text-foreground/80">{thread.author_name ?? "Pengguna"}</span>
+                <span className="text-xs text-muted-foreground/60">·</span>
+                <span className="text-xs text-muted-foreground">{fmtDate(thread.created_at)}</span>
+              </div>
+
+              {/* Content */}
               <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
                 {thread.content}
               </p>
+
+              {/* Action row */}
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={handleVote}
+                  disabled={voting}
+                  className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                    localVoted
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border bg-secondary text-muted-foreground hover:border-primary/30 hover:text-primary"
+                  }`}
+                >
+                  <ThumbsUp className={`h-3.5 w-3.5 ${localVoted ? "fill-primary" : ""}`} />
+                  <span>{localVoteCount}</span>
+                </button>
+
+                {isAdmin && !thread.promoted_to_kb && (
+                  <button
+                    onClick={handlePromote}
+                    disabled={promoting}
+                    className="flex items-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/5 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-50"
+                  >
+                    <BookMarked className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{promoting ? "Memproses..." : "Promosikan ke KB"}</span>
+                    <span className="sm:hidden">{promoting ? "..." : "Ke KB"}</span>
+                  </button>
+                )}
+
+                {canDeleteThread && (
+                  <button
+                    onClick={handleDeleteThread}
+                    className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Hapus</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Replies */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 space-y-4">
               {thread.replies.length === 0 ? (
-                <div className="flex flex-col items-center py-8 text-center">
+                <div className="flex flex-col items-center py-10 text-center">
                   <MessageCircle className="mb-2 h-8 w-8 text-muted-foreground/30" />
                   <p className="text-sm text-muted-foreground">Belum ada balasan. Jadilah yang pertama!</p>
                 </div>
               ) : (
                 thread.replies.map(reply => (
-                  <div key={reply.id} className="flex gap-3">
-                    <AvatarDisplay name={reply.author_name} avatarUrl={reply.author_avatar} />
+                  <div key={reply.id} className="flex gap-3 group">
+                    <AvatarDisplay name={reply.author_name} avatarUrl={reply.author_avatar} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
                           <span className="text-xs font-semibold text-foreground">{reply.author_name ?? "Pengguna"}</span>
-                          <span className="text-xs text-muted-foreground/60">{fmtTime(reply.created_at)}</span>
+                          <span className="ml-2 text-xs text-muted-foreground/60">{fmtTime(reply.created_at)}</span>
                         </div>
                         {(reply.user_id === currentUserId || isAdmin) && (
                           <button
                             onClick={() => handleDeleteReply(reply.id)}
-                            className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                            className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>
@@ -438,22 +462,26 @@ function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDelet
             </div>
 
             {/* Reply Input */}
-            <div className="shrink-0 border-t border-border p-4">
-              <div className="flex gap-2">
+            <div className="shrink-0 border-t border-border px-4 py-3 sm:px-5 sm:py-4">
+              <div className="flex gap-2 items-end">
                 <Textarea
+                  ref={textareaRef}
                   placeholder="Tulis balasanmu..."
                   value={replyContent}
                   onChange={e => setReplyContent(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }
+                    if (e.key === "Enter" && !e.shiftKey && window.innerWidth >= 640) {
+                      e.preventDefault();
+                      handleReply();
+                    }
                   }}
-                  className="min-h-[60px] max-h-[120px] resize-none bg-secondary text-sm"
+                  className="min-h-[52px] max-h-[120px] resize-none bg-card text-sm"
                   rows={2}
                 />
                 <Button
                   onClick={handleReply}
                   disabled={sending || !replyContent.trim()}
-                  className="h-auto self-end bg-gradient-purple px-3 text-primary-foreground hover:opacity-90"
+                  className="h-[52px] w-11 shrink-0 bg-gradient-purple px-0 text-primary-foreground hover:opacity-90"
                 >
                   {sending
                     ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -461,12 +489,12 @@ function ThreadDetailDialog({ threadId, currentUserId, isAdmin, onClose, onDelet
                   }
                 </Button>
               </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">Enter untuk kirim · Shift+Enter untuk baris baru</p>
+              <p className="mt-1.5 hidden sm:block text-xs text-muted-foreground">Enter untuk kirim · Shift+Enter untuk baris baru</p>
             </div>
           </>
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }
 
@@ -524,7 +552,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
     setThreads(prev => prev.map(t => t.id === id ? { ...t, user_voted: voted, vote_count: voteCount } : t));
   }, []);
 
-  const handleVote = async (e: { stopPropagation(): void }, threadId: string) => {
+  const handleVote = async (e: React.MouseEvent, threadId: string) => {
     e.stopPropagation();
     if (votingId) return;
     setVotingId(threadId);
@@ -550,11 +578,11 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b border-border px-4 py-4 md:px-6">
+      <div className="shrink-0 border-b border-border px-4 py-3 md:px-6 md:py-4">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-display text-lg font-bold text-foreground">Threads</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
+          <div className="min-w-0">
+            <h2 className="font-display text-base font-bold text-foreground sm:text-lg">Threads</h2>
+            <p className="hidden sm:block text-xs text-muted-foreground mt-0.5">
               Sharing informasi, pengalaman, dan tips seputar kehidupan di Mesir
             </p>
           </div>
@@ -563,13 +591,15 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
             size="sm"
             className="shrink-0 gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90"
           >
-            <Plus className="h-4 w-4" /> Buat Thread
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Buat Thread</span>
+            <span className="sm:hidden">Buat</span>
           </Button>
         </div>
 
         {/* Search */}
         <div className="mt-3 relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -579,10 +609,10 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
         </div>
 
         {/* Category filter */}
-        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
           <button
             onClick={() => setCategoryFilter("all")}
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
               categoryFilter === "all"
                 ? "bg-primary text-primary-foreground"
                 : "bg-card border border-border text-muted-foreground hover:text-foreground"
@@ -594,7 +624,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
             <button
               key={c}
               onClick={() => setCategoryFilter(c)}
-              className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 categoryFilter === c
                   ? "bg-primary text-primary-foreground"
                   : "bg-card border border-border text-muted-foreground hover:text-foreground"
@@ -607,7 +637,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
       </div>
 
       {/* Thread List */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="flex-1 overflow-y-auto p-3 md:p-6">
         {loading ? (
           <div className="space-y-2">
             {[...Array(5)].map((_, i) => (
@@ -644,19 +674,21 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
             </div>
+
             {filtered.map((thread, idx) => (
               <div
                 key={thread.id}
                 onClick={() => setSelectedThreadId(thread.id)}
                 style={{ animationDelay: `${idx * 40}ms`, animationFillMode: "both" }}
-                className="flex w-full items-start gap-4 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer animate-in fade-in slide-in-from-bottom-3 duration-300"
+                className="flex w-full gap-3 rounded-2xl border border-border bg-card p-3.5 text-left transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer animate-in fade-in slide-in-from-bottom-3 duration-300 md:p-4"
               >
-                {/* Left: avatar */}
+                {/* Avatar */}
                 <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} />
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                  {/* Category + KB badge */}
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${CATEGORY_COLORS[thread.category] ?? "bg-secondary text-muted-foreground"}`}>
                       {thread.category}
                     </span>
@@ -666,27 +698,32 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
                       </span>
                     )}
                   </div>
-                  <p className="font-semibold text-sm text-foreground line-clamp-1">{thread.title}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{thread.content}</p>
-                  <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground/70">{thread.author_name ?? "Pengguna"}</span>
-                    <span className="flex items-center gap-1">
-                      <MessageCircle className="h-3 w-3" />
+
+                  {/* Title */}
+                  <p className="font-semibold text-sm text-foreground line-clamp-1 leading-snug">{thread.title}</p>
+
+                  {/* Preview */}
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-relaxed">{thread.content}</p>
+
+                  {/* Meta row */}
+                  <div className="mt-2 flex items-center gap-0 flex-wrap">
+                    <span className="mr-2 text-xs font-medium text-foreground/60 truncate max-w-[100px]">{thread.author_name ?? "Pengguna"}</span>
+                    <span className="mr-3 flex items-center gap-1 text-xs text-muted-foreground">
+                      <MessageCircle className="h-3 w-3 shrink-0" />
                       {thread.reply_count}
                     </span>
                     <button
                       onClick={e => handleVote(e, thread.id)}
                       disabled={votingId === thread.id}
-                      className={`flex items-center gap-1 transition-colors disabled:opacity-50 ${
-                        thread.user_voted ? "text-primary" : "hover:text-primary"
+                      className={`mr-3 flex items-center gap-1 text-xs transition-colors disabled:opacity-50 ${
+                        thread.user_voted ? "text-primary" : "text-muted-foreground hover:text-primary"
                       }`}
-                      title={thread.user_voted ? "Batalkan upvote" : "Upvote thread ini"}
                     >
-                      <ThumbsUp className={`h-3 w-3 ${thread.user_voted ? "fill-primary" : ""}`} />
+                      <ThumbsUp className={`h-3 w-3 shrink-0 ${thread.user_voted ? "fill-primary" : ""}`} />
                       {thread.vote_count ?? 0}
                     </button>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground/60">
+                      <Clock className="h-3 w-3 shrink-0" />
                       {fmtDate(thread.updated_at)}
                     </span>
                   </div>
@@ -697,15 +734,16 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
         )}
       </div>
 
-      {/* Dialogs */}
-      <CreateThreadDialog
+      {/* Create Sheet */}
+      <CreateThreadSheet
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={handleCreated}
       />
 
+      {/* Detail Sheet */}
       {selectedThreadId && (
-        <ThreadDetailDialog
+        <ThreadDetailSheet
           threadId={selectedThreadId}
           currentUserId={userId}
           isAdmin={isAdmin}
