@@ -308,7 +308,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         body: formData,
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({ error: `Server error ${res.status}: ${res.statusText}` }));
       if (!res.ok) throw new Error(json.error || "Gagal mengekstrak file");
 
       setArtContent(json.text);

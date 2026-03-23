@@ -892,7 +892,7 @@ app.post("/api/upload-avatar", uploadLimiter, async (req, res) => {
 /* ── File text extraction ────────────────────────────── */
 const fileUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB max (Vercel serverless cap is 4.5 MB)
   fileFilter: (_req, file, cb) => {
     const allowed = ["application/pdf", "text/plain", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if (allowed.includes(file.mimetype)) cb(null, true);
@@ -900,7 +900,14 @@ const fileUpload = multer({
   },
 });
 
-app.post("/api/extract-file", uploadLimiter, fileUpload.single("file"), async (req, res) => {
+app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
+  fileUpload.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE")
+      return res.status(413).json({ error: "File terlalu besar. Maksimal 4 MB." });
+    return res.status(400).json({ error: err.message || "Gagal mengupload file" });
+  });
+}, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
 
