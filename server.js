@@ -1395,7 +1395,82 @@ async function verifyAuth(authHeader) {
   return user;
 }
 
-/* ── Contributor: Submit Article ─────────────────────────── */
+/* ── Contributor: Articles ───────────────────────────── */
+app.post("/api/parse-articles", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
+  if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa menggunakan fitur ini" });
+
+  const { text, filename } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: "Teks diperlukan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
+
+  const truncated = text.slice(0, 12000);
+  const fileNote = filename ? ` dari file "${filename}"` : "";
+
+  const prompt = `Kamu adalah asisten yang membantu mengorganisasi informasi tentang kehidupan mahasiswa Indonesia di Mesir (Masisir).
+
+Diberikan teks berikut${fileNote}:
+
+<TEKS>
+${truncated}
+</TEKS>
+
+Tugasmu: Identifikasi dan ekstrak SEMUA topik informasi yang berbeda dalam teks, pisahkan menjadi artikel terstruktur yang siap dikirim ke knowledge base.
+
+Aturan:
+- Setiap artikel harus fokus pada SATU topik saja
+- Tulis ulang konten agar jelas, rapi, dan informatif (minimal 80 kata per artikel)
+- Gunakan bahasa Indonesia yang natural
+- Jika ada langkah-langkah/prosedur, gunakan article_type "step_by_step", lainnya "narrative"
+
+Kategori yang tersedia (pilih yang paling sesuai):
+- "Administrasi" — iqomah, visa, paspor, KTP, surat-surat resmi
+- "Akademik" — perkuliahan Al-Azhar, pendaftaran, ujian, beasiswa
+- "Kehidupan Mesir" — tips sehari-hari, keamanan, budaya, bahasa
+- "Transport" — metro, taksi, microbus, uber, rute
+- "Tempat Tinggal" — sewa flat, lokasi, harga, kontrak
+- "Kuliner" — restoran halal, masakan, harga makanan, dapur
+
+Kembalikan HANYA JSON berikut tanpa penjelasan apapun:
+{"articles":[{"title":"...","category":"...","article_type":"narrative|step_by_step","content":"..."}]}`;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Article Parser",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4000,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(raw);
+    const articles = (parsed.articles || []).filter(
+      (a) => a.title && a.category && a.content
+    );
+    return res.json({ articles });
+  } catch (e) {
+    console.error("[parse-articles] error:", e.message);
+    return res.status(500).json({ error: "Gagal mengurai dokumen: " + e.message });
+  }
+});
+
 app.post("/api/articles", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Login diperlukan" });

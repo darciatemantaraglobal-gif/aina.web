@@ -164,6 +164,10 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  type ParsedArticle = { title: string; category: string; article_type: string; content: string };
+  const [parsedArticles, setParsedArticles] = useState<ParsedArticle[]>([]);
+  const [isParsing, setIsParsing] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -364,6 +368,46 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
     }
   };
 
+  const handleParseArticles = async () => {
+    if (!artContent.trim()) return;
+    setIsParsing(true);
+    setDialogOpen(false);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/parse-articles", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ text: artContent, filename: uploadedFilename }),
+      });
+      const json = await res.json().catch(() => ({ error: "Gagal memparse respons" }));
+      if (!res.ok) throw new Error(json.error || "Gagal mengurai dokumen");
+      const arts: ParsedArticle[] = json.articles || [];
+      if (arts.length === 0) throw new Error("AI tidak menemukan topik yang bisa dipisah dari teks ini");
+      setParsedArticles(arts);
+      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setUploadedFilename(null);
+      toast.success(`${arts.length} topik berhasil dideteksi dari dokumen`);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengurai dokumen");
+      setDialogOpen(true);
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleEditParsed = (article: ParsedArticle) => {
+    setArtTitle(article.title);
+    setArtContent(article.content);
+    setArtCategory(article.category);
+    setArtType(article.article_type === "step_by_step" ? "step_by_step" : "narrative");
+    setDialogOpen(true);
+  };
+
+  const handleRemoveParsed = (i: number) =>
+    setParsedArticles((prev) => prev.filter((_, j) => j !== i));
+
   const statusIcon = (status: string) => {
     switch (status) {
       case "pending": return <Clock className="h-4 w-4 text-yellow-500" />;
@@ -528,6 +572,78 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
               </div>
             </div>
 
+            {/* Parsed articles from document — shown after "Urai per Kategori" */}
+            {(parsedArticles.length > 0 || isParsing) && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="font-display text-base font-semibold text-foreground">
+                      {isParsing ? "Mengurai dokumen..." : `${parsedArticles.length} Topik Terdeteksi`}
+                    </h2>
+                    {!isParsing && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Review setiap topik, edit jika perlu, lalu kirim satu per satu
+                      </p>
+                    )}
+                  </div>
+                  {!isParsing && parsedArticles.length > 0 && (
+                    <button
+                      onClick={() => setParsedArticles([])}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Hapus semua
+                    </button>
+                  )}
+                </div>
+
+                {isParsing ? (
+                  <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-secondary/50 py-10">
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <span className="text-sm text-muted-foreground">AI sedang mengurai dan mengkategorikan dokumen...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {parsedArticles.map((article, i) => (
+                      <div key={i} className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-foreground leading-tight">{article.title}</p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                                {article.category}
+                              </span>
+                              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                                {article.article_type === "step_by_step" ? "Panduan Langkah" : "Informasi Umum"}
+                              </span>
+                            </div>
+                            <p className="mt-2 line-clamp-3 text-xs text-muted-foreground leading-relaxed">
+                              {article.content}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-col gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="hero"
+                              className="h-7 px-3 text-xs"
+                              onClick={() => handleEditParsed(article)}
+                            >
+                              Edit & Kirim
+                            </Button>
+                            <button
+                              onClick={() => handleRemoveParsed(i)}
+                              className="flex h-7 items-center justify-center rounded-lg border border-border bg-secondary px-3 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg font-semibold text-foreground">Artikelku</h2>
               <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setUploadedFilename(null); }}>
@@ -629,6 +745,29 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       onChange={(e) => setArtContent(e.target.value)}
                       className="min-h-[150px] bg-secondary"
                     />
+
+                    {/* Urai per Kategori button — visible when there's substantial text */}
+                    {artContent.trim().length > 100 && (
+                      <button
+                        type="button"
+                        onClick={handleParseArticles}
+                        disabled={isParsing || submitting}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 py-2.5 text-sm font-medium text-primary transition-colors hover:border-primary/70 hover:bg-primary/10 disabled:opacity-50"
+                      >
+                        {isParsing ? (
+                          <>
+                            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                            Mengurai per kategori...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3.5 w-3.5" />
+                            Urai per Kategori dengan AI
+                          </>
+                        )}
+                      </button>
+                    )}
+
                     <Button variant="hero" onClick={submitArticle} disabled={submitting} className="w-full gap-1.5">
                       {submitting ? (
                         <>
