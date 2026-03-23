@@ -944,7 +944,7 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
       return res.status(400).json({ error: "Format file tidak dikenali" });
     }
   } catch (e) {
-    console.error("[extract-file] parse error:", e.message);
+    console.error("[extract-file] parse error:", e.message, "\n", e.stack?.split("\n").slice(0,4).join("\n"));
     return res.status(422).json({ error: `Gagal membaca file: ${e.message}` });
   }
 
