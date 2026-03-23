@@ -183,13 +183,16 @@ const HeroChat = () => {
 
       {/* Background */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
-        <div className="absolute left-1/2 top-1/3 h-[60vw] w-[60vw] max-h-[500px] max-w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[120px]" />
-        <div className="absolute right-1/4 bottom-1/4 h-[30vw] w-[30vw] max-h-[300px] max-w-[300px] rounded-full bg-accent/5 blur-[100px]" />
-        <div className="absolute -top-24 -left-24 h-[50vw] w-[50vw] max-h-[420px] max-w-[420px] rounded-full bg-[radial-gradient(ellipse,hsl(270_60%_18%/0.6),transparent_70%)] blur-[70px]" />
-        <div className="absolute -bottom-24 -right-24 h-[50vw] w-[50vw] max-h-[420px] max-w-[420px] rounded-full bg-[radial-gradient(ellipse,hsl(270_55%_15%/0.55),transparent_70%)] blur-[70px]" />
-        <div className="absolute -top-12 -right-12 h-[28vw] w-[28vw] max-h-[240px] max-w-[240px] rounded-full bg-[radial-gradient(ellipse,hsl(280_50%_20%/0.4),transparent_70%)] blur-[55px]" />
-        <div className="absolute -bottom-12 -left-12 h-[28vw] w-[28vw] max-h-[240px] max-w-[240px] rounded-full bg-[radial-gradient(ellipse,hsl(260_50%_18%/0.38),transparent_70%)] blur-[55px]" />
+        {/* Mobile wallpaper */}
+        <div
+          className="absolute inset-0 bg-cover bg-center md:hidden"
+          style={{ backgroundImage: "url('/wallpaper-mobile.png')" }}
+        />
+        {/* Desktop wallpaper */}
+        <div
+          className="absolute inset-0 hidden bg-cover bg-center md:block"
+          style={{ backgroundImage: "url('/wallpaper-desktop.png')" }}
+        />
       </div>
 
       {/* Main content — single centered column */}
