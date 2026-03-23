@@ -5,6 +5,7 @@ import ChatArea from "@/components/ChatArea";
 import FeedbackButton from "@/components/FeedbackButton";
 import WelcomeModal from "@/components/WelcomeModal";
 import BreakingUpdatesBanner from "@/components/BreakingUpdatesBanner";
+import SetupProfileModal from "@/components/SetupProfileModal";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -93,6 +94,7 @@ const Dashboard = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -113,12 +115,20 @@ const Dashboard = () => {
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        setUserId(session.user.id);
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id);
+        const uid = session.user.id;
+        setUserId(uid);
+
+        const [{ data: roles }, { data: profile }] = await Promise.all([
+          supabase.from("user_roles").select("role").eq("user_id", uid),
+          supabase.from("profiles").select("full_name").eq("user_id", uid).single(),
+        ]);
+
         setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);
+
+        if (!profile?.full_name?.trim()) {
+          setShowSetup(true);
+        }
+
         setAuthReady(true);
         initialized = true;
       } else {
@@ -346,8 +356,14 @@ const Dashboard = () => {
           </div>
         )}
       </main>
+      {showSetup && userId && (
+        <SetupProfileModal
+          userId={userId}
+          onComplete={() => setShowSetup(false)}
+        />
+      )}
       <FeedbackButton />
-      <WelcomeModal />
+      {!showSetup && <WelcomeModal />}
     </div>
   );
 };
