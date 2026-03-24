@@ -137,6 +137,30 @@ app.use((req, res, next) => {
   next();
 });
 
+/* ── Error sanitizer ─────────────────────────────────── */
+// Never expose raw DB/stack info to the client.
+// Technical error messages from Supabase/Postgres are replaced with
+// a generic Indonesian message; safe user-facing strings pass through.
+const SAFE_PREFIXES = [
+  "Terlalu banyak", "Gagal", "Tidak ada", "Tidak ditemukan",
+  "Format", "Ukuran", "Hanya", "Pesan", "Sesi",
+];
+function sanitizeErr(err) {
+  const raw = (typeof err === "string" ? err : err?.message) || "";
+  // Pass through intentional user-facing Indonesian messages
+  if (SAFE_PREFIXES.some(p => raw.startsWith(p))) return raw;
+  // Block anything that looks like a DB/internal error
+  if (
+    raw.includes("relation") || raw.includes("column") ||
+    raw.includes("syntax") || raw.includes("violates") ||
+    raw.includes("duplicate key") || raw.includes("null value") ||
+    raw.includes("permission denied") || raw.includes("invalid input") ||
+    raw.includes("supabase") || raw.includes("postgres") ||
+    raw.includes("PGRST") || raw.includes("42") || raw.length > 120
+  ) return "Terjadi kesalahan, silakan coba lagi.";
+  return raw || "Terjadi kesalahan, silakan coba lagi.";
+}
+
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -1741,7 +1765,7 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
     if (!err) return next();
     if (err.code === "LIMIT_FILE_SIZE")
       return res.status(413).json({ error: "File terlalu besar. Maksimal 4 MB." });
-    return res.status(400).json({ error: err.message || "Gagal mengupload file" });
+    return res.status(400).json({ error: sanitizeErr(err) || "Gagal mengupload file" });
   });
 }, async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -1864,7 +1888,7 @@ app.post("/api/chat/extract-pdf", uploadLimiter, (req, res, next) => {
   chatFileUpload.single("file")(req, res, (err) => {
     if (!err) return next();
     if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "File terlalu besar. Maksimal 10 MB." });
-    return res.status(400).json({ error: err.message || "Gagal mengupload file" });
+    return res.status(400).json({ error: sanitizeErr(err) || "Gagal mengupload file" });
   });
 }, async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -1933,7 +1957,7 @@ app.post("/api/upload-url", async (req, res) => {
   const { data, error } = await supabase.storage.from("temp-uploads").createSignedUploadUrl(storagePath);
   if (error) {
     console.error("[upload-url] error:", error.message);
-    return res.status(500).json({ error: "Gagal membuat URL upload: " + error.message });
+    return res.status(500).json({ error: "Gagal membuat URL upload." });
   }
 
   return res.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
@@ -1957,7 +1981,7 @@ app.post("/api/chat/upload-url", uploadLimiter, async (req, res) => {
   const { data, error } = await supabase.storage.from("temp-uploads").createSignedUploadUrl(storagePath);
   if (error) {
     console.error("[chat/upload-url] error:", error.message);
-    return res.status(500).json({ error: "Gagal membuat URL upload: " + error.message });
+    return res.status(500).json({ error: "Gagal membuat URL upload." });
   }
 
   return res.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
@@ -2090,7 +2114,7 @@ app.delete("/api/notifications", async (req, res) => {
   const supabase = getAdminClient();
   if (!supabase) return res.status(500).json({ error: "Server config error" });
   const { error } = await supabase.from("notifications").delete().eq("user_id", user.id);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });
 });
 
@@ -2314,7 +2338,7 @@ app.patch("/api/admin/articles/:id/visibility", async (req, res) => {
 
   const supabase = getAdminClient();
   const { error } = await supabase.from("knowledge_base").update({ hidden }).eq("id", id);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   return res.json({ success: true, hidden });
 });
@@ -2502,7 +2526,7 @@ app.post("/api/admin/articles", async (req, res) => {
     status: "approved",
   });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });
 });
 
@@ -2542,7 +2566,7 @@ app.post("/api/admin/articles/bulk-delete", async (req, res) => {
   }
 
   const { error, count } = await supabase.from("knowledge_base").delete({ count: "exact" }).in("id", allowedIds);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   res.json({ deleted: count ?? allowedIds.length });
 });
@@ -2555,7 +2579,7 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   const supabase = getAdminClient();
   const { title, content, category } = req.body;
   const { error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });
 });
 
@@ -2614,14 +2638,14 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan).
       }),
     });
     const data = await resp.json();
-    if (data.error) return res.status(500).json({ error: data.error.message || "AI error" });
+    if (data.error) return res.status(500).json({ error: sanitizeErr(data.error) || "AI error" });
 
     const newContent = data.choices?.[0]?.message?.content?.trim();
     if (!newContent || newContent.length < 50) return res.status(500).json({ error: "Hasil reformat kosong" });
 
     const { error } = await supabase
       .from("knowledge_base").update({ content: newContent }).eq("id", art.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
     console.log(`[REFORMAT-ONE] master=${admin.id} article=${art.id}`);
     res.json({ success: true });
@@ -2727,7 +2751,7 @@ app.get("/api/admin/waitlist", async (req, res) => {
     .ilike("message", "[WAITLIST PRO]%")
     .order("created_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   const entries = (data ?? []).map(row => ({
     id: row.id,
@@ -2758,7 +2782,7 @@ app.post("/api/admin/users/:userId/grant-pro", async (req, res) => {
     activated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   await supabase.from("notifications").insert({
     user_id: userId,
@@ -2778,7 +2802,7 @@ app.delete("/api/admin/users/:userId/grant-pro", async (req, res) => {
   const { userId } = req.params;
   const supabase = getAdminClient();
   const { error } = await supabase.from("subscriptions").delete().eq("user_id", userId);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   await supabase.from("notifications").insert({
     user_id: userId,
@@ -2967,7 +2991,7 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan
     // Detect API-level errors from OpenRouter
     if (data.error) {
       console.error("[parse-articles] OpenRouter error:", JSON.stringify(data.error));
-      return res.status(502).json({ error: "Layanan AI error: " + (data.error.message || JSON.stringify(data.error)) });
+      return res.status(502).json({ error: "Layanan AI mengalami masalah, silakan coba lagi." });
     }
 
     const raw = data.choices?.[0]?.message?.content || "";
@@ -3034,7 +3058,7 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
       if (e2) return res.status(500).json({ error: e2.message });
       return res.json(d2);
     }
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: sanitizeErr(error) });
   }
   res.json(data);
 });
@@ -3057,7 +3081,7 @@ app.get("/api/threads", async (req, res) => {
   if (category) query = query.eq("category", category);
 
   const { data: threads, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   if (!threads || threads.length === 0) return res.json([]);
 
   const authorIds = [...new Set(threads.map(t => t.user_id))];
@@ -3100,7 +3124,7 @@ app.post("/api/threads", writeLimiter, async (req, res) => {
   const { data, error } = await supabase.from("threads")
     .insert({ user_id: user.id, title: title.trim(), content: content.trim(), category })
     .select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data);
 });
 
@@ -3154,7 +3178,7 @@ app.post("/api/threads/:id/replies", writeLimiter, async (req, res) => {
   const { data, error } = await supabase.from("thread_replies")
     .insert({ thread_id: id, user_id: user.id, content: content.trim() })
     .select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data);
 });
 
@@ -3453,7 +3477,7 @@ app.get("/api/admin/feedback", async (req, res) => {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data ?? []);
 });
 
@@ -3520,7 +3544,7 @@ app.get("/api/my-badges", async (req, res) => {
   // If table doesn't exist yet, return empty (non-fatal)
   if (error) {
     if (error.code === "42P01") return res.json([]); // table not found
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: sanitizeErr(error) });
   }
 
   const enriched = (badges ?? []).map(b => ({
@@ -3548,7 +3572,7 @@ app.post("/api/admin/badges/award", async (req, res) => {
     .upsert({ user_id: userId, badge_type: badgeType, awarded_by: admin.id },
       { onConflict: "user_id,badge_type", ignoreDuplicates: true });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   console.log(`[BADGES] Admin ${admin.email} awarded "${badgeType}" to user ${userId}`);
   res.json({ success: true });
 });
@@ -3570,7 +3594,7 @@ app.delete("/api/admin/badges/revoke", async (req, res) => {
     .eq("user_id", userId)
     .eq("badge_type", badgeType);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   console.log(`[BADGES] Admin ${admin.email} revoked "${badgeType}" from user ${userId}`);
   res.json({ success: true });
 });
@@ -3588,7 +3612,7 @@ app.get("/api/admin/badges/all", async (req, res) => {
     .select("*, profiles(full_name, email)")
     .order("awarded_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data ?? []);
 });
 
@@ -3608,7 +3632,7 @@ app.get("/api/admin/chats", async (req, res) => {
     .order("updated_at", { ascending: false })
     .range(safeOffset, safeOffset + safeLimit - 1);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   if (!chats || chats.length === 0) return res.json([]);
 
   const userIds = [...new Set(chats.map(c => c.user_id))];
@@ -3657,7 +3681,7 @@ app.get("/api/admin/chats/:chatId/messages", async (req, res) => {
     .eq("chat_id", req.params.chatId)
     .order("created_at", { ascending: true });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data ?? []);
 });
 
@@ -3704,7 +3728,7 @@ app.delete("/api/admin/users/:userId", async (req, res) => {
 
   // Delete from auth (cascades to profiles, roles, etc via DB triggers)
   const { error } = await supabase.auth.admin.deleteUser(userId);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   console.log(`[ADMIN] User ${userId} deleted by admin ${admin.email}`);
   res.json({ success: true });
@@ -3720,7 +3744,7 @@ app.post("/api/admin/users/:userId/ban", async (req, res) => {
 
   const supabase = getAdminClient();
   const { error } = await supabase.from("profiles").update({ is_banned: true }).eq("user_id", userId);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   console.log(`[ADMIN] User ${userId} BANNED by ${admin.email}`);
   res.json({ success: true });
@@ -3733,7 +3757,7 @@ app.post("/api/admin/users/:userId/unban", async (req, res) => {
   const { userId } = req.params;
   const supabase = getAdminClient();
   const { error } = await supabase.from("profiles").update({ is_banned: false }).eq("user_id", userId);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
   console.log(`[ADMIN] User ${userId} UNBANNED by ${admin.email}`);
   res.json({ success: true });
@@ -4441,7 +4465,7 @@ app.get("/api/admin/eval/benchmarks", strictLimiter, async (req, res) => {
   let q = supabase.from("eval_benchmarks").select("*").eq("active", true).order("category").order("created_at");
   if (category && EVAL_CATEGORIES.includes(category)) q = q.eq("category", category);
   const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ benchmarks: data ?? [], total: data?.length ?? 0 });
 });
 
@@ -4454,7 +4478,7 @@ app.post("/api/admin/eval/benchmarks", strictLimiter, async (req, res) => {
   if (!EVAL_CATEGORIES.includes(category)) return res.status(400).json({ error: `category must be one of: ${EVAL_CATEGORIES.join(", ")}` });
   const supabase = getAdminClient();
   const { data, error } = await supabase.from("eval_benchmarks").insert({ question: question.trim(), category, expected_behavior, is_edge_case, edge_note }).select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ benchmark: data });
 });
 
@@ -4466,7 +4490,7 @@ app.post("/api/admin/eval/benchmarks/seed", strictLimiter, async (req, res) => {
   const { count } = await supabase.from("eval_benchmarks").select("*", { count: "exact", head: true });
   if ((count ?? 0) > 0) return res.json({ message: `Already seeded (${count} benchmarks exist). Delete all first to re-seed.`, seeded: 0 });
   const { data, error } = await supabase.from("eval_benchmarks").insert(DEFAULT_BENCHMARKS).select();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ message: `Seeded ${data.length} benchmark questions`, seeded: data.length });
 });
 
@@ -4495,7 +4519,7 @@ app.post("/api/admin/eval/results", strictLimiter, async (req, res) => {
     score_accuracy, score_relevance, score_structure, score_human_feel, score_trustworthiness,
     total_score, notes, version_tag: version_tag.trim(), eval_mode,
   }).select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ result: data, total_score });
 });
 
@@ -4508,7 +4532,7 @@ app.get("/api/admin/eval/runs", strictLimiter, async (req, res) => {
     .from("eval_results")
     .select("run_id, version_tag, category, total_score, created_at")
     .order("created_at", { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   // Group by run_id
   const runs = {};
   for (const row of (data ?? [])) {
@@ -4535,7 +4559,7 @@ app.get("/api/admin/eval/runs/:runId", strictLimiter, async (req, res) => {
     .select("*")
     .eq("run_id", req.params.runId)
     .order("created_at");
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ results: data ?? [], count: data?.length ?? 0 });
 });
 
@@ -4550,7 +4574,7 @@ app.get("/api/admin/eval/compare", strictLimiter, async (req, res) => {
     .from("eval_results")
     .select("version_tag, category, total_score")
     .in("version_tag", [v1, v2]);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   const aggregate = (version) => {
     const rows = (data ?? []).filter(r => r.version_tag === version && r.total_score != null);
     const overall = rows.length ? parseFloat((rows.reduce((s, r) => s + Number(r.total_score), 0) / rows.length).toFixed(2)) : null;
@@ -4582,7 +4606,7 @@ app.get("/api/admin/eval/summary", strictLimiter, async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
   const supabase = getAdminClient();
   const { data, error } = await supabase.from("eval_results").select("version_tag, category, total_score, created_at").order("created_at");
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   const versions = {};
   for (const row of (data ?? [])) {
     if (!versions[row.version_tag]) versions[row.version_tag] = { version_tag: row.version_tag, count: 0, scores: [], by_category: {} };
@@ -4612,7 +4636,7 @@ app.get("/api/admin/eval/edge-cases", strictLimiter, async (req, res) => {
   let q = supabase.from("eval_edge_cases").select("*").order("created_at", { ascending: false });
   if (resolved !== undefined) q = q.eq("resolved", resolved);
   const { data, error } = await q;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ edge_cases: data ?? [], count: data?.length ?? 0 });
 });
 
@@ -4625,7 +4649,7 @@ app.post("/api/admin/eval/edge-cases", strictLimiter, async (req, res) => {
   if (!EVAL_RISK_TYPES.includes(risk_type)) return res.status(400).json({ error: `risk_type must be one of: ${EVAL_RISK_TYPES.join(", ")}` });
   const supabase = getAdminClient();
   const { data, error } = await supabase.from("eval_edge_cases").insert({ question: question.trim(), risk_type, description, example_bad_answer }).select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ edge_case: data });
 });
 
@@ -4635,7 +4659,7 @@ app.patch("/api/admin/eval/edge-cases/:id", strictLimiter, async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
   const supabase = getAdminClient();
   const { data, error } = await supabase.from("eval_edge_cases").update({ resolved: true }).eq("id", req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ edge_case: data });
 });
 
@@ -4687,7 +4711,7 @@ app.get("/api/admin/intel/query-patterns", async (req, res) => {
     .select("id, topic_cluster, sample_query, frequency, last_seen_at")
     .order("frequency", { ascending: false })
     .limit(limit);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data ?? []);
 });
 
@@ -4701,7 +4725,7 @@ app.get("/api/admin/intel/retrieval-stats", async (req, res) => {
     .select("intent, kb_strength, had_kb, had_pinned, had_wiki, had_ddg, confidence_level, external_tier, created_at")
     .order("created_at", { ascending: false })
     .limit(500);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   // Aggregate: count combinations
   const agg = {};
   for (const row of data ?? []) {
@@ -4726,7 +4750,7 @@ app.get("/api/admin/intel/ratings", async (req, res) => {
     .select("rating, intent, confidence, created_at")
     .order("created_at", { ascending: false })
     .limit(1000);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   const agg = {};
   for (const row of data ?? []) {
     const key = `${row.intent ?? "unknown"}__${row.confidence ?? "unknown"}`;
@@ -4748,7 +4772,7 @@ app.get("/api/admin/intel/edge-cases", async (req, res) => {
     .select("id, pattern_type, topic_hint, frequency, last_seen_at, created_at")
     .order("frequency", { ascending: false })
     .limit(100);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data ?? []);
 });
 
@@ -4855,6 +4879,15 @@ async function runColumnMigrations() {
     }
   }
 }
+
+/* ── Global error handler (must be last middleware) ─── */
+// Catches any unhandled errors — never exposes stack traces or tech info.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error("[UNHANDLED]", req.method, req.path, err?.message || err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: "Terjadi kesalahan, silakan coba lagi." });
+});
 
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
