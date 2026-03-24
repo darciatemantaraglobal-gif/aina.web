@@ -588,7 +588,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1">
-                    <div className="text-base text-foreground leading-relaxed">
+                    <div className="rounded-2xl bg-secondary px-5 py-4 text-sm text-secondary-foreground">
                       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                         {cleanMarkdown(msg.content)}
                       </ReactMarkdown>
@@ -650,7 +650,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             {streamingMsg && (
               <div className="flex gap-3 min-w-0 justify-start">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
-                <div className="min-w-0 flex-1 text-base text-foreground leading-relaxed">
+                <div className="min-w-0 flex-1 rounded-2xl bg-secondary px-5 py-4 text-sm text-secondary-foreground">
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                     {streamingMsg.displayed}
                   </ReactMarkdown>
