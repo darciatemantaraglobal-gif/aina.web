@@ -48,51 +48,51 @@ const TIMELINE = [
   },
 ];
 
-type Member = { name: string; role: string; initial: string };
+type Member = { name: string; role: string; initial: string; photo?: string };
 type TeamGroup = { label: string; members: Member[] };
 
 const TEAM_GROUPS: TeamGroup[] = [
   {
     label: "Founder",
     members: [
-      { name: "Daru Fahmaa Muliawan, Lc.", role: "Founder AIGYPT & AINA", initial: "D" },
+      { name: "Daru Fahmaa Muliawan, Lc.", role: "Founder AIGYPT & AINA", initial: "D", photo: "/team/daru.jpg" },
     ],
   },
   {
     label: "Head of AINA Mesir",
     members: [
-      { name: "Fairuz Azri Afif Arsyadi", role: "Head of AINA Mesir", initial: "F" },
-      { name: "Teuku Muhammad Maliki Ishak", role: "Head of AINA Mesir", initial: "M" },
+      { name: "Fairuz Azri Afif Arsyadi", role: "Head of AINA Mesir", initial: "F", photo: "/team/fairuz.jpg" },
+      { name: "Teuku Muhammad Maliki Ishak", role: "Head of AINA Mesir", initial: "M", photo: "/team/maliki.jpg" },
     ],
   },
   {
     label: "Operations & Admin",
     members: [
-      { name: "Mohamad Virli Okto", role: "Operations & Admin Lead", initial: "V" },
-      { name: "Moch Azriel Putra Novendra", role: "Operations & Admin Lead", initial: "A" },
+      { name: "Mohamad Virli Okto", role: "Operations & Admin Lead", initial: "V", photo: "/team/okto.jpg" },
+      { name: "Moch Azriel Putra Novendra", role: "Operations & Admin Lead", initial: "A", photo: "/team/azriel.jpg" },
     ],
   },
   {
     label: "Community & Partnership",
     members: [
-      { name: "Adyatma Zaki Rabbani", role: "Community & Growth Lead", initial: "Z" },
-      { name: "Muhammad Ariiq Ash Shidiq", role: "External & Partnership Lead", initial: "Ar" },
-      { name: "Rifki Haikal", role: "External & Partnership Lead", initial: "R" },
+      { name: "Adyatma Zaki Rabbani", role: "Community & Growth Lead", initial: "Z", photo: "/team/zaki.jpg" },
+      { name: "Muhammad Ariiq Ash Shidiq", role: "External & Partnership Lead", initial: "Ar", photo: "/team/ariqq.jpg" },
+      { name: "Rifki Haikal", role: "External & Partnership Lead", initial: "R", photo: "/team/rifki.jpg" },
     ],
   },
   {
     label: "Developer",
     members: [
       { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I" },
-      { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N" },
+      { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N", photo: "/team/naadir.jpg" },
     ],
   },
   {
     label: "Creative & Media",
     members: [
-      { name: "Sulthan Nadzir", role: "Creative & Media Lead", initial: "S" },
-      { name: "Navis Athiyatul Hafidz", role: "Creative & Media", initial: "Na" },
-      { name: "Hafidz Majduddin", role: "Creative & Media", initial: "H" },
+      { name: "Sulthan Nadzir", role: "Creative & Media Lead", initial: "S", photo: "/team/sulthan.jpg" },
+      { name: "Navis Athiyatul Hafidz", role: "Creative & Media", initial: "Na", photo: "/team/navis.jpg" },
+      { name: "Hafidz Majduddin", role: "Creative & Media", initial: "H", photo: "/team/hafidz.jpg" },
     ],
   },
 ];
@@ -345,16 +345,26 @@ const AboutPage = () => {
 
                   {/* Members */}
                   <div className={colClass}>
-                    {members.map(({ name, role, initial }) => (
+                    {members.map(({ name, role, initial, photo }) => (
                       <div
                         key={name}
-                        className="group flex flex-col items-center rounded-xl border border-border/40 bg-card/30 p-3 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1 md:rounded-2xl md:p-6"
+                        className="group flex flex-col items-center rounded-xl border border-border/40 bg-card/30 p-3 text-center backdrop-blur-xl transition-all hover:border-primary/30 hover:bg-primary/5 hover:-translate-y-1 md:rounded-2xl md:p-5"
                       >
-                        <div className="relative mb-3 md:mb-5">
+                        <div className="relative mb-3 md:mb-4">
                           <div className="absolute inset-0 scale-110 rounded-xl bg-gradient-purple opacity-0 blur-md transition-opacity group-hover:opacity-40 md:rounded-2xl" />
-                          <div className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10 md:h-16 md:w-16 md:rounded-2xl">
-                            <span className="font-display text-lg font-bold text-primary/50 md:text-xl">{initial}</span>
-                          </div>
+                          {photo ? (
+                            <div className="relative h-20 w-20 overflow-hidden rounded-xl border border-primary/15 md:h-24 md:w-24 md:rounded-2xl">
+                              <img
+                                src={photo}
+                                alt={name}
+                                className="h-full w-full object-cover object-top"
+                              />
+                            </div>
+                          ) : (
+                            <div className="relative flex h-20 w-20 items-center justify-center rounded-xl border border-primary/15 bg-gradient-to-br from-primary/20 via-primary/10 to-purple-glow/10 md:h-24 md:w-24 md:rounded-2xl">
+                              <span className="font-display text-2xl font-bold text-primary/50 md:text-3xl">{initial}</span>
+                            </div>
+                          )}
                         </div>
                         <p className="font-display text-[11px] font-bold leading-tight text-foreground md:text-sm">{name}</p>
                         <p className="mt-0.5 text-[10px] text-muted-foreground md:mt-1 md:text-xs">{role}</p>
