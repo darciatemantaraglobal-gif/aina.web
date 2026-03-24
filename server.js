@@ -513,20 +513,70 @@ async function fetchDuckDuckGoAnswer(query) {
 }
 
 /* ── Fetch user memories ─────────────────────────────── */
-async function fetchUserMemories(userId) {
+async function fetchUserMemories(userId, query = "", intentPrimary = "factual") {
   const supabase = getAdminClient();
   if (!supabase) return [];
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("user_memories")
-      .select("id, memory")
+      .select("id, memory, memory_type, is_long_term, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-      .limit(20);
-    if (error && (error.code === "42P01" || error.message?.includes("does not exist"))) {
-      return []; // Table not yet created — degrade gracefully
+      .limit(30);
+    // Fallback: if new columns not yet migrated, fetch basic columns only
+    if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("memory_type"))) {
+      const fallback = await supabase
+        .from("user_memories")
+        .select("id, memory, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      return (fallback.data ?? []).map(m => ({ ...m, memory_type: "context_memory", is_long_term: false }));
     }
-    return data ?? [];
+    if (error && (error.code === "42P01" || error.message?.includes("does not exist"))) {
+      return [];
+    }
+    const rows = data ?? [];
+    if (rows.length === 0) return [];
+
+    // Expiry filter — rule-based, no LLM
+    const now = Date.now();
+    const EXPIRY_DAYS = { task_memory: 30, context_memory: 90, preference_memory: Infinity };
+    const active = rows.filter(m => {
+      if (m.is_long_term) return true;
+      const type = m.memory_type || "context_memory";
+      const ageDays = (now - new Date(m.created_at).getTime()) / 86_400_000;
+      return ageDays < (EXPIRY_DAYS[type] ?? 90);
+    });
+    if (active.length === 0) return [];
+
+    // Relevance scoring — type-intent affinity + keyword overlap
+    const TYPE_PRIORITY = {
+      procedural:          ["task_memory", "context_memory", "preference_memory"],
+      confused_procedural: ["task_memory", "context_memory", "preference_memory"],
+      recommendation:      ["preference_memory", "context_memory", "task_memory"],
+      brainstorming:       ["preference_memory", "context_memory", "task_memory"],
+      confused:            ["context_memory", "task_memory", "preference_memory"],
+      factual:             ["context_memory", "preference_memory", "task_memory"],
+    };
+    const priority = TYPE_PRIORITY[intentPrimary] ?? TYPE_PRIORITY.factual;
+    const queryWords = new Set(
+      query.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+    );
+    const scored = active.map(m => {
+      const type = m.memory_type || "context_memory";
+      const typeScore = (2 - priority.indexOf(type)) * 1.5; // 3, 1.5, 0
+      const memWords = m.memory.toLowerCase().split(/\s+/);
+      const overlap = Math.min(memWords.filter(w => queryWords.has(w)).length, 2);
+      return { ...m, _score: typeScore + overlap };
+    });
+    scored.sort((a, b) => b._score - a._score);
+
+    // Always include preference_memory if scored, cap total at 3
+    const prefs   = scored.filter(m => (m.memory_type || "") === "preference_memory").slice(0, 1);
+    const others  = scored.filter(m => (m.memory_type || "") !== "preference_memory").slice(0, 2);
+    const result  = [...prefs, ...others].slice(0, 3);
+    return result;
   } catch {
     return [];
   }
@@ -545,15 +595,22 @@ async function extractAndSaveMemories(userId, conversation, apiKey) {
       .map(m => `${m.role === "user" ? "User" : "AINA"}: ${m.content.slice(0, 500)}`)
       .join("\n");
 
-    const extractionPrompt = `Dari percakapan berikut, ekstrak fakta-fakta penting yang perlu diingat tentang user untuk percakapan di masa depan. Contoh: nama panggilan, kota tempat tinggal di Mesir, jurusan/universitas, preferensi khusus yang disebutkan, situasi spesifik (baru tiba, mau ujian, dll).
+    const extractionPrompt = `Dari percakapan berikut, ekstrak fakta penting tentang user untuk diingat di masa depan.
 
-Format output: JSON array of strings, masing-masing max 120 karakter. Jika tidak ada fakta baru yang perlu disimpan, kembalikan array kosong [].
+Output: JSON array, setiap item: { "memory": "...", "type": "...", "long_term": true/false }
 
-ATURAN:
-- Hanya fakta yang eksplisit disebutkan user dalam percakapan ini
-- Maksimal 3 fakta baru dari satu percakapan
-- Jangan duplikasi hal umum seperti "user mahasiswa Al-Azhar"
-- Contoh valid: ["Tinggal di Hay Asyir", "Suka jawaban singkat", "Baru tiba Maret 2026", "Ambil jurusan Syariah Islamiyah"]
+KATEGORI:
+- preference_memory: preferensi eksplisit user tentang gaya/format ("suka jawaban singkat", "prefer langkah-langkah", "prefer bahasa formal"). long_term=true.
+- context_memory: siapa mereka dan situasinya ("tinggal di Hay Asyir", "baru tiba Maret 2026", "jurusan Syariah", "asal Surabaya"). long_term=false.
+- task_memory: tugas/proses aktif saat ini ("sedang urus iqomah", "lagi cari kos", "mau ujian minggu depan", "sedang buat SKCK"). long_term=false.
+
+ATURAN KETAT:
+- Hanya fakta yang EKSPLISIT disebutkan user dalam percakapan ini
+- Maksimal 3 item baru
+- Jangan simpan hal generik seperti "user mahasiswa di Mesir"
+- Tidak ada informasi sensitif (nomor paspor, data pribadi, finansial spesifik)
+- Jika tidak ada fakta baru → kembalikan []
+- Setiap memory max 120 karakter
 - Balas HANYA dengan JSON array, tidak ada teks lain
 
 Percakapan:
@@ -576,7 +633,7 @@ ${convText}`;
         body: JSON.stringify({
           model: "meta-llama/llama-3.2-3b-instruct:free",
           messages: [{ role: "user", content: extractionPrompt }],
-          max_tokens: 250,
+          max_tokens: 400,
           temperature: 0.1,
         }),
       });
@@ -588,9 +645,14 @@ ${convText}`;
       if (!match) return;
       const parsed = JSON.parse(match[0]);
       if (!Array.isArray(parsed)) return;
+      const VALID_TYPES = new Set(["preference_memory", "context_memory", "task_memory"]);
       newMemories = parsed
-        .filter(m => typeof m === "string" && m.trim().length > 5)
-        .map(m => m.trim().slice(0, 150))
+        .filter(m => m && typeof m === "object" && typeof m.memory === "string" && m.memory.trim().length > 5)
+        .map(m => ({
+          memory: m.memory.trim().slice(0, 150),
+          memory_type: VALID_TYPES.has(m.type) ? m.type : "context_memory",
+          is_long_term: m.type === "preference_memory" ? true : !!m.long_term,
+        }))
         .slice(0, 3);
     } catch {
       clearTimeout(timeoutId);
@@ -614,7 +676,7 @@ ${convText}`;
     }
 
     await supabase.from("user_memories").insert(
-      newMemories.map(memory => ({ user_id: userId, memory }))
+      newMemories.map(m => ({ user_id: userId, memory: m.memory, memory_type: m.memory_type, is_long_term: m.is_long_term }))
     );
     console.log(`[memory] saved ${newMemories.length} new memories for user ${userId}: ${JSON.stringify(newMemories)}`);
   } catch (e) {
@@ -918,9 +980,20 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
   if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
 
+  // Extract last user message early — needed for intent + memory retrieval
+  const rawLastContent = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+  const lastUserMessage = Array.isArray(rawLastContent)
+    ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
+    : rawLastContent;
+
+  // Intent detection is synchronous — compute before parallel fetches so memory retrieval is query-aware
+  const intent = detectIntent(lastUserMessage);
+  const intentHint = buildIntentHint(intent);
+  console.log(`[Intent] ${intent.primary}${intent.casual ? "+casual" : ""} — "${lastUserMessage.slice(0, 60)}"`);
+
   const [rolesRes, userMemories] = await Promise.all([
     supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id),
-    fetchUserMemories(user.id),
+    fetchUserMemories(user.id, lastUserMessage, intent.primary),
   ]);
   const roles = rolesRes.data;
   const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
@@ -959,17 +1032,6 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     "minimax/minimax-m2.5:free",
     "stepfun/step-3.5-flash:free",
   ];
-
-  // Extract plain text from last user message (content may be string or multimodal array)
-  const rawLastContent = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
-  const lastUserMessage = Array.isArray(rawLastContent)
-    ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
-    : rawLastContent;
-
-  // Lightweight intent classification — rule-based, no LLM call
-  const intent = detectIntent(lastUserMessage);
-  const intentHint = buildIntentHint(intent);
-  console.log(`[Intent] ${intent.primary}${intent.casual ? "+casual" : ""} — "${lastUserMessage.slice(0, 60)}"`);
 
   const [articles, pinnedUpdates, exchangeRates, wikiResult, ddgResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
@@ -1040,8 +1102,17 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   let memoryContext = "";
   if (userMemories.length > 0) {
-    const memList = userMemories.map(m => `- ${m.memory}`).join("\n");
-    memoryContext = `\n\n---\n## Memori tentang User Ini\nKamu telah menyimpan hal-hal berikut tentang user ini dari percakapan sebelumnya. Gunakan untuk memberi jawaban yang lebih personal:\n${memList}\n---`;
+    const prefMems  = userMemories.filter(m => (m.memory_type || "context_memory") === "preference_memory");
+    const ctxMems   = userMemories.filter(m => (m.memory_type || "context_memory") === "context_memory");
+    const taskMems  = userMemories.filter(m => (m.memory_type || "context_memory") === "task_memory");
+    const parts = [];
+    if (prefMems.length > 0)  parts.push(`**Preferensi:** ${prefMems.map(m => m.memory).join("; ")}`);
+    if (ctxMems.length > 0)   parts.push(`**Konteks user:** ${ctxMems.map(m => m.memory).join("; ")}`);
+    if (taskMems.length > 0)  parts.push(`**Sedang aktif:** ${taskMems.map(m => m.memory).join("; ")}`);
+    if (parts.length > 0) {
+      memoryContext = `\n\n---\n## Memori tentang User Ini\nFakta yang diingat dari percakapan sebelumnya. Gunakan HANYA jika relevan dengan pertanyaan ini — jangan diasumsikan atau dipaksakan:\n${parts.join("\n")}\n---`;
+      console.log(`[Memory] injected ${userMemories.length} memories (pref:${prefMems.length} ctx:${ctxMems.length} task:${taskMems.length}) for intent=${intent.primary}`);
+    }
   }
 
   // Build exchange rate context (Frankfurter API)
@@ -3788,14 +3859,17 @@ CREATE INDEX IF NOT EXISTS idx_user_badges_user ON public.user_badges(user_id);`
 
     user_memories: `-- User memories (AINA remembers facts about each user)
 CREATE TABLE IF NOT EXISTS public.user_memories (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  memory     TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  memory       TEXT NOT NULL,
+  memory_type  TEXT NOT NULL DEFAULT 'context_memory' CHECK (memory_type IN ('preference_memory','context_memory','task_memory')),
+  is_long_term BOOLEAN NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE public.user_memories ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN CREATE POLICY "Users can manage own memories" ON public.user_memories FOR ALL USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-CREATE INDEX IF NOT EXISTS idx_user_memories_user ON public.user_memories(user_id, created_at DESC);`,
+CREATE INDEX IF NOT EXISTS idx_user_memories_user ON public.user_memories(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_memories_type ON public.user_memories(user_id, memory_type);`,
   };
 
   // Also include profile + article_type columns migration
@@ -3817,7 +3891,11 @@ ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS article_type TEXT NOT
   CHECK (article_type IN ('narrative', 'step_by_step'));
 
 -- Hidden flag for articles (master admin can hide from public leaderboard, AI still uses them)
-ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;`;
+ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Memory type + long-term flag (Phase 6: typed memory — safe to re-run)
+ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';
+ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;`;
 
   const neededSql = missing.map(t => sqlBlocks[t]).filter(Boolean).join("\n\n");
   const fullSql = [neededSql, columnsSql].filter(Boolean).join("\n\n");
@@ -4105,11 +4183,19 @@ async function checkRequiredTables() {
 }
 
 async function runColumnMigrations() {
-  try {
-    const supabase = getAdminClient();
-    await supabase.rpc("exec_sql", { sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;" });
-  } catch {
-    // RPC may not exist — silently skip; admin can run migration-sql manually
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const migrations = [
+    "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",
+    "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",
+    "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;",
+  ];
+  for (const sql of migrations) {
+    try {
+      await supabase.rpc("exec_sql", { sql });
+    } catch {
+      // RPC may not exist — silently skip; admin can run migration-sql manually
+    }
   }
 }
 
