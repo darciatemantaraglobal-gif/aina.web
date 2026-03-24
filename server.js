@@ -778,6 +778,11 @@ function trimToSentence(text, maxLen) {
 function classifyConfidence({ hasKB, hasPinned, hasWiki, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
 
+  // Current role / office-holder: inherently dynamic even without explicit time keywords.
+  // "siapa presiden X", "siapa menteri Y", "siapa rektor Z", "siapa CEO A" — always time-sensitive.
+  const currentRoleQuery = /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|sekretaris jenderal|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris|wali kota)\b/i.test(query)
+    || /\b(presiden|menteri|rektor|direktur|ceo|gubernur|ketua|kepala)\b.{0,30}\bsiapa\b/i.test(query);
+
   // General knowledge: stable definitional / conceptual questions the model already knows
   const generalKnowledge = /\b(siapa|apa itu|apa arti|artinya apa|apa yang dimaksud|definisi|pengertian|ibu kota|ibukota|jelaskan|bagaimana cara kerja|dalam bahasa|terjemahan|artinya|maksudnya|berapa lama|berapa hari|kapan|sejarah|asal usul|fungsi|manfaat)\b/i.test(query);
 
@@ -785,13 +790,23 @@ function classifyConfidence({ hasKB, hasPinned, hasWiki, intent, query }) {
   if (hasPinned) return { level: "high_confidence", hint: "" };
 
   // KB hit on stable, procedure-oriented intent — high trust
+  // (KB takes priority even for role queries — article may have current info)
   if (hasKB && ["factual", "procedural", "confused_procedural", "confused"].includes(intent.primary)) {
     return { level: "high_confidence", hint: "" };
   }
 
-  // General knowledge + stable (not time-sensitive) → always high trust;
-  // model should answer from its own knowledge without needing retrieved context
-  if (generalKnowledge && !timeSensitive) {
+  // Current role / office-holder with no KB backing — always needs verification.
+  // Do NOT let the generalKnowledge rule fire for these: model memory may be stale.
+  if (currentRoleQuery && !hasKB && !hasPinned) {
+    return {
+      level: "needs_verification",
+      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jabatan/pejabat bisa berubah sewaktu-waktu. Tambahkan 1 kalimat peringatan singkat dan natural di akhir — misalnya: 'Tapi sebaiknya dicek ulang ya, jabatan ini bisa berubah.' Jangan terdengar kaku atau defensif.",
+    };
+  }
+
+  // General knowledge + stable (not time-sensitive, not a role query) → high trust.
+  // Model answers directly from its own knowledge — no retrieval context needed.
+  if (generalKnowledge && !timeSensitive && !currentRoleQuery) {
     return { level: "high_confidence", hint: "" };
   }
 
