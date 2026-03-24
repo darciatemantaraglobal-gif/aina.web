@@ -742,13 +742,13 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat 1-3 kalimat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
 - Gunakan format Markdown secara natural sesuai konteks, persis seperti ChatGPT:
   - Pertanyaan singkat/percakapan → jawab dalam 1-3 kalimat saja, tanpa heading.
-  - Panduan/prosedur/langkah-langkah → gunakan **angka bernomor** (1. 2. 3.) dan heading `##` untuk bagian utama.
-  - Daftar syarat/dokumen/opsi → gunakan bullet `-`.
+  - Panduan/prosedur/langkah-langkah → gunakan angka bernomor (1. 2. 3.) dan heading \`##\` untuk bagian utama.
+  - Daftar syarat/dokumen/opsi → gunakan bullet \`-\`.
   - Perbandingan data → gunakan tabel Markdown.
-  - Penjelasan topik kompleks → gunakan `##` untuk sub-judul bagian, diikuti paragraf atau bullet.
+  - Penjelasan topik kompleks → gunakan \`##\` untuk sub-judul bagian, diikuti paragraf atau bullet.
   - **Bold** untuk istilah penting atau kata kunci.
 - JANGAN gunakan heading jika jawaban cukup singkat dan tidak butuh struktur.
-- JANGAN gunakan `#` (h1) — mulai dari `##` (h2) jika butuh heading.
+- JANGAN gunakan \`#\` (h1) — mulai dari \`##\` (h2) jika butuh heading.
 - Setiap poin fokus pada satu hal. Tidak ada pengulangan.
 
 **Gaya bahasa:**
