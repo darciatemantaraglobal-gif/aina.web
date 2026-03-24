@@ -145,6 +145,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [requestStatus, setRequestStatus] = useState("");
   const [isContributor, setIsContributor] = useState(false);
   const [articles, setArticles] = useState<any[]>([]);
+  const [expandedArticle, setExpandedArticle] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -1008,30 +1009,57 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
               <p className="py-8 text-center text-sm text-muted-foreground">Belum ada artikel. Tulis artikel pertamamu!</p>
             ) : (
               <div className="space-y-3">
-                {articles.map((article) => (
-                  <Card key={article.id} className="border-border bg-card">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-primary" />
-                            <h3 className="font-medium text-foreground">{article.title}</h3>
+                {articles.map((article) => {
+                  const isExpanded = expandedArticle === article.id;
+                  return (
+                    <Card key={article.id} className="border-border bg-card">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 shrink-0 text-primary" />
+                              <h3 className="font-medium text-foreground">{article.title}</h3>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                              <span className="rounded-full bg-secondary px-2 py-0.5">{article.category}</span>
+                              <span>•</span>
+                              <span>{new Date(article.created_at).toLocaleDateString("id-ID")}</span>
+                            </div>
+
+                            {isExpanded ? (
+                              <div className="mt-3 text-sm text-muted-foreground prose prose-sm prose-invert max-w-none
+                                prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1
+                                prose-p:my-1 prose-p:leading-relaxed
+                                prose-ul:my-1 prose-ul:pl-4 prose-li:my-0.5
+                                prose-ol:my-1 prose-ol:pl-4
+                                prose-strong:text-foreground prose-strong:font-semibold
+                                prose-code:text-primary prose-code:bg-secondary prose-code:px-1 prose-code:rounded prose-code:text-xs
+                                prose-hr:border-border">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.content}</ReactMarkdown>
+                              </div>
+                            ) : (
+                              <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{article.content}</p>
+                            )}
+
+                            <button
+                              onClick={() => setExpandedArticle(isExpanded ? null : article.id)}
+                              className="mt-1.5 flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              {isExpanded
+                                ? <><ChevronUp className="h-3 w-3" /> Sembunyikan</>
+                                : <><ChevronDown className="h-3 w-3" /> Baca selengkapnya</>
+                              }
+                            </button>
                           </div>
-                          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="rounded-full bg-secondary px-2 py-0.5">{article.category}</span>
-                            <span>•</span>
-                            <span>{new Date(article.created_at).toLocaleDateString("id-ID")}</span>
+                          <div className="shrink-0 flex items-center gap-1.5">
+                            {statusIcon(article.status)}
+                            <span className="text-xs capitalize text-muted-foreground">{article.status}</span>
                           </div>
-                          <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{article.content}</p>
                         </div>
-                        <div className="ml-3 flex items-center gap-1.5">
-                          {statusIcon(article.status)}
-                          <span className="text-xs capitalize text-muted-foreground">{article.status}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </>
