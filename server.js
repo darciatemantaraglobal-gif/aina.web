@@ -471,6 +471,29 @@ function extractWikipediaSearchTerm(query) {
 
 const WIKI_SKIP_PATTERNS = /^(ok|oke|okay|iya|ya|yap|yep|haha|hehe|wkwk|lol|makasih|thanks|thank you|terima kasih|sip|siap|mantap|beres|done|good|great|nice|oke bro|sip bro|iyaa|ooh|ohh|wah|wow|hmm|hm|eh|ah|uh|gitu|gitu ya|gitu deh|paham|ngerti|mengerti|udah|sudah|lanjut|next|teruskan|lanjutkan)\b/i;
 
+/* ── Source trust scores (Phase 9) ───────────────────── */
+// Rule-based numeric trust tiers — no external API needed.
+// Higher = more trustworthy. Used for logging, confidence signals, and context labels.
+const SOURCE_TRUST_SCORES = {
+  pinned_update:   100, // Admin-verified, highest trust
+  kb_article:       90, // Contributor-submitted, admin-approved
+  exchange_rate:    85, // Real-time ECB/Frankfurter data
+  wikipedia:        60, // Public encyclopedia — mostly reliable, occasionally outdated
+  duckduckgo:       35, // General web instant answer — unverified
+  model_knowledge:  20, // LLM training data — may be stale
+};
+
+/**
+ * Compute the trust level of whatever external context is actually being injected.
+ * Returns 'medium' | 'low' | null (null = no external context injected).
+ * Used to refine confidence classification and emit a log signal.
+ */
+function computeExternalTrustLevel(wikiInjected, ddgInjected) {
+  if (wikiInjected) return { tier: "medium", score: SOURCE_TRUST_SCORES.wikipedia, label: "Wikipedia" };
+  if (ddgInjected)  return { tier: "low",    score: SOURCE_TRUST_SCORES.duckduckgo, label: "DuckDuckGo" };
+  return null;
+}
+
 async function fetchWikipediaSummary(query) {
   const TIMEOUT = 8000;
   const trimmed = query.trim();
@@ -895,7 +918,7 @@ function trimToSentence(text, maxLen) {
 
 /* ── Confidence / trust layer ────────────────────────── */
 // Rule-based, no LLM call. Returns a hint injected into the system prompt.
-function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, intent, query }) {
+function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, externalTrustTier = null, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
 
   // Current role / office-holder: inherently dynamic even without explicit time keywords.
@@ -939,6 +962,16 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     return {
       level: "needs_verification",
       hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jika jawaban ini menyangkut informasi yang bisa berubah, tambahkan 1 kalimat peringatan singkat dan natural di akhir. Contoh: 'Tapi sebaiknya dicek ulang ya, info ini bisa berubah.' Jangan terdengar kaku atau defensif, dan jangan ulangi ini berkali-kali.",
+    };
+  }
+
+  // Wikipedia injected, no KB/pinned — medium trust external source, not none.
+  // Upgrade from needs_verification to medium_confidence (Phase 9: trust-tier aware).
+  // Exception: current-role queries stay blocked regardless of source trust.
+  if (!hasKB && !hasPinned && externalTrustTier === "medium" && !currentRoleQuery) {
+    return {
+      level: "medium_confidence",
+      hint: "\n\n**[Kepercayaan — SEDANG]** Jawaban ini berdasarkan Wikipedia. Boleh gunakan frasa ringan seperti 'berdasarkan Wikipedia' jika terasa natural — tapi jangan terlalu banyak disclaimer. Jika info bisa berubah, cukup 1 kalimat peringatan singkat di akhir.",
     };
   }
 
@@ -1170,6 +1203,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // Build Wikipedia context — KB-first filter: only inject when KB is absent/weak OR intent is factual
+  // Trust label added so AINA knows the epistemic weight of this source (Phase 9)
   let wikiContext = "";
   if (wikiResult) {
     const injectWiki = kbStrength !== "strong" || intent.primary === "factual";
@@ -1179,8 +1213,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       if (cleanedExtract.length < wikiResult.extract.length) {
         console.log(`[CtxClean] Wikipedia "${wikiResult.title}": ${wikiResult.extract.length} → ${cleanedExtract.length} chars`);
       }
-      wikiContext = `\n\n---\n## Informasi dari Wikipedia\n**${wikiResult.title}**\n\n${cleanedExtract}\n\nSumber: ${langLabel} — ${wikiResult.url}\n---`;
-      console.log(`[Wikipedia] injected: "${wikiResult.title}" (KB=${kbStrength}, intent=${intent.primary})`);
+      wikiContext = `\n\n---\n## Informasi dari Wikipedia [kepercayaan: sedang — ensiklopedia publik, biasanya akurat tapi bisa tidak terkini]\n**${wikiResult.title}**\n\n${cleanedExtract}\n\nSumber: ${langLabel} — ${wikiResult.url}\n---`;
+      console.log(`[Wikipedia] injected: "${wikiResult.title}" trust=${SOURCE_TRUST_SCORES.wikipedia} (KB=${kbStrength}, intent=${intent.primary})`);
     } else {
       console.log(`[Wikipedia] fetched "${wikiResult.title}" but suppressed — KB is strong and intent=${intent.primary}`);
     }
@@ -1188,18 +1222,25 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // Build DuckDuckGo context — only inject when KB has no relevant articles (KB-first filter, strictest)
   // DDG is lowest trust tier: inject only when both KB and Wikipedia are absent
+  // Trust label added so AINA applies appropriate caution (Phase 9)
   let ddgContext = "";
   if (ddgResult && articles.length === 0) {
     const injectDDG = !wikiContext; // prefer Wikipedia; only use DDG if wiki also absent
     if (injectDDG) {
       const cleanedDDG = trimToSentence(ddgResult.text, 800);
-      ddgContext = `\n\n---\n## Informasi dari ${ddgResult.source} (via DuckDuckGo)\n\n${cleanedDDG}${ddgResult.url ? `\n\nSumber: ${ddgResult.url}` : ""}\n---`;
-      console.log(`[DDG] injected "${ddgResult.source}": ${ddgResult.text.length} chars (KB absent, wiki also absent)`);
+      ddgContext = `\n\n---\n## Informasi dari ${ddgResult.source} via DuckDuckGo [kepercayaan: rendah — sumber umum, belum diverifikasi]\n\n${cleanedDDG}${ddgResult.url ? `\n\nSumber: ${ddgResult.url}` : ""}\n---`;
+      console.log(`[DDG] injected "${ddgResult.source}": trust=${SOURCE_TRUST_SCORES.duckduckgo} (KB absent, wiki also absent)`);
     } else {
       console.log(`[DDG] fetched "${ddgResult.source}": skipped — Wikipedia already covering (KB absent)`);
     }
   } else if (ddgResult) {
     console.log(`[DDG] fetched "${ddgResult.source}": suppressed — KB has ${articles.length} articles`);
+  }
+
+  // Compute external trust level — used to refine confidence classification (Phase 9)
+  const externalTrust = computeExternalTrustLevel(!!wikiContext, !!ddgContext);
+  if (externalTrust) {
+    console.log(`[Trust] external=${externalTrust.label}(${externalTrust.score}) tier=${externalTrust.tier}`);
   }
 
   // Classify confidence based on what context was actually retrieved
@@ -1209,6 +1250,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     hasPinned: pinnedUpdates.length > 0,
     hasWiki: !!wikiContext,
     hasDDG: !!ddgContext,
+    externalTrustTier: externalTrust?.tier ?? null,
     intent,
     query: lastUserMessage,
   });
@@ -1236,6 +1278,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - JANGAN bilang "tidak tahu" jika Wikipedia atau sumber lain sudah menyediakan info relevan di konteks.
 - JANGAN bilang "tidak tahu" untuk fakta umum yang sudah kamu miliki (ibu kota, siapa tokoh terkenal, definisi istilah).
 - Jika tidak ada konteks eksternal yang disertakan, itu artinya KB sudah cukup — jawab dari KB saja.
+- **Konflik antar sumber:** Jika informasi dari sumber berbeda tampak bertentangan, ikuti urutan kepercayaan ini secara ketat: KB > Pinned Updates > Kurs real-time > Wikipedia [kepercayaan sedang] > DuckDuckGo [kepercayaan rendah]. Jangan rata-ratakan atau campur adukkan fakta yang bertentangan — pilih sumber tertinggi dan sebutkan sumbernya secara natural.
 
 **Format jawaban:**
 - Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat 1-3 kalimat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
