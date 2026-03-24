@@ -714,18 +714,43 @@ function buildIntentHint({ primary, casual }) {
     : "";
 
   const hints = {
-    confused:
-      "Akui perasaannya dalam 1 kalimat pembuka yang hangat dan singkat, lalu langsung ke solusi paling konkret. Jangan berlebihan di bagian empati.",
-    confused_procedural:
-      "Akui perasaannya dalam 1 kalimat pembuka yang singkat, lalu langsung jawab dalam format langkah bernomor. Jangan buang terlalu banyak waktu di bagian empati.",
-    procedural:
-      "Mulai dengan 1 kalimat ringkas tentang apa yang akan dilakukan, lalu langsung ke langkah bernomor. Nada boleh hangat tapi tetap terstruktur.",
-    recommendation:
-      "Berikan 1 rekomendasi terkuat di kalimat pertama, baru tambahkan 2–3 alternatif singkat jika relevan. Jangan listing panjang tanpa arah.",
-    brainstorming:
-      "Berikan beberapa opsi/ide dalam format bullet. Buka dengan 1 kalimat singkat, tiap ide boleh ada 1–2 kalimat penjelasan. Nada terbuka dan encouraging.",
     factual:
-      "Jawab poin utama di kalimat pertama, lalu elaborasi secukupnya setelahnya. Tidak perlu basa-basi atau pengantar.",
+      "Jawab poin utama langsung di kalimat pertama — tidak perlu pengantar apapun. " +
+      "Kalimat kedua dan seterusnya boleh elaborasi singkat, tapi jangan overexplain. " +
+      "Jika jawabannya cukup dalam 2–3 kalimat, berhenti di sana. " +
+      "Jangan tambahkan informasi yang tidak ditanya.",
+
+    procedural:
+      "Buka dengan 1 kalimat singkat yang menggambarkan apa yang akan dilakukan (opsional jika sudah jelas dari pertanyaan). " +
+      "Lanjutkan langsung ke langkah bernomor: 1, 2, 3, dst. " +
+      "Setiap langkah maksimal 2 kalimat — action dulu, detail menyusul. " +
+      "Tambahkan tips atau peringatan (⚠️ atau 💡) hanya jika benar-benar membantu, bukan sebagai filler. " +
+      "Jangan ulang informasi yang sudah disebutkan di langkah sebelumnya.",
+
+    confused:
+      "Buka dengan tepat 1 kalimat pengakuan yang hangat — cukup validasi perasaannya, tidak perlu berlarut. " +
+      "Langsung beralih ke solusi atau tindakan paling konkret yang bisa dilakukan sekarang. " +
+      "Prioritaskan kejelasan dan tindakan, bukan panjangnya empati. " +
+      "Jika ada langkah-langkah, tulis dalam format bernomor agar terasa lebih terstruktur dan tidak overwhelming.",
+
+    confused_procedural:
+      "Buka dengan tepat 1 kalimat pengakuan singkat, lalu transisi ke langkah-langkah secara langsung. " +
+      "Jangan habiskan lebih dari 1 kalimat untuk bagian empati. " +
+      "Gunakan format langkah bernomor — ini justru membantu user yang bingung karena terasa lebih terkendali. " +
+      "Setiap langkah jelas, pendek, dan actionable.",
+
+    recommendation:
+      "Sebutkan rekomendasi terkuat di kalimat pertama dengan tegas — jangan langsung bikin daftar. " +
+      "Jelaskan alasannya dalam 1 kalimat singkat. " +
+      "Baru setelah itu, tambahkan 2–3 alternatif jika memang relevan, masing-masing dengan 1 alasan singkat. " +
+      "Jangan buat listing panjang tanpa prioritas — user butuh panduan, bukan katalog.",
+
+    brainstorming:
+      "Buka dengan 1 kalimat singkat yang framing-nya terbuka dan mengundang. " +
+      "Berikan 3–5 opsi/ide yang benar-benar berbeda satu sama lain — hindari variasi yang terlalu mirip. " +
+      "Setiap ide dalam format bullet, diikuti 1–2 kalimat penjelasan yang relevan dan konkret. " +
+      "Susun dari yang paling mudah diakses ke yang lebih spesifik, atau dari yang paling umum ke yang paling niche. " +
+      "Jangan ulangi ide dengan kata berbeda.",
   };
 
   const label = primary.toUpperCase().replace("_", "/");
