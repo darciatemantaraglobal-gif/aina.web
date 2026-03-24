@@ -1364,6 +1364,17 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
   res.json({ text: extractedText, filename: originalname, chars: extractedText.length });
 });
 
+/* ── Notifications: Clear all ────────────────────────── */
+app.delete("/api/notifications", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+  const { error } = await supabase.from("notifications").delete().eq("user_id", user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 /* ── Admin: Stats ────────────────────────────────────── */
 app.get("/api/admin/stats", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);

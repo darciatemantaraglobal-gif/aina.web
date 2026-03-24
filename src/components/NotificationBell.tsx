@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Bell, Check, CheckCheck, Info, AlertCircle } from "lucide-react";
+import { Bell, Check, CheckCheck, Info, AlertCircle, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -37,6 +37,7 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -142,6 +143,24 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
     await supabase.from("notifications").update({ read: true }).eq("id", id);
   };
 
+  const clearAll = async () => {
+    if (clearing || notifications.length === 0) return;
+    setClearing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
+      if (!res.ok) throw new Error("Gagal menghapus notifikasi");
+      setNotifications([]);
+    } catch {
+      toast.error("Gagal menghapus notifikasi");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const handleOpen = () => {
     setOpen(prev => !prev);
     if (!open && unreadCount > 0) {
@@ -178,15 +197,31 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
                 <p className="text-xs text-muted-foreground">{unreadCount} belum dibaca</p>
               )}
             </div>
-            {unreadCount > 0 && (
-              <button
-                onClick={markAllRead}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <CheckCheck className="h-3.5 w-3.5" />
-                Tandai semua
-              </button>
-            )}
+            <div className="flex items-center gap-1">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllRead}
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Baca
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  onClick={clearAll}
+                  disabled={clearing}
+                  title="Hapus semua notifikasi"
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                >
+                  {clearing
+                    ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    : <Trash2 className="h-3.5 w-3.5" />
+                  }
+                  Hapus
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="max-h-80 overflow-y-auto">
