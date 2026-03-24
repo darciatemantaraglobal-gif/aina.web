@@ -757,6 +757,22 @@ function buildIntentHint({ primary, casual }) {
   return `\n\n**[Gaya respons — ${label}]** ${hints[primary] ?? hints.factual}${toneNote}`;
 }
 
+/* ── Context cleaning utilities ──────────────────────── */
+// Trim text to maxLen chars, cutting at the last sentence boundary
+// within the trailing 300 chars to avoid mid-sentence cuts.
+function trimToSentence(text, maxLen) {
+  if (!text || text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const searchFrom = Math.max(0, cut.length - 300);
+  const tail = cut.slice(searchFrom);
+  const lastBoundary = Math.max(
+    tail.lastIndexOf(". "), tail.lastIndexOf("! "), tail.lastIndexOf("? "),
+    tail.lastIndexOf(".\n"), tail.lastIndexOf("!\n"), tail.lastIndexOf("?\n")
+  );
+  if (lastBoundary > 0) return cut.slice(0, searchFrom + lastBoundary + 1).trim();
+  return cut.trim() + "…";
+}
+
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", chatLimiter, async (req, res) => {
   // Auth is required — unauthenticated requests must not reach OpenRouter
@@ -863,13 +879,18 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   ]);
 
   // Build knowledge context with article-type-aware formatting hints
+  // Context cleaning: cap each article at 2,000 chars, cutting at last sentence boundary
   let knowledgeContext = "";
   if (articles.length > 0) {
     const articlesText = articles.map((a, i) => {
       const typeHint = a.article_type === "step_by_step"
         ? " [FORMAT: Panduan Langkah-langkah — WAJIB jawab dalam format langkah bernomor: **Langkah 1**, **Langkah 2**, dst.]"
         : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
-      return `### Artikel ${i + 1}: ${a.title} [${a.category}]${typeHint}\n${a.content}`;
+      const cleanedContent = trimToSentence(a.content, 2000);
+      if (cleanedContent.length < a.content.length) {
+        console.log(`[CtxClean] Article "${a.title}": ${a.content.length} → ${cleanedContent.length} chars`);
+      }
+      return `### Artikel ${i + 1}: ${a.title} [${a.category}]${typeHint}\n${cleanedContent}`;
     }).join("\n\n");
     knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.\n\n${articlesText}\n---`;
   }
@@ -877,7 +898,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Build breaking/pinned updates context
   let pinnedContext = "";
   if (pinnedUpdates.length > 0) {
-    const updatesText = pinnedUpdates.map(u => `**[${u.topic}]**: ${u.content}`).join("\n");
+    // Context cleaning: cap each pinned update at 500 chars
+    const updatesText = pinnedUpdates.map(u => `**[${u.topic}]**: ${trimToSentence(u.content, 500)}`).join("\n");
     pinnedContext = `\n\n---\n## 🚨 Breaking Updates — PRIORITAS TERTINGGI\nAdmin telah memverifikasi bahwa informasi berikut adalah update kebijakan/situasi TERBARU dan HARUS diprioritaskan di atas semua sumber lain:\n\n${updatesText}\n---`;
   }
 
@@ -929,11 +951,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // Build Wikipedia context
+  // Context cleaning: cap extract at 1,200 chars, cutting at last sentence boundary
   let wikiContext = "";
   if (wikiResult) {
     const langLabel = wikiResult.lang === "id" ? "Wikipedia Bahasa Indonesia" : "Wikipedia (English)";
-    wikiContext = `\n\n---\n## Informasi dari Wikipedia\n**${wikiResult.title}**\n\n${wikiResult.extract}\n\nSumber: ${langLabel} — ${wikiResult.url}\n---`;
-    console.log(`[Wikipedia] fetched: "${wikiResult.title}" (${wikiResult.lang}, ${wikiResult.extract.length} chars)`);
+    const cleanedExtract = trimToSentence(wikiResult.extract, 1200);
+    if (cleanedExtract.length < wikiResult.extract.length) {
+      console.log(`[CtxClean] Wikipedia "${wikiResult.title}": ${wikiResult.extract.length} → ${cleanedExtract.length} chars`);
+    }
+    wikiContext = `\n\n---\n## Informasi dari Wikipedia\n**${wikiResult.title}**\n\n${cleanedExtract}\n\nSumber: ${langLabel} — ${wikiResult.url}\n---`;
+    console.log(`[Wikipedia] fetched: "${wikiResult.title}" (${wikiResult.lang}, ${wikiResult.extract.length} chars raw)`);
   }
 
   const now = new Date();
