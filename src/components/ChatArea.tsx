@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, User, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -530,13 +530,13 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : isEmpty ? (
           <div className="flex h-full flex-col items-center justify-center px-4 pb-4">
-            <AinaLogo className="mb-4 h-16 w-16 object-contain drop-shadow-[0_0_18px_rgba(139,92,246,0.85)]" />
-            <h1 className="font-display text-2xl font-bold text-foreground">Halo! Saya AINA</h1>
+            <AinaLogo className="mb-5 h-14 w-14 object-contain drop-shadow-[0_0_18px_rgba(139,92,246,0.85)]" />
+            <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">Halo! Saya AINA</h1>
             <p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
               Asisten AI khusus mahasiswa Indonesia di Mesir. Tanya apa saja tentang kehidupan di Kairo!
             </p>
 
-            <div className="mt-4 sm:mt-8 grid w-full max-w-md grid-cols-2 gap-1.5 sm:gap-2">
+            <div className="mt-6 sm:mt-8 grid w-full max-w-lg grid-cols-2 gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
@@ -547,7 +547,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       autoResize();
                     }, 0);
                   }}
-                  className="rounded-xl border border-border bg-card px-3 py-2 sm:px-4 sm:py-3 text-left text-xs sm:text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
+                  className="rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
                 >
                   {s}
                 </button>
@@ -555,40 +555,40 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-2xl space-y-6 px-3 py-6 md:px-6">
+          <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex gap-2.5 min-w-0 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex gap-3 min-w-0 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
-                  <AinaLogo className="h-8 w-8 shrink-0 object-contain" />
+                  <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
                 )}
 
                 {msg.role === "user" ? (
-                  <div className="max-w-[80%] space-y-2">
+                  <div className="max-w-[85%] space-y-2">
                     {msg.imageDataUrl && (
                       <img
                         src={msg.imageDataUrl}
                         alt={msg.fileName ?? "Gambar"}
-                        className="rounded-xl max-h-64 object-contain border border-border"
+                        className="rounded-2xl max-h-72 object-contain border border-border"
                       />
                     )}
                     {msg.fileName && !msg.imageDataUrl && (
-                      <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2 rounded-2xl border border-border bg-secondary px-3 py-2 text-xs text-muted-foreground">
                         <FileText className="h-4 w-4 shrink-0 text-primary" />
-                        <span className="truncate max-w-[200px]">{msg.fileName}</span>
+                        <span className="truncate max-w-[220px]">{msg.fileName}</span>
                       </div>
                     )}
                     {msg.content && (
-                      <div className="rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground whitespace-pre-wrap break-words">
+                      <div className="rounded-3xl bg-secondary px-5 py-3.5 text-base text-foreground whitespace-pre-wrap break-words">
                         {msg.content}
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1">
-                    <div className="rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
+                    <div className="text-base text-foreground leading-relaxed">
                       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                         {cleanMarkdown(msg.content)}
                       </ReactMarkdown>
@@ -643,19 +643,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   </div>
                 )}
 
-                {msg.role === "user" && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <User className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                )}
               </div>
             ))}
 
             {/* Streaming typewriter bubble */}
             {streamingMsg && (
-              <div className="flex gap-2.5 min-w-0 justify-start">
-                <AinaLogo className="h-8 w-8 shrink-0 object-contain" />
-                <div className="min-w-0 flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
+              <div className="flex gap-3 min-w-0 justify-start">
+                <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
+                <div className="min-w-0 flex-1 text-base text-foreground leading-relaxed">
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                     {streamingMsg.displayed}
                   </ReactMarkdown>
@@ -665,14 +660,12 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             )}
 
             {isLoading && (
-              <div className="flex gap-2.5">
-                <AinaLogo className="h-8 w-8 shrink-0 object-contain" />
-                <div className="rounded-2xl bg-secondary px-4 py-3">
-                  <div className="flex gap-1">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
-                  </div>
+              <div className="flex gap-3">
+                <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
+                <div className="flex items-center gap-1 py-2">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
                 </div>
               </div>
             )}
@@ -787,20 +780,20 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       )}
 
       {/* Input bar — always at bottom */}
-      <div className="shrink-0 px-3 pb-4 pt-2 md:px-6 md:pb-6">
+      <div className="shrink-0 px-4 pb-5 pt-2 md:px-6 md:pb-7">
         {limitReached ? (
           <div
             onClick={() => setLimitReached(true)}
-            className="mx-auto flex max-w-2xl cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400 transition-colors hover:border-amber-500/40"
+            className="mx-auto flex max-w-3xl cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400 transition-colors hover:border-amber-500/40"
           >
             <Zap className="h-4 w-4 shrink-0" />
             <span>Batas harian tercapai — <span className="font-semibold underline-offset-2 hover:underline">Upgrade atau jadi Kontributor</span></span>
           </div>
         ) : (
-          <form onSubmit={handleFormSubmit} className="mx-auto max-w-2xl">
+          <form onSubmit={handleFormSubmit} className="mx-auto max-w-3xl">
             {/* File preview above textarea */}
             {(attachedFile || isUploadingFile) && (
-              <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-3 py-2">
+              <div className="mb-2 flex items-center gap-2 rounded-2xl border border-border bg-secondary/60 px-3 py-2">
                 {isUploadingFile ? (
                   <>
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent shrink-0" />
@@ -831,7 +824,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 ) : null}
               </div>
             )}
-            <div className="relative rounded-2xl border border-border bg-card p-1.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
+            <div className="relative rounded-2xl border border-border bg-card shadow-sm transition-all focus-within:border-primary/50 focus-within:glow-purple-sm">
               {/* Hidden file input */}
               <input
                 ref={fileInputRef}
@@ -845,7 +838,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 type="button"
                 disabled={isLoading || isUploadingFile}
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                className="absolute left-3.5 bottom-3 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
                 title="Lampirkan gambar atau PDF"
               >
                 {isUploadingFile
@@ -865,12 +858,12 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 }}
                 placeholder="Tanyakan sesuatu kepada AINA..."
                 rows={1}
-                className="w-full resize-none rounded-xl bg-transparent px-4 py-3 pl-12 pr-14 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                className="w-full resize-none rounded-2xl bg-transparent px-5 py-4 pl-12 pr-14 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && !attachedFile)}
-                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-30"
+                className="absolute right-3.5 bottom-3 flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-30"
               >
                 <Send className="h-4 w-4" />
               </button>
