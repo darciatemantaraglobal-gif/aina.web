@@ -81,7 +81,7 @@ const TEAM_GROUPS: TeamGroup[] = [
     ],
   },
   {
-    label: "Developer",
+    label: "Developer Assistant",
     members: [
       { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I", photo: "/team/ilham.jpg" },
       { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N", photo: "/team/naadir.jpg" },
