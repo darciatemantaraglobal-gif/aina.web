@@ -22,6 +22,7 @@ import {
   HelpCircle,
   ChevronRight,
   Check,
+  Search,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -427,6 +428,7 @@ const DashboardSidebar = ({
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
   const profileRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -524,8 +526,29 @@ const DashboardSidebar = ({
               <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
                 Riwayat Chat
               </p>
+              {/* Search input */}
+              <div className="relative mb-2">
+                <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-sidebar-foreground/30 pointer-events-none" />
+                <input
+                  type="text"
+                  value={chatSearch}
+                  onChange={e => setChatSearch(e.target.value)}
+                  placeholder="Cari riwayat..."
+                  className="w-full rounded-lg border border-sidebar-border bg-sidebar-accent py-1.5 pl-7 pr-3 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                />
+                {chatSearch && (
+                  <button
+                    onClick={() => setChatSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
               <div className="space-y-0.5 pb-3">
-                {chats.map((chat) => (
+                {chats
+                  .filter(c => !chatSearch || c.title.toLowerCase().includes(chatSearch.toLowerCase()))
+                  .map((chat) => (
                   <div
                     key={chat.id}
                     className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors ${
@@ -550,6 +573,9 @@ const DashboardSidebar = ({
                     </button>
                   </div>
                 ))}
+                {chatSearch && chats.filter(c => c.title.toLowerCase().includes(chatSearch.toLowerCase())).length === 0 && (
+                  <p className="py-3 text-center text-xs text-sidebar-foreground/40">Tidak ditemukan</p>
+                )}
               </div>
             </>
           ) : (

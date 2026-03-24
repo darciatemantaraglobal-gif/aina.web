@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -34,11 +34,31 @@ interface ChatAreaProps {
 
 const API_URL = "/api/chat";
 
-const SUGGESTIONS = [
-  "Bagaimana cara daftar kuliah di Al-Azhar?",
-  "Cara mengurus visa pelajar Mesir",
-  "Biaya hidup di Kairo untuk mahasiswa",
-  "Tips mencari tempat tinggal di Mesir",
+const SUGGESTION_CATEGORIES = [
+  { id: "semua", label: "Semua" },
+  { id: "akademik", label: "Akademik" },
+  { id: "dokumen", label: "Dokumen" },
+  { id: "keuangan", label: "Keuangan" },
+  { id: "kehidupan", label: "Kehidupan" },
+];
+
+const ALL_SUGGESTIONS = [
+  { text: "Bagaimana cara daftar kuliah di Al-Azhar?", cat: "akademik" },
+  { text: "Apa saja fakultas di Al-Azhar University?", cat: "akademik" },
+  { text: "Jadwal semester dan ujian di Al-Azhar", cat: "akademik" },
+  { text: "Tips lulus ujian lebih cepat di Mesir", cat: "akademik" },
+  { text: "Cara mengurus visa pelajar Mesir", cat: "dokumen" },
+  { text: "Cara perpanjang iqomah di Mesir", cat: "dokumen" },
+  { text: "Prosedur legalisasi dokumen di Mesir", cat: "dokumen" },
+  { text: "Apa itu KITAS dan bagaimana cara membuatnya?", cat: "dokumen" },
+  { text: "Biaya hidup di Kairo untuk mahasiswa", cat: "keuangan" },
+  { text: "Cara kirim uang dari Indonesia ke Mesir", cat: "keuangan" },
+  { text: "Estimasi biaya kos dan makan per bulan", cat: "keuangan" },
+  { text: "Berapa kurs Pound Mesir vs Rupiah?", cat: "keuangan" },
+  { text: "Tips mencari tempat tinggal di Kairo", cat: "kehidupan" },
+  { text: "Makanan halal dan warung Indonesia di Kairo", cat: "kehidupan" },
+  { text: "Transportasi umum di Kairo", cat: "kehidupan" },
+  { text: "Tempat wisata wajib dikunjungi di Mesir", cat: "kehidupan" },
 ];
 
 const AinaLogo = ({ className }: { className?: string }) => (
@@ -65,6 +85,24 @@ function cleanMarkdown(text: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function extractSources(content: string): string[] {
+  const results: string[] = [];
+  const lines = content.split("\n");
+  for (const line of lines) {
+    const m = line.match(/\*{0,2}sumber\*{0,2}[\s:*]+(.+)/i);
+    if (m) {
+      const src = m[1].replace(/\*+/g, "").replace(/^\[|\]$/g, "").trim();
+      if (src && src.length < 120) results.push(src);
+    }
+  }
+  return results;
+}
+
+const FEEDBACK_STORE_KEY = "aina_msg_feedback";
+function loadStoredFeedback(): Record<string, "up" | "down"> {
+  try { return JSON.parse(localStorage.getItem(FEEDBACK_STORE_KEY) ?? "{}"); } catch { return {}; }
 }
 
 const DAILY_LIMIT = 3;
@@ -158,6 +196,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, "up" | "down">>(loadStoredFeedback);
+  const [suggestionCat, setSuggestionCat] = useState("semua");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -314,6 +354,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     } finally {
       setSubmittingReport(false);
     }
+  };
+
+  const submitFeedback = (msgId: string, vote: "up" | "down") => {
+    setFeedbackMap(prev => {
+      const next = { ...prev };
+      if (prev[msgId] === vote) {
+        delete next[msgId];
+      } else {
+        next[msgId] = vote;
+      }
+      localStorage.setItem(FEEDBACK_STORE_KEY, JSON.stringify(next));
+      return next;
+    });
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -561,22 +614,45 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               Asisten AI khusus mahasiswa Indonesia di Mesir. Tanya apa saja tentang kehidupan di Kairo!
             </p>
 
-            <div className="mt-6 sm:mt-8 grid w-full max-w-lg grid-cols-2 gap-2">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    setInput(s);
-                    setTimeout(() => {
-                      textareaRef.current?.focus();
-                      autoResize();
-                    }, 0);
-                  }}
-                  className="rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
-                >
-                  {s}
-                </button>
-              ))}
+            <div className="mt-6 sm:mt-8 w-full max-w-lg">
+              {/* Category filter tabs */}
+              <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                {SUGGESTION_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSuggestionCat(cat.id)}
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      suggestionCat === cat.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+              {/* Suggestion buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                {ALL_SUGGESTIONS
+                  .filter(s => suggestionCat === "semua" || s.cat === suggestionCat)
+                  .slice(0, 6)
+                  .map((s) => (
+                    <button
+                      key={s.text}
+                      onClick={() => {
+                        setInput(s.text);
+                        setTimeout(() => {
+                          textareaRef.current?.focus();
+                          autoResize();
+                        }, 0);
+                      }}
+                      className="rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
+                    >
+                      {s.text}
+                    </button>
+                  ))
+                }
+              </div>
             </div>
           </div>
         ) : (
@@ -619,8 +695,27 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </ReactMarkdown>
                     </div>
 
-                    {/* Action row: copy (left) + report (right) */}
+                    {/* Source badges */}
+                    {(() => {
+                      const sources = extractSources(msg.content);
+                      return sources.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {sources.map((src, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] text-primary/70"
+                            >
+                              <BookMarked className="h-2.5 w-2.5 shrink-0" />
+                              <span className="truncate max-w-[180px]">{src}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {/* Action row: copy + feedback (left) + report (right) */}
                     <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-0.5">
                       {/* Copy button */}
                       <button
                         onClick={() => {
@@ -636,6 +731,31 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                           : <><Copy className="h-3 w-3" />Salin</>
                         }
                       </button>
+                      {/* Thumbs up */}
+                      <button
+                        onClick={() => submitFeedback(msg.id, "up")}
+                        className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] transition-colors hover:bg-secondary ${
+                          feedbackMap[msg.id] === "up"
+                            ? "text-green-500"
+                            : "text-muted-foreground/50 hover:text-muted-foreground"
+                        }`}
+                        title="Jawaban membantu"
+                      >
+                        <ThumbsUp className="h-3 w-3" />
+                      </button>
+                      {/* Thumbs down */}
+                      <button
+                        onClick={() => submitFeedback(msg.id, "down")}
+                        className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] transition-colors hover:bg-secondary ${
+                          feedbackMap[msg.id] === "down"
+                            ? "text-red-400"
+                            : "text-muted-foreground/50 hover:text-muted-foreground"
+                        }`}
+                        title="Jawaban kurang membantu"
+                      >
+                        <ThumbsDown className="h-3 w-3" />
+                      </button>
+                      </div>
 
                       {/* Report */}
                       <div>
@@ -824,7 +944,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       )}
 
       {/* Input bar — always at bottom */}
-      <div className="shrink-0 px-4 pb-5 pt-2 md:px-6 md:pb-7">
+      <div className="safe-bottom shrink-0 px-4 pb-5 pt-2 md:px-6 md:pb-7">
         {limitReached ? (
           <div
             onClick={() => setLimitReached(true)}
