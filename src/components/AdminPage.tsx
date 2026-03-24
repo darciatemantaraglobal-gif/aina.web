@@ -1335,6 +1335,33 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   );
 }
 
+/* ─── Markdown components for chat monitor ────────────── */
+const MONITOR_MD = {
+  br: () => <br />,
+  p: ({ children }: any) => <p className="mb-2 last:mb-0 break-words leading-relaxed">{children}</p>,
+  strong: ({ children }: any) => <strong className="font-semibold text-foreground">{children}</strong>,
+  em: ({ children }: any) => <em className="italic text-muted-foreground/80">{children}</em>,
+  ul: ({ children }: any) => <ul className="mb-2 ml-4 list-disc space-y-0.5">{children}</ul>,
+  ol: ({ children }: any) => <ol className="mb-2 ml-4 list-decimal space-y-0.5">{children}</ol>,
+  li: ({ children }: any) => <li className="leading-relaxed break-words">{children}</li>,
+  h1: ({ children }: any) => <h1 className="mb-1.5 mt-3 text-sm font-bold text-foreground first:mt-0">{children}</h1>,
+  h2: ({ children }: any) => <h2 className="mb-1 mt-2.5 text-sm font-bold text-foreground first:mt-0">{children}</h2>,
+  h3: ({ children }: any) => <h3 className="mb-1 mt-2 text-xs font-semibold text-foreground first:mt-0">{children}</h3>,
+  code: ({ children, className }: any) => {
+    if (className?.includes("language-")) return <code className={className}>{children}</code>;
+    return <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[11px] text-foreground break-all">{children}</code>;
+  },
+  pre: ({ children }: any) => (
+    <div className="mb-2 overflow-x-auto rounded-lg bg-muted/60">
+      <pre className="p-2.5 font-mono text-[11px] text-foreground">{children}</pre>
+    </div>
+  ),
+  blockquote: ({ children }: any) => (
+    <blockquote className="mb-2 border-l-2 border-primary/40 pl-3 text-muted-foreground">{children}</blockquote>
+  ),
+  hr: () => <hr className="my-2 border-border/50" />,
+};
+
 /* ─── Chat Monitor Tab (Master Admin only) ───────────── */
 interface ChatEntry {
   id: string;
@@ -1450,7 +1477,7 @@ function ChatMonitorTab() {
 
       {/* Conversation Viewer Dialog */}
       <Dialog open={!!selected} onOpenChange={open => !open && setSelected(null)}>
-        <DialogContent className="max-w-lg gap-0 p-0 overflow-hidden max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-2xl gap-0 p-0 overflow-hidden max-h-[90vh] flex flex-col">
           {selected && (
             <>
               <div className="flex items-center gap-3 border-b border-border p-4 shrink-0">
@@ -1473,22 +1500,29 @@ function ChatMonitorTab() {
                   messages.map(m => (
                     <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                       {m.role === "assistant" && (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-purple-700">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-purple-700 mt-0.5">
                           <Shield className="h-3.5 w-3.5 text-white" />
                         </div>
                       )}
-                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
-                        m.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-secondary-foreground"
-                      }`}>
-                        <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                        <p className={`mt-1 text-[10px] ${m.role === "user" ? "text-primary-foreground/60" : "text-muted-foreground/60"}`}>
-                          {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
+                      {m.role === "user" ? (
+                        <div className="max-w-[70%] rounded-2xl bg-primary px-3 py-2 text-xs leading-relaxed text-primary-foreground">
+                          <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          <p className="mt-1 text-[10px] text-primary-foreground/60">
+                            {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="max-w-[85%] rounded-2xl bg-secondary px-3 py-2.5 text-xs text-secondary-foreground">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
+                            {m.content}
+                          </ReactMarkdown>
+                          <p className="mt-1.5 text-[10px] text-muted-foreground/60">
+                            {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      )}
                       {m.role === "user" && (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted mt-0.5">
                           <Users className="h-3.5 w-3.5 text-muted-foreground" />
                         </div>
                       )}
