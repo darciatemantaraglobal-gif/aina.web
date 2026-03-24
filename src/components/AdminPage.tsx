@@ -2139,8 +2139,347 @@ function WaitlistTab() {
   );
 }
 
+/* ─── Performance Tab (Master Admin only) ────────────── */
+type PerfView = "summary" | "ratings" | "retrieval" | "edge_cases" | "faq" | "eval";
+
+interface IntelSummary {
+  top_faqs: { topic_cluster: string; sample_query: string | null; frequency: number }[];
+  top_edge_cases: { pattern_type: string; topic_hint: string; frequency: number }[];
+  overall_satisfaction_rate: number | null;
+  total_ratings: number;
+  source_breakdown: { kb_usage_pct: number | null; wiki_usage_pct: number | null; ddg_usage_pct: number | null; pinned_usage_pct: number | null; total_turns: number };
+  needs_verification_rate: number | null;
+}
+interface RatingRow  { intent: string; confidence: string; positive: number; negative: number; total: number; satisfaction_rate: number | null; }
+interface RetrievalRow { intent: string; kb_strength: string; confidence_level: string; had_kb: number; had_wiki: number; had_ddg: number; had_pinned: number; total: number; }
+interface EdgeCaseRow  { id: string; pattern_type: string; topic_hint: string; frequency: number; last_seen_at: string; }
+interface FaqRow       { id: string; topic_cluster: string; sample_query: string | null; frequency: number; last_seen_at: string; }
+interface EvalSummaryRow { version_tag: string; avg_total: number; count: number; }
+interface BenchmarkRow { id: string; category: string; question: string; is_active: boolean; }
+
+function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-1">
+      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className={`text-2xl font-bold ${color ?? "text-foreground"}`}>{value}</p>
+      {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
+function PerfTable({ cols, rows, empty }: { cols: string[]; rows: React.ReactNode[][]; empty: string }) {
+  if (rows.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">{empty}</p>;
+  return (
+    <div className="rounded-2xl border border-border overflow-hidden">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border bg-card">
+            {cols.map(c => <th key={c} className="px-3 py-2.5 text-left font-medium text-muted-foreground">{c}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-card/60">
+              {row.map((cell, j) => <td key={j} className="px-3 py-2.5 text-foreground/90">{cell}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PerformanceTab() {
+  const [view, setView]         = useState<PerfView>("summary");
+  const [loading, setLoading]   = useState(false);
+  const [summary, setSummary]   = useState<IntelSummary | null>(null);
+  const [ratings, setRatings]   = useState<RatingRow[]>([]);
+  const [retrieval, setRetrieval] = useState<RetrievalRow[]>([]);
+  const [edgeCases, setEdgeCases] = useState<EdgeCaseRow[]>([]);
+  const [faq, setFaq]           = useState<FaqRow[]>([]);
+  const [evalSum, setEvalSum]   = useState<EvalSummaryRow[]>([]);
+  const [benchmarks, setBenchmarks] = useState<BenchmarkRow[]>([]);
+
+  const load = useCallback(async (v: PerfView) => {
+    setLoading(true);
+    try {
+      if (v === "summary") {
+        const d = await adminFetch("/api/admin/intel/summary");
+        setSummary(d);
+      } else if (v === "ratings") {
+        const d = await adminFetch("/api/admin/intel/ratings");
+        setRatings(d);
+      } else if (v === "retrieval") {
+        const d = await adminFetch("/api/admin/intel/retrieval-stats");
+        setRetrieval(d);
+      } else if (v === "edge_cases") {
+        const d = await adminFetch("/api/admin/intel/edge-cases");
+        setEdgeCases(d);
+      } else if (v === "faq") {
+        const d = await adminFetch("/api/admin/intel/query-patterns");
+        setFaq(d);
+      } else if (v === "eval") {
+        const [es, bm] = await Promise.all([
+          adminFetch("/api/admin/eval/summary"),
+          adminFetch("/api/admin/eval/benchmarks"),
+        ]);
+        setEvalSum(es);
+        setBenchmarks(bm);
+      }
+    } catch (e: any) { toast.error(e.message); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(view); }, [view, load]);
+
+  const pctBar = (pct: number | null) => {
+    const val = pct ?? 0;
+    const color = val >= 70 ? "bg-green-500" : val >= 40 ? "bg-yellow-500" : "bg-red-500";
+    return (
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
+          <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(val, 100)}%` }} />
+        </div>
+        <span className="text-xs text-muted-foreground">{val}%</span>
+      </div>
+    );
+  };
+
+  const subViews: Array<{ id: PerfView; label: string }> = [
+    { id: "summary",    label: "Ringkasan" },
+    { id: "ratings",    label: "Rating" },
+    { id: "retrieval",  label: "Retrieval" },
+    { id: "edge_cases", label: "Edge Cases" },
+    { id: "faq",        label: "FAQ Patterns" },
+    { id: "eval",       label: "Eval" },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-display text-lg font-bold text-foreground">Performa AINA</h2>
+          <p className="text-sm text-muted-foreground">Intelijen agregat sistem — semua data anonim, tidak ada data pribadi user</p>
+        </div>
+        <button onClick={() => load(view)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {/* Sub-navigation */}
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
+        {subViews.map(sv => (
+          <button key={sv.id} onClick={() => setView(sv.id)}
+            className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${view === sv.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            {sv.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-card" />)}</div>
+      ) : (
+        <>
+          {/* ── SUMMARY ── */}
+          {view === "summary" && summary && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <StatCard
+                  label="Satisfaction Rate"
+                  value={summary.overall_satisfaction_rate !== null ? `${summary.overall_satisfaction_rate}%` : "—"}
+                  sub={`dari ${summary.total_ratings} rating`}
+                  color={summary.overall_satisfaction_rate !== null && summary.overall_satisfaction_rate >= 70 ? "text-green-400" : "text-yellow-400"}
+                />
+                <StatCard label="KB Usage" value={summary.source_breakdown.kb_usage_pct !== null ? `${summary.source_breakdown.kb_usage_pct}%` : "—"} sub="dari total turn" />
+                <StatCard label="Wikipedia Usage" value={summary.source_breakdown.wiki_usage_pct !== null ? `${summary.source_breakdown.wiki_usage_pct}%` : "—"} sub="external (tier sedang)" />
+                <StatCard label="DuckDuckGo Usage" value={summary.source_breakdown.ddg_usage_pct !== null ? `${summary.source_breakdown.ddg_usage_pct}%` : "—"} sub="external (tier rendah)" />
+                <StatCard label="Needs Verification" value={summary.needs_verification_rate !== null ? `${summary.needs_verification_rate}%` : "—"} sub="turn tanpa sumber kuat" color={summary.needs_verification_rate !== null && summary.needs_verification_rate > 30 ? "text-red-400" : "text-foreground"} />
+                <StatCard label="Total Turn Dianalisis" value={summary.source_breakdown.total_turns} />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">Top FAQ Topics</h3>
+                  {summary.top_faqs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Belum ada data — SQL Phase 12 perlu dijalankan dulu</p>
+                  ) : summary.top_faqs.map((f, i) => (
+                    <div key={i} className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-foreground truncate">{f.topic_cluster}</p>
+                        {f.sample_query && <p className="text-[11px] text-muted-foreground truncate">{f.sample_query}</p>}
+                      </div>
+                      <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">{f.frequency}×</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">Top Edge Cases</h3>
+                  {summary.top_edge_cases.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Belum ada edge case terdeteksi</p>
+                  ) : summary.top_edge_cases.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-foreground">{e.pattern_type}</p>
+                        <p className="text-[11px] text-muted-foreground">{e.topic_hint}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-400">{e.frequency}×</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {view === "summary" && !summary && !loading && (
+            <p className="py-12 text-center text-sm text-muted-foreground">Gagal memuat data. Pastikan SQL Phase 12 sudah dijalankan di Supabase.</p>
+          )}
+
+          {/* ── RATINGS ── */}
+          {view === "ratings" && (
+            <PerfTable
+              cols={["Intent", "Confidence", "👍 Positif", "👎 Negatif", "Total", "Satisfaction"]}
+              empty="Belum ada rating. User perlu menekan tombol 👍/👎 di chat terlebih dahulu."
+              rows={ratings.map(r => [
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary font-mono text-[11px]">{r.intent ?? "—"}</span>,
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{r.confidence ?? "—"}</span>,
+                <span className="text-green-400 font-semibold">{r.positive}</span>,
+                <span className="text-red-400 font-semibold">{r.negative}</span>,
+                r.total,
+                pctBar(r.satisfaction_rate),
+              ])}
+            />
+          )}
+
+          {/* ── RETRIEVAL ── */}
+          {view === "retrieval" && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">Agregat per kombinasi intent × kb_strength × confidence. Menunjukkan seberapa sering tiap sumber digunakan.</p>
+              <PerfTable
+                cols={["Intent", "KB Strength", "Confidence", "Turn", "KB%", "Wiki%", "DDG%", "Pinned%"]}
+                empty="Belum ada data retrieval. Pastikan SQL Phase 12 sudah dijalankan."
+                rows={retrieval.map(r => {
+                  const pct = (n: number) => r.total > 0 ? `${Math.round(n / r.total * 100)}%` : "—";
+                  return [
+                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary font-mono text-[11px]">{r.intent ?? "—"}</span>,
+                    r.kb_strength ?? "—",
+                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{r.confidence_level ?? "—"}</span>,
+                    <span className="font-semibold">{r.total}</span>,
+                    pct(r.had_kb),
+                    pct(r.had_wiki),
+                    pct(r.had_ddg),
+                    pct(r.had_pinned),
+                  ];
+                })}
+              />
+            </div>
+          )}
+
+          {/* ── EDGE CASES ── */}
+          {view === "edge_cases" && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">Pola kegagalan yang terdeteksi otomatis per turn chat. Semakin tinggi frekuensi, semakin perlu perhatian.</p>
+              <PerfTable
+                cols={["Pola", "Topik", "Frekuensi", "Terakhir"]}
+                empty="Belum ada edge case. Bagus — artinya AINA belum pernah terdeteksi masuk pola berbahaya."
+                rows={edgeCases.map(e => [
+                  <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-red-400 font-mono text-[11px]">{e.pattern_type}</span>,
+                  e.topic_hint || "—",
+                  <span className="font-bold text-foreground">{e.frequency}</span>,
+                  <span className="text-muted-foreground">{fmtDate(e.last_seen_at)}</span>,
+                ])}
+              />
+            </div>
+          )}
+
+          {/* ── FAQ PATTERNS ── */}
+          {view === "faq" && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">Topik pertanyaan yang paling sering muncul (dihash, anonim). Gunakan ini untuk menentukan artikel KB berikutnya.</p>
+              <PerfTable
+                cols={["Topik Cluster", "Contoh Pertanyaan", "Frekuensi", "Terakhir"]}
+                empty="Belum ada pola FAQ. SQL Phase 12 perlu dijalankan terlebih dahulu."
+                rows={faq.map(f => [
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary font-mono text-[11px]">{f.topic_cluster}</span>,
+                  <span className="text-muted-foreground italic">{f.sample_query ?? "—"}</span>,
+                  <span className="font-bold text-foreground">{f.frequency}</span>,
+                  <span className="text-muted-foreground">{fmtDate(f.last_seen_at)}</span>,
+                ])}
+              />
+            </div>
+          )}
+
+          {/* ── EVAL ── */}
+          {view === "eval" && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-foreground">Skor per Versi</h3>
+                {evalSum.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Belum ada hasil evaluasi. Jalankan eval via API dan submit skor manual.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {evalSum.map(e => (
+                      <div key={e.version_tag} className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground font-mono">{e.version_tag}</p>
+                          <p className="text-[11px] text-muted-foreground">{e.count} benchmark diuji</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className={`text-xl font-bold ${e.avg_total >= 80 ? "text-green-400" : e.avg_total >= 60 ? "text-yellow-400" : "text-red-400"}`}>
+                              {Math.round(e.avg_total)}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">/ 100</p>
+                          </div>
+                          <div className="h-10 w-10 rounded-full border-2 flex items-center justify-center"
+                            style={{ borderColor: e.avg_total >= 80 ? "#4ade80" : e.avg_total >= 60 ? "#facc15" : "#f87171" }}>
+                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-foreground">Benchmark Questions ({benchmarks.length})</h3>
+                {benchmarks.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Belum ada benchmark. Jalankan seed via POST /api/admin/eval/benchmarks/seed</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(["factual","procedural","confused","recommendation","brainstorming","current_role","kb_first","memory"] as const).map(cat => {
+                      const items = benchmarks.filter(b => b.category === cat);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={cat} className="rounded-xl border border-border bg-card overflow-hidden">
+                          <div className="flex items-center justify-between border-b border-border px-4 py-2.5 bg-muted/30">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{cat}</span>
+                            <span className="text-[11px] text-muted-foreground">{items.length} soal</span>
+                          </div>
+                          <div className="divide-y divide-border/50">
+                            {items.map(b => (
+                              <div key={b.id} className="flex items-start gap-3 px-4 py-2.5">
+                                <div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${b.is_active ? "bg-green-400" : "bg-muted-foreground/30"}`} />
+                                <p className="text-xs text-foreground/90">{b.question}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -2194,6 +2533,7 @@ const AdminPage = () => {
     { id: "reports", label: "Laporan", icon: Flag },
     ...(isMasterAdmin ? [{ id: "waitlist" as Tab, label: "Waitlist Pro", icon: Crown }] : []),
     ...(isMasterAdmin ? [{ id: "security" as Tab, label: "Security", icon: ShieldAlert }] : []),
+    ...(isMasterAdmin ? [{ id: "performance" as Tab, label: "Performa AI", icon: TrendingUp }] : []),
   ];
 
   return (
@@ -2240,6 +2580,7 @@ const AdminPage = () => {
         {activeTab === "reports" && <ReportsTab />}
         {activeTab === "waitlist" && isMasterAdmin && <WaitlistTab />}
         {activeTab === "security" && isMasterAdmin && <SecurityLogsTab />}
+        {activeTab === "performance" && isMasterAdmin && <PerformanceTab />}
       </div>
     </div>
   );
