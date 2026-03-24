@@ -440,7 +440,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         : undefined;
 
       const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 60000);
+      const fetchTimeout = setTimeout(() => controller.abort(), 120000);
       let res: Response;
       try {
         res = await fetch(API_URL, {

@@ -815,9 +815,11 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
   // Vision-capable model for image uploads; free model chain for text
   const VISION_MODEL = "google/gemini-2.0-flash-001";
 
-  const tryModel = async (model) => {
+  // allowTruncated=false: throw if finish_reason==="length" (so race picks a complete model)
+  // allowTruncated=true: accept truncated response as last resort
+  const tryModel = async (model, allowTruncated = false) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
     try {
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -838,7 +840,14 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content;
+      const finishReason = data.choices?.[0]?.finish_reason;
       if (!content) throw new Error("empty response");
+      // If response was cut off by token limit, reject so the race tries the next model
+      if (!allowTruncated && finishReason === "length") {
+        console.warn(`[tryModel] ${model} truncated (finish_reason=length), skipping`);
+        throw new Error("response truncated");
+      }
+      console.log(`[tryModel] ${model} OK (finish_reason=${finishReason}, chars=${content.length})`);
       return { reply: content, model };
     } finally {
       clearTimeout(timeoutId);
@@ -846,8 +855,10 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
   };
 
   // Race only priority models first; fallback to secondary set if all fail
-  const racePriority = () => Promise.any(MODELS_PRIORITY.map(tryModel));
-  const raceFallback = () => Promise.any(MODELS_FALLBACK.map(tryModel));
+  const racePriority = () => Promise.any(MODELS_PRIORITY.map(m => tryModel(m, false)));
+  // Fallback: try secondary models, accept truncated as last resort
+  const raceFallback = () => Promise.any(MODELS_FALLBACK.map(m => tryModel(m, false)))
+    .catch(() => Promise.any(MODELS_PRIORITY.concat(MODELS_FALLBACK).map(m => tryModel(m, true))));
 
   try {
     let result;
