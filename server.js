@@ -687,44 +687,49 @@ app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
 function detectIntent(text) {
   const t = text.toLowerCase().trim();
 
-  // Confused/anxious — highest priority
-  if (/bingung|galau|khawatir|takut|pusing|stres|stress|overwhelm|nggak tau|tidak tau|ga tau|gak tau|harus mulai dari mana|nggak ngerti|tidak mengerti|susah banget|ribet banget|tolong bantu/.test(t)) {
-    return "confused";
-  }
+  // Casual tone flag — keyword-based only, no length check
+  const isCasual = /\b(dong|deh|nih|btw|wkwk|haha|hehe|sih|loh|lho|gitu|gitu ya|ya kan|nggak sih|gak sih)\b/.test(t);
 
-  // Procedural — how-to or step-by-step requests
-  if (/\b(cara|bagaimana cara|gimana cara|langkah|prosedur|tahapan|proses|tutorial|panduan|step|caranya|gimana sih cara)\b/.test(t)) {
-    return "procedural";
-  }
+  // Primary intent signals (evaluated independently before priority resolution)
+  const isConfused   = /bingung|galau|khawatir|takut|pusing|stres|stress|overwhelm|nggak tau|tidak tau|ga tau|gak tau|harus mulai dari mana|nggak ngerti|tidak mengerti|susah banget|ribet banget|tolong bantu/.test(t);
+  const isProcedural = /\b(cara|bagaimana cara|gimana cara|langkah|prosedur|tahapan|proses|tutorial|panduan|step|caranya|gimana sih cara)\b/.test(t);
+  const isRecommend  = /\b(rekomen|rekomendasi|saranin|suggest|yang bagus|yang enak|yang murah|yang terbaik|mending yang mana|pilih yang mana)\b/.test(t);
+  const isBrainstorm = /\b(ide|pilihan|opsi|alternatif|apa saja|apa aja|apa yang bisa|bisa apa|ada nggak|ada yang|kira-kira apa)\b/.test(t);
 
-  // Brainstorming — seeking options or ideas
-  if (/\b(ide|saran|rekomen|rekomendasi|pilihan|opsi|alternatif|apa saja|apa yang bisa|bisa apa|ada nggak|ada yang|kira-kira apa)\b/.test(t)) {
-    return "brainstorming";
-  }
+  // Priority resolution — mixed case handled first
+  let primary;
+  if (isConfused && isProcedural) primary = "confused_procedural";
+  else if (isConfused)            primary = "confused";
+  else if (isProcedural)          primary = "procedural";
+  else if (isRecommend)           primary = "recommendation";
+  else if (isBrainstorm)          primary = "brainstorming";
+  else                            primary = "factual";
 
-  // Casual — short messages or conversational markers
-  if (t.length < 60 || /\b(dong|deh|nih|btw|eh |wkwk|haha|hehe|sih|loh|lho|gitu|gitu ya)\b/.test(t)) {
-    return "casual";
-  }
-
-  // Default: factual
-  return "factual";
+  return { primary, casual: isCasual };
 }
 
-function buildIntentHint(intent) {
-  switch (intent) {
-    case "confused":
-      return "\n\n**[Gaya respons — BINGUNG/KHAWATIR]** Akui perasaannya dalam 1 kalimat pembuka yang hangat dan singkat, lalu langsung ke solusi paling konkret. Jangan berlebihan di bagian empati.";
-    case "procedural":
-      return "\n\n**[Gaya respons — PROSEDURAL]** Mulai dengan 1 kalimat ringkas tentang apa yang akan dilakukan, lalu langsung ke langkah bernomor. Nada boleh hangat tapi tetap terstruktur.";
-    case "brainstorming":
-      return "\n\n**[Gaya respons — BRAINSTORMING]** Berikan beberapa opsi/ide dalam format bullet. Buka dengan 1 kalimat singkat, lalu tiap ide boleh punya 1-2 kalimat penjelasan. Nada terbuka dan encouraging.";
-    case "casual":
-      return "\n\n**[Gaya respons — KASUAL]** Jawab dengan nada santai dan percakapan. Kalimat pendek. Tidak perlu heading atau struktur formal. Tetap informatif.";
-    case "factual":
-    default:
-      return "\n\n**[Gaya respons — FAKTUAL]** Jawab poin utama di kalimat pertama, lalu elaborasi secukupnya. Tidak perlu basa-basi atau pengantar.";
-  }
+function buildIntentHint({ primary, casual }) {
+  const toneNote = casual
+    ? " Nada santai dan percakapan, boleh pakai kata informal tapi tetap informatif."
+    : "";
+
+  const hints = {
+    confused:
+      "Akui perasaannya dalam 1 kalimat pembuka yang hangat dan singkat, lalu langsung ke solusi paling konkret. Jangan berlebihan di bagian empati.",
+    confused_procedural:
+      "Akui perasaannya dalam 1 kalimat pembuka yang singkat, lalu langsung jawab dalam format langkah bernomor. Jangan buang terlalu banyak waktu di bagian empati.",
+    procedural:
+      "Mulai dengan 1 kalimat ringkas tentang apa yang akan dilakukan, lalu langsung ke langkah bernomor. Nada boleh hangat tapi tetap terstruktur.",
+    recommendation:
+      "Berikan 1 rekomendasi terkuat di kalimat pertama, baru tambahkan 2–3 alternatif singkat jika relevan. Jangan listing panjang tanpa arah.",
+    brainstorming:
+      "Berikan beberapa opsi/ide dalam format bullet. Buka dengan 1 kalimat singkat, tiap ide boleh ada 1–2 kalimat penjelasan. Nada terbuka dan encouraging.",
+    factual:
+      "Jawab poin utama di kalimat pertama, lalu elaborasi secukupnya setelahnya. Tidak perlu basa-basi atau pengantar.",
+  };
+
+  const label = primary.toUpperCase().replace("_", "/");
+  return `\n\n**[Gaya respons — ${label}]** ${hints[primary] ?? hints.factual}${toneNote}`;
 }
 
 /* ── AI Chat ─────────────────────────────────────────── */
@@ -823,7 +828,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Lightweight intent classification — rule-based, no LLM call
   const intent = detectIntent(lastUserMessage);
   const intentHint = buildIntentHint(intent);
-  console.log(`[Intent] ${intent} — "${lastUserMessage.slice(0, 60)}"`);
+  console.log(`[Intent] ${intent.primary}${intent.casual ? "+casual" : ""} — "${lastUserMessage.slice(0, 60)}"`);
 
   const [articles, pinnedUpdates, exchangeRates, wikiResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
