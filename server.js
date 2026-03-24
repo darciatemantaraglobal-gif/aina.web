@@ -434,8 +434,14 @@ function extractWikipediaSearchTerm(query) {
   return q || query;
 }
 
+const WIKI_SKIP_PATTERNS = /^(ok|oke|okay|iya|ya|yap|yep|haha|hehe|wkwk|lol|makasih|thanks|thank you|terima kasih|sip|siap|mantap|beres|done|good|great|nice|oke bro|sip bro|iyaa|ooh|ohh|wah|wow|hmm|hm|eh|ah|uh|gitu|gitu ya|gitu deh|paham|ngerti|mengerti|udah|sudah|lanjut|next|teruskan|lanjutkan)\b/i;
+
 async function fetchWikipediaSummary(query) {
   const TIMEOUT = 8000;
+  const trimmed = query.trim();
+  // Skip very short or purely conversational messages
+  if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed)) return null;
+
   try {
     const searchTerm = extractWikipediaSearchTerm(query);
     const q = encodeURIComponent(searchTerm.slice(0, 120));
@@ -774,7 +780,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     fetchRelevantArticles(lastUserMessage),
     fetchPinnedUpdates(),
     isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
-    isWikipediaQuery(lastUserMessage) ? fetchWikipediaSummary(lastUserMessage) : Promise.resolve(null),
+    fetchWikipediaSummary(lastUserMessage), // Always try Wikipedia for every query
   ]);
 
   // Build knowledge context with article-type-aware formatting hints
@@ -863,8 +869,13 @@ Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidu
 ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 
 **Sumber jawaban:**
-- Gunakan Knowledge Base terlebih dahulu. Gunakan pengetahuan umum HANYA jika topik tidak ada di Knowledge Base.
-- Jika tidak tahu sama sekali, jawab: "Maaf, saya belum punya info soal ini."
+- Urutan prioritas sumber jawaban:
+  1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini jika tersedia.
+  2. **Data Wikipedia** (jika ada di konteks di bawah) — gunakan jika KB tidak memiliki info topik tersebut. Wikipedia mencakup tokoh, sejarah, tempat, konsep, dan informasi umum lainnya.
+  3. **Data real-time** (kurs, dll.) — gunakan jika tersedia di konteks.
+  4. **Pengetahuan umum** — gunakan jika topik tidak ada di KB maupun Wikipedia.
+- Jika tidak ada informasi sama sekali dari semua sumber di atas, BARU jawab: "Maaf, saya belum punya info soal ini."
+- JANGAN bilang tidak tahu jika Wikipedia sudah menyediakan informasi relevan di konteks.
 
 **Format jawaban:**
 - Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat 1-3 kalimat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
