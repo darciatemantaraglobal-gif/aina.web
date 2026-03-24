@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -154,6 +154,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [reportReason, setReportReason] = useState<string>("");
   const [reportedMsgIds, setReportedMsgIds] = useState<Set<string>>(new Set());
   const [submittingReport, setSubmittingReport] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -618,8 +619,26 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </ReactMarkdown>
                     </div>
 
-                    {/* Report row */}
-                    <div className="mt-1.5 flex items-center justify-end">
+                    {/* Action row: copy (left) + report (right) */}
+                    <div className="mt-2 flex items-center justify-between">
+                      {/* Copy button */}
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(msg.content);
+                          setCopiedMsgId(msg.id);
+                          setTimeout(() => setCopiedMsgId(null), 2000);
+                        }}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] text-muted-foreground/50 transition-colors hover:bg-secondary hover:text-muted-foreground"
+                        title="Salin sebagai markdown"
+                      >
+                        {copiedMsgId === msg.id
+                          ? <><Check className="h-3 w-3 text-green-500" /><span className="text-green-500">Tersalin</span></>
+                          : <><Copy className="h-3 w-3" />Salin</>
+                        }
+                      </button>
+
+                      {/* Report */}
+                      <div>
                       {reportedMsgIds.has(msg.id) ? (
                         <span className="flex items-center gap-1 text-[10px] text-green-500/70">
                           <Check className="h-3 w-3" /> Laporan terkirim
@@ -664,6 +683,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                         </button>
                       )}
                     </div>
+                  </div>
                   </div>
                 )}
 
