@@ -643,17 +643,19 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     }
   }
 
-  const MODELS = [
-    "meta-llama/llama-3.2-3b-instruct:free",
+  // Priority chain: try best models first, fallback to smaller ones
+  // Avoid racing all models — small 3B models respond fast but produce poor Indonesian output
+  const MODELS_PRIORITY = [
+    "meta-llama/llama-3.3-70b-instruct:free",
     "google/gemma-3-27b-it:free",
     "mistralai/mistral-small-3.1-24b-instruct:free",
-    "openai/gpt-oss-20b:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free",
-    "stepfun/step-3.5-flash:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "minimax/minimax-m2.5:free",
     "openai/gpt-oss-120b:free",
+    "openai/gpt-oss-20b:free",
+  ];
+  const MODELS_FALLBACK = [
     "nvidia/nemotron-3-super-120b-a12b:free",
+    "minimax/minimax-m2.5:free",
+    "stepfun/step-3.5-flash:free",
   ];
 
   // Extract plain text from last user message (content may be string or multimodal array)
@@ -726,22 +728,33 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     memoryContext = `\n\n---\n## Memori tentang User Ini\nKamu telah menyimpan hal-hal berikut tentang user ini dari percakapan sebelumnya. Gunakan untuk memberi jawaban yang lebih personal:\n${memList}\n---`;
   }
 
-  const systemPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Mesir (Masisir).
+  const systemPrompt = `Kamu adalah AINA, asisten AI khusus untuk mahasiswa Indonesia di Mesir (Masisir).
 
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
 
-ATURAN KERAS — WAJIB DIIKUTI:
-- PRIORITAS JAWABAN: Gunakan Knowledge Base terlebih dahulu. Gunakan pengetahuan umum hanya jika topik tidak tercakup di Knowledge Base.
-- IKUTI FORMAT dari petunjuk artikel: jika artikel bertipe Panduan Langkah-langkah, WAJIB gunakan **Langkah 1**, **Langkah 2**, dst. Jika bertipe Informasi Umum, gunakan paragraf.
-- Jawab minimal 3 paragraf pendek atau 3 langkah — pastikan informasi tersampaikan jelas tapi tidak bertele-tele.
-- Setiap paragraf/langkah fokus pada satu poin utama. Hindari pengulangan dan elaborasi berlebihan.
-- Untuk syarat, dokumen, atau daftar ketentuan → gunakan format poin (bullet \`-\`) bukan paragraf.
-- DILARANG menggunakan format tabel dalam jawaban apapun.
-- Gunakan format Markdown yang rapi: judul bagian pakai **bold**, isi pakai paragraf atau poin.
-- DILARANG memberi pengantar, basa-basi, atau kesimpulan yang tidak diminta.
-- DILARANG mengulang pertanyaan user.
-- Jika tidak tahu, jawab: "Maaf, saya belum punya info ini."
-- WAJIB cantumkan sumber di akhir setiap jawaban dalam format: *Sumber: [nama sumber/instansi/artikel]* — jika dari knowledge base gunakan judul artikelnya, jika dari pengetahuan umum tulis "Pengetahuan umum", jika dari pengalaman komunitas tulis "Komunitas Masisir"${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}`;
+ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
+
+**Sumber jawaban:**
+- Gunakan Knowledge Base terlebih dahulu. Gunakan pengetahuan umum HANYA jika topik tidak ada di Knowledge Base.
+- Jika tidak tahu sama sekali, jawab: "Maaf, saya belum punya info soal ini."
+
+**Format jawaban:**
+- Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat dan padat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
+- Jika artikel bertipe Panduan Langkah-langkah: WAJIB gunakan **Langkah 1**, **Langkah 2**, dst.
+- Jika bertipe Informasi Umum: gunakan paragraf pendek yang terstruktur.
+- Untuk syarat, dokumen, atau daftar → gunakan bullet \`-\`, bukan paragraf.
+- DILARANG menggunakan heading Markdown (\`##\`, \`###\`) — cukup **bold** untuk label atau judul bagian.
+- DILARANG menggunakan format tabel.
+- Setiap poin/paragraf fokus pada satu hal saja. Tidak ada pengulangan.
+
+**Gaya bahasa:**
+- DILARANG memberi pengantar, salam, atau basa-basi (jangan mulai dengan "Tentu!", "Baik!", "Halo!", "Siap!", dll.).
+- DILARANG mengulang atau memparafrase pertanyaan user di awal jawaban.
+- DILARANG menambahkan penutup seperti "Semoga membantu!", "Jangan ragu bertanya!", atau sejenisnya.
+- Langsung jawab inti pertanyaan dari kalimat pertama.
+
+**Sumber:**
+- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
@@ -808,7 +821,7 @@ ATURAN KERAS — WAJIB DIIKUTI:
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://aina.replit.app",
+          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://ainalabs.pro",
           "X-Title": "AINA - Asisten Masisir",
         },
         body: JSON.stringify({
@@ -828,10 +841,21 @@ ATURAN KERAS — WAJIB DIIKUTI:
     }
   };
 
+  // Race only priority models first; fallback to secondary set if all fail
+  const racePriority = () => Promise.any(MODELS_PRIORITY.map(tryModel));
+  const raceFallback = () => Promise.any(MODELS_FALLBACK.map(tryModel));
+
   try {
-    const result = useVisionModel
-      ? await tryModel(VISION_MODEL)
-      : await Promise.any(MODELS.map(tryModel));
+    let result;
+    if (useVisionModel) {
+      result = await tryModel(VISION_MODEL);
+    } else {
+      try {
+        result = await racePriority();
+      } catch {
+        result = await raceFallback();
+      }
+    }
     const reply = cleanReply(result.reply);
     console.log(`Responded using model: ${result.model}`);
     res.json({ reply, model: result.model });
