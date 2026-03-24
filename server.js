@@ -683,6 +683,50 @@ app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
   res.json({ success: true, message: `${user.email} sekarang jadi admin!`, uuid: user.id });
 });
 
+/* ── Intent detection (rule-based, no LLM call) ─────── */
+function detectIntent(text) {
+  const t = text.toLowerCase().trim();
+
+  // Confused/anxious — highest priority
+  if (/bingung|galau|khawatir|takut|pusing|stres|stress|overwhelm|nggak tau|tidak tau|ga tau|gak tau|harus mulai dari mana|nggak ngerti|tidak mengerti|susah banget|ribet banget|tolong bantu/.test(t)) {
+    return "confused";
+  }
+
+  // Procedural — how-to or step-by-step requests
+  if (/\b(cara|bagaimana cara|gimana cara|langkah|prosedur|tahapan|proses|tutorial|panduan|step|caranya|gimana sih cara)\b/.test(t)) {
+    return "procedural";
+  }
+
+  // Brainstorming — seeking options or ideas
+  if (/\b(ide|saran|rekomen|rekomendasi|pilihan|opsi|alternatif|apa saja|apa yang bisa|bisa apa|ada nggak|ada yang|kira-kira apa)\b/.test(t)) {
+    return "brainstorming";
+  }
+
+  // Casual — short messages or conversational markers
+  if (t.length < 60 || /\b(dong|deh|nih|btw|eh |wkwk|haha|hehe|sih|loh|lho|gitu|gitu ya)\b/.test(t)) {
+    return "casual";
+  }
+
+  // Default: factual
+  return "factual";
+}
+
+function buildIntentHint(intent) {
+  switch (intent) {
+    case "confused":
+      return "\n\n**[Gaya respons — BINGUNG/KHAWATIR]** Akui perasaannya dalam 1 kalimat pembuka yang hangat dan singkat, lalu langsung ke solusi paling konkret. Jangan berlebihan di bagian empati.";
+    case "procedural":
+      return "\n\n**[Gaya respons — PROSEDURAL]** Mulai dengan 1 kalimat ringkas tentang apa yang akan dilakukan, lalu langsung ke langkah bernomor. Nada boleh hangat tapi tetap terstruktur.";
+    case "brainstorming":
+      return "\n\n**[Gaya respons — BRAINSTORMING]** Berikan beberapa opsi/ide dalam format bullet. Buka dengan 1 kalimat singkat, lalu tiap ide boleh punya 1-2 kalimat penjelasan. Nada terbuka dan encouraging.";
+    case "casual":
+      return "\n\n**[Gaya respons — KASUAL]** Jawab dengan nada santai dan percakapan. Kalimat pendek. Tidak perlu heading atau struktur formal. Tetap informatif.";
+    case "factual":
+    default:
+      return "\n\n**[Gaya respons — FAKTUAL]** Jawab poin utama di kalimat pertama, lalu elaborasi secukupnya. Tidak perlu basa-basi atau pengantar.";
+  }
+}
+
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", chatLimiter, async (req, res) => {
   // Auth is required — unauthenticated requests must not reach OpenRouter
@@ -775,6 +819,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const lastUserMessage = Array.isArray(rawLastContent)
     ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
     : rawLastContent;
+
+  // Lightweight intent classification — rule-based, no LLM call
+  const intent = detectIntent(lastUserMessage);
+  const intentHint = buildIntentHint(intent);
+  console.log(`[Intent] ${intent} — "${lastUserMessage.slice(0, 60)}"`);
 
   const [articles, pinnedUpdates, exchangeRates, wikiResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
@@ -903,6 +952,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Jawaban harus terasa seperti ditulis manusia: alami, tidak kaku, tidak terlalu formal, tidak seperti dokumen resmi.
 - Gunakan kalimat pendek-menengah. Hindari kalimat panjang beranak-pinak yang sulit dicerna.
 - Jika ada satu poin inti yang harus disampaikan, tulis itu di kalimat pertama — baru elaborasi setelahnya.
+${intentHint}
 
 **Sumber:**
 - WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Wikipedia" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${wikiContext}`;
