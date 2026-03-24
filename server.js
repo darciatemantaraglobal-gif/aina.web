@@ -3929,6 +3929,58 @@ ALTER TABLE public.user_memories ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN CREATE POLICY "Users can manage own memories" ON public.user_memories FOR ALL USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE INDEX IF NOT EXISTS idx_user_memories_user ON public.user_memories(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_memories_type ON public.user_memories(user_id, memory_type);`,
+
+    eval_benchmarks: `-- Evaluation benchmark question set
+CREATE TABLE IF NOT EXISTS public.eval_benchmarks (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  question          TEXT NOT NULL,
+  category          TEXT NOT NULL CHECK (category IN ('factual','procedural','confused','recommendation','brainstorming','current_role','kb_first','memory')),
+  expected_behavior TEXT,
+  is_edge_case      BOOLEAN NOT NULL DEFAULT false,
+  edge_note         TEXT,
+  active            BOOLEAN NOT NULL DEFAULT true,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.eval_benchmarks ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Master admin manages benchmarks" ON public.eval_benchmarks FOR ALL USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_eval_benchmarks_cat ON public.eval_benchmarks(category);`,
+
+    eval_results: `-- Evaluation scored results
+CREATE TABLE IF NOT EXISTS public.eval_results (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  benchmark_id          UUID REFERENCES public.eval_benchmarks(id) ON DELETE SET NULL,
+  run_id                UUID NOT NULL DEFAULT gen_random_uuid(),
+  question              TEXT NOT NULL,
+  category              TEXT NOT NULL,
+  answer                TEXT NOT NULL,
+  score_accuracy        SMALLINT CHECK (score_accuracy BETWEEN 1 AND 5),
+  score_relevance       SMALLINT CHECK (score_relevance BETWEEN 1 AND 5),
+  score_structure       SMALLINT CHECK (score_structure BETWEEN 1 AND 5),
+  score_human_feel      SMALLINT CHECK (score_human_feel BETWEEN 1 AND 5),
+  score_trustworthiness SMALLINT CHECK (score_trustworthiness BETWEEN 1 AND 5),
+  total_score           NUMERIC(5,2),
+  notes                 TEXT,
+  version_tag           TEXT NOT NULL,
+  eval_mode             TEXT NOT NULL DEFAULT 'manual',
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.eval_results ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Master admin manages eval results" ON public.eval_results FOR ALL USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_eval_results_version ON public.eval_results(version_tag, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_eval_results_run ON public.eval_results(run_id);`,
+
+    eval_edge_cases: `-- Known risky / bug-prone queries
+CREATE TABLE IF NOT EXISTS public.eval_edge_cases (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  question            TEXT NOT NULL,
+  risk_type           TEXT NOT NULL CHECK (risk_type IN ('current_role_error','kb_refusal','memory_over_injection','weak_recommendation','hallucination','other')),
+  description         TEXT,
+  example_bad_answer  TEXT,
+  resolved            BOOLEAN NOT NULL DEFAULT false,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.eval_edge_cases ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Master admin manages edge cases" ON public.eval_edge_cases FOR ALL USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
   };
 
   // Also include profile + article_type columns migration
@@ -4199,6 +4251,246 @@ if (PAYMENT_ENABLED) {
   );
 }
 
+/* ── Evaluation System — master admin only ───────────── */
+
+const EVAL_CATEGORIES = ["factual","procedural","confused","recommendation","brainstorming","current_role","kb_first","memory"];
+const EVAL_RISK_TYPES  = ["current_role_error","kb_refusal","memory_over_injection","weak_recommendation","hallucination","other"];
+
+// Default benchmark set — seeded once into eval_benchmarks
+const DEFAULT_BENCHMARKS = [
+  // factual
+  { question: "Apa itu iqomah dan apa fungsinya untuk mahasiswa di Mesir?", category: "factual", expected_behavior: "Jawaban singkat, akurat, tidak berlebihan. Harus dari KB jika ada." },
+  { question: "Berapa lama masa berlaku visa pelajar Mesir biasanya?", category: "factual", expected_behavior: "Angka/durasi spesifik. Jika tidak ada di KB, boleh dari memori model atau Wikipedia." },
+  // procedural
+  { question: "Bagaimana cara mengurus iqomah untuk mahasiswa baru Al-Azhar? Jelaskan langkah-langkahnya.", category: "procedural", expected_behavior: "Format langkah bernomor. Harus dari KB jika ada. Tidak boleh generik." },
+  { question: "Langkah-langkah mendaftar kuliah di Al-Azhar step by step?", category: "procedural", expected_behavior: "Format step-by-step. KB-first. Tidak ada basa-basi." },
+  // confused
+  { question: "Aduh aku bingung banget soal iqomah, nggak ngerti harus mulai dari mana", category: "confused", is_edge_case: true, edge_note: "Harus akui kebingungan dulu sebelum solusi", expected_behavior: "Satu kalimat empati, lalu langsung langkah-langkah." },
+  { question: "Tolong bantu aku, kata orang visa ku mau expired, aku takut dideportasi", category: "confused", is_edge_case: true, edge_note: "Jangan panik, jangan terlalu menenangkan — langsung solusi konkret", expected_behavior: "Akui situasi, langsung ke tindakan yang harus diambil segera." },
+  // recommendation
+  { question: "Kos mana yang paling recommended untuk mahasiswa baru di sekitar Al-Azhar?", category: "recommendation", expected_behavior: "Rekomendasi konkret dengan alasan. Tidak boleh 'tergantung kebutuhan' tanpa arahan." },
+  { question: "Aplikasi apa yang paling berguna untuk mahasiswa Indonesia di Kairo?", category: "recommendation", expected_behavior: "Daftar konkret dengan kegunaan singkat. Tidak berlebihan." },
+  // brainstorming
+  { question: "Apa saja yang bisa aku lakukan di Mesir selama liburan semester?", category: "brainstorming", expected_behavior: "Ide-ide konkret dan beragam. Bullet list. Nada antusias tapi informatif." },
+  { question: "Kira-kira sumber penghasilan apa yang bisa dicoba mahasiswa sambil kuliah di Kairo?", category: "brainstorming", expected_behavior: "Ide realistis, bukan generik. Sebutkan kendala lokal jika relevan." },
+  // current_role (high-risk — AINA harus blokir jika tidak ada sumber)
+  { question: "Siapa rektor Al-Azhar saat ini?", category: "current_role", is_edge_case: true, edge_note: "AINA harus tidak menyebut nama spesifik dari memori model. Harus redirect ke sumber.", expected_behavior: "Tidak menyebut nama dari memori. Menyarankan cek sumber resmi atau KB/pinned jika ada." },
+  { question: "Siapa ketua PPI Mesir sekarang?", category: "current_role", is_edge_case: true, edge_note: "Jabatan sangat dinamis — risiko tinggi salah nama", expected_behavior: "Blokir atau redirect. Tidak ada nama dari model memory." },
+  // kb_first
+  { question: "Dokumen apa saja yang dibutuhkan untuk perpanjang paspor di KBRI Kairo?", category: "kb_first", expected_behavior: "Harus dari KB jika ada. Wikipedia atau DDG tidak boleh diinjeksi jika KB sudah kuat." },
+  { question: "Cara membuat SKCK untuk keperluan di Mesir?", category: "kb_first", expected_behavior: "KB-first. Format langkah jika ada. External tidak digunakan jika KB mencukupi." },
+  // memory/personalization
+  { question: "Tips apa untuk mahasiswa yang baru tiba di Kairo bulan ini?", category: "memory", expected_behavior: "Jika memory user berisi 'baru tiba', AINA harus menyesuaikan jawaban. Tidak over-inject." },
+  { question: "Rekomendasikan rencana belajar yang cocok untuk kondisiku sekarang.", category: "memory", expected_behavior: "Jika ada memory tentang fakultas/jurusan, gunakan. Jika tidak ada, tanya atau beri jawaban umum." },
+];
+
+/* GET /api/admin/eval/benchmarks — list benchmark questions */
+app.get("/api/admin/eval/benchmarks", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const category = req.query.category;
+  let q = supabase.from("eval_benchmarks").select("*").eq("active", true).order("category").order("created_at");
+  if (category && EVAL_CATEGORIES.includes(category)) q = q.eq("category", category);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ benchmarks: data ?? [], total: data?.length ?? 0 });
+});
+
+/* POST /api/admin/eval/benchmarks — add benchmark question */
+app.post("/api/admin/eval/benchmarks", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const { question, category, expected_behavior, is_edge_case = false, edge_note } = req.body;
+  if (!question?.trim() || !category) return res.status(400).json({ error: "question and category required" });
+  if (!EVAL_CATEGORIES.includes(category)) return res.status(400).json({ error: `category must be one of: ${EVAL_CATEGORIES.join(", ")}` });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("eval_benchmarks").insert({ question: question.trim(), category, expected_behavior, is_edge_case, edge_note }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ benchmark: data });
+});
+
+/* POST /api/admin/eval/benchmarks/seed — insert default benchmark set (idempotent) */
+app.post("/api/admin/eval/benchmarks/seed", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { count } = await supabase.from("eval_benchmarks").select("*", { count: "exact", head: true });
+  if ((count ?? 0) > 0) return res.json({ message: `Already seeded (${count} benchmarks exist). Delete all first to re-seed.`, seeded: 0 });
+  const { data, error } = await supabase.from("eval_benchmarks").insert(DEFAULT_BENCHMARKS).select();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ message: `Seeded ${data.length} benchmark questions`, seeded: data.length });
+});
+
+/* POST /api/admin/eval/results — submit a manually scored result */
+app.post("/api/admin/eval/results", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const {
+    benchmark_id, run_id, question, category, answer,
+    score_accuracy, score_relevance, score_structure, score_human_feel, score_trustworthiness,
+    notes, version_tag, eval_mode = "manual",
+  } = req.body;
+  if (!question?.trim() || !answer?.trim() || !version_tag?.trim() || !category) {
+    return res.status(400).json({ error: "question, answer, category, version_tag required" });
+  }
+  const scores = [score_accuracy, score_relevance, score_structure, score_human_feel, score_trustworthiness];
+  const validScores = scores.filter(s => s != null);
+  const total_score = validScores.length === 5
+    ? parseFloat(((scores.reduce((a, b) => a + b, 0) / 25) * 100).toFixed(2))
+    : null;
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("eval_results").insert({
+    benchmark_id: benchmark_id || null,
+    run_id: run_id || undefined,
+    question: question.trim(), category, answer: answer.trim(),
+    score_accuracy, score_relevance, score_structure, score_human_feel, score_trustworthiness,
+    total_score, notes, version_tag: version_tag.trim(), eval_mode,
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ result: data, total_score });
+});
+
+/* GET /api/admin/eval/runs — list all evaluation runs grouped by run_id + version_tag */
+app.get("/api/admin/eval/runs", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("eval_results")
+    .select("run_id, version_tag, category, total_score, created_at")
+    .order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  // Group by run_id
+  const runs = {};
+  for (const row of (data ?? [])) {
+    if (!runs[row.run_id]) {
+      runs[row.run_id] = { run_id: row.run_id, version_tag: row.version_tag, created_at: row.created_at, count: 0, avg_total: 0, scores: [] };
+    }
+    runs[row.run_id].count++;
+    if (row.total_score != null) runs[row.run_id].scores.push(Number(row.total_score));
+  }
+  for (const run of Object.values(runs)) {
+    run.avg_total = run.scores.length ? parseFloat((run.scores.reduce((a, b) => a + b, 0) / run.scores.length).toFixed(2)) : null;
+    delete run.scores;
+  }
+  res.json({ runs: Object.values(runs).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) });
+});
+
+/* GET /api/admin/eval/runs/:runId — full results for a specific run */
+app.get("/api/admin/eval/runs/:runId", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("eval_results")
+    .select("*")
+    .eq("run_id", req.params.runId)
+    .order("created_at");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ results: data ?? [], count: data?.length ?? 0 });
+});
+
+/* GET /api/admin/eval/compare?v1=phase-6&v2=phase-7 — regression diff */
+app.get("/api/admin/eval/compare", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const { v1, v2 } = req.query;
+  if (!v1 || !v2) return res.status(400).json({ error: "v1 and v2 query params required" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("eval_results")
+    .select("version_tag, category, total_score")
+    .in("version_tag", [v1, v2]);
+  if (error) return res.status(500).json({ error: error.message });
+  const aggregate = (version) => {
+    const rows = (data ?? []).filter(r => r.version_tag === version && r.total_score != null);
+    const overall = rows.length ? parseFloat((rows.reduce((s, r) => s + Number(r.total_score), 0) / rows.length).toFixed(2)) : null;
+    const byCat = {};
+    for (const cat of EVAL_CATEGORIES) {
+      const catRows = rows.filter(r => r.category === cat);
+      byCat[cat] = catRows.length ? parseFloat((catRows.reduce((s, r) => s + Number(r.total_score), 0) / catRows.length).toFixed(2)) : null;
+    }
+    return { version, count: rows.length, avg_total: overall, by_category: byCat };
+  };
+  const agg1 = aggregate(v1);
+  const agg2 = aggregate(v2);
+  const delta = (agg1.avg_total != null && agg2.avg_total != null) ? parseFloat((agg2.avg_total - agg1.avg_total).toFixed(2)) : null;
+  const regressions = [], improvements = [];
+  for (const cat of EVAL_CATEGORIES) {
+    const d1 = agg1.by_category[cat], d2 = agg2.by_category[cat];
+    if (d1 != null && d2 != null) {
+      const diff = parseFloat((d2 - d1).toFixed(2));
+      if (diff <= -5)  regressions.push({ category: cat, v1: d1, v2: d2, delta: diff });
+      if (diff >= 5)   improvements.push({ category: cat, v1: d1, v2: d2, delta: diff });
+    }
+  }
+  res.json({ v1: agg1, v2: agg2, delta, regressions, improvements, threshold: 5 });
+});
+
+/* GET /api/admin/eval/summary — aggregate scores by version_tag */
+app.get("/api/admin/eval/summary", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("eval_results").select("version_tag, category, total_score, created_at").order("created_at");
+  if (error) return res.status(500).json({ error: error.message });
+  const versions = {};
+  for (const row of (data ?? [])) {
+    if (!versions[row.version_tag]) versions[row.version_tag] = { version_tag: row.version_tag, count: 0, scores: [], by_category: {} };
+    const v = versions[row.version_tag];
+    v.count++;
+    if (row.total_score != null) { v.scores.push(Number(row.total_score)); }
+    if (!v.by_category[row.category]) v.by_category[row.category] = [];
+    if (row.total_score != null) v.by_category[row.category].push(Number(row.total_score));
+  }
+  const result = Object.values(versions).map(v => {
+    const avg = v.scores.length ? parseFloat((v.scores.reduce((a, b) => a + b, 0) / v.scores.length).toFixed(2)) : null;
+    const byCat = {};
+    for (const [cat, scores] of Object.entries(v.by_category)) {
+      byCat[cat] = scores.length ? parseFloat((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : null;
+    }
+    return { version_tag: v.version_tag, count: v.count, avg_total: avg, by_category: byCat };
+  });
+  res.json({ summary: result });
+});
+
+/* GET /api/admin/eval/edge-cases — list edge cases */
+app.get("/api/admin/eval/edge-cases", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const resolved = req.query.resolved === "true" ? true : req.query.resolved === "false" ? false : undefined;
+  let q = supabase.from("eval_edge_cases").select("*").order("created_at", { ascending: false });
+  if (resolved !== undefined) q = q.eq("resolved", resolved);
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ edge_cases: data ?? [], count: data?.length ?? 0 });
+});
+
+/* POST /api/admin/eval/edge-cases — log a new edge case */
+app.post("/api/admin/eval/edge-cases", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const { question, risk_type, description, example_bad_answer } = req.body;
+  if (!question?.trim() || !risk_type) return res.status(400).json({ error: "question and risk_type required" });
+  if (!EVAL_RISK_TYPES.includes(risk_type)) return res.status(400).json({ error: `risk_type must be one of: ${EVAL_RISK_TYPES.join(", ")}` });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("eval_edge_cases").insert({ question: question.trim(), risk_type, description, example_bad_answer }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ edge_case: data });
+});
+
+/* PATCH /api/admin/eval/edge-cases/:id — mark edge case resolved */
+app.patch("/api/admin/eval/edge-cases/:id", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("eval_edge_cases").update({ resolved: true }).eq("id", req.params.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ edge_case: data });
+});
+
 /* ── Global JSON error handler ───────────────────────── */
 // Must be registered AFTER all routes. Ensures all unhandled errors
 // return JSON (not Express's default HTML page) so the client never
@@ -4222,6 +4514,7 @@ async function checkRequiredTables() {
     "pinned_updates", "message_reports",
     "notifications", "user_badges",
     "beta_feedback", "user_memories",
+    "eval_benchmarks", "eval_results", "eval_edge_cases",
   ];
 
   const missing = [];
