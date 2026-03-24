@@ -377,6 +377,87 @@ async function fetchPinnedUpdates() {
   }
 }
 
+/* ── Frankfurter: Real-time exchange rates ───────────── */
+function isCurrencyQuery(text) {
+  const kw = ["kurs", "rate", "nilai tukar", "exchange", "pound", "egp", "idr", "rupiah", "dollar", "usd", "eur", "euro", "tukar", "konversi", "berapa rupiah", "berapa pound", "mata uang", "valuta"];
+  const lower = text.toLowerCase();
+  return kw.some(k => lower.includes(k));
+}
+
+async function fetchExchangeRates() {
+  try {
+    // Get EGP rates against IDR and USD
+    const res = await fetch("https://api.frankfurter.app/latest?from=EGP&to=IDR,USD", {
+      signal: AbortSignal.timeout(8000),
+      headers: { "Accept": "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.rates?.IDR || !data.rates?.USD) return null;
+    const egpToIdr = data.rates.IDR;
+    const egpToUsd = data.rates.USD;
+    const usdToIdr = egpToIdr / egpToUsd;
+    const usdToEgp = 1 / egpToUsd;
+    return { date: data.date, egpToIdr, egpToUsd, usdToIdr, usdToEgp };
+  } catch {
+    return null;
+  }
+}
+
+/* ── Wikipedia: Factual summaries ────────────────────── */
+function isWikipediaQuery(text) {
+  const kw = ["siapa", "siapakah", "apa itu", "apakah itu", "jelaskan", "ceritakan", "sejarah", "biografi", "profil", "tokoh", "ilmuwan", "ulama", "imam", "nabi", "presiden", "raja", "ratu", "universitas", "kota", "negara", "peristiwa", "who is", "what is", "tell me about"];
+  const lower = text.toLowerCase();
+  return kw.some(k => lower.includes(k));
+}
+
+async function fetchWikipediaSummary(query) {
+  const TIMEOUT = 8000;
+  try {
+    const q = encodeURIComponent(query.slice(0, 120));
+
+    // Search Indonesian Wikipedia first
+    const idSearchRes = await fetch(
+      `https://id.wikipedia.org/w/api.php?action=query&list=search&srsearch=${q}&format=json&srlimit=1&srprop=size&origin=*`,
+      { signal: AbortSignal.timeout(TIMEOUT) }
+    );
+    const idSearch = await idSearchRes.json();
+    let title = idSearch.query?.search?.[0]?.title;
+    let lang = "id";
+
+    // Fallback to English Wikipedia
+    if (!title) {
+      const enSearchRes = await fetch(
+        `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${q}&format=json&srlimit=1&srprop=size&origin=*`,
+        { signal: AbortSignal.timeout(TIMEOUT) }
+      );
+      const enSearch = await enSearchRes.json();
+      title = enSearch.query?.search?.[0]?.title;
+      lang = "en";
+    }
+
+    if (!title) return null;
+
+    // Fetch page summary
+    const summaryRes = await fetch(
+      `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
+      { signal: AbortSignal.timeout(TIMEOUT) }
+    );
+    if (!summaryRes.ok) return null;
+    const summary = await summaryRes.json();
+    if (!summary.extract || summary.extract.length < 50) return null;
+
+    return {
+      title: summary.title,
+      extract: summary.extract.slice(0, 2000),
+      lang,
+      url: summary.content_urls?.desktop?.page ?? `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /* ── Fetch user memories ─────────────────────────────── */
 async function fetchUserMemories(userId) {
   const supabase = getAdminClient();
@@ -664,9 +745,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
     : rawLastContent;
 
-  const [articles, pinnedUpdates] = await Promise.all([
+  const [articles, pinnedUpdates, exchangeRates, wikiResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
     fetchPinnedUpdates(),
+    isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
+    isWikipediaQuery(lastUserMessage) ? fetchWikipediaSummary(lastUserMessage) : Promise.resolve(null),
   ]);
 
   // Build knowledge context with article-type-aware formatting hints
@@ -728,6 +811,21 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     memoryContext = `\n\n---\n## Memori tentang User Ini\nKamu telah menyimpan hal-hal berikut tentang user ini dari percakapan sebelumnya. Gunakan untuk memberi jawaban yang lebih personal:\n${memList}\n---`;
   }
 
+  // Build exchange rate context (Frankfurter API)
+  let exchangeContext = "";
+  if (exchangeRates) {
+    exchangeContext = `\n\n---\n## Data Kurs Real-time (${exchangeRates.date})\nData langsung dari Frankfurter API — gunakan ini untuk menjawab pertanyaan tentang nilai tukar:\n- 1 EGP = Rp ${exchangeRates.egpToIdr.toFixed(2)} (IDR)\n- 1 EGP = $${exchangeRates.egpToUsd.toFixed(4)} (USD)\n- 1 USD = Rp ${exchangeRates.usdToIdr.toFixed(0)} (IDR)\n- 1 USD = ${exchangeRates.usdToEgp.toFixed(2)} EGP\nSumber: Frankfurter (ECB data)\n---`;
+    console.log(`[Exchange] fetched rates for ${exchangeRates.date}: 1 EGP = ${exchangeRates.egpToIdr.toFixed(2)} IDR`);
+  }
+
+  // Build Wikipedia context
+  let wikiContext = "";
+  if (wikiResult) {
+    const langLabel = wikiResult.lang === "id" ? "Wikipedia Bahasa Indonesia" : "Wikipedia (English)";
+    wikiContext = `\n\n---\n## Informasi dari Wikipedia\n**${wikiResult.title}**\n\n${wikiResult.extract}\n\nSumber: ${langLabel} — ${wikiResult.url}\n---`;
+    console.log(`[Wikipedia] fetched: "${wikiResult.title}" (${wikiResult.lang}, ${wikiResult.extract.length} chars)`);
+  }
+
   const systemPrompt = `Kamu adalah AINA, asisten AI khusus untuk mahasiswa Indonesia di Mesir (Masisir).
 
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
@@ -758,7 +856,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Langsung jawab inti pertanyaan dari kalimat pertama.
 
 **Sumber:**
-- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}`;
+- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Wikipedia" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${wikiContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
