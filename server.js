@@ -489,6 +489,29 @@ async function fetchWikipediaSummary(query) {
   }
 }
 
+/* ── Fetch DuckDuckGo instant answer ─────────────────── */
+async function fetchDuckDuckGoAnswer(query) {
+  const TIMEOUT = 6000;
+  const trimmed = query.trim();
+  if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed)) return null;
+  try {
+    const q = encodeURIComponent(trimmed.slice(0, 200));
+    const res = await fetch(
+      `https://api.duckduckgo.com/?q=${q}&format=json&no_html=1&skip_disambig=1`,
+      { signal: AbortSignal.timeout(TIMEOUT) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.AbstractText || data.Answer || data.Definition || "";
+    if (!text || text.length < 20) return null;
+    const source = data.AbstractSource || "DuckDuckGo";
+    const url = data.AbstractURL || data.DefinitionURL || "";
+    return { text: text.trim(), source, url };
+  } catch {
+    return null;
+  }
+}
+
 /* ── Fetch user memories ─────────────────────────────── */
 async function fetchUserMemories(userId) {
   const supabase = getAdminClient();
@@ -775,7 +798,7 @@ function trimToSentence(text, maxLen) {
 
 /* ── Confidence / trust layer ────────────────────────── */
 // Rule-based, no LLM call. Returns a hint injected into the system prompt.
-function classifyConfidence({ hasKB, hasPinned, hasWiki, intent, query }) {
+function classifyConfidence({ hasKB, hasPinned, hasWiki, hasDDG, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
 
   // Current role / office-holder: inherently dynamic even without explicit time keywords.
@@ -822,8 +845,8 @@ function classifyConfidence({ hasKB, hasPinned, hasWiki, intent, query }) {
     };
   }
 
-  // No context at all — very weak basis, flag for verification
-  if (!hasKB && !hasPinned && !hasWiki) {
+  // No context at all (no KB, no pinned, no wiki, no DDG) — very weak basis
+  if (!hasKB && !hasPinned && !hasWiki && !hasDDG) {
     return {
       level: "needs_verification",
       hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jika jawaban ini mungkin sudah tidak akurat atau butuh konfirmasi, tambahkan 1 kalimat peringatan singkat dan natural di akhir. Jangan terdengar kaku atau defensif.",
@@ -838,11 +861,11 @@ function classifyConfidence({ hasKB, hasPinned, hasWiki, intent, query }) {
     };
   }
 
-  // Wikipedia only (no KB) — secondary source, light acknowledgment allowed
-  if (!hasKB && hasWiki) {
+  // Wikipedia or DuckDuckGo only (no KB) — secondary source, light acknowledgment allowed
+  if (!hasKB && (hasWiki || hasDDG)) {
     return {
       level: "medium_confidence",
-      hint: "\n\n**[Kepercayaan — SEDANG]** Boleh gunakan frasa ringan seperti 'berdasarkan Wikipedia' atau 'berdasarkan konteks yang tersedia' — hanya jika terasa natural, jangan dipaksakan.",
+      hint: "\n\n**[Kepercayaan — SEDANG]** Boleh gunakan frasa ringan seperti 'berdasarkan informasi yang tersedia' atau sebutkan sumbernya — hanya jika terasa natural, jangan dipaksakan.",
     };
   }
 
@@ -948,11 +971,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const intentHint = buildIntentHint(intent);
   console.log(`[Intent] ${intent.primary}${intent.casual ? "+casual" : ""} — "${lastUserMessage.slice(0, 60)}"`);
 
-  const [articles, pinnedUpdates, exchangeRates, wikiResult] = await Promise.all([
+  const [articles, pinnedUpdates, exchangeRates, wikiResult, ddgResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
     fetchPinnedUpdates(),
     isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
-    fetchWikipediaSummary(lastUserMessage), // Always try Wikipedia for every query
+    fetchWikipediaSummary(lastUserMessage),
+    fetchDuckDuckGoAnswer(lastUserMessage),
   ]);
 
   // Build knowledge context with article-type-aware formatting hints
@@ -1040,11 +1064,22 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Wikipedia] fetched: "${wikiResult.title}" (${wikiResult.lang}, ${wikiResult.extract.length} chars raw)`);
   }
 
+  // Build DuckDuckGo context — only inject when KB has no relevant articles (KB-first filter)
+  let ddgContext = "";
+  if (ddgResult && articles.length === 0) {
+    const cleanedDDG = trimToSentence(ddgResult.text, 800);
+    ddgContext = `\n\n---\n## Informasi dari ${ddgResult.source} (via DuckDuckGo)\n\n${cleanedDDG}${ddgResult.url ? `\n\nSumber: ${ddgResult.url}` : ""}\n---`;
+    console.log(`[DDG] fetched "${ddgResult.source}": ${ddgResult.text.length} chars (KB empty, injecting)`);
+  } else if (ddgResult) {
+    console.log(`[DDG] fetched "${ddgResult.source}": ${ddgResult.text.length} chars (KB has articles, skipping)`);
+  }
+
   // Classify confidence based on what context was actually retrieved
   const confidence = classifyConfidence({
     hasKB: articles.length > 0,
     hasPinned: pinnedUpdates.length > 0,
     hasWiki: !!wikiResult,
+    hasDDG: !!ddgContext,
     intent,
     query: lastUserMessage,
   });
@@ -1064,9 +1099,10 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 **Sumber jawaban:**
 - Urutan prioritas sumber jawaban:
   1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini jika tersedia.
-  2. **Data Wikipedia** (jika ada di konteks di bawah) — gunakan jika KB tidak memiliki info topik tersebut. Wikipedia mencakup tokoh, sejarah, tempat, konsep, dan informasi umum lainnya.
-  3. **Data real-time** (kurs, dll.) — gunakan jika tersedia di konteks.
-  4. **Pengetahuan umum kamu sendiri** — WAJIB digunakan untuk pertanyaan stabil yang jawabannya sudah diketahui secara umum: definisi, konsep dasar, siapa seseorang, ibu kota, sejarah, arti kata, cara kerja sesuatu. Jangan bergantung pada konteks retrieval untuk jenis pertanyaan ini.
+  2. **Data real-time** (kurs, dll.) — gunakan jika tersedia di konteks.
+  3. **Wikipedia** (jika ada di konteks di bawah) — gunakan jika KB tidak memiliki info topik tersebut.
+  4. **DuckDuckGo** (jika ada di konteks di bawah) — informasi tambahan dari web, gunakan jika KB dan Wikipedia tidak mencukupi.
+  5. **Pengetahuan umum kamu sendiri** — WAJIB digunakan untuk pertanyaan stabil yang jawabannya sudah diketahui secara umum: definisi, konsep dasar, siapa seseorang, ibu kota, sejarah, arti kata, cara kerja sesuatu. Jangan bergantung pada konteks retrieval untuk jenis pertanyaan ini.
 - JANGAN pernah jawab "Maaf, saya belum punya info soal ini" untuk fakta umum yang sudah kamu ketahui — hanya gunakan kalimat itu jika pertanyaan benar-benar spesifik dan tidak ada di semua sumber di atas.
 - JANGAN bilang tidak tahu jika Wikipedia sudah menyediakan informasi relevan di konteks.
 - JANGAN bilang tidak tahu untuk pertanyaan seperti: siapa tokoh terkenal, apa itu [konsep], ibu kota negara mana, arti kata, definisi istilah — ini adalah pengetahuan umum yang kamu miliki.
@@ -1100,7 +1136,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 ${intentHint}${confidence.hint}
 
 **Sumber:**
-- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Wikipedia" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${wikiContext}`;
+- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Wikipedia" / "DuckDuckGo" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${wikiContext}${ddgContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
