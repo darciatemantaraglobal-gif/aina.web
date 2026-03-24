@@ -377,6 +377,41 @@ async function fetchPinnedUpdates() {
   }
 }
 
+/* ── KB strength + external-need assessment ─────────── */
+
+/**
+ * Assess how well the Knowledge Base covers the query.
+ * 'strong'  → ≥2 articles, or 1 article with ≥800 chars — KB can answer unaided
+ * 'weak'    → 1 short article (<800 chars) — supplementary external may help
+ * 'absent'  → no articles — external retrieval needed
+ */
+function assessKBStrength(articles) {
+  if (!articles || articles.length === 0) return "absent";
+  const totalChars = articles.reduce((sum, a) => sum + (a.content?.length ?? 0), 0);
+  if (articles.length >= 2 || totalChars >= 800) return "strong";
+  return "weak";
+}
+
+/**
+ * Decide whether to run Wave 2 (external) fetches.
+ * Rules:
+ *  - casual intent → skip (small talk needs no external)
+ *  - procedural + KB strong → skip (KB covers the procedure)
+ *  - factual intent → always fetch (knowledge questions benefit from external)
+ *  - KB absent → always fetch (nothing internal to rely on)
+ *  - KB weak + non-procedural → fetch (supplement weak coverage)
+ *  - KB strong + non-factual → skip
+ */
+function shouldFetchExternal(intentPrimary, kbStrength, query) {
+  const q = (query ?? "").trim();
+  if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
+  if (intentPrimary === "casual") return false;
+  if (intentPrimary === "factual") return true;
+  if (kbStrength === "absent") return true;
+  if (kbStrength === "weak" && intentPrimary !== "procedural") return true;
+  return false; // KB strong + procedural/recommendation/brainstorming
+}
+
 /* ── Frankfurter: Real-time exchange rates ───────────── */
 function isCurrencyQuery(text) {
   const kw = ["kurs", "rate", "nilai tukar", "exchange", "pound", "egp", "idr", "rupiah", "dollar", "usd", "eur", "euro", "tukar", "konversi", "berapa rupiah", "berapa pound", "mata uang", "valuta"];
@@ -860,7 +895,7 @@ function trimToSentence(text, maxLen) {
 
 /* ── Confidence / trust layer ────────────────────────── */
 // Rule-based, no LLM call. Returns a hint injected into the system prompt.
-function classifyConfidence({ hasKB, hasPinned, hasWiki, hasDDG, intent, query }) {
+function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
 
   // Current role / office-holder: inherently dynamic even without explicit time keywords.
@@ -1033,13 +1068,25 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     "stepfun/step-3.5-flash:free",
   ];
 
-  const [articles, pinnedUpdates, exchangeRates, wikiResult, ddgResult] = await Promise.all([
+  // Wave 1 — fast internal fetches (always run in parallel)
+  const [articles, pinnedUpdates, exchangeRates] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
     fetchPinnedUpdates(),
     isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
-    fetchWikipediaSummary(lastUserMessage),
-    fetchDuckDuckGoAnswer(lastUserMessage),
   ]);
+
+  // Assess KB coverage strength before deciding whether to hit external sources
+  const kbStrength = assessKBStrength(articles);
+  const needsExternal = shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
+  console.log(`[Source] KB=${kbStrength} (${articles.length} art) intent=${intent.primary} → external=${needsExternal}`);
+
+  // Wave 2 — external fetches (only when KB is insufficient or query is factual)
+  const [wikiResult, ddgResult] = needsExternal
+    ? await Promise.all([
+        fetchWikipediaSummary(lastUserMessage),
+        fetchDuckDuckGoAnswer(lastUserMessage),
+      ])
+    : [null, null];
 
   // Build knowledge context with article-type-aware formatting hints
   // Context cleaning: cap each article at 2,000 chars, cutting at last sentence boundary
@@ -1122,34 +1169,45 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Exchange] fetched rates for ${exchangeRates.date}: 1 EGP = ${exchangeRates.egpToIdr.toFixed(2)} IDR`);
   }
 
-  // Build Wikipedia context
-  // Context cleaning: cap extract at 1,200 chars, cutting at last sentence boundary
+  // Build Wikipedia context — KB-first filter: only inject when KB is absent/weak OR intent is factual
   let wikiContext = "";
   if (wikiResult) {
-    const langLabel = wikiResult.lang === "id" ? "Wikipedia Bahasa Indonesia" : "Wikipedia (English)";
-    const cleanedExtract = trimToSentence(wikiResult.extract, 1200);
-    if (cleanedExtract.length < wikiResult.extract.length) {
-      console.log(`[CtxClean] Wikipedia "${wikiResult.title}": ${wikiResult.extract.length} → ${cleanedExtract.length} chars`);
+    const injectWiki = kbStrength !== "strong" || intent.primary === "factual";
+    if (injectWiki) {
+      const langLabel = wikiResult.lang === "id" ? "Wikipedia Bahasa Indonesia" : "Wikipedia (English)";
+      const cleanedExtract = trimToSentence(wikiResult.extract, 1200);
+      if (cleanedExtract.length < wikiResult.extract.length) {
+        console.log(`[CtxClean] Wikipedia "${wikiResult.title}": ${wikiResult.extract.length} → ${cleanedExtract.length} chars`);
+      }
+      wikiContext = `\n\n---\n## Informasi dari Wikipedia\n**${wikiResult.title}**\n\n${cleanedExtract}\n\nSumber: ${langLabel} — ${wikiResult.url}\n---`;
+      console.log(`[Wikipedia] injected: "${wikiResult.title}" (KB=${kbStrength}, intent=${intent.primary})`);
+    } else {
+      console.log(`[Wikipedia] fetched "${wikiResult.title}" but suppressed — KB is strong and intent=${intent.primary}`);
     }
-    wikiContext = `\n\n---\n## Informasi dari Wikipedia\n**${wikiResult.title}**\n\n${cleanedExtract}\n\nSumber: ${langLabel} — ${wikiResult.url}\n---`;
-    console.log(`[Wikipedia] fetched: "${wikiResult.title}" (${wikiResult.lang}, ${wikiResult.extract.length} chars raw)`);
   }
 
-  // Build DuckDuckGo context — only inject when KB has no relevant articles (KB-first filter)
+  // Build DuckDuckGo context — only inject when KB has no relevant articles (KB-first filter, strictest)
+  // DDG is lowest trust tier: inject only when both KB and Wikipedia are absent
   let ddgContext = "";
   if (ddgResult && articles.length === 0) {
-    const cleanedDDG = trimToSentence(ddgResult.text, 800);
-    ddgContext = `\n\n---\n## Informasi dari ${ddgResult.source} (via DuckDuckGo)\n\n${cleanedDDG}${ddgResult.url ? `\n\nSumber: ${ddgResult.url}` : ""}\n---`;
-    console.log(`[DDG] fetched "${ddgResult.source}": ${ddgResult.text.length} chars (KB empty, injecting)`);
+    const injectDDG = !wikiContext; // prefer Wikipedia; only use DDG if wiki also absent
+    if (injectDDG) {
+      const cleanedDDG = trimToSentence(ddgResult.text, 800);
+      ddgContext = `\n\n---\n## Informasi dari ${ddgResult.source} (via DuckDuckGo)\n\n${cleanedDDG}${ddgResult.url ? `\n\nSumber: ${ddgResult.url}` : ""}\n---`;
+      console.log(`[DDG] injected "${ddgResult.source}": ${ddgResult.text.length} chars (KB absent, wiki also absent)`);
+    } else {
+      console.log(`[DDG] fetched "${ddgResult.source}": skipped — Wikipedia already covering (KB absent)`);
+    }
   } else if (ddgResult) {
-    console.log(`[DDG] fetched "${ddgResult.source}": ${ddgResult.text.length} chars (KB has articles, skipping)`);
+    console.log(`[DDG] fetched "${ddgResult.source}": suppressed — KB has ${articles.length} articles`);
   }
 
   // Classify confidence based on what context was actually retrieved
   const confidence = classifyConfidence({
     hasKB: articles.length > 0,
+    kbStrength,
     hasPinned: pinnedUpdates.length > 0,
-    hasWiki: !!wikiResult,
+    hasWiki: !!wikiContext,
     hasDDG: !!ddgContext,
     intent,
     query: lastUserMessage,
@@ -1168,15 +1226,16 @@ Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidu
 ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 
 **Sumber jawaban:**
-- Urutan prioritas sumber jawaban:
-  1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini jika tersedia.
-  2. **Data real-time** (kurs, dll.) — gunakan jika tersedia di konteks.
-  3. **Wikipedia** (jika ada di konteks di bawah) — gunakan jika KB tidak memiliki info topik tersebut.
-  4. **DuckDuckGo** (jika ada di konteks di bawah) — informasi tambahan dari web, gunakan jika KB dan Wikipedia tidak mencukupi.
-  5. **Pengetahuan umum kamu sendiri** — WAJIB digunakan untuk pertanyaan stabil yang jawabannya sudah diketahui secara umum: definisi, konsep dasar, siapa seseorang, ibu kota, sejarah, arti kata, cara kerja sesuatu. Jangan bergantung pada konteks retrieval untuk jenis pertanyaan ini.
-- JANGAN pernah jawab "Maaf, saya belum punya info soal ini" untuk fakta umum yang sudah kamu ketahui — hanya gunakan kalimat itu jika pertanyaan benar-benar spesifik dan tidak ada di semua sumber di atas.
-- JANGAN bilang tidak tahu jika Wikipedia sudah menyediakan informasi relevan di konteks.
-- JANGAN bilang tidak tahu untuk pertanyaan seperti: siapa tokoh terkenal, apa itu [konsep], ibu kota negara mana, arti kata, definisi istilah — ini adalah pengetahuan umum yang kamu miliki.
+- Urutan prioritas sumber jawaban (dari paling dipercaya):
+  1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini. Jika KB ada dan relevan, jawab berdasarkan KB dulu. External sources tidak akan disertakan jika KB sudah mencukupi.
+  2. **Pinned / Verified Updates** (jika ada di konteks) — Admin-verified. Selalu prioritaskan ini untuk info kebijakan atau fakta terkini yang dinamis.
+  3. **Data real-time** (kurs, dll.) — Gunakan jika tersedia di konteks, khusus untuk data numerik/kurs.
+  4. **Wikipedia** (jika ada di konteks) — Sumber eksternal terpercaya. Disertakan hanya jika KB tidak memiliki informasi topik tersebut, atau KB lemah, atau pertanyaan bersifat faktual.
+  5. **DuckDuckGo** (jika ada di konteks) — Last resort. Hanya disertakan jika KB kosong DAN Wikipedia juga tidak relevan.
+  6. **Pengetahuan umum kamu sendiri** — Untuk pertanyaan stabil: definisi, konsep, sejarah, arti kata. Jangan bergantung pada retrieval untuk jenis ini.
+- JANGAN bilang "tidak tahu" jika Wikipedia atau sumber lain sudah menyediakan info relevan di konteks.
+- JANGAN bilang "tidak tahu" untuk fakta umum yang sudah kamu miliki (ibu kota, siapa tokoh terkenal, definisi istilah).
+- Jika tidak ada konteks eksternal yang disertakan, itu artinya KB sudah cukup — jawab dari KB saja.
 
 **Format jawaban:**
 - Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat 1-3 kalimat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
