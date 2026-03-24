@@ -83,7 +83,7 @@ const TEAM_GROUPS: TeamGroup[] = [
   {
     label: "Developer",
     members: [
-      { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I" },
+      { name: "Ilham Mutasim Billah", role: "Fullstack Developer", initial: "I", photo: "/team/ilham.jpg" },
       { name: "Naadir Al Atilla Muklis", role: "Fullstack Developer", initial: "N", photo: "/team/naadir.jpg" },
     ],
   },
@@ -357,7 +357,7 @@ const AboutPage = () => {
                               <img
                                 src={photo}
                                 alt={name}
-                                className="h-full w-full object-cover object-top"
+                                className="h-full w-full object-cover object-center"
                               />
                             </div>
                           ) : (
