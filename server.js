@@ -778,11 +778,20 @@ function trimToSentence(text, maxLen) {
 function classifyConfidence({ hasKB, hasPinned, hasWiki, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
 
+  // General knowledge: stable definitional / conceptual questions the model already knows
+  const generalKnowledge = /\b(siapa|apa itu|apa arti|artinya apa|apa yang dimaksud|definisi|pengertian|ibu kota|ibukota|jelaskan|bagaimana cara kerja|dalam bahasa|terjemahan|artinya|maksudnya|berapa lama|berapa hari|kapan|sejarah|asal usul|fungsi|manfaat)\b/i.test(query);
+
   // Pinned updates are admin-verified — highest trust
   if (hasPinned) return { level: "high_confidence", hint: "" };
 
   // KB hit on stable, procedure-oriented intent — high trust
   if (hasKB && ["factual", "procedural", "confused_procedural", "confused"].includes(intent.primary)) {
+    return { level: "high_confidence", hint: "" };
+  }
+
+  // General knowledge + stable (not time-sensitive) → always high trust;
+  // model should answer from its own knowledge without needing retrieved context
+  if (generalKnowledge && !timeSensitive) {
     return { level: "high_confidence", hint: "" };
   }
 
@@ -1038,9 +1047,10 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
   1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini jika tersedia.
   2. **Data Wikipedia** (jika ada di konteks di bawah) — gunakan jika KB tidak memiliki info topik tersebut. Wikipedia mencakup tokoh, sejarah, tempat, konsep, dan informasi umum lainnya.
   3. **Data real-time** (kurs, dll.) — gunakan jika tersedia di konteks.
-  4. **Pengetahuan umum** — gunakan jika topik tidak ada di KB maupun Wikipedia.
-- Jika tidak ada informasi sama sekali dari semua sumber di atas, BARU jawab: "Maaf, saya belum punya info soal ini."
+  4. **Pengetahuan umum kamu sendiri** — WAJIB digunakan untuk pertanyaan stabil yang jawabannya sudah diketahui secara umum: definisi, konsep dasar, siapa seseorang, ibu kota, sejarah, arti kata, cara kerja sesuatu. Jangan bergantung pada konteks retrieval untuk jenis pertanyaan ini.
+- JANGAN pernah jawab "Maaf, saya belum punya info soal ini" untuk fakta umum yang sudah kamu ketahui — hanya gunakan kalimat itu jika pertanyaan benar-benar spesifik dan tidak ada di semua sumber di atas.
 - JANGAN bilang tidak tahu jika Wikipedia sudah menyediakan informasi relevan di konteks.
+- JANGAN bilang tidak tahu untuk pertanyaan seperti: siapa tokoh terkenal, apa itu [konsep], ibu kota negara mana, arti kata, definisi istilah — ini adalah pengetahuan umum yang kamu miliki.
 
 **Format jawaban:**
 - Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat 1-3 kalimat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
