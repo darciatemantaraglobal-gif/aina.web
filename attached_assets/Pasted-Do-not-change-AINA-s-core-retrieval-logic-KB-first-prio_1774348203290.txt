@@ -1,0 +1,82 @@
+Do not change AINA's core retrieval logic, KB-first priority, trust layer, evaluation system, or private user memory behavior.
+
+I want to implement Phase 12: Multi-User Intelligence.
+
+Goal:
+Allow AINA to improve from aggregate usage patterns across many users, without leaking private memory, without mixing personal contexts, and without making the system noisy or unsafe.
+
+Core principles:
+- user-specific memory must remain private
+- no private context from one user may ever be injected into another user's answer
+- only aggregate, anonymized, system-level signals may be shared across users
+- keep implementation lightweight, modular, and safe
+
+Please design and implement a lightweight Phase 12 with these components:
+
+1. Aggregate FAQ intelligence
+Track frequently asked questions and recurring query patterns across users.
+Use this only for system-level learning such as:
+- identifying top recurring topics
+- identifying knowledge gaps
+- improving future suggested-question logic
+- generating benchmark candidates
+
+2. Feedback intelligence
+Use aggregate thumbs up / thumbs down data to identify:
+- high-performing answer patterns
+- low-performing categories
+- recurring dissatisfaction patterns
+- categories that may need source or logic improvement
+
+3. Edge-case intelligence
+Collect recurring failed or risky query patterns into a shared system-level registry.
+Examples:
+- current office-holder mistakes
+- general knowledge refusals
+- weak recommendations
+- memory over-injection
+- confidence misclassification
+
+4. Retrieval intelligence
+Track which source types tend to perform better for different query categories.
+Examples:
+- KB effectiveness by category
+- pinned update usefulness
+- external-source usefulness
+- fallback frequency
+- confidence level patterns
+
+5. Privacy and safety rules
+- do not expose personal user memory across users
+- do not store unnecessary personal chat content as shared intelligence
+- do not convert private user memory into global intelligence
+- only store anonymized, aggregate patterns at system level
+- keep private memory and global intelligence completely separate
+
+6. Keep implementation lightweight
+- no model fine-tuning
+- no auto self-editing prompts
+- no cross-user private memory injection
+- no heavy ML pipeline
+- simple database tables and aggregate summaries are enough
+
+7. Expected outcome
+This phase should help AINA improve at the system level by learning:
+- what users ask most often
+- where AINA most often fails
+- which answer patterns get better feedback
+- which source paths are most useful
+- which new benchmark questions should be added
+
+8. Return
+Please provide:
+- proposed Phase 12 architecture
+- database schema / tables
+- which signals are user-private vs globally aggregated
+- exact files/functions changed
+- examples of how global intelligence improves AINA safely
+- admin/developer workflow for reviewing and applying insights
+
+Critical constraint:
+This phase must NOT make AINA answer using another user's private memory or personal context.
+Global intelligence must be aggregate-only, anonymized, and system-level.

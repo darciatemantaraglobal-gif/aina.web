@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
+import { createHash } from "crypto";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -492,6 +493,100 @@ function computeExternalTrustLevel(wikiInjected, ddgInjected) {
   if (wikiInjected) return { tier: "medium", score: SOURCE_TRUST_SCORES.wikipedia, label: "Wikipedia" };
   if (ddgInjected)  return { tier: "low",    score: SOURCE_TRUST_SCORES.duckduckgo, label: "DuckDuckGo" };
   return null;
+}
+
+/* ── Phase 12: Multi-User Intelligence helpers ────────── */
+
+/** Normalize a query for dedup: lowercase, strip punctuation, collapse spaces. */
+function normalizeQuery(q) {
+  return q.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** One-way SHA-256 hash — used as an anonymized dedup key. Never reversible. */
+function hashText(text) {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+/**
+ * Classify a query turn into an edge-case pattern type, if one applies.
+ * Returns { patternType, topicHint } or null.
+ * Privacy: patternType and topicHint are system-level labels, not user data.
+ */
+function detectEdgeCase({ confidenceLevel, confidenceHint, hasKB, hasWiki, hasDDG, intent, query }) {
+  const hint = confidenceHint ?? "";
+  // Hard-blocked current-role query
+  if (hint.includes("BLOKIR") || hint.includes("JABATAN")) {
+    return { patternType: "current_role_blocked", topicHint: "jabatan" };
+  }
+  // No source at all — model answering blind
+  if (!hasKB && !hasWiki && !hasDDG && confidenceLevel === "needs_verification") {
+    const topic = intent?.primary ?? "unknown";
+    return { patternType: "no_source", topicHint: topic };
+  }
+  // Time-sensitive with only DDG or no external source
+  if (confidenceLevel === "needs_verification" && hasDDG && !hasKB) {
+    return { patternType: "ddg_only_time_sensitive", topicHint: intent?.primary ?? "unknown" };
+  }
+  return null;
+}
+
+/**
+ * Fire-and-forget: write aggregate intel signals after every chat turn.
+ * PRIVACY RULES:
+ *   - No user_id stored anywhere in intel tables.
+ *   - query_hash is SHA-256 of the normalized query — not linked to any user.
+ *   - sample_query is capped at 80 chars and may be omitted if it looks personal.
+ *   - intel tables are never joined with user_memories or user profiles.
+ */
+async function recordIntelSignal({ intent, kbStrength, hasKB, hasPinned, hasWiki, hasDDG,
+  confidenceLevel, confidenceHint, externalTier, query }) {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  try {
+    const normalized = normalizeQuery(query);
+    const qHash = hashText(normalized);
+    const topicCluster = `${intent?.primary ?? "unknown"}__${kbStrength ?? "absent"}`;
+
+    // Looks personal if it contains email-like patterns or 4+ digit sequences (IDs)
+    const looksPersonal = /\S+@\S+|\b\d{4,}\b/.test(query);
+    const sampleQuery = looksPersonal ? null : query.slice(0, 80);
+
+    // 1. Upsert query pattern (FAQ intelligence)
+    const { error: qpErr } = await supabase.rpc("upsert_intel_query_pattern", {
+      p_hash:    qHash,
+      p_topic:   topicCluster,
+      p_sample:  sampleQuery,
+    });
+    if (qpErr) console.warn("[Intel/FAQ] upsert error:", qpErr.message);
+
+    // 2. Insert retrieval stat (per-turn, always a new row for time-series analysis)
+    const { error: rsErr } = await supabase.from("intel_retrieval_stats").insert({
+      intent:           intent?.primary ?? null,
+      kb_strength:      kbStrength ?? null,
+      had_kb:           hasKB,
+      had_pinned:       hasPinned,
+      had_wiki:         hasWiki,
+      had_ddg:          hasDDG,
+      confidence_level: confidenceLevel ?? null,
+      external_tier:    externalTier ?? null,
+    });
+    if (rsErr) console.warn("[Intel/Retrieval] insert error:", rsErr.message);
+
+    // 3. Upsert edge case if applicable
+    const edgeCase = detectEdgeCase({ confidenceLevel, confidenceHint, hasKB, hasWiki, hasDDG, intent, query });
+    if (edgeCase) {
+      const { error: ecErr } = await supabase.rpc("upsert_intel_edge_case", {
+        p_pattern: edgeCase.patternType,
+        p_topic:   edgeCase.topicHint,
+      });
+      if (ecErr) console.warn("[Intel/EdgeCase] upsert error:", ecErr.message);
+      console.log(`[Intel] edge_case=${edgeCase.patternType} topic=${edgeCase.topicHint}`);
+    }
+
+    console.log(`[Intel] signal recorded: intent=${intent?.primary} kb=${kbStrength} wiki=${hasWiki} ddg=${hasDDG} conf=${confidenceLevel}`);
+  } catch (e) {
+    console.warn("[Intel] recordIntelSignal failed (non-critical):", e.message);
+  }
 }
 
 async function fetchWikipediaSummary(query) {
@@ -1424,13 +1519,23 @@ ${intentHint}${confidence.hint}
     }
     const reply = cleanReply(result.reply);
     console.log(`Responded using model: ${result.model}`);
-    res.json({ reply, model: result.model });
-    // Fire-and-forget: extract memories from this conversation in the background
-    setImmediate(() => extractAndSaveMemories(
-      user.id,
-      [...messages, { role: "assistant", content: reply }],
-      apiKey
-    ));
+    res.json({ reply, model: result.model, intent: intent.primary, confidence: confidence.level });
+    // Fire-and-forget: extract memories + record intel signals (Phase 6 + Phase 12)
+    setImmediate(() => {
+      extractAndSaveMemories(user.id, [...messages, { role: "assistant", content: reply }], apiKey);
+      recordIntelSignal({
+        intent,
+        kbStrength,
+        hasKB:           articles.length > 0,
+        hasPinned:       pinnedUpdates.length > 0,
+        hasWiki:         !!wikiContext,
+        hasDDG:          !!ddgContext,
+        confidenceLevel: confidence.level,
+        confidenceHint:  confidence.hint,
+        externalTier:    externalTrust?.tier ?? null,
+        query:           lastUserMessage,
+      });
+    });
   } catch {
     return res.status(503).json({ error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik." });
   }
@@ -4532,6 +4637,163 @@ app.patch("/api/admin/eval/edge-cases/:id", strictLimiter, async (req, res) => {
   const { data, error } = await supabase.from("eval_edge_cases").update({ resolved: true }).eq("id", req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json({ edge_case: data });
+});
+
+/* ── Phase 12: Chat message rating (anonymized feedback signal) ── */
+// No user_id stored. message_hash is SHA-256(intent+confidence+timestamp) — not reversible.
+// Privacy: rating, intent, and confidence are system-level signals, never personal data.
+app.post("/api/chat/rate", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+
+  const { rating, intent, confidence, messageTs } = req.body;
+  if (![1, -1].includes(rating)) return res.status(400).json({ error: "rating must be 1 or -1" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  // Verify auth (required to prevent spam), but do NOT store user_id
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user } } = await supabase.auth.getUser(token);
+  if (!user) return res.status(401).json({ error: "Token tidak valid" });
+
+  // Build a one-way hash from non-identifying signals — not linked to user
+  const msgHash = hashText(`${intent ?? ""}__${confidence ?? ""}__${messageTs ?? Date.now()}`);
+
+  const { error } = await supabase.from("intel_message_ratings").insert({
+    message_hash: msgHash,
+    rating,
+    intent:     intent     ?? null,
+    confidence: confidence ?? null,
+  });
+
+  if (error) {
+    console.warn("[Intel/Rating] insert error:", error.message);
+    return res.status(500).json({ error: "Gagal menyimpan rating" });
+  }
+  console.log(`[Intel/Rating] rating=${rating > 0 ? "+1" : "-1"} intent=${intent} conf=${confidence}`);
+  res.json({ success: true });
+});
+
+/* ── Phase 12: Admin intel endpoints (master-admin only) ── */
+// Returns top recurring query topic clusters
+app.get("/api/admin/intel/query-patterns", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+  const { data, error } = await supabase
+    .from("intel_query_patterns")
+    .select("id, topic_cluster, sample_query, frequency, last_seen_at")
+    .order("frequency", { ascending: false })
+    .limit(limit);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
+});
+
+// Returns per-turn retrieval effectiveness breakdown
+app.get("/api/admin/intel/retrieval-stats", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("intel_retrieval_stats")
+    .select("intent, kb_strength, had_kb, had_pinned, had_wiki, had_ddg, confidence_level, external_tier, created_at")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) return res.status(500).json({ error: error.message });
+  // Aggregate: count combinations
+  const agg = {};
+  for (const row of data ?? []) {
+    const key = `${row.intent}__${row.kb_strength}__${row.confidence_level}`;
+    if (!agg[key]) agg[key] = { intent: row.intent, kb_strength: row.kb_strength, confidence_level: row.confidence_level, had_kb: 0, had_wiki: 0, had_ddg: 0, had_pinned: 0, total: 0 };
+    agg[key].total++;
+    if (row.had_kb)     agg[key].had_kb++;
+    if (row.had_wiki)   agg[key].had_wiki++;
+    if (row.had_ddg)    agg[key].had_ddg++;
+    if (row.had_pinned) agg[key].had_pinned++;
+  }
+  res.json(Object.values(agg).sort((a, b) => b.total - a.total));
+});
+
+// Returns positive/negative rating breakdown by intent and confidence
+app.get("/api/admin/intel/ratings", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("intel_message_ratings")
+    .select("rating, intent, confidence, created_at")
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  if (error) return res.status(500).json({ error: error.message });
+  const agg = {};
+  for (const row of data ?? []) {
+    const key = `${row.intent ?? "unknown"}__${row.confidence ?? "unknown"}`;
+    if (!agg[key]) agg[key] = { intent: row.intent, confidence: row.confidence, positive: 0, negative: 0, total: 0 };
+    agg[key].total++;
+    if (row.rating === 1) agg[key].positive++; else agg[key].negative++;
+  }
+  for (const k of Object.keys(agg)) agg[k].satisfaction_rate = agg[k].total > 0 ? +(agg[k].positive / agg[k].total * 100).toFixed(1) : null;
+  res.json(Object.values(agg).sort((a, b) => b.total - a.total));
+});
+
+// Returns recurring edge-case patterns sorted by frequency
+app.get("/api/admin/intel/edge-cases", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("intel_edge_cases")
+    .select("id, pattern_type, topic_hint, frequency, last_seen_at, created_at")
+    .order("frequency", { ascending: false })
+    .limit(100);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
+});
+
+// Consolidated intelligence summary for the admin dashboard
+app.get("/api/admin/intel/summary", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const [
+    { data: topFAQs },
+    { data: topEdge },
+    { data: ratingsRaw },
+    { data: retrievalRaw },
+  ] = await Promise.all([
+    supabase.from("intel_query_patterns").select("topic_cluster, sample_query, frequency").order("frequency", { ascending: false }).limit(5),
+    supabase.from("intel_edge_cases").select("pattern_type, topic_hint, frequency").order("frequency", { ascending: false }).limit(5),
+    supabase.from("intel_message_ratings").select("rating, intent"),
+    supabase.from("intel_retrieval_stats").select("had_kb, had_wiki, had_ddg, had_pinned, confidence_level").limit(500),
+  ]);
+
+  // Overall satisfaction rate
+  const totalRatings = (ratingsRaw ?? []).length;
+  const positiveRatings = (ratingsRaw ?? []).filter(r => r.rating === 1).length;
+  const satisfactionRate = totalRatings > 0 ? +(positiveRatings / totalRatings * 100).toFixed(1) : null;
+
+  // Source usage breakdown
+  const rt = retrievalRaw ?? [];
+  const sourceBreakdown = {
+    kb_usage_pct:     rt.length > 0 ? +(rt.filter(r => r.had_kb).length     / rt.length * 100).toFixed(1) : null,
+    wiki_usage_pct:   rt.length > 0 ? +(rt.filter(r => r.had_wiki).length   / rt.length * 100).toFixed(1) : null,
+    ddg_usage_pct:    rt.length > 0 ? +(rt.filter(r => r.had_ddg).length    / rt.length * 100).toFixed(1) : null,
+    pinned_usage_pct: rt.length > 0 ? +(rt.filter(r => r.had_pinned).length / rt.length * 100).toFixed(1) : null,
+    total_turns:      rt.length,
+  };
+  const needsVerif = rt.filter(r => r.confidence_level === "needs_verification").length;
+  const verifRate = rt.length > 0 ? +(needsVerif / rt.length * 100).toFixed(1) : null;
+
+  res.json({
+    top_faqs:          topFAQs ?? [],
+    top_edge_cases:    topEdge ?? [],
+    overall_satisfaction_rate: satisfactionRate,
+    total_ratings:     totalRatings,
+    source_breakdown:  sourceBreakdown,
+    needs_verification_rate: verifRate,
+  });
 });
 
 /* ── Global JSON error handler ───────────────────────── */

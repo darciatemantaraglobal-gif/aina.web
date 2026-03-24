@@ -14,6 +14,8 @@ interface Message {
   timestamp: Date;
   imageDataUrl?: string;
   fileName?: string;
+  intent?: string;
+  confidence?: string;
 }
 
 interface AttachedFile {
@@ -172,6 +174,8 @@ interface StreamingMsg {
   id: string;
   full: string;
   displayed: string;
+  intent?: string;
+  confidence?: string;
 }
 
 const STREAM_CHARS_PER_TICK = 6;
@@ -220,6 +224,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         role: "assistant",
         content: streamingMsg.full,
         timestamp: new Date(),
+        intent:     streamingMsg.intent,
+        confidence: streamingMsg.confidence,
       }]);
       setStreamingMsg(null);
       return;
@@ -359,12 +365,33 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const submitFeedback = (msgId: string, vote: "up" | "down") => {
     setFeedbackMap(prev => {
       const next = { ...prev };
-      if (prev[msgId] === vote) {
+      const isToggleOff = prev[msgId] === vote;
+      if (isToggleOff) {
         delete next[msgId];
       } else {
         next[msgId] = vote;
       }
       localStorage.setItem(FEEDBACK_STORE_KEY, JSON.stringify(next));
+
+      // Fire-and-forget: send anonymized rating signal to backend (Phase 12)
+      // Only when adding a vote (not toggling off). No personal data sent.
+      if (!isToggleOff) {
+        const msg = messages.find(m => m.id === msgId);
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session?.access_token) return;
+          fetch("/api/chat/rate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({
+              rating:     vote === "up" ? 1 : -1,
+              intent:     msg?.intent     ?? null,
+              confidence: msg?.confidence ?? null,
+              messageTs:  msg?.timestamp?.getTime() ?? Date.now(),
+            }),
+          }).catch(() => {});
+        });
+      }
+
       return next;
     });
   };
@@ -555,8 +582,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         content: data.reply,
       });
 
-      // Start typewriter animation
-      setStreamingMsg({ id: msgId, full: fullContent, displayed: "" });
+      // Start typewriter animation (carry intent + confidence for feedback signal)
+      setStreamingMsg({ id: msgId, full: fullContent, displayed: "", intent: data.intent, confidence: data.confidence });
 
       await supabase
         .from("chats")
