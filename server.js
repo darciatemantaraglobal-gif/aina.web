@@ -1266,12 +1266,22 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
 
   const buffer = Buffer.from(await fileData.arrayBuffer());
   const ext = path.split(".").pop()?.toLowerCase();
-  const mimetype = ext === "pdf"
-    ? "application/pdf"
-    : ext === "txt"
-    ? "text/plain"
-    : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const MIME_MAP = {
+    pdf: "application/pdf",
+    txt: "text/plain",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
+  };
+  const mimetype = MIME_MAP[ext] || null;
   const originalname = filename || path.split("/").pop() || "file";
+
+  if (!mimetype) {
+    supabase.storage.from("temp-uploads").remove([path]).catch(() => {});
+    return res.status(400).json({ error: "Format file tidak dikenali" });
+  }
 
   let extractedText = "";
   try {
@@ -1290,6 +1300,39 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer });
       extractedText = result.value;
+    } else if (mimetype.startsWith("image/")) {
+      // OCR image via OpenRouter vision model
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (!apiKey) throw new Error("OPENROUTER_API_KEY tidak dikonfigurasi");
+      const b64 = buffer.toString("base64");
+      const dataUrl = `data:${mimetype};base64,${b64}`;
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://ainalabs.pro",
+          "X-Title": "AINA Image OCR",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.0-flash-001",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: dataUrl } },
+              {
+                type: "text",
+                text: "Ekstrak semua teks dari gambar ini secara akurat. Gambar mungkin mengandung teks bahasa Indonesia, Arab, atau campuran keduanya — ekstrak semuanya dan pertahankan struktur serta urutan aslinya. Kembalikan HANYA teks yang diekstrak, tanpa komentar atau penjelasan apapun.",
+              },
+            ],
+          }],
+          max_tokens: 4000,
+        }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message || "Gagal OCR gambar");
+      extractedText = data.choices?.[0]?.message?.content?.trim() ?? "";
+      if (extractedText) extractedText = "[OCR dari gambar] " + extractedText;
     } else {
       return res.status(400).json({ error: "Format file tidak dikenali" });
     }
