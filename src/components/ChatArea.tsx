@@ -321,17 +321,36 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       setIsUploadingFile(true);
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch("/api/chat/extract-pdf", {
+        const authHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} as Record<string, string>;
+
+        // Step 1: Get a presigned upload URL (small JSON request, no size limit issue)
+        const urlRes = await fetch("/api/chat/upload-url", {
           method: "POST",
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-          body: formData,
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify({ filename: file.name }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Gagal membaca file");
+        const urlJson = await urlRes.json().catch(() => ({ error: "Gagal mendapatkan URL upload" }));
+        if (!urlRes.ok) throw new Error(urlJson.error || "Gagal mendapatkan URL upload");
+
+        // Step 2: Upload file DIRECTLY to Supabase Storage (bypasses all proxy size limits)
+        const uploadRes = await fetch(urlJson.signedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error(`Gagal mengupload file (${uploadRes.status}). Coba lagi.`);
+
+        // Step 3: Server extracts text from Storage and returns it
+        const extractRes = await fetch("/api/extract-from-storage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders },
+          body: JSON.stringify({ path: urlJson.path, filename: file.name }),
+        });
+        const data = await extractRes.json().catch(() => ({ error: `Gagal mengekstrak file (${extractRes.status})` }));
+        if (!extractRes.ok) throw new Error(data.error || "Gagal membaca file");
+
         setAttachedFile({ type: "pdf", text: data.text, name: data.filename, sizeKb });
-        toast.success(`PDF berhasil dibaca (${data.chars.toLocaleString()} karakter)`);
+        toast.success(`File berhasil dibaca (${data.chars.toLocaleString()} karakter)`);
       } catch (e: any) {
         toast.error(e.message || "Gagal mengupload file");
       } finally {

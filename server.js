@@ -1268,6 +1268,30 @@ app.post("/api/upload-url", async (req, res) => {
   return res.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
 });
 
+/* ── Upload URL for chat (any authenticated user) ────── */
+app.post("/api/chat/upload-url", uploadLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const { filename } = req.body;
+  if (!filename) return res.status(400).json({ error: "filename diperlukan" });
+
+  const ext = filename.split(".").pop()?.toLowerCase() || "bin";
+  const allowed = ["pdf", "txt"];
+  if (!allowed.includes(ext)) return res.status(400).json({ error: "Hanya PDF atau TXT yang didukung untuk chat." });
+
+  const supabase = getAdminClient();
+  const storagePath = `${user.id}/chat-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { data, error } = await supabase.storage.from("temp-uploads").createSignedUploadUrl(storagePath);
+  if (error) {
+    console.error("[chat/upload-url] error:", error.message);
+    return res.status(500).json({ error: "Gagal membuat URL upload: " + error.message });
+  }
+
+  return res.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
+});
+
 /* ── Extract: Process file from Supabase Storage ─────── */
 app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
