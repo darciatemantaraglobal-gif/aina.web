@@ -411,10 +411,35 @@ function isWikipediaQuery(text) {
   return kw.some(k => lower.includes(k));
 }
 
+function extractWikipediaSearchTerm(query) {
+  let q = query.trim();
+  // Strip leading question words (Indonesian + English)
+  const stripPrefixes = [
+    "siapakah", "siapa itu", "siapa", "apakah itu", "apa itu", "apakah",
+    "jelaskan tentang", "jelaskan", "ceritakan tentang", "ceritakan",
+    "sejarah singkat", "sejarah", "biografi", "profil",
+    "tell me about", "who is", "what is", "explain",
+  ];
+  const lower = q.toLowerCase();
+  for (const prefix of stripPrefixes) {
+    if (lower.startsWith(prefix)) {
+      q = q.slice(prefix.length).trim();
+      break;
+    }
+  }
+  // Strip trailing time markers that confuse search
+  q = q.replace(/\b(sekarang|saat ini|terkini|saat sekarang|yang sekarang|hari ini|terbaru|now|current|currently)\b/gi, "").trim();
+  // Strip trailing punctuation
+  q = q.replace(/[?!.,;]+$/, "").trim();
+  return q || query;
+}
+
 async function fetchWikipediaSummary(query) {
   const TIMEOUT = 8000;
   try {
-    const q = encodeURIComponent(query.slice(0, 120));
+    const searchTerm = extractWikipediaSearchTerm(query);
+    const q = encodeURIComponent(searchTerm.slice(0, 120));
+    console.log(`[Wikipedia] search term: "${searchTerm}" (from: "${query.slice(0, 60)}")`);
 
     // Search Indonesian Wikipedia first
     const idSearchRes = await fetch(
@@ -826,7 +851,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Wikipedia] fetched: "${wikiResult.title}" (${wikiResult.lang}, ${wikiResult.extract.length} chars)`);
   }
 
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Africa/Cairo" });
+
   const systemPrompt = `Kamu adalah AINA, asisten AI khusus untuk mahasiswa Indonesia di Mesir (Masisir).
+
+Tanggal & waktu saat ini (Kairo): ${todayStr}. Gunakan info ini saat user bertanya tentang sesuatu "sekarang", "saat ini", atau "terkini". Pengetahuanmu memiliki batas waktu, jadi UTAMAKAN data dari Wikipedia atau sumber eksternal yang disediakan di konteks ini jika ada.
 
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
 
