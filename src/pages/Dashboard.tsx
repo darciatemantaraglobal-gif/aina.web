@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense, Component, ReactNode, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
 import FeedbackButton from "@/components/FeedbackButton";
@@ -88,8 +88,12 @@ const TabLoader = () => (
   </div>
 );
 
+const VALID_TABS = ["chat", "berita", "productivity", "threads", "leaderboard", "contributor", "profile", "admin"];
+
 const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState("chat");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = VALID_TABS.includes(searchParams.get("tab") ?? "") ? searchParams.get("tab")! : "chat";
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [authReady, setAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | undefined>(undefined);

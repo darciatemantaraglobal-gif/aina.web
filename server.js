@@ -1476,7 +1476,7 @@ app.post("/api/admin/requests/:id/review", async (req, res) => {
   const userInfo = await getUserEmail(request.user_id);
   const appUrl = process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : "https://aina.replit.app";
+    : "https://ainalabs.pro";
 
   if (status === "approved") {
     await supabase.from("user_roles").upsert({ user_id: request.user_id, role: "contributor" }, { onConflict: "user_id,role" });
@@ -1501,8 +1501,8 @@ Sebagai kontributor, kamu sekarang bisa:<br>
 • Membantu sesama Masisir dengan pengalaman dan pengetahuanmu<br>
 • Mendapatkan status <em>Senior Contributor</em> setelah 10 artikel disetujui<br><br>
 Yuk, mulai berkontribusi sekarang!`,
-          ctaText: "Buka Dashboard AINA",
-          ctaUrl: `${appUrl}/dashboard`,
+          ctaText: "Mulai Berkontribusi",
+          ctaUrl: `${appUrl}/dashboard?tab=contributor`,
         }),
       });
     }
@@ -1607,7 +1607,7 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
   const authorInfo = await getUserEmail(article.author_id);
   const appUrl = process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : "https://aina.replit.app";
+    : "https://ainalabs.pro";
   const articleTitle = articleData?.title ?? "artikelmu";
 
   if (status === "approved") {
@@ -1636,7 +1636,7 @@ Artikel <strong>"${articleTitle}"</strong> telah disetujui dan kini tersedia di 
 Lebih dari itu — dengan <strong>${newCount} artikel disetujui</strong>, kamu resmi naik ke status <strong>Senior Contributor</strong>! Pencapaian luar biasa untuk komunitas Masisir. 🌟<br><br>
 Terus berkontribusi dan bantu sesama mahasiswa Indonesia di Mesir!`,
               ctaText: "Lihat Kontribusimu",
-              ctaUrl: `${appUrl}/dashboard`,
+              ctaUrl: `${appUrl}/dashboard?tab=contributor`,
             }),
           });
         }
@@ -1658,8 +1658,8 @@ Terus berkontribusi dan bantu sesama mahasiswa Indonesia di Mesir!`,
 Artikel <strong>"${articleTitle}"</strong> telah ditinjau dan disetujui oleh tim admin AINA. Artikel kamu kini tersedia di Knowledge Base dan bisa diakses oleh seluruh Masisir.<br><br>
 Total artikel yang sudah disetujui: <strong>${newCount} artikel</strong>.<br><br>
 Terima kasih sudah berkontribusi untuk komunitas Masisir!`,
-              ctaText: "Lihat Knowledge Base",
-              ctaUrl: `${appUrl}/dashboard`,
+              ctaText: "Lihat Kontribusimu",
+              ctaUrl: `${appUrl}/dashboard?tab=contributor`,
             }),
           });
         }
@@ -1684,7 +1684,7 @@ Setelah ditinjau, artikel <strong>"${articleTitle}"</strong> belum bisa dipublik
 Kamu bisa merevisi artikel dan mengirimnya kembali melalui dashboard. Kami menghargai setiap kontribusimu untuk komunitas Masisir.<br><br>
 Jika ada pertanyaan, jangan ragu untuk menghubungi tim admin.`,
           ctaText: "Kirim Artikel Baru",
-          ctaUrl: `${appUrl}/dashboard`,
+          ctaUrl: `${appUrl}/dashboard?tab=contributor`,
         }),
       });
     }
