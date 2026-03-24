@@ -1,0 +1,66 @@
+Do not change retrieval logic, source priority, knowledge base usage, model selection, or API structure.
+
+I want to move to Phase 5: add a lightweight trust layer on top of the existing system.
+
+Goal:
+Make AINA more trustworthy by helping it communicate confidence and uncertainty more honestly, without changing its core answer logic.
+
+Important:
+This phase should remain lightweight and should not introduce heavy scoring systems or extra LLM calls.
+
+Please implement a simple confidence / trust layer with these principles:
+
+1. Confidence levels
+Add a lightweight internal confidence classification:
+- high_confidence
+- medium_confidence
+- needs_verification
+
+2. Suggested heuristics
+Use simple logic based on available context, for example:
+- high_confidence:
+  - answer comes mainly from internal knowledge base
+  - or question is stable / conceptual
+- medium_confidence:
+  - answer uses mixed sources
+  - or relies partly on Wikipedia / supporting context
+- needs_verification:
+  - question likely involves changing information
+  - or context is weak / limited
+  - or answer may be outdated
+
+3. Response behavior
+- high_confidence:
+  answer normally, no extra disclaimer needed
+- medium_confidence:
+  optionally use a light basis phrase such as:
+  "berdasarkan konteks yang tersedia..."
+- needs_verification:
+  add a short, natural caution sentence
+  do not sound robotic or overly defensive
+
+4. Source basis language
+Allow lightweight source-basis phrasing when useful, such as:
+- berdasarkan knowledge base AINA
+- berdasarkan konteks yang tersedia
+- informasi seperti ini bisa berubah, jadi sebaiknya dicek ulang
+Do not force this in every answer.
+
+5. Constraints
+- do not change retrieval logic
+- do not change source priority
+- do not change knowledge base logic
+- do not change model selection
+- do not change API structure
+- do not add heavy scoring systems
+- do not add extra LLM calls
+- keep implementation simple and modular
+
+Return:
+1. safe insertion point
+2. exact files changed
+3. exact diff
+4. final confidence logic
+5. 10 sample queries with expected confidence level
+6. before vs after output examples
+7. confirmation that only trust/response behavior changed

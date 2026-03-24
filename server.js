@@ -773,6 +773,55 @@ function trimToSentence(text, maxLen) {
   return cut.trim() + "…";
 }
 
+/* ── Confidence / trust layer ────────────────────────── */
+// Rule-based, no LLM call. Returns a hint injected into the system prompt.
+function classifyConfidence({ hasKB, hasPinned, hasWiki, intent, query }) {
+  const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
+
+  // Pinned updates are admin-verified — highest trust
+  if (hasPinned) return { level: "high_confidence", hint: "" };
+
+  // KB hit on stable, procedure-oriented intent — high trust
+  if (hasKB && ["factual", "procedural", "confused_procedural", "confused"].includes(intent.primary)) {
+    return { level: "high_confidence", hint: "" };
+  }
+
+  // No KB, no pinned, and query sounds time-sensitive — flag for verification
+  if (!hasKB && !hasPinned && timeSensitive) {
+    return {
+      level: "needs_verification",
+      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jika jawaban ini menyangkut informasi yang bisa berubah, tambahkan 1 kalimat peringatan singkat dan natural di akhir. Contoh: 'Tapi sebaiknya dicek ulang ya, info ini bisa berubah.' Jangan terdengar kaku atau defensif, dan jangan ulangi ini berkali-kali.",
+    };
+  }
+
+  // No context at all — very weak basis, flag for verification
+  if (!hasKB && !hasPinned && !hasWiki) {
+    return {
+      level: "needs_verification",
+      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jika jawaban ini mungkin sudah tidak akurat atau butuh konfirmasi, tambahkan 1 kalimat peringatan singkat dan natural di akhir. Jangan terdengar kaku atau defensif.",
+    };
+  }
+
+  // KB present but intent is subjective — light basis phrasing allowed
+  if (hasKB && ["recommendation", "brainstorming"].includes(intent.primary)) {
+    return {
+      level: "medium_confidence",
+      hint: "\n\n**[Kepercayaan — SEDANG]** Boleh gunakan frasa ringan seperti 'berdasarkan knowledge base AINA' atau 'berdasarkan konteks yang tersedia' — hanya jika terasa natural, jangan dipaksakan.",
+    };
+  }
+
+  // Wikipedia only (no KB) — secondary source, light acknowledgment allowed
+  if (!hasKB && hasWiki) {
+    return {
+      level: "medium_confidence",
+      hint: "\n\n**[Kepercayaan — SEDANG]** Boleh gunakan frasa ringan seperti 'berdasarkan Wikipedia' atau 'berdasarkan konteks yang tersedia' — hanya jika terasa natural, jangan dipaksakan.",
+    };
+  }
+
+  // Default — medium, no specific hint needed
+  return { level: "medium_confidence", hint: "" };
+}
+
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", chatLimiter, async (req, res) => {
   // Auth is required — unauthenticated requests must not reach OpenRouter
@@ -963,6 +1012,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Wikipedia] fetched: "${wikiResult.title}" (${wikiResult.lang}, ${wikiResult.extract.length} chars raw)`);
   }
 
+  // Classify confidence based on what context was actually retrieved
+  const confidence = classifyConfidence({
+    hasKB: articles.length > 0,
+    hasPinned: pinnedUpdates.length > 0,
+    hasWiki: !!wikiResult,
+    intent,
+    query: lastUserMessage,
+  });
+  console.log(`[Confidence] ${confidence.level} — "${lastUserMessage.slice(0, 60)}"`);
+
   const now = new Date();
   const todayStr = now.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Africa/Cairo" });
 
@@ -1009,7 +1068,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Jawaban harus terasa seperti ditulis manusia: alami, tidak kaku, tidak terlalu formal, tidak seperti dokumen resmi.
 - Gunakan kalimat pendek-menengah. Hindari kalimat panjang beranak-pinak yang sulit dicerna.
 - Jika ada satu poin inti yang harus disampaikan, tulis itu di kalimat pertama — baru elaborasi setelahnya.
-${intentHint}
+${intentHint}${confidence.hint}
 
 **Sumber:**
 - WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Wikipedia" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${wikiContext}`;
