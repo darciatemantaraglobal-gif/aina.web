@@ -318,6 +318,7 @@ async function verifyMasterAdmin(authHeader) {
 
 /* ── Article type column detection (cached) ──────────── */
 let _hasArticleTypeCol = null; // null=unknown, true/false=detected
+let _hasKeywordsCol = null;
 
 async function detectArticleTypeCol(supabase) {
   if (_hasArticleTypeCol !== null) return _hasArticleTypeCol;
@@ -332,15 +333,30 @@ async function detectArticleTypeCol(supabase) {
   return _hasArticleTypeCol;
 }
 
+async function detectKeywordsCol(supabase) {
+  if (_hasKeywordsCol !== null) return _hasKeywordsCol;
+  const { error } = await supabase
+    .from("knowledge_base")
+    .select("keywords")
+    .limit(1);
+  _hasKeywordsCol = !error;
+  return _hasKeywordsCol;
+}
+
 /* ── Fetch relevant knowledge base articles ──────────── */
 async function fetchRelevantArticles(userQuestion) {
   const supabase = getAdminClient();
   if (!supabase) return [];
 
-  const hasTypeCol = await detectArticleTypeCol(supabase);
-  const selectCols = hasTypeCol
-    ? "title, content, category, article_type"
-    : "title, content, category";
+  const [hasTypeCol, hasKwCol] = await Promise.all([
+    detectArticleTypeCol(supabase),
+    detectKeywordsCol(supabase),
+  ]);
+  const selectCols = [
+    "title, content, category",
+    hasTypeCol ? ", article_type" : "",
+    hasKwCol   ? ", keywords"     : "",
+  ].join("");
 
   const keywords = userQuestion
     .toLowerCase()
@@ -360,8 +376,13 @@ async function fetchRelevantArticles(userQuestion) {
   }
 
   // Use server-side OR filter across keywords — avoids loading all articles in memory
+  // Also matches against contributor-defined `keywords` column for precise query targeting
   const orFilter = keywords
-    .flatMap(kw => [`title.ilike.%${kw}%`, `content.ilike.%${kw}%`])
+    .flatMap(kw => [
+      `title.ilike.%${kw}%`,
+      `content.ilike.%${kw}%`,
+      ...(hasKwCol ? [`keywords.ilike.%${kw}%`] : []),
+    ])
     .join(",");
 
   const { data: matched } = await supabase
@@ -2945,8 +2966,10 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category } = req.body;
-  const { error } = await supabase.from("knowledge_base").update({ title, content, category }).eq("id", req.params.id);
+  const { title, content, category, keywords } = req.body;
+  const updatePayload = { title, content, category };
+  if (typeof keywords === "string") updatePayload.keywords = keywords.trim().slice(0, 500);
+  const { error } = await supabase.from("knowledge_base").update(updatePayload).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });
 });
@@ -3409,7 +3432,7 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
   if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa mengirim artikel" });
 
-  const { title, content, category, article_type } = req.body;
+  const { title, content, category, article_type, keywords: rawKeywords } = req.body;
   if (!title?.trim() || !content?.trim() || !category) return res.status(400).json({ error: "title, content, category required" });
   if (title.trim().length > 200) return res.status(400).json({ error: "Judul terlalu panjang (maks 200 karakter)" });
   if (content.trim().length > 50000) return res.status(400).json({ error: "Konten terlalu panjang (maks 50.000 karakter)" });
@@ -3417,11 +3440,12 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   if (!validCategories.includes(category)) return res.status(400).json({ error: "Kategori tidak valid" });
   const validTypes = ["narrative", "step_by_step"];
   const safeType = validTypes.includes(article_type) ? article_type : "narrative";
+  const safeKeywords = typeof rawKeywords === "string" ? rawKeywords.trim().slice(0, 500) : "";
 
-  const payload = { author_id: user.id, title: title.trim(), content: content.trim(), category, article_type: safeType };
+  const payload = { author_id: user.id, title: title.trim(), content: content.trim(), category, article_type: safeType, keywords: safeKeywords };
   const { data, error } = await supabase.from("knowledge_base").insert(payload).select().single();
   if (error) {
-    if (error.message?.includes("article_type")) {
+    if (error.message?.includes("article_type") || error.message?.includes("keywords")) {
       const { data: d2, error: e2 } = await supabase.from("knowledge_base").insert({ author_id: user.id, title: title.trim(), content: content.trim(), category }).select().single();
       if (e2) return res.status(500).json({ error: e2.message });
       return res.json(d2);
@@ -5236,6 +5260,7 @@ async function runColumnMigrations() {
   if (!supabase) return;
   const migrations = [
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",
+    "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS keywords TEXT NOT NULL DEFAULT '';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE public.intel_retrieval_stats ADD COLUMN IF NOT EXISTS had_perplexity BOOLEAN NOT NULL DEFAULT false;",

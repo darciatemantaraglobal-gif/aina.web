@@ -138,7 +138,7 @@ function WelcomeChat({ name }: { name: string }) {
   );
 }
 
-type ParsedArticle = { title: string; category: string; article_type: string; content: string };
+type ParsedArticle = { title: string; category: string; article_type: string; content: string; keywords: string };
 
 const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [hasRequest, setHasRequest] = useState(false);
@@ -163,6 +163,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [artContent, setArtContent] = useState("");
   const [artCategory, setArtCategory] = useState("");
   const [artType, setArtType] = useState("narrative");
+  const [artKeywords, setArtKeywords] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // PDF upload dialog
@@ -177,7 +178,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   // Parsed article cards
   const [parsedArticles, setParsedArticles] = useState<ParsedArticle[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editCard, setEditCard] = useState<ParsedArticle>({ title: "", category: "", article_type: "narrative", content: "" });
+  const [editCard, setEditCard] = useState<ParsedArticle>({ title: "", category: "", article_type: "narrative", content: "", keywords: "" });
   const [cardSubmitting, setCardSubmitting] = useState<number | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
@@ -303,12 +304,12 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       const res = await fetch("/api/articles", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType }),
+        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType, keywords: artKeywords.trim() }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(`Gagal mengirim artikel: ${json.error || res.statusText}`); return; }
       setArticles((prev) => [json, ...prev]);
-      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative");
+      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords("");
       setDialogOpen(false);
       toast.success("Artikel dikirim! Menunggu persetujuan admin.");
     } catch {
@@ -395,7 +396,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       });
       const json = await res.json().catch(() => ({ error: "Gagal memparse respons" }));
       if (!res.ok) throw new Error(json.error || "Gagal mengategorikan dokumen");
-      const arts: ParsedArticle[] = json.articles || [];
+      const arts: ParsedArticle[] = (json.articles || []).map((a: Omit<ParsedArticle, "keywords"> & { keywords?: string }) => ({ ...a, keywords: a.keywords ?? "" }));
       if (arts.length === 0) throw new Error("AI tidak berhasil mengekstrak topik dari dokumen ini. Pastikan isi dokumen memiliki informasi yang cukup, lalu coba lagi.");
       setParsedArticles((prev) => [...prev, ...arts]);
       setPdfDialogOpen(false);
@@ -434,6 +435,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
           content: article.content.trim(),
           category: article.category,
           article_type: article.article_type,
+          keywords: article.keywords?.trim() ?? "",
         }),
       });
       const json = await res.json();
@@ -871,6 +873,16 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                                   placeholder="Konten artikel..."
                                   className="min-h-[140px] bg-secondary text-xs"
                                 />
+                                <div className="space-y-1">
+                                  <p className="text-[10px] font-medium text-muted-foreground">Kata Kunci / Query <span className="font-normal opacity-60">(opsional)</span></p>
+                                  <input
+                                    type="text"
+                                    placeholder="iqomah, perpanjang izin tinggal, kartu iqomah"
+                                    value={editCard.keywords ?? ""}
+                                    onChange={(e) => setEditCard((c) => ({ ...c, keywords: e.target.value }))}
+                                    className="w-full rounded-md border border-input bg-secondary px-2.5 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                                  />
+                                </div>
                                 <div className="flex gap-2">
                                   <button
                                     type="button"
@@ -938,7 +950,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             </div>
 
             {/* Manual write dialog */}
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); } }}>
               <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-display">Tulis Artikel Baru</DialogTitle>
@@ -988,6 +1000,17 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     onChange={(e) => setArtContent(e.target.value)}
                     className="min-h-[150px] bg-secondary"
                   />
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Kata Kunci / Query <span className="font-normal opacity-60">(opsional)</span></p>
+                    <input
+                      type="text"
+                      placeholder="Contoh: iqomah, perpanjang izin tinggal, kartu iqomah"
+                      value={artKeywords}
+                      onChange={(e) => setArtKeywords(e.target.value)}
+                      className="w-full rounded-md border border-input bg-secondary px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Tulis frasa atau pertanyaan yang kemungkinan ditanya pengguna, pisahkan dengan koma. AINA akan otomatis menarik artikel ini saat query cocok.</p>
+                  </div>
                   <Button variant="hero" onClick={submitArticle} disabled={submitting} className="w-full gap-1.5">
                     {submitting ? (
                       <>
