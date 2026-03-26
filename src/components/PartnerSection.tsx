@@ -26,8 +26,22 @@ const PartnerSection = () => {
           Kolaborasi dengan AINA untuk menjangkau komunitas mahasiswa Indonesia di Mesir.
         </p>
 
-        <div className={`mt-10 rounded-2xl border border-border/50 bg-card/40 backdrop-blur-xl px-8 py-14 transition-all duration-700 delay-300 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
-          <p className="font-display text-2xl font-bold text-gradient-purple">Coming Soon</p>
+        {/* Partner logos */}
+        <div className={`mt-10 space-y-3 transition-all duration-700 delay-150 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">Partner Resmi</p>
+          <div className="flex flex-wrap items-center justify-center gap-6">
+            <div className="flex items-center justify-center rounded-2xl border border-border/50 bg-card/40 backdrop-blur-sm px-8 py-5">
+              <img
+                src="/temantiket-logo.png"
+                alt="Temantiket — mudah, cepat, amanah"
+                className="h-10 object-contain opacity-90 hover:opacity-100 transition-opacity"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className={`mt-8 rounded-2xl border border-border/50 bg-card/40 backdrop-blur-xl px-8 py-14 transition-all duration-700 delay-300 ${visible ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
+          <p className="font-display text-2xl font-bold text-gradient-purple">Bergabung Sebagai Partner</p>
           <p className="mt-3 text-sm text-muted-foreground">
             Program partnership sedang disiapkan. Tertarik? Hubungi kami!
           </p>

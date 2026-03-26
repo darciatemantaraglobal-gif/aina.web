@@ -1546,7 +1546,19 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       }
       return `### Artikel ${i + 1}: ${a.title} [${a.category}]${typeHint}\n${cleanedContent}`;
     }).join("\n\n");
-    knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.\n\n${articlesText}\n---`;
+
+    // Detect potentially conflicting articles: 2+ articles in the same category
+    const categoryCounts = {};
+    for (const a of articles) {
+      const cat = (a.category || "Umum").toLowerCase();
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    }
+    const hasConflictingCategory = Object.values(categoryCounts).some(c => c >= 2);
+    const conflictInstruction = hasConflictingCategory
+      ? "\n\n⚠️ INSTRUKSI KONFLIK: Terdapat beberapa artikel dari kategori yang sama. Jika informasi antar artikel SALING MELENGKAPI, gabungkan menjadi jawaban terpadu. Namun jika informasinya BERBEDA atau BERTENTANGAN untuk pertanyaan yang sama, JANGAN pilih salah satu — sajikan kedua opsi secara jelas dengan label:\n**Opsi 1 (berdasarkan [judul artikel pertama]):** ...\n**Opsi 2 (berdasarkan [judul artikel kedua]):** ...\nLalu berikan catatan singkat agar user dapat mempertimbangkan mana yang sesuai kondisinya."
+      : "";
+
+    knowledgeContext = `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.${conflictInstruction}\n\n${articlesText}\n---`;
   }
 
   // Build breaking/pinned updates context

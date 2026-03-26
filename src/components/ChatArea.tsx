@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -200,6 +200,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [reportReason, setReportReason] = useState<string>("");
   const [reportNote, setReportNote] = useState<string>("");
   const [reportedMsgIds, setReportedMsgIds] = useState<Set<string>>(new Set());
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const [submittingReport, setSubmittingReport] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
@@ -338,6 +340,36 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+  };
+
+  const toggleVoice = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Browser kamu tidak mendukung input suara. Coba Chrome atau Edge.");
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+    const rec = new SpeechRecognition();
+    rec.lang = "id-ID";
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onstart = () => setIsListening(true);
+    rec.onresult = (e: any) => {
+      const transcript = e.results[0][0].transcript;
+      setInput(prev => (prev ? prev + " " + transcript : transcript));
+      setTimeout(autoResize, 50);
+    };
+    rec.onerror = () => {
+      setIsListening(false);
+      toast.error("Gagal mendengarkan suara. Coba lagi.");
+    };
+    rec.onend = () => setIsListening(false);
+    recognitionRef.current = rec;
+    rec.start();
   };
 
   const submitReport = async (msgId: string, msgContent: string) => {
@@ -1081,8 +1113,21 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 }}
                 placeholder="Tanyakan sesuatu kepada AINA..."
                 rows={1}
-                className="w-full resize-none rounded-2xl bg-transparent px-5 py-4 pl-12 pr-14 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+                className="w-full resize-none rounded-2xl bg-transparent px-5 py-4 pl-12 pr-24 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
+              <button
+                type="button"
+                onClick={toggleVoice}
+                disabled={isLoading}
+                className={`absolute right-[3.25rem] bottom-3 flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${
+                  isListening
+                    ? "text-red-400 animate-pulse hover:bg-red-500/10"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                }`}
+                title={isListening ? "Berhenti mendengarkan" : "Input suara (Bahasa Indonesia)"}
+              >
+                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && !attachedFile)}
