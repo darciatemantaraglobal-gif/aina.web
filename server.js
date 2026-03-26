@@ -1065,7 +1065,7 @@ function detectIntent(text) {
 
   // Primary intent signals (evaluated independently before priority resolution)
   const isConfused   = /bingung|galau|khawatir|takut|pusing|stres|stress|overwhelm|nggak tau|tidak tau|ga tau|gak tau|harus mulai dari mana|nggak ngerti|tidak mengerti|susah banget|ribet banget|tolong bantu/.test(t);
-  const isProcedural = /\b(cara|bagaimana cara|gimana cara|langkah|prosedur|tahapan|proses|tutorial|panduan|step|caranya|gimana sih cara)\b/.test(t);
+  const isProcedural = /\b(cara|bagaimana cara|gimana cara|langkah|prosedur|tahapan|proses|tutorial|panduan|step|caranya|gimana sih cara|ngurus|ngurusin|mendaftar|cara daftar|gimana daftar)\b/.test(t);
   const isRecommend  = /\b(rekomen|rekomendasi|saranin|suggest|yang bagus|yang enak|yang murah|yang terbaik|mending yang mana|pilih yang mana)\b/.test(t);
   const isBrainstorm = /\b(ide|pilihan|opsi|alternatif|apa saja|apa aja|apa yang bisa|bisa apa|ada nggak|ada yang|kira-kira apa)\b/.test(t);
 
@@ -1094,11 +1094,12 @@ function buildIntentHint({ primary, casual }) {
       "Jangan tambahkan informasi yang tidak ditanya.",
 
     procedural:
-      "Buka dengan 1 kalimat singkat yang menggambarkan apa yang akan dilakukan (opsional jika sudah jelas dari pertanyaan). " +
-      "Lanjutkan langsung ke langkah bernomor: 1, 2, 3, dst. " +
-      "Setiap langkah maksimal 2 kalimat — action dulu, detail menyusul. " +
-      "Tambahkan tips atau peringatan (⚠️ atau 💡) hanya jika benar-benar membantu, bukan sebagai filler. " +
-      "Jangan ulang informasi yang sudah disebutkan di langkah sebelumnya.",
+      "WAJIB gunakan format 4 bagian berikut secara berurutan:\n" +
+      "1. **Kalimat pembuka (1 kalimat)** — Framing singkat tentang proses ini. Langsung ke poin, jangan overexplain.\n" +
+      "2. **Langkah-langkah bernomor** — WAJIB pakai format 1. 2. 3. Setiap langkah: action dulu, detail menyusul. Maksimal 2 kalimat per langkah. Jangan gabungkan beberapa aksi dalam satu langkah.\n" +
+      "3. **Catatan praktis (opsional, 1–2 kalimat)** — Tambahkan hanya jika ada hal penting seperti kesalahan umum, dokumen kritis, atau hal yang sering terlewat. Gunakan ⚠️ atau 💡. Skip bagian ini jika tidak ada yang benar-benar penting.\n" +
+      "4. **Tawaran lanjutan (opsional, 1 kalimat)** — Tawarkan bantuan relevan berikutnya secara natural. Contoh: 'Kalau kamu mau, aku bisa bantu bikin checklist-nya juga.' atau 'Aku bisa jelasin lebih detail soal dokumen yang dibutuhkan kalau perlu.' Skip jika tawaran terasa dipaksakan atau tidak relevan.\n" +
+      "JANGAN buat jawaban prosedural dalam bentuk paragraf — selalu dalam langkah bernomor. Jangan ulang info yang sudah disebutkan di langkah sebelumnya.",
 
     confused:
       "Buka dengan tepat 1 kalimat pengakuan yang hangat — cukup validasi perasaannya, tidak perlu berlarut. " +
@@ -1107,10 +1108,13 @@ function buildIntentHint({ primary, casual }) {
       "Jika ada langkah-langkah, tulis dalam format bernomor agar terasa lebih terstruktur dan tidak overwhelming.",
 
     confused_procedural:
-      "Buka dengan tepat 1 kalimat pengakuan singkat, lalu transisi ke langkah-langkah secara langsung. " +
+      "Buka dengan tepat 1 kalimat empati yang hangat dan ringkas — validasi, lalu langsung alihkan ke solusi. " +
       "Jangan habiskan lebih dari 1 kalimat untuk bagian empati. " +
-      "Gunakan format langkah bernomor — ini justru membantu user yang bingung karena terasa lebih terkendali. " +
-      "Setiap langkah jelas, pendek, dan actionable.",
+      "Setelah itu, gunakan format langkah bernomor yang sama dengan intent procedural: " +
+      "langkah-langkah 1. 2. 3. (setiap langkah max 2 kalimat, action dulu), " +
+      "catatan praktis opsional (⚠️/💡 hanya jika benar-benar kritis), " +
+      "dan tawaran lanjutan opsional 1 kalimat yang relevan di akhir. " +
+      "Format bernomor justru sangat membantu user yang bingung karena terasa lebih terkendali dan tidak overwhelming.",
 
     recommendation:
       "Sebutkan rekomendasi terkuat di kalimat pertama dengan tegas — jangan langsung bikin daftar. " +
