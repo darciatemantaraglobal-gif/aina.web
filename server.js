@@ -1317,13 +1317,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
   // ──────────────────────────────────────────────────────────────────────────────
   const MODEL_TIERS = {
+    // Tier A — cheapest safe model for simple, non-dynamic queries
     lightweight: {
-      primary:   "google/gemini-2.0-flash-001",          // fast, cheap, long context
-      fallback:  "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
+      primary:   "google/gemini-2.0-flash-lite-001",       // cheapest safe ($0.075/1M in)
+      fallback:  "google/gemini-2.0-flash-001",            // paid fallback if lite unavailable
+      emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
     },
+    // Tier B — stronger model for complex, procedural, and dynamic queries
     standard: {
-      primary:   "openai/gpt-4o-mini",                   // best Indonesian quality
-      fallback:  "google/gemini-2.0-flash-001",           // paid fallback
+      primary:   "google/gemini-2.0-flash-001",            // main standard ($0.10/1M in, fast)
+      fallback:  "openai/gpt-4o-mini",                     // backup (best Indonesian quality)
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
     },
   };
@@ -1613,17 +1616,36 @@ ${intentHint}${confidence.hint}
   const VISION_MODEL = "google/gemini-2.0-flash-001";
 
   // ── Model tier selector — runs AFTER retrieval + context prep ──────────────
-  // Uses signals already computed: intentPrimary, kbStrength, query length.
-  // Returns "lightweight" or "standard". Premium is reserved for future admin use.
+  // Signals used: intentPrimary, kbStrength, query content (NOT length alone).
+  // Returns "lightweight" (Tier A) or "standard" (Tier B).
+  //
+  // GUARD: dynamic/current-role/time-sensitive queries ALWAYS go to Tier B,
+  // even if the query is short — these carry high accuracy risk.
   function selectModelTier(intentPrimary, kbStrength, query) {
     const q = (query ?? "").trim();
-    // Casual / small-talk → always lightweight (no heavy reasoning needed)
+
+    // ── Dynamic guard (highest priority — overrides everything else) ──────────
+    // Current office-holder queries: answer accuracy is critical, must use stronger model
+    const isDynamicRole = /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|pemimpin)\b/i.test(q)
+      || /\b(presiden|menteri|rektor|direktur|ceo|gubernur|ketua|kepala)\b.{0,30}\bsiapa\b/i.test(q);
+
+    // Time-sensitive: any query about current state, rules, prices, policies
+    const isTimeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|kebijakan baru|aturan terbaru|perubahan|berubah|update|berita|biaya hidup)\b/i.test(q);
+
+    // Exchange-rate queries (already handled by Frankfurter, but route to better model)
+    const isCurrency = /\b(kurs|rate|nilai tukar|exchange|pound|egp|rupiah|dollar)\b/i.test(q);
+
+    if (isDynamicRole || isTimeSensitive || isCurrency) return "standard";
+
+    // ── Safe Tier A routes ────────────────────────────────────────────────────
+    // Casual / small-talk: no KB reasoning needed
     if (intentPrimary === "casual") return "lightweight";
-    // Short query + strong KB = simple answer generation → lightweight
-    if (kbStrength === "strong" && q.length < 150) return "lightweight";
-    // Factual + strong KB → lightweight (model just needs to present KB info)
-    if (kbStrength === "strong" && intentPrimary === "factual") return "lightweight";
-    // Everything else: procedural, recommendation, memory-aware, time-sensitive → standard
+
+    // KB is strong → model only needs to present/format the KB content; no heavy reasoning
+    if (kbStrength === "strong" && ["factual", "procedural", "confused", "confused_procedural"].includes(intentPrimary)) return "lightweight";
+
+    // ── Everything else → Tier B ──────────────────────────────────────────────
+    // recommendation, brainstorming, memory-aware, absent KB, weak KB, or unknown intent
     return "standard";
   }
 
