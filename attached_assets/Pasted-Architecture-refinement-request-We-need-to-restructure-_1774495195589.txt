@@ -1,0 +1,161 @@
+Architecture refinement request:
+
+We need to restructure AINA’s source strategy to be more deterministic, accurate, and scalable.
+
+Current problems:
+- External retrieval sometimes fails and leaves the user hanging
+- Currency queries are incorrectly treated like general web queries
+- Perplexity is not consistently used as the main external knowledge source
+- KB priority is not always enforced cleanly
+
+We want a clean 3-layer system:
+KB → External Intelligence → Model
+
+---
+
+1. Source Priority (STRICT)
+
+Layer 1: Knowledge Base (KB)
+- Always checked first
+- If KB is strong → answer directly from KB
+- No need to call external sources
+
+Layer 2: External Intelligence
+Split into 2 types:
+
+A. Currency / Exchange Queries
+Examples:
+- berapa kurs 1 usd sekarang
+- 1 juta rupiah ke pound mesir sekarang
+
+Rules:
+- MUST use a dedicated exchange rate API (not Perplexity, not DDG)
+- NEVER use model memory for currency numbers
+- NEVER guess or hallucinate rates
+
+If API succeeds:
+→ return accurate conversion
+
+If API fails:
+→ return safe response:
+  "Aku belum bisa mendapatkan data kurs terbaru saat ini. Coba beberapa saat lagi ya."
+
+B. General / Dynamic Queries
+Examples:
+- siapa presiden sekarang
+- berita terbaru
+- info umum yang butuh update
+
+Rules:
+- Use Perplexity as PRIMARY external source
+- Do not rely on model memory if query is time-sensitive or role-based
+
+If Perplexity succeeds:
+→ use it as main grounding
+
+If Perplexity fails:
+→ fallback to model with safe phrasing:
+  "Berdasarkan informasi terakhir yang aku tahu..."
+
+---
+
+2. No Hanging Responses (CRITICAL)
+
+Remove all responses like:
+- "tunggu sebentar"
+- "aku cek web dulu ya"
+
+AINA must ALWAYS return a final answer.
+
+---
+
+3. Fallback Logic (MANDATORY)
+
+If external fails:
+
+- current-role / dynamic queries:
+  → use safe model fallback (with uncertainty disclaimer)
+
+- currency queries:
+  → DO NOT fallback to model numbers
+  → return "data tidak tersedia" style response
+
+---
+
+4. Routing Logic Update
+
+Before model selection, classify query into:
+
+- isCurrencyQuery
+- isDynamicRoleQuery
+- isGeneralQuery
+
+Routing:
+
+if KB strong:
+  → KB
+
+else if isCurrencyQuery:
+  → Exchange API
+
+else:
+  → Perplexity
+
+---
+
+5. Logging (VERY IMPORTANT)
+
+For every query, log:
+
+- kb_used: true/false
+- external_type: none / perplexity / currency_api
+- external_called: true/false
+- external_success: true/false
+- fallback_used: true/false
+- final_source: kb / perplexity / currency_api / model_fallback
+
+---
+
+6. Enforcement Rules
+
+- Currency queries:
+  NEVER allow model to output numbers without API confirmation
+
+- Dynamic role queries:
+  NEVER allow confident answer from stale memory
+
+---
+
+7. Example Behavior
+
+Query: "berapa kurs 1 usd sekarang"
+- API success → return number
+- API fail → "data kurs belum tersedia"
+
+Query: "1 juta rupiah ke pound mesir sekarang"
+- API success → return conversion
+- API fail → no number, only safe message
+
+Query: "siapa presiden indonesia sekarang"
+- Perplexity success → grounded answer
+- Perplexity fail → safe fallback (not confident)
+
+Query: "siapa presiden pertama indonesia"
+- KB / model → direct answer
+
+---
+
+8. Do NOT break:
+- KB-first architecture
+- model routing tiers
+- memory system
+- trust/confidence system
+
+---
+
+Return:
+- updated routing diagram
+- exact implementation points
+- diff
+- sample logs
+- before vs after behavior

@@ -465,6 +465,26 @@ async function fetchExchangeRates() {
   }
 }
 
+/**
+ * Classify the query into one of three routing types.
+ * Called AFTER KB assessment so kbStrength is available.
+ *
+ * Returns:
+ *   "currency"  — exchange-rate / conversion query → dedicated API only, never model numbers
+ *   "dynamic"   — current-role or time-sensitive → Perplexity primary
+ *   "general"   — everything else → Perplexity primary (if weak/absent KB), then Wiki/DDG fallback
+ */
+function classifyQueryType(intentPrimary, kbStrength, query) {
+  if (isCurrencyQuery(query)) return "currency";
+  // Dynamic role or time-sensitive: Perplexity is critical
+  const dynamic =
+    /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|pemimpin)\b/i.test(query)
+    || /\b(presiden|menteri|rektor|direktur|ceo|gubernur|ketua|kepala)\b.{0,30}\bsiapa\b/i.test(query)
+    || /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|kebijakan baru|aturan terbaru|perubahan|berubah|update|berita|baru-baru)\b/i.test(query);
+  if (dynamic) return "dynamic";
+  return "general";
+}
+
 /* ── Wikipedia: Factual summaries ────────────────────── */
 function isWikipediaQuery(text) {
   const kw = ["siapa", "siapakah", "apa itu", "apakah itu", "jelaskan", "ceritakan", "sejarah", "biografi", "profil", "tokoh", "ilmuwan", "ulama", "imam", "nabi", "presiden", "raja", "ratu", "universitas", "kota", "negara", "peristiwa", "who is", "what is", "tell me about"];
@@ -1187,7 +1207,7 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
 
   // No KB, no pinned, query is time-sensitive:
   // Perplexity provides web-grounded fresh context → medium_confidence
-  // No Perplexity → flag for verification as before
+  // No Perplexity → model uses its own knowledge but MUST prefix with uncertainty phrase
   if (!hasKB && !hasPinned && timeSensitive) {
     if (hasPerplexity) {
       return {
@@ -1197,7 +1217,7 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     }
     return {
       level: "needs_verification",
-      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jika jawaban ini menyangkut informasi yang bisa berubah, tambahkan 1 kalimat peringatan singkat dan natural di akhir. Contoh: 'Tapi sebaiknya dicek ulang ya, info ini bisa berubah.' Jangan terdengar kaku atau defensif, dan jangan ulangi ini berkali-kali.",
+      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL]** Pencarian web tidak tersedia untuk pertanyaan ini. WAJIB mulai jawaban dengan frasa seperti 'Berdasarkan informasi terakhir yang aku tahu...' atau 'Sejauh yang aku tahu hingga batas pengetahuanku...' — jangan jawab dengan percaya diri penuh karena info ini bisa sudah berubah. Sertakan saran cek sumber terbaru di akhir jawaban.",
     };
   }
 
@@ -1354,20 +1374,65 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Assess KB coverage strength before deciding whether to hit external sources
   const kbStrength = assessKBStrength(articles);
   const needsExternal = shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
-  console.log(`[Source] KB=${kbStrength} (${articles.length} art) intent=${intent.primary} → external=${needsExternal}`);
-
-  // Perplexity gate — checked independently from general external gate
   const perplexityNeeded = needsPerplexity(intent.primary, kbStrength, lastUserMessage);
-  console.log(`[Source] perplexity_needed=${perplexityNeeded} (KB=${kbStrength}, intent=${intent.primary})`);
 
-  // Wave 2 — external fetches (Wiki/DDG when KB insufficient; Perplexity when time-sensitive/role query)
-  const [wikiResult, ddgResult, perplexityResult] = (needsExternal || perplexityNeeded)
-    ? await Promise.all([
-        needsExternal ? fetchWikipediaSummary(lastUserMessage)  : Promise.resolve(null),
-        needsExternal ? fetchDuckDuckGoAnswer(lastUserMessage)   : Promise.resolve(null),
-        perplexityNeeded ? fetchPerplexityContext(lastUserMessage) : Promise.resolve(null),
-      ])
-    : [null, null, null];
+  // ── Classify query type for strict 3-layer routing ──────────────────────────
+  // "currency"  → exchange API only (already fetched); NEVER Wikipedia/DDG/Perplexity
+  // "dynamic"   → Perplexity primary; Wikipedia/DDG only if Perplexity unavailable
+  // "general"   → Perplexity primary (if weak/absent KB); Wikipedia/DDG only as fallback
+  const queryType = classifyQueryType(intent.primary, kbStrength, lastUserMessage);
+  const kbCoversQuery = kbStrength === "strong";
+
+  console.log(`[Source] KB=${kbStrength} (${articles.length} art) intent=${intent.primary} queryType=${queryType} kbCovers=${kbCoversQuery}`);
+
+  // ── Wave 2 — strict 3-layer external routing ─────────────────────────────
+  // Rule 1: KB strong  → no external at all
+  // Rule 2: currency   → exchange API only (Wave 1). Skip everything else.
+  // Rule 3: dynamic/general → Perplexity first; Wikipedia+DDG only if Perplexity absent/failed
+  let wikiResult = null, ddgResult = null, perplexityResult = null;
+
+  if (!kbCoversQuery && queryType !== "currency") {
+    // Step A — try Perplexity (primary external intelligence)
+    if (perplexityNeeded) {
+      perplexityResult = await fetchPerplexityContext(lastUserMessage);
+      console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS" : "FAILED"} (queryType=${queryType})`);
+    }
+
+    // Step B — Wikipedia + DDG only when Perplexity is unavailable or failed
+    // (PERPLEXITY_API_KEY not set = unavailable; null return = failed)
+    if (!perplexityResult && needsExternal) {
+      [wikiResult, ddgResult] = await Promise.all([
+        fetchWikipediaSummary(lastUserMessage),
+        fetchDuckDuckGoAnswer(lastUserMessage),
+      ]);
+      console.log(`[Source] wikipedia=${!!wikiResult} ddg=${!!ddgResult} (perplexity unavailable/failed, using as fallback)`);
+    } else if (perplexityResult) {
+      console.log(`[Source] perplexity succeeded → skipping Wikipedia+DDG`);
+    }
+  } else {
+    if (kbCoversQuery) console.log(`[Source] KB strong → skipping all external sources`);
+    if (queryType === "currency") console.log(`[Source] currency query → exchange API only (no Wikipedia/DDG/Perplexity)`);
+  }
+
+  // ── Structured source decision log ──────────────────────────────────────
+  const sourceLog = {
+    kb_used:          articles.length > 0,
+    kb_strength:      kbStrength,
+    query_type:       queryType,
+    external_type:    queryType === "currency" ? "currency_api"
+                      : perplexityResult ? "perplexity"
+                      : (wikiResult || ddgResult) ? "wiki_ddg"
+                      : "none",
+    external_called:  queryType !== "currency" && (perplexityNeeded || needsExternal) && !kbCoversQuery,
+    external_success: !!(perplexityResult || wikiResult || ddgResult || (queryType === "currency" && exchangeRates)),
+    fallback_used:    !perplexityResult && !!(wikiResult || ddgResult),
+    final_source:     articles.length > 0 ? "kb"
+                      : perplexityResult ? "perplexity"
+                      : queryType === "currency" && exchangeRates ? "currency_api"
+                      : (wikiResult || ddgResult) ? "wiki_ddg"
+                      : "model_fallback",
+  };
+  console.log(`[SourceDecision] ${JSON.stringify(sourceLog)}`);
 
   // Build knowledge context with article-type-aware formatting hints
   // Context cleaning: cap each article at 2,000 chars, cutting at last sentence boundary
@@ -1445,9 +1510,17 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // Build exchange rate context (Frankfurter API)
   let exchangeContext = "";
-  if (exchangeRates) {
-    exchangeContext = `\n\n---\n## Data Kurs Real-time (${exchangeRates.date})\nData langsung dari Frankfurter API — gunakan ini untuk menjawab pertanyaan tentang nilai tukar:\n- 1 EGP = Rp ${exchangeRates.egpToIdr.toFixed(2)} (IDR)\n- 1 EGP = $${exchangeRates.egpToUsd.toFixed(4)} (USD)\n- 1 USD = Rp ${exchangeRates.usdToIdr.toFixed(0)} (IDR)\n- 1 USD = ${exchangeRates.usdToEgp.toFixed(2)} EGP\nSumber: Frankfurter (ECB data)\n\nPetunjuk tambahan: Setelah menyebutkan angka kurs, selalu tambahkan kalimat singkat yang menyarankan user untuk cek widget Kurs di halaman utama AINA untuk data yang selalu update secara real-time. Contoh: "Kamu juga bisa pantau kurs terbaru langsung di fitur Kurs di halaman utama AINA."\n---`;
+  if (queryType === "currency" && exchangeRates) {
+    // API success → inject real-time rates
+    exchangeContext = `\n\n---\n## Data Kurs Real-time (${exchangeRates.date})\nData langsung dari Frankfurter API — gunakan HANYA angka-angka ini untuk menjawab pertanyaan kurs/konversi:\n- 1 EGP = Rp ${exchangeRates.egpToIdr.toFixed(2)} (IDR)\n- 1 EGP = $${exchangeRates.egpToUsd.toFixed(4)} (USD)\n- 1 USD = Rp ${exchangeRates.usdToIdr.toFixed(0)} (IDR)\n- 1 USD = ${exchangeRates.usdToEgp.toFixed(2)} EGP\nSumber: Frankfurter (ECB data)\n\nPetunjuk: Setelah menyebutkan angka kurs, tambahkan satu kalimat singkat menyarankan user cek widget Kurs di halaman utama AINA untuk data real-time terbaru.\n---`;
     console.log(`[Exchange] fetched rates for ${exchangeRates.date}: 1 EGP = ${exchangeRates.egpToIdr.toFixed(2)} IDR`);
+  } else if (queryType === "currency" && !exchangeRates) {
+    // API failed → inject hard block so model cannot hallucinate numbers
+    exchangeContext = `\n\n---\n## ⚠️ DATA KURS TIDAK TERSEDIA\nFrankfurter API gagal mengambil data terkini. ATURAN KERAS: JANGAN sebutkan angka kurs, nilai tukar, atau hasil konversi apapun dalam jawaban ini — bahkan sebagai perkiraan. Angka yang tidak diverifikasi lebih berbahaya dari tidak ada angka. Jawab hanya dengan: "Aku belum bisa mendapatkan data kurs terbaru saat ini. Coba beberapa saat lagi ya. Kamu juga bisa cek langsung di fitur Kurs di halaman utama AINA."\n---`;
+    console.log(`[Exchange] API failed for currency query — injecting hard no-numbers block`);
+  } else if (!queryType && exchangeRates) {
+    // Non-currency query but rates happened to be fetched (shouldn't happen, safety net)
+    exchangeContext = `\n\n---\n## Data Kurs Real-time (${exchangeRates.date})\nData langsung dari Frankfurter API — gunakan HANYA angka-angka ini untuk menjawab pertanyaan kurs/konversi:\n- 1 EGP = Rp ${exchangeRates.egpToIdr.toFixed(2)} (IDR)\n- 1 EGP = $${exchangeRates.egpToUsd.toFixed(4)} (USD)\n- 1 USD = Rp ${exchangeRates.usdToIdr.toFixed(0)} (IDR)\n- 1 USD = ${exchangeRates.usdToEgp.toFixed(2)} EGP\nSumber: Frankfurter (ECB data)\n---`;
   }
 
   // Build Wikipedia context — KB-first filter: only inject when KB is absent/weak OR intent is factual
@@ -1527,6 +1600,10 @@ Tanggal & waktu saat ini (Kairo): ${todayStr}. Gunakan info ini saat user bertan
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
 
 ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
+
+**Respons selalu final:**
+- DILARANG KERAS mengatakan "tunggu sebentar", "aku cek dulu", "aku cari dulu", "biar aku cek web dulu", atau frasa apapun yang mengisyaratkan kamu sedang menunggu atau mencari data. Kamu TIDAK bisa menunggu — respons harus selalu langsung dan final.
+- Jika data tidak tersedia, katakan langsung bahwa data tidak tersedia — bukan bahwa kamu akan mencarinya.
 
 **Sumber jawaban:**
 - Urutan prioritas sumber jawaban (dari paling dipercaya):
