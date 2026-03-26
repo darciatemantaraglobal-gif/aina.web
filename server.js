@@ -1651,13 +1651,13 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Urutan prioritas sumber jawaban (dari paling dipercaya):
   1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini. Jika KB ada dan relevan, jawab berdasarkan KB dulu.
   2. **Pinned / Verified Updates** (jika ada di konteks) — Admin-verified. Selalu prioritaskan ini untuk info kebijakan atau fakta terkini.
-  3. **Pencarian Web Real-time** (jika ada di konteks "Informasi Terkini dari Pencarian Web") — Digunakan untuk pertanyaan jabatan terkini, kebijakan terbaru, info yang berubah cepat, atau topik apapun yang KB tidak punya. Kepercayaan tinggi tapi belum diverifikasi admin — gunakan dengan natural, sertakan sumber jika tersedia.
+  3. **Pencarian Web Real-time** (jika ada di konteks "Informasi Terkini dari Pencarian Web") — Digunakan untuk pertanyaan jabatan terkini, kebijakan terbaru, info yang berubah cepat, atau topik apapun yang KB tidak punya. Kepercayaan tinggi tapi belum diverifikasi admin — gunakan isinya secara natural dalam jawaban.
   4. **Data real-time** (kurs, dll.) — Gunakan jika tersedia di konteks, khusus untuk data numerik/kurs. Jangan tebak angka jika data tidak tersedia.
   5. **Pengetahuan umum kamu sendiri** — Untuk pertanyaan stabil: definisi, konsep, sejarah, arti kata, info yang tidak berubah cepat.
 - JANGAN bilang "tidak tahu" jika Pencarian Web atau sumber lain sudah menyediakan info relevan di konteks.
 - JANGAN bilang "tidak tahu" untuk fakta umum yang sudah kamu miliki (ibu kota, siapa tokoh terkenal, definisi istilah).
 - Jika tidak ada konteks eksternal yang disertakan, itu artinya KB sudah cukup atau topiknya cukup stabil — jawab dari KB atau pengetahuanmu.
-- **Konflik antar sumber:** Ikuti urutan kepercayaan secara ketat: KB > Pinned Updates > Pencarian Web Real-time > Data real-time > Pengetahuan model. Pilih sumber tertinggi dan sebutkan sumbernya secara natural.
+- **Konflik antar sumber:** Ikuti urutan kepercayaan secara ketat: KB > Pinned Updates > Pencarian Web Real-time > Data real-time > Pengetahuan model. Pilih dan gunakan sumber tertinggi — tanpa perlu menyebutkan nama sumbernya dalam teks.
 
 **Format jawaban:**
 - Panjang dan kedalaman jawaban diatur oleh [Mode Jawaban] yang disertakan di akhir instruksi ini — ikuti dengan ketat.
@@ -1690,7 +1690,8 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 ${intentHint}${confidence.hint}${answerModeHint}
 
 **Sumber:**
-- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Pencarian Web" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${perplexityContext}${wikiContext}${ddgContext}`;
+- JANGAN sebutkan atau mencantumkan sumber dalam teks jawaban — sumber sudah ditampilkan otomatis sebagai badge oleh sistem di bawah setiap pesan. Tidak perlu menulis baris "Sumber: ..." di akhir jawaban, dan tidak perlu menyebut nama sumber secara eksplisit di dalam teks (misalnya "Menurut Wikipedia...", "Berdasarkan Frankfurter...", dll).
+- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${perplexityContext}${wikiContext}${ddgContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
