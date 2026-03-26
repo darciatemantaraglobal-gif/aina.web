@@ -446,23 +446,53 @@ function isCurrencyQuery(text) {
 }
 
 async function fetchExchangeRates() {
+  // Primary: open.er-api.com (free, no key, USD-based)
   try {
-    // Get EGP rates against IDR and USD
+    const res = await fetch("https://open.er-api.com/v6/latest/USD", {
+      signal: AbortSignal.timeout(8000),
+      headers: { "Accept": "application/json" },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.result === "success" && data.rates?.IDR && data.rates?.EGP) {
+        const usdToIdr = data.rates.IDR;
+        const usdToEgp = data.rates.EGP;
+        const egpToIdr = usdToIdr / usdToEgp;
+        const egpToUsd = 1 / usdToEgp;
+        // Format date from unix timestamp
+        const date = new Date(data.time_last_update_unix * 1000)
+          .toISOString().slice(0, 10);
+        console.log(`[Exchange] open.er-api OK: 1 USD = ${usdToIdr.toFixed(0)} IDR, 1 EGP = ${egpToIdr.toFixed(2)} IDR (${date})`);
+        return { date, egpToIdr, egpToUsd, usdToIdr, usdToEgp };
+      }
+    }
+  } catch (e) {
+    console.warn("[Exchange] open.er-api failed:", e.message);
+  }
+
+  // Fallback: Frankfurter (ECB data, EGP-based)
+  try {
     const res = await fetch("https://api.frankfurter.app/latest?from=EGP&to=IDR,USD", {
       signal: AbortSignal.timeout(8000),
       headers: { "Accept": "application/json" },
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.rates?.IDR || !data.rates?.USD) return null;
-    const egpToIdr = data.rates.IDR;
-    const egpToUsd = data.rates.USD;
-    const usdToIdr = egpToIdr / egpToUsd;
-    const usdToEgp = 1 / egpToUsd;
-    return { date: data.date, egpToIdr, egpToUsd, usdToIdr, usdToEgp };
-  } catch {
-    return null;
+    if (res.ok) {
+      const data = await res.json();
+      if (data.rates?.IDR && data.rates?.USD) {
+        const egpToIdr = data.rates.IDR;
+        const egpToUsd = data.rates.USD;
+        const usdToIdr = egpToIdr / egpToUsd;
+        const usdToEgp = 1 / egpToUsd;
+        console.log(`[Exchange] frankfurter OK: 1 EGP = ${egpToIdr.toFixed(2)} IDR (${data.date})`);
+        return { date: data.date, egpToIdr, egpToUsd, usdToIdr, usdToEgp };
+      }
+    }
+  } catch (e) {
+    console.warn("[Exchange] frankfurter failed:", e.message);
   }
+
+  console.warn("[Exchange] all rate APIs failed");
+  return null;
 }
 
 /**
