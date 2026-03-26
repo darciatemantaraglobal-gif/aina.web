@@ -85,6 +85,28 @@ npm run dev   # Start both backend (port 3001) and frontend (port 5000) using co
 - **Webhook**: `/api/payment/webhook` — Midtrans notifies this endpoint on successful payment
 - **PaymentModal**: `src/components/PaymentModal.tsx` — shows waitlist signup, coming soon notice, and payment methods
 
+## AI Chat Routing Architecture (server.js)
+
+**Source priority (strict 3-layer):**
+1. **Layer 1 — Knowledge Base (KB)**: Always checked first. If `kbStrength === "strong"`, answer from KB only, no external calls.
+2. **Layer 2 — Perplexity**: Fires for ALL non-casual queries where KB is absent/weak. Primary external intelligence source. If Perplexity key is configured but call fails → go straight to model (no Wikipedia/DDG fallback).
+3. **Layer 3 — Model fallback**: Training knowledge, used for stable facts (definitions, history, concepts) or when all external sources fail.
+4. **Wikipedia/DDG**: Only active when Perplexity API key is entirely unconfigured. Not used in normal flow.
+5. **Currency (exchange-rate API)**: Currency/kurs queries bypass Perplexity entirely. Uses Frankfurter API. If API fails → hard block injected into prompt to prevent hallucinated numbers.
+
+**Answer mode system** (`detectAnswerMode` / `buildAnswerModeHint` in server.js):
+- `concise` — 2-3 sentences / 3-4 bullets max
+- `balanced` (default) — direct answer + short explanation + practical context; feels complete, not clipped
+- `detailed` — full explanation, organized, with context and tips
+- Detected from `userProfile.answerMode` → legacy `responseLength` (`ringkas`/`lengkap`) → default `balanced`
+- Injected as a `[Mode Jawaban]` block at the end of the system prompt
+
+**Structured per-turn log** (`[SourceDecision]` JSON):
+```
+kb_used, kb_strength, query_type, external_type, external_called,
+external_success, fallback_used, final_source, answer_mode
+```
+
 ## Features
 
 - **AI Chat** — Multi-model fallback via OpenRouter (10 free models, `Promise.any()`)

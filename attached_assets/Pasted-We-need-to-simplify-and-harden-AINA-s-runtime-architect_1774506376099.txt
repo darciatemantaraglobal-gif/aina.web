@@ -1,0 +1,106 @@
+We need to simplify and harden AINA's runtime architecture.
+
+Main goal:
+AINA should answer with the most up-to-date information possible, while keeping Knowledge Base (KB) as the first and highest-priority source.
+
+New source strategy:
+
+1. Source priority (strict)
+- Layer 1: Internal Knowledge Base (KB)
+- Layer 2: Perplexity
+- Layer 3: Model-only fallback only for stable non-time-sensitive knowledge
+
+Rules:
+- Always check KB first
+- If KB is strong and relevant enough, answer from KB
+- If KB is missing, weak, outdated, or insufficient, go directly to Perplexity
+- Do not use Wikipedia/DDG/other external search sources anymore in the main flow if Perplexity is available
+- Keep architecture simple: KB first, Perplexity second
+
+2. Currency queries
+- Currency / exchange-rate queries must NOT use Perplexity as the primary numeric source
+- Use a dedicated exchange-rate API for all currency and conversion queries
+- If exchange API succeeds: return accurate conversion
+- If exchange API fails: do not guess numbers, return a safe transparent message
+- Never let the model invent exchange-rate values
+
+Examples:
+- berapa kurs 1 usd sekarang
+- 1 juta rupiah ke pound mesir sekarang
+- rate egp ke rupiah hari ini
+
+3. Perplexity usage
+- For general dynamic/current/up-to-date questions, use Perplexity as the primary external source
+- Examples:
+  - siapa presiden indonesia sekarang
+  - siapa presiden amerika sekarang
+  - aturan visa terbaru
+  - info umum yang butuh freshness
+- If Perplexity succeeds, its result must become the main grounding source
+- If Perplexity fails, use a safe fallback:
+  - for dynamic/current-role questions: cautious model fallback allowed with explicit uncertainty wording
+  - never leave the user hanging
+  - remove placeholder-only responses like "tunggu sebentar" or "aku cek dulu"
+
+4. No hanging responses
+AINA must always produce a final answer.
+Never end with:
+- "tunggu sebentar"
+- "aku butuh lihat web dulu"
+- "aku cek dulu ya"
+without a final useful response
+
+5. Response style customization
+Current problem:
+AINA answers are too short and often feel under-explained.
+
+Please add response-style controls so answers can be less short and more natural.
+
+Requirements:
+- Add a configurable answer length/style setting
+- Support at least 3 response modes:
+  - concise
+  - balanced
+  - detailed
+- Default should be "balanced", not too short
+- Balanced mode should:
+  - answer the point directly
+  - give a short explanation
+  - add practical context if useful
+  - not feel clipped or overly brief
+- Detailed mode should:
+  - explain more fully
+  - still remain organized
+  - not become repetitive
+- Concise mode can remain short
+
+6. Preserve existing AINA behavior
+Do not break:
+- KB-first architecture
+- pinned/internal verified priority if still relevant
+- trust/confidence layer
+- memory system
+- evaluation system
+- model routing tiers
+
+7. Logging
+Add a structured decision log after every turn:
+- kb_used: true/false
+- kb_strength: strong/weak/absent
+- query_type: currency/dynamic/general
+- external_type: none/perplexity/exchange_api
+- external_called: true/false
+- external_success: true/false
+- fallback_used: true/false
+- final_source: kb/perplexity/exchange_api/model_fallback
+- answer_mode: concise/balanced/detailed
+
+8. Return
+Please provide:
+- updated routing flow
+- exact implementation points
+- exact files/functions changed
+- exact diff
+- how answer style is configured
+- sample before vs after outputs
+- sample logs

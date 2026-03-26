@@ -1130,6 +1130,37 @@ function buildIntentHint({ primary, casual }) {
   return `\n\n**[Gaya respons — ${label}]** ${hints[primary] ?? hints.factual}${toneNote}`;
 }
 
+/* ── Answer mode: concise / balanced / detailed ─────── */
+
+/**
+ * Detect the answer mode from userProfile.
+ * Priority: explicit answerMode field → mapped responseLength → default "balanced"
+ */
+function detectAnswerMode(userProfile) {
+  const raw = userProfile?.answerMode;
+  if (raw === "concise" || raw === "balanced" || raw === "detailed") return raw;
+  // Map legacy responseLength field
+  const rl = userProfile?.responseLength;
+  if (rl === "ringkas") return "concise";
+  if (rl === "lengkap") return "detailed";
+  return "balanced"; // default — not too short, not overwhelming
+}
+
+/**
+ * Build a system-prompt hint that controls answer length and depth.
+ * Injected alongside intentHint so the model understands the expected style.
+ */
+function buildAnswerModeHint(mode) {
+  if (mode === "concise") {
+    return `\n\n**[Mode Jawaban: RINGKAS]** Jawaban harus singkat dan langsung — maksimal 2-3 kalimat atau 3-4 poin bullet. Tidak perlu elaborasi atau contoh tambahan kecuali benar-benar kritis. Fokus pada inti saja.`;
+  }
+  if (mode === "detailed") {
+    return `\n\n**[Mode Jawaban: DETAIL]** Berikan penjelasan yang lengkap dan komprehensif. Jelaskan latar belakang, langkah-langkah, konteks praktis, dan tips jika relevan. Gunakan heading dan struktur yang jelas. Panjang boleh lebih dari biasa asalkan tidak repetitif dan setiap kalimat punya nilai.`;
+  }
+  // balanced — default
+  return `\n\n**[Mode Jawaban: BALANCED]** Jawab langsung di kalimat atau poin pertama — jangan menunda inti. Lanjutkan dengan penjelasan singkat yang memberikan konteks atau alasan (biasanya 3-6 kalimat, atau daftar 4-6 poin). Tambahkan satu contoh praktis atau tips jika itu membantu pemahaman. Jangan terlalu singkat (satu kalimat saja terasa tidak memuaskan), jangan berlebihan. Target: jawaban yang terasa lengkap dan natural, bukan setengah-setengah.`;
+}
+
 /* ── Context cleaning utilities ──────────────────────── */
 // Trim text to maxLen chars, cutting at the last sentence boundary
 // within the trailing 300 chars to avoid mid-sentence cuts.
@@ -1386,21 +1417,29 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS" : "FAILED"} (queryType=${queryType})`);
     }
 
-    // Step B — Wikipedia + DDG only when Perplexity is unavailable or failed
-    // (PERPLEXITY_API_KEY not set = unavailable; null return = failed)
-    if (!perplexityResult && needsExternal) {
+    // Step B — Wikipedia + DDG: ONLY when Perplexity is not configured at all.
+    // If Perplexity key exists but the call failed → go straight to model fallback.
+    // This keeps the architecture clean: KB → Perplexity → Model.
+    const perplexityConfigured = !!process.env.PERPLEXITY_API_KEY;
+    if (!perplexityResult && !perplexityConfigured && needsExternal) {
       [wikiResult, ddgResult] = await Promise.all([
         fetchWikipediaSummary(lastUserMessage),
         fetchDuckDuckGoAnswer(lastUserMessage),
       ]);
-      console.log(`[Source] wikipedia=${!!wikiResult} ddg=${!!ddgResult} (perplexity unavailable/failed, using as fallback)`);
+      console.log(`[Source] wikipedia=${!!wikiResult} ddg=${!!ddgResult} (Perplexity not configured → last-resort fallback)`);
     } else if (perplexityResult) {
       console.log(`[Source] perplexity succeeded → skipping Wikipedia+DDG`);
+    } else if (!perplexityResult && perplexityConfigured) {
+      console.log(`[Source] perplexity configured but failed → model fallback (no Wikipedia/DDG)`);
     }
   } else {
     if (kbCoversQuery) console.log(`[Source] KB strong → skipping all external sources`);
     if (queryType === "currency") console.log(`[Source] currency query → exchange API only (no Wikipedia/DDG/Perplexity)`);
   }
+
+  // ── Answer mode ──────────────────────────────────────────────────────────
+  const answerMode = detectAnswerMode(userProfile);
+  const answerModeHint = buildAnswerModeHint(answerMode);
 
   // ── Structured source decision log ──────────────────────────────────────
   const sourceLog = {
@@ -1419,6 +1458,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
                       : queryType === "currency" && exchangeRates ? "currency_api"
                       : (wikiResult || ddgResult) ? "wiki_ddg"
                       : "model_fallback",
+    answer_mode:      answerMode,
   };
   console.log(`[SourceDecision] ${JSON.stringify(sourceLog)}`);
 
@@ -1468,15 +1508,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (field) parts.push(`Jurusan: ${field}`);
     if (city) parts.push(`Kota asal: ${city}`);
     const chatStyle = sanitize(userProfile.chatStyle);
-    const responseLength = sanitize(userProfile.responseLength);
     const userName = sanitize(userProfile.userName);
     if (userName) parts.push(`Panggil user dengan: "${userName}"`);
     if (parts.length > 0) {
       let styleNote = "";
       if (chatStyle === "formal") styleNote += "\nGunakan bahasa yang formal dan sopan dalam setiap jawaban.";
       else styleNote += "\nGunakan bahasa yang santai, akrab, dan bersahabat (bisa pakai 'kamu', 'nih', 'ya', dsb).";
-      if (responseLength === "ringkas") styleNote += "\nBerikan jawaban yang RINGKAS dan to-the-point. Maksimal 3 poin/paragraf singkat.";
-      else styleNote += "\nBerikan jawaban yang LENGKAP dan mendetail sesuai kebutuhan.";
+      // Note: answer length/depth is controlled by answerModeHint (concise/balanced/detailed)
+      // and injected separately into the system prompt — not repeated here.
       personalizationContext = `\n\n---\n## Profil & Preferensi User\n${parts.join("\n")}${styleNote}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
     }
   }
@@ -1597,20 +1636,18 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Urutan prioritas sumber jawaban (dari paling dipercaya):
   1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini. Jika KB ada dan relevan, jawab berdasarkan KB dulu.
   2. **Pinned / Verified Updates** (jika ada di konteks) — Admin-verified. Selalu prioritaskan ini untuk info kebijakan atau fakta terkini.
-  3. **Pencarian Web Real-time** (jika ada di konteks "Informasi Terkini dari Pencarian Web") — Digunakan untuk pertanyaan jabatan terkini, kebijakan terbaru, dan info yang berubah cepat. Kepercayaan tinggi tapi belum diverifikasi admin — gunakan dengan natural, sertakan sumber jika tersedia.
-  4. **Data real-time** (kurs, dll.) — Gunakan jika tersedia di konteks, khusus untuk data numerik/kurs.
-  5. **Wikipedia** (jika ada di konteks) — Sumber eksternal yang biasanya akurat. Disertakan hanya jika KB tidak memiliki informasi topik tersebut, atau KB lemah.
-  6. **DuckDuckGo** (jika ada di konteks) — Last resort. Hanya disertakan jika KB kosong DAN Wikipedia juga tidak relevan.
-  7. **Pengetahuan umum kamu sendiri** — Untuk pertanyaan stabil: definisi, konsep, sejarah, arti kata.
+  3. **Pencarian Web Real-time** (jika ada di konteks "Informasi Terkini dari Pencarian Web") — Digunakan untuk pertanyaan jabatan terkini, kebijakan terbaru, info yang berubah cepat, atau topik apapun yang KB tidak punya. Kepercayaan tinggi tapi belum diverifikasi admin — gunakan dengan natural, sertakan sumber jika tersedia.
+  4. **Data real-time** (kurs, dll.) — Gunakan jika tersedia di konteks, khusus untuk data numerik/kurs. Jangan tebak angka jika data tidak tersedia.
+  5. **Pengetahuan umum kamu sendiri** — Untuk pertanyaan stabil: definisi, konsep, sejarah, arti kata, info yang tidak berubah cepat.
 - JANGAN bilang "tidak tahu" jika Pencarian Web atau sumber lain sudah menyediakan info relevan di konteks.
 - JANGAN bilang "tidak tahu" untuk fakta umum yang sudah kamu miliki (ibu kota, siapa tokoh terkenal, definisi istilah).
-- Jika tidak ada konteks eksternal yang disertakan, itu artinya KB sudah cukup — jawab dari KB saja.
-- **Konflik antar sumber:** Ikuti urutan kepercayaan secara ketat: KB > Pinned Updates > Pencarian Web Real-time > Kurs real-time > Wikipedia [kepercayaan sedang] > DuckDuckGo [kepercayaan rendah]. Pilih sumber tertinggi dan sebutkan sumbernya secara natural.
+- Jika tidak ada konteks eksternal yang disertakan, itu artinya KB sudah cukup atau topiknya cukup stabil — jawab dari KB atau pengetahuanmu.
+- **Konflik antar sumber:** Ikuti urutan kepercayaan secara ketat: KB > Pinned Updates > Pencarian Web Real-time > Data real-time > Pengetahuan model. Pilih sumber tertinggi dan sebutkan sumbernya secara natural.
 
 **Format jawaban:**
-- Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat 1-3 kalimat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
+- Panjang dan kedalaman jawaban diatur oleh [Mode Jawaban] yang disertakan di akhir instruksi ini — ikuti dengan ketat.
 - Gunakan format Markdown secara natural sesuai konteks, persis seperti ChatGPT:
-  - Pertanyaan singkat/percakapan → jawab dalam 1-3 kalimat saja, tanpa heading.
+  - Pertanyaan percakapan/casual → jawab tanpa heading, gaya natural.
   - Panduan/prosedur/langkah-langkah → gunakan angka bernomor (1. 2. 3.) dan heading \`##\` untuk bagian utama.
   - Daftar syarat/dokumen/opsi → gunakan bullet \`-\`.
   - Perbandingan data → gunakan tabel Markdown.
@@ -1635,10 +1672,10 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Jika ada satu poin inti yang harus disampaikan, tulis itu di kalimat pertama — baru elaborasi setelahnya.
 - **Pertanyaan "siapa"**: langsung sebut NAMA orangnya di kalimat pertama. JANGAN awali dengan menjelaskan jabatan/perannya dulu. Contoh SALAH: "Presiden Amerika Serikat adalah kepala negara yang dipilih setiap 4 tahun. Saat ini dijabat oleh..." — Contoh BENAR: "Donald Trump adalah Presiden Amerika Serikat saat ini, menjabat sejak Januari 2025."
 - **Pertanyaan "apa"/"berapa"**: langsung sebut jawabannya di kalimat pertama, baru elaborasi singkat jika perlu.
-${intentHint}${confidence.hint}
+${intentHint}${confidence.hint}${answerModeHint}
 
 **Sumber:**
-- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Pencarian Web" / "Wikipedia" / "DuckDuckGo" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${perplexityContext}${wikiContext}${ddgContext}`;
+- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Pencarian Web" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${perplexityContext}${wikiContext}${ddgContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
