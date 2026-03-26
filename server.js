@@ -200,6 +200,7 @@ initStorage();
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
+console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured" : "✗ not configured — Perplexity fallback disabled"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 
 /* ── Email via Resend ─────────────────────────────────── */
@@ -503,6 +504,7 @@ const SOURCE_TRUST_SCORES = {
   pinned_update:   100, // Admin-verified, highest trust
   kb_article:       90, // Contributor-submitted, admin-approved
   exchange_rate:    85, // Real-time ECB/Frankfurter data
+  perplexity:       78, // Real-time web search — current, but unverified by admin
   wikipedia:        60, // Public encyclopedia — mostly reliable, occasionally outdated
   duckduckgo:       35, // General web instant answer — unverified
   model_knowledge:  20, // LLM training data — may be stale
@@ -513,9 +515,10 @@ const SOURCE_TRUST_SCORES = {
  * Returns 'medium' | 'low' | null (null = no external context injected).
  * Used to refine confidence classification and emit a log signal.
  */
-function computeExternalTrustLevel(wikiInjected, ddgInjected) {
-  if (wikiInjected) return { tier: "medium", score: SOURCE_TRUST_SCORES.wikipedia, label: "Wikipedia" };
-  if (ddgInjected)  return { tier: "low",    score: SOURCE_TRUST_SCORES.duckduckgo, label: "DuckDuckGo" };
+function computeExternalTrustLevel(wikiInjected, ddgInjected, perplexityInjected = false) {
+  if (perplexityInjected) return { tier: "high",   score: SOURCE_TRUST_SCORES.perplexity,  label: "Perplexity" };
+  if (wikiInjected)       return { tier: "medium", score: SOURCE_TRUST_SCORES.wikipedia,   label: "Wikipedia" };
+  if (ddgInjected)        return { tier: "low",    score: SOURCE_TRUST_SCORES.duckduckgo,  label: "DuckDuckGo" };
   return null;
 }
 
@@ -562,7 +565,7 @@ function detectEdgeCase({ confidenceLevel, confidenceHint, hasKB, hasWiki, hasDD
  *   - sample_query is capped at 80 chars and may be omitted if it looks personal.
  *   - intel tables are never joined with user_memories or user profiles.
  */
-async function recordIntelSignal({ intent, kbStrength, hasKB, hasPinned, hasWiki, hasDDG,
+async function recordIntelSignal({ intent, kbStrength, hasKB, hasPinned, hasWiki, hasDDG, hasPerplexity = false,
   confidenceLevel, confidenceHint, externalTier, query }) {
   const supabase = getAdminClient();
   if (!supabase) return;
@@ -591,6 +594,7 @@ async function recordIntelSignal({ intent, kbStrength, hasKB, hasPinned, hasWiki
       had_pinned:       hasPinned,
       had_wiki:         hasWiki,
       had_ddg:          hasDDG,
+      had_perplexity:   hasPerplexity,
       confidence_level: confidenceLevel ?? null,
       external_tier:    externalTier ?? null,
     });
@@ -685,6 +689,92 @@ async function fetchDuckDuckGoAnswer(query) {
     const url = data.AbstractURL || data.DefinitionURL || "";
     return { text: text.trim(), source, url };
   } catch {
+    return null;
+  }
+}
+
+/* ── Perplexity: Real-time web search fallback ────────── */
+
+/**
+ * Decide if a query warrants a Perplexity lookup.
+ * Called independently from shouldFetchExternal — Perplexity has its own gate:
+ *   - KB must NOT be strong (if KB is strong, no need for external)
+ *   - Query must be about a current role/office-holder OR time-sensitive information
+ *   - Never for casual, short, or conversational turns
+ */
+function needsPerplexity(intentPrimary, kbStrength, query) {
+  const q = (query ?? "").trim();
+  if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
+  if (intentPrimary === "casual") return false;
+  if (kbStrength === "strong") return false; // KB is sufficient
+
+  const currentRole = /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris)\b/i.test(q)
+    || /\b(presiden|menteri|rektor|direktur|ceo|gubernur|ketua|kepala)\b.{0,30}\bsiapa\b/i.test(q);
+
+  const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|kebijakan baru|aturan terbaru|perubahan|berubah|update|berita|terkini|baru-baru|biaya hidup)\b/i.test(q);
+
+  return currentRole || timeSensitive;
+}
+
+/**
+ * Fetch a concise, search-grounded answer from Perplexity's sonar model.
+ * Returns { text, citations } or null on failure / no API key.
+ * - text: filtered, max ~800 chars
+ * - citations: up to 3 source URLs
+ */
+async function fetchPerplexityContext(query) {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) {
+    console.log("[Perplexity] skipped — PERPLEXITY_API_KEY not set");
+    return null;
+  }
+
+  const TIMEOUT = 10000;
+  try {
+    const res = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(TIMEOUT),
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [
+          {
+            role: "system",
+            content: "You are a factual web search assistant. Return a concise 2-3 sentence answer with the most current and accurate information. Include only factual content — no greetings, disclaimers, or extra commentary. Respond in the same language as the user's query.",
+          },
+          {
+            role: "user",
+            content: query.slice(0, 500),
+          },
+        ],
+        max_tokens: 350,
+        return_citations: true,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[Perplexity] API error ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const rawText = data.choices?.[0]?.message?.content ?? "";
+    if (!rawText || rawText.length < 20) return null;
+
+    // Keep only first 800 chars, cutting at sentence boundary
+    const text = trimToSentence(rawText, 800);
+
+    // Extract up to 3 citations (URLs)
+    const citations = (data.citations ?? []).slice(0, 3);
+
+    return { text, citations };
+  } catch (e) {
+    console.warn("[Perplexity] fetch failed:", e.message);
     return null;
   }
 }
@@ -1037,7 +1127,7 @@ function trimToSentence(text, maxLen) {
 
 /* ── Confidence / trust layer ────────────────────────── */
 // Rule-based, no LLM call. Returns a hint injected into the system prompt.
-function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, externalTrustTier = null, intent, query }) {
+function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, hasPerplexity = false, externalTrustTier = null, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
 
   // Current role / office-holder: inherently dynamic even without explicit time keywords.
@@ -1060,10 +1150,16 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     return { level: "high_confidence", hint: "" };
   }
 
-  // Current role + NOT historical + no KB/pinned → hard block.
-  // The model MUST NOT answer with a specific name from stale memory.
-  // Instruction changes the answer itself, not just adds a disclaimer.
+  // Current role + NOT historical + no KB/pinned:
+  // If Perplexity returned web-grounded data → medium confidence, answer allowed.
+  // If no Perplexity → hard block, model must not guess from stale memory.
   if (currentRoleQuery && !historicalRole && !hasKB && !hasPinned) {
+    if (hasPerplexity) {
+      return {
+        level: "medium_confidence",
+        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan pencarian web real-time (Perplexity). Jabatan dan posisi bisa berubah — tambahkan 1 kalimat saran cek sumber resmi di akhir jika terasa natural. Jangan terlalu banyak disclaimer.",
+      };
+    }
     return {
       level: "needs_verification",
       hint: "\n\n**[BLOKIR — JABATAN TERKINI TANPA SUMBER]** Ini adalah pertanyaan tentang pejabat/jabatan yang bisa berubah sewaktu-waktu. JANGAN sebutkan nama spesifik dari memori model — data bisa sudah basi. Jawab dengan salah satu dari:\n- 'Untuk jabatan yang bisa berubah seperti ini, saya tidak bisa pastikan nama terkininya tanpa sumber terbaru.'\n- 'Saya tidak bisa konfirmasi siapa yang menjabat saat ini tanpa data yang diverifikasi — sebaiknya cek langsung ke sumber resmi atau berita terbaru.'\nJangan tebak. Jangan sebut nama dari memori. Arahkan user untuk cek sumber terpercaya.",
@@ -1076,8 +1172,16 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     return { level: "high_confidence", hint: "" };
   }
 
-  // No KB, no pinned, and query sounds time-sensitive — flag for verification
+  // No KB, no pinned, query is time-sensitive:
+  // Perplexity provides web-grounded fresh context → medium_confidence
+  // No Perplexity → flag for verification as before
   if (!hasKB && !hasPinned && timeSensitive) {
+    if (hasPerplexity) {
+      return {
+        level: "medium_confidence",
+        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan pencarian web real-time. Info bisa berubah — tambahkan 1 kalimat saran cek ulang di akhir jika terasa natural.",
+      };
+    }
     return {
       level: "needs_verification",
       hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jika jawaban ini menyangkut informasi yang bisa berubah, tambahkan 1 kalimat peringatan singkat dan natural di akhir. Contoh: 'Tapi sebaiknya dicek ulang ya, info ini bisa berubah.' Jangan terdengar kaku atau defensif, dan jangan ulangi ini berkali-kali.",
@@ -1232,13 +1336,18 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const needsExternal = shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
   console.log(`[Source] KB=${kbStrength} (${articles.length} art) intent=${intent.primary} → external=${needsExternal}`);
 
-  // Wave 2 — external fetches (only when KB is insufficient or query is factual)
-  const [wikiResult, ddgResult] = needsExternal
+  // Perplexity gate — checked independently from general external gate
+  const perplexityNeeded = needsPerplexity(intent.primary, kbStrength, lastUserMessage);
+  console.log(`[Source] perplexity_needed=${perplexityNeeded} (KB=${kbStrength}, intent=${intent.primary})`);
+
+  // Wave 2 — external fetches (Wiki/DDG when KB insufficient; Perplexity when time-sensitive/role query)
+  const [wikiResult, ddgResult, perplexityResult] = (needsExternal || perplexityNeeded)
     ? await Promise.all([
-        fetchWikipediaSummary(lastUserMessage),
-        fetchDuckDuckGoAnswer(lastUserMessage),
+        needsExternal ? fetchWikipediaSummary(lastUserMessage)  : Promise.resolve(null),
+        needsExternal ? fetchDuckDuckGoAnswer(lastUserMessage)   : Promise.resolve(null),
+        perplexityNeeded ? fetchPerplexityContext(lastUserMessage) : Promise.resolve(null),
       ])
-    : [null, null];
+    : [null, null, null];
 
   // Build knowledge context with article-type-aware formatting hints
   // Context cleaning: cap each article at 2,000 chars, cutting at last sentence boundary
@@ -1356,8 +1465,20 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[DDG] fetched "${ddgResult.source}": suppressed — KB has ${articles.length} articles`);
   }
 
+  // Build Perplexity context — injected between Pinned Updates and Wikipedia in the hierarchy.
+  // Only used when Perplexity was fetched and returned a usable result.
+  let perplexityContext = "";
+  if (perplexityResult) {
+    const cleanedPlex = trimToSentence(perplexityResult.text, 800);
+    const citationsText = perplexityResult.citations?.length > 0
+      ? `\nSumber: ${perplexityResult.citations.slice(0, 2).join(", ")}`
+      : "";
+    perplexityContext = `\n\n---\n## Informasi Terkini dari Pencarian Web [kepercayaan: tinggi — real-time web search, belum diverifikasi admin]\n\n${cleanedPlex}${citationsText}\n---`;
+    console.log(`[Perplexity] injected: trust=${SOURCE_TRUST_SCORES.perplexity} tier=high (KB=${kbStrength}, intent=${intent.primary})`);
+  }
+
   // Compute external trust level — used to refine confidence classification (Phase 9)
-  const externalTrust = computeExternalTrustLevel(!!wikiContext, !!ddgContext);
+  const externalTrust = computeExternalTrustLevel(!!wikiContext, !!ddgContext, !!perplexityContext);
   if (externalTrust) {
     console.log(`[Trust] external=${externalTrust.label}(${externalTrust.score}) tier=${externalTrust.tier}`);
   }
@@ -1369,6 +1490,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     hasPinned: pinnedUpdates.length > 0,
     hasWiki: !!wikiContext,
     hasDDG: !!ddgContext,
+    hasPerplexity: !!perplexityContext,
     externalTrustTier: externalTrust?.tier ?? null,
     intent,
     query: lastUserMessage,
@@ -1380,7 +1502,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   const systemPrompt = `Kamu adalah AINA, asisten AI khusus untuk mahasiswa Indonesia di Mesir (Masisir).
 
-Tanggal & waktu saat ini (Kairo): ${todayStr}. Gunakan info ini saat user bertanya tentang sesuatu "sekarang", "saat ini", atau "terkini". Pengetahuanmu memiliki batas waktu, jadi UTAMAKAN data dari Wikipedia atau sumber eksternal yang disediakan di konteks ini jika ada.
+Tanggal & waktu saat ini (Kairo): ${todayStr}. Gunakan info ini saat user bertanya tentang sesuatu "sekarang", "saat ini", atau "terkini". Pengetahuanmu memiliki batas waktu, jadi UTAMAKAN data dari Pencarian Web atau sumber eksternal yang disediakan di konteks ini jika ada.
 
 Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
 
@@ -1388,16 +1510,17 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 
 **Sumber jawaban:**
 - Urutan prioritas sumber jawaban (dari paling dipercaya):
-  1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini. Jika KB ada dan relevan, jawab berdasarkan KB dulu. External sources tidak akan disertakan jika KB sudah mencukupi.
-  2. **Pinned / Verified Updates** (jika ada di konteks) — Admin-verified. Selalu prioritaskan ini untuk info kebijakan atau fakta terkini yang dinamis.
-  3. **Data real-time** (kurs, dll.) — Gunakan jika tersedia di konteks, khusus untuk data numerik/kurs.
-  4. **Wikipedia** (jika ada di konteks) — Sumber eksternal terpercaya. Disertakan hanya jika KB tidak memiliki informasi topik tersebut, atau KB lemah, atau pertanyaan bersifat faktual.
-  5. **DuckDuckGo** (jika ada di konteks) — Last resort. Hanya disertakan jika KB kosong DAN Wikipedia juga tidak relevan.
-  6. **Pengetahuan umum kamu sendiri** — Untuk pertanyaan stabil: definisi, konsep, sejarah, arti kata. Jangan bergantung pada retrieval untuk jenis ini.
-- JANGAN bilang "tidak tahu" jika Wikipedia atau sumber lain sudah menyediakan info relevan di konteks.
+  1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini. Jika KB ada dan relevan, jawab berdasarkan KB dulu.
+  2. **Pinned / Verified Updates** (jika ada di konteks) — Admin-verified. Selalu prioritaskan ini untuk info kebijakan atau fakta terkini.
+  3. **Pencarian Web Real-time** (jika ada di konteks "Informasi Terkini dari Pencarian Web") — Digunakan untuk pertanyaan jabatan terkini, kebijakan terbaru, dan info yang berubah cepat. Kepercayaan tinggi tapi belum diverifikasi admin — gunakan dengan natural, sertakan sumber jika tersedia.
+  4. **Data real-time** (kurs, dll.) — Gunakan jika tersedia di konteks, khusus untuk data numerik/kurs.
+  5. **Wikipedia** (jika ada di konteks) — Sumber eksternal yang biasanya akurat. Disertakan hanya jika KB tidak memiliki informasi topik tersebut, atau KB lemah.
+  6. **DuckDuckGo** (jika ada di konteks) — Last resort. Hanya disertakan jika KB kosong DAN Wikipedia juga tidak relevan.
+  7. **Pengetahuan umum kamu sendiri** — Untuk pertanyaan stabil: definisi, konsep, sejarah, arti kata.
+- JANGAN bilang "tidak tahu" jika Pencarian Web atau sumber lain sudah menyediakan info relevan di konteks.
 - JANGAN bilang "tidak tahu" untuk fakta umum yang sudah kamu miliki (ibu kota, siapa tokoh terkenal, definisi istilah).
 - Jika tidak ada konteks eksternal yang disertakan, itu artinya KB sudah cukup — jawab dari KB saja.
-- **Konflik antar sumber:** Jika informasi dari sumber berbeda tampak bertentangan, ikuti urutan kepercayaan ini secara ketat: KB > Pinned Updates > Kurs real-time > Wikipedia [kepercayaan sedang] > DuckDuckGo [kepercayaan rendah]. Jangan rata-ratakan atau campur adukkan fakta yang bertentangan — pilih sumber tertinggi dan sebutkan sumbernya secara natural.
+- **Konflik antar sumber:** Ikuti urutan kepercayaan secara ketat: KB > Pinned Updates > Pencarian Web Real-time > Kurs real-time > Wikipedia [kepercayaan sedang] > DuckDuckGo [kepercayaan rendah]. Pilih sumber tertinggi dan sebutkan sumbernya secara natural.
 
 **Format jawaban:**
 - Panjang jawaban PROPORSIONAL dengan pertanyaan. Pertanyaan singkat → jawaban singkat 1-3 kalimat. Pertanyaan kompleks → jawaban lengkap dan terstruktur.
@@ -1428,7 +1551,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 ${intentHint}${confidence.hint}
 
 **Sumber:**
-- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Wikipedia" / "DuckDuckGo" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${wikiContext}${ddgContext}`;
+- WAJIB cantumkan sumber di baris paling akhir, format: *Sumber: [judul artikel / "Pengetahuan umum" / "Pencarian Web" / "Wikipedia" / "DuckDuckGo" / "Frankfurter" / "Komunitas Masisir"]*${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${perplexityContext}${wikiContext}${ddgContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
@@ -1554,6 +1677,7 @@ ${intentHint}${confidence.hint}
         hasPinned:       pinnedUpdates.length > 0,
         hasWiki:         !!wikiContext,
         hasDDG:          !!ddgContext,
+        hasPerplexity:   !!perplexityContext,
         confidenceLevel: confidence.level,
         confidenceHint:  confidence.hint,
         externalTier:    externalTrust?.tier ?? null,
@@ -4870,6 +4994,7 @@ async function runColumnMigrations() {
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;",
+    "ALTER TABLE public.intel_retrieval_stats ADD COLUMN IF NOT EXISTS had_perplexity BOOLEAN NOT NULL DEFAULT false;",
   ];
   for (const sql of migrations) {
     try {

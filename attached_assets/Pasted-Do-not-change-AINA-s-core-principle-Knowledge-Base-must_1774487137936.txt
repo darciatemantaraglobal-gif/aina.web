@@ -1,0 +1,128 @@
+Do not change AINA's core principle:
+Knowledge Base must remain the first and highest-priority source.
+
+I want to integrate Perplexity as a controlled external source fallback for AINA.
+
+Goal:
+Improve AINA's ability to answer dynamic or up-to-date questions using Perplexity, but only when the internal Knowledge Base and pinned updates are missing, weak, or insufficient.
+
+Important constraints:
+- Do NOT replace AINA's current answer system
+- Do NOT make all queries go to Perplexity
+- Do NOT bypass Knowledge Base
+- Do NOT bypass pinned / verified internal updates
+- Keep implementation modular and safe
+
+Required source order:
+1. Internal Knowledge Base
+2. Internal pinned / verified updates
+3. Perplexity external fallback
+4. Model fallback only for stable general knowledge
+
+Please implement this integration with the following rules:
+
+1. KB-first architecture
+- If Knowledge Base is relevant and strong enough, use KB first
+- If pinned / verified updates are available and relevant, use them before external
+- Only call Perplexity if KB is absent, weak, outdated, or insufficient
+
+2. Query types that should prefer Perplexity
+Use Perplexity mainly for:
+- current office-holder / dynamic role queries
+- time-sensitive questions
+- changing facts (rules, policies, prices, rates)
+- questions where freshness matters
+
+Examples:
+- siapa presiden Amerika
+- siapa menteri agama Indonesia
+- kurs pound Mesir sekarang berapa
+- aturan visa terbaru
+- biaya hidup Kairo 2026
+
+3. Query types that should NOT use Perplexity by default
+Do NOT call Perplexity for:
+- stable general knowledge
+- definitions
+- concepts
+- explanations already covered well by KB
+- purely personal / reflective questions
+- brainstorming unless freshness is required
+
+Examples:
+- apa itu iqomah
+- arti istiqamah
+- cara perpanjang iqomah (if KB is strong)
+- ide fitur AINA
+
+4. Integration approach
+Use Perplexity as an external retrieval layer, not as the final answer engine.
+AINA should still compose the final answer using its own:
+- style layer
+- intent detection
+- answer structure
+- trust layer
+
+Meaning:
+Perplexity provides supporting web-grounded source data,
+but AINA remains the assistant that produces the final response.
+
+5. Preferred implementation
+Prefer integrating Perplexity Search API or equivalent search-grounded API rather than fully replacing chat generation.
+If needed, create a dedicated function such as:
+- fetchPerplexityResults(query)
+or
+- fetchExternalPerplexityContext(query)
+
+This function should:
+- return concise, relevant, filtered external context
+- avoid dumping too much raw text into the prompt
+- return source metadata when useful
+
+6. Context filtering
+Do NOT inject all Perplexity output directly.
+Instead:
+- select only the most relevant 1–2 results
+- keep context concise
+- prefer official / high-trust source snippets if available
+- avoid redundant or noisy text
+
+7. Trust layer integration
+Perplexity results should influence confidence classification:
+- trusted fresh source available → higher confidence
+- weak external context → still cautious
+- no strong external result → do not pretend certainty
+
+8. Current-role enforcement
+For current office-holder queries:
+- if KB/pinned is missing, Perplexity should be preferred
+- model memory alone must NOT be used as a confident final answer
+- if Perplexity fails or returns weak results, AINA should answer cautiously rather than hallucinating
+
+9. Keep existing systems unchanged unless necessary
+Do not break:
+- retrieval flow
+- KB-first priority
+- pinned update priority
+- memory system
+- evaluation system
+- role-based admin logic
+
+10. Return
+Please provide:
+1. proposed Perplexity integration architecture
+2. where Perplexity fallback is inserted in the current pipeline
+3. exact files/functions to change
+4. exact logic for:
+   - KB sufficient
+   - KB insufficient
+   - pinned sufficient
+   - Perplexity needed
+5. how Perplexity results are filtered before injection
+6. how trust/confidence is updated
+7. before vs after examples
+8. any required environment variables
+9. safe rollout plan
+
+Critical rule:
+Perplexity must act as a controlled external source fallback, not as a replacement for AINA's own answer system.
