@@ -198,6 +198,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [userProfile, setUserProfile] = useState<Record<string, any> | null>(null);
   const [reportingMsgId, setReportingMsgId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState<string>("");
+  const [reportNote, setReportNote] = useState<string>("");
   const [reportedMsgIds, setReportedMsgIds] = useState<Set<string>>(new Set());
   const [submittingReport, setSubmittingReport] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -342,6 +343,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const submitReport = async (msgId: string, msgContent: string) => {
     if (!reportReason.trim() || submittingReport) return;
     setSubmittingReport(true);
+    // Find the user message that immediately preceded the reported AI message
+    const msgIndex = messages.findIndex(m => m.id === msgId);
+    const precedingUserMsg = msgIndex > 0
+      ? [...messages].slice(0, msgIndex).reverse().find(m => m.role === "user")
+      : null;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/report-message", {
@@ -350,7 +356,13 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           "Content-Type": "application/json",
           ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
         },
-        body: JSON.stringify({ message_id: msgId, message_content: msgContent, reason: reportReason }),
+        body: JSON.stringify({
+          message_id: msgId,
+          message_content: msgContent,
+          user_question: precedingUserMsg?.content ?? null,
+          reason: reportReason,
+          additional_note: reportNote.trim() || null,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Gagal mengirim laporan" }));
@@ -359,6 +371,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       setReportedMsgIds(prev => new Set(prev).add(msgId));
       setReportingMsgId(null);
       setReportReason("");
+      setReportNote("");
       toast.success("Laporan berhasil dikirim");
     } catch (e: any) {
       toast.error(e.message || "Gagal mengirim laporan, coba lagi");
@@ -797,7 +810,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                           <Check className="h-3 w-3" /> Laporan terkirim
                         </span>
                       ) : reportingMsgId === msg.id ? (
-                        <div className="w-full rounded-xl border border-border bg-card p-3 space-y-2">
+                        <div className="w-full rounded-xl border border-border bg-card p-3 space-y-2.5">
                           <p className="text-xs font-medium text-foreground">Pilih alasan laporan:</p>
                           <div className="flex flex-wrap gap-1.5">
                             {["Informasi tidak akurat", "Sumber tidak sesuai", "Jawaban tidak relevan", "Lainnya"].map(r => (
@@ -810,6 +823,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                               </button>
                             ))}
                           </div>
+                          {reportReason && (
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-muted-foreground">Catatan tambahan <span className="opacity-60">(opsional)</span></p>
+                              <textarea
+                                value={reportNote}
+                                onChange={e => setReportNote(e.target.value)}
+                                placeholder="Tulis detail masalahnya di sini, contoh: angka yang salah, prosedur yang berubah, dll."
+                                rows={2}
+                                maxLength={400}
+                                className="w-full resize-none rounded-lg border border-input bg-secondary px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                              />
+                            </div>
+                          )}
                           <div className="flex gap-2">
                             <button
                               disabled={!reportReason || submittingReport}
@@ -820,7 +846,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                               Kirim Laporan
                             </button>
                             <button
-                              onClick={() => { setReportingMsgId(null); setReportReason(""); }}
+                              onClick={() => { setReportingMsgId(null); setReportReason(""); setReportNote(""); }}
                               className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                             >
                               Batal

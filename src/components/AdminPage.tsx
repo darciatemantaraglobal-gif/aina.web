@@ -1708,7 +1708,8 @@ function PinnedUpdatesTab() {
 /* ─── Reports Tab ────────────────────────────────────── */
 interface MessageReport {
   id: string; user_id: string; message_id: string | null;
-  message_content: string | null; reason: string; status: string;
+  message_content: string | null; user_question: string | null;
+  additional_note: string | null; reason: string; status: string;
   admin_note: string | null; created_at: string;
   reporter?: { full_name: string | null; email: string | null };
 }
@@ -1794,21 +1795,50 @@ function ReportsTab() {
                     </span>
                     <span className="text-xs text-muted-foreground">{fmtDate(r.created_at)}</span>
                   </div>
-                  {r.reporter && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Dari: <span className="text-foreground">{r.reporter.full_name ?? r.reporter.email ?? "Unknown"}</span>
-                    </p>
-                  )}
-                  {r.message_content && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {r.reporter && (
+                      <p className="text-xs text-muted-foreground">
+                        Dari: <span className="text-foreground">{r.reporter.full_name ?? r.reporter.email ?? "Unknown"}</span>
+                      </p>
+                    )}
+                    {r.message_id?.startsWith("article:") ? (
+                      <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-400">Laporan Artikel</span>
+                    ) : (
+                      <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">Laporan Chat</span>
+                    )}
+                  </div>
+                  {(r.user_question || r.message_content) && (
                     <div className="mt-2">
                       <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="flex items-center gap-1 text-xs text-primary hover:underline">
-                        <Eye className="h-3 w-3" /> {expanded === r.id ? "Sembunyikan pesan" : "Lihat pesan AI yang dilaporkan"}
+                        <Eye className="h-3 w-3" /> {expanded === r.id ? "Sembunyikan konteks" : "Lihat konteks percakapan"}
                       </button>
                       {expanded === r.id && (
-                        <div className="mt-2 rounded-xl bg-secondary p-3 text-xs text-muted-foreground leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
-                          {r.message_content}
+                        <div className="mt-2 space-y-2">
+                          {r.user_question && (
+                            <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2">
+                              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">Pertanyaan user</p>
+                              <p className="text-xs text-foreground leading-relaxed">{r.user_question}</p>
+                            </div>
+                          )}
+                          {r.message_content && !r.message_id?.startsWith("article:") && (
+                            <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2 max-h-40 overflow-y-auto">
+                              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary/60">Jawaban AINA yang dilaporkan</p>
+                              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{r.message_content}</p>
+                            </div>
+                          )}
+                          {r.message_content && r.message_id?.startsWith("article:") && (
+                            <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2">
+                              <p className="text-xs text-muted-foreground">{r.message_content}</p>
+                            </div>
+                          )}
                         </div>
                       )}
+                    </div>
+                  )}
+                  {r.additional_note && (
+                    <div className="mt-2 rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-yellow-500/70">Catatan dari pelapor</p>
+                      <p className="text-xs text-foreground/80 leading-relaxed">{r.additional_note}</p>
                     </div>
                   )}
                 </div>

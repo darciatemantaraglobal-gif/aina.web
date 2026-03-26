@@ -4266,7 +4266,7 @@ app.post("/api/report-message", writeLimiter, async (req, res) => {
   const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
   if (authErr || !user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { message_id, message_content, reason } = req.body;
+  const { message_id, message_content, user_question, reason, additional_note } = req.body;
   if (!reason?.trim()) return res.status(400).json({ error: "reason required" });
   if (reason.trim().length > 500) return res.status(400).json({ error: "Alasan terlalu panjang (maks 500 karakter)" });
 
@@ -4277,6 +4277,8 @@ app.post("/api/report-message", writeLimiter, async (req, res) => {
         user_id: user.id,
         message_id: message_id || null,
         message_content: message_content?.slice(0, 2000) || null,
+        user_question: user_question?.slice(0, 1000) || null,
+        additional_note: additional_note?.slice(0, 500) || null,
         reason: reason.trim(),
         status: "pending",
       })
@@ -5264,6 +5266,8 @@ async function runColumnMigrations() {
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE public.intel_retrieval_stats ADD COLUMN IF NOT EXISTS had_perplexity BOOLEAN NOT NULL DEFAULT false;",
+    "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS user_question TEXT;",
+    "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS additional_note TEXT;",
   ];
   for (const sql of migrations) {
     try {
