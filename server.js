@@ -1568,6 +1568,8 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - Jawaban harus terasa seperti ditulis manusia: alami, tidak kaku, tidak terlalu formal, tidak seperti dokumen resmi.
 - Gunakan kalimat pendek-menengah. Hindari kalimat panjang beranak-pinak yang sulit dicerna.
 - Jika ada satu poin inti yang harus disampaikan, tulis itu di kalimat pertama — baru elaborasi setelahnya.
+- **Pertanyaan "siapa"**: langsung sebut NAMA orangnya di kalimat pertama. JANGAN awali dengan menjelaskan jabatan/perannya dulu. Contoh SALAH: "Presiden Amerika Serikat adalah kepala negara yang dipilih setiap 4 tahun. Saat ini dijabat oleh..." — Contoh BENAR: "Donald Trump adalah Presiden Amerika Serikat saat ini, menjabat sejak Januari 2025."
+- **Pertanyaan "apa"/"berapa"**: langsung sebut jawabannya di kalimat pertama, baru elaborasi singkat jika perlu.
 ${intentHint}${confidence.hint}
 
 **Sumber:**
