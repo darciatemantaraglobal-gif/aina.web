@@ -750,7 +750,11 @@ async function fetchPerplexityContext(query) {
     return null;
   }
 
-  const TIMEOUT = 6000;
+  const TIMEOUT = 10000;
+  const todayPerplexity = new Date().toLocaleDateString("id-ID", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+    timeZone: "Africa/Cairo",
+  });
   try {
     const res = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -765,14 +769,14 @@ async function fetchPerplexityContext(query) {
         messages: [
           {
             role: "system",
-            content: "You are a factual web search assistant. Return a concise 2-3 sentence answer with the most current and accurate information. Include only factual content — no greetings, disclaimers, or extra commentary. Respond in the same language as the user's query.",
+            content: `You are a factual web search assistant. Today's date is ${todayPerplexity} (Cairo time). Always prioritize the most current and up-to-date information available as of today. Return a clear, informative answer (3-5 sentences or a short list) covering the key facts. Include only factual content — no greetings, disclaimers, or extra commentary. Respond in the same language as the user's query.`,
           },
           {
             role: "user",
             content: query.slice(0, 500),
           },
         ],
-        max_tokens: 350,
+        max_tokens: 500,
         return_citations: true,
         temperature: 0.1,
       }),
@@ -787,8 +791,8 @@ async function fetchPerplexityContext(query) {
     const rawText = data.choices?.[0]?.message?.content ?? "";
     if (!rawText || rawText.length < 20) return null;
 
-    // Keep only first 800 chars, cutting at sentence boundary
-    const text = trimToSentence(rawText, 800);
+    // Keep only first 1200 chars, cutting at sentence boundary
+    const text = trimToSentence(rawText, 1200);
 
     // Extract up to 3 citations (URLs)
     const citations = (data.citations ?? []).slice(0, 3);
