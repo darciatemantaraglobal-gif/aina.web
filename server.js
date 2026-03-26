@@ -4318,27 +4318,70 @@ app.post("/api/report-message", writeLimiter, async (req, res) => {
   const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
   if (authErr || !user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { message_id, message_content, user_question, reason, additional_note } = req.body;
+  const { message_id, message_content, user_question, reason, additional_note, revised_answer } = req.body;
   if (!reason?.trim()) return res.status(400).json({ error: "reason required" });
   if (reason.trim().length > 500) return res.status(400).json({ error: "Alasan terlalu panjang (maks 500 karakter)" });
+  if (revised_answer && revised_answer.trim().length > 10000) return res.status(400).json({ error: "Revisi terlalu panjang (maks 10.000 karakter)" });
 
   try {
-    const { data, error } = await supabase
-      .from("message_reports")
-      .insert({
+    // Try inserting with extended columns; fall back gracefully if they don't exist yet
+    let reportId = null;
+    const fullPayload = {
+      user_id: user.id,
+      message_id: message_id || null,
+      message_content: message_content?.slice(0, 2000) || null,
+      user_question: user_question?.slice(0, 1000) || null,
+      additional_note: additional_note?.slice(0, 500) || null,
+      reason: reason.trim(),
+      status: "pending",
+    };
+    let { data, error } = await supabase.from("message_reports").insert(fullPayload).select().single();
+    if (error && (error.message?.includes("additional_note") || error.message?.includes("user_question"))) {
+      // Columns don't exist yet — fall back and embed extra info in reason
+      const fallbackReason = [
+        reason.trim(),
+        user_question ? `[Pertanyaan: ${user_question.slice(0, 500)}]` : null,
+        additional_note ? `[Catatan: ${additional_note.slice(0, 300)}]` : null,
+      ].filter(Boolean).join(" | ");
+      const fallback = await supabase.from("message_reports").insert({
         user_id: user.id,
         message_id: message_id || null,
         message_content: message_content?.slice(0, 2000) || null,
-        user_question: user_question?.slice(0, 1000) || null,
-        additional_note: additional_note?.slice(0, 500) || null,
-        reason: reason.trim(),
+        reason: fallbackReason.slice(0, 1000),
         status: "pending",
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    console.log(`[REPORT] New report by user ${user.id}: "${reason}"`);
-    res.json({ success: true, id: data.id });
+      }).select().single();
+      if (fallback.error) throw fallback.error;
+      data = fallback.data;
+      console.warn("[REPORT] Fell back to compact mode — run migration SQL in Supabase to add user_question/additional_note columns");
+    } else if (error) {
+      throw error;
+    }
+    reportId = data?.id;
+    console.log(`[REPORT] New report ${reportId} by user ${user.id}: "${reason}"`);
+
+    // If the reporter provided a revised answer, create a pending KB entry for admin review
+    if (revised_answer?.trim()) {
+      const questionSnippet = (user_question || "Pertanyaan tidak diketahui").slice(0, 140);
+      const kbTitle = `[Koreksi AI] ${questionSnippet}`;
+      const kbContent = [
+        user_question ? `**Pertanyaan yang dilaporkan:**\n${user_question.slice(0, 600)}` : null,
+        `**Jawaban yang diusulkan:**\n${revised_answer.trim()}`,
+        `---\n*Diajukan sebagai koreksi atas jawaban AI. ID Laporan: ${reportId}*`,
+      ].filter(Boolean).join("\n\n");
+      const { error: kbErr } = await supabase.from("knowledge_base").insert({
+        author_id: user.id,
+        title: kbTitle,
+        content: kbContent,
+        category: "Administrasi",
+        status: "pending",
+        article_type: "narrative",
+        keywords: "koreksi, ai correction, perbaikan",
+      });
+      if (kbErr) console.error(`[REPORT] Failed to create KB revision entry: ${kbErr.message}`);
+      else console.log(`[REPORT] Revision KB entry created from report ${reportId}`);
+    }
+
+    res.json({ success: true, id: reportId, has_revision: !!revised_answer?.trim() });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -4494,7 +4537,9 @@ CREATE TABLE IF NOT EXISTS public.message_reports (
   user_id         UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   message_id      TEXT,
   message_content TEXT,
+  user_question   TEXT,
   reason          TEXT NOT NULL,
+  additional_note TEXT,
   status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','reviewed','dismissed')),
   admin_note      TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -4502,7 +4547,12 @@ CREATE TABLE IF NOT EXISTS public.message_reports (
 ALTER TABLE public.message_reports ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN CREATE POLICY "Users can insert own reports" ON public.message_reports FOR INSERT WITH CHECK (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE POLICY "Admin can manage all reports" ON public.message_reports FOR ALL USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-CREATE INDEX IF NOT EXISTS idx_message_reports_status ON public.message_reports(status, created_at DESC);`,
+CREATE INDEX IF NOT EXISTS idx_message_reports_status ON public.message_reports(status, created_at DESC);
+-- Column migrations for existing installations:
+ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS user_question TEXT;
+ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS additional_note TEXT;
+-- Helper function for server-side migrations (required for auto-migration to work):
+CREATE OR REPLACE FUNCTION public.exec_sql(sql text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN EXECUTE sql; END; $$;`,
 
     notifications: `-- Notifications
 CREATE TABLE IF NOT EXISTS public.notifications (
@@ -5312,6 +5362,17 @@ async function checkRequiredTables() {
 async function runColumnMigrations() {
   const supabase = getAdminClient();
   if (!supabase) return;
+
+  // First, try to create the exec_sql helper function if it doesn't exist yet.
+  // This is a no-op if it already exists.
+  try {
+    await supabase.rpc("exec_sql", {
+      sql: "CREATE OR REPLACE FUNCTION public.exec_sql(sql text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN EXECUTE sql; END; $$;"
+    });
+  } catch {
+    // exec_sql doesn't exist yet — admin must run the migration SQL in Supabase SQL editor once to bootstrap it.
+  }
+
   const migrations = [
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS keywords TEXT NOT NULL DEFAULT '';",
@@ -5321,12 +5382,24 @@ async function runColumnMigrations() {
     "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS user_question TEXT;",
     "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS additional_note TEXT;",
   ];
+  let succeeded = 0;
   for (const sql of migrations) {
     try {
       await supabase.rpc("exec_sql", { sql });
+      succeeded++;
     } catch {
-      // RPC may not exist — silently skip; admin can run migration-sql manually
+      // RPC may not exist — admin can run migration-sql endpoint manually in Supabase SQL editor
     }
+  }
+  // Notify PostgREST to reload its schema cache after migrations
+  if (succeeded > 0) {
+    try {
+      await supabase.rpc("exec_sql", { sql: "SELECT pg_notify('pgrst', 'reload schema')" });
+    } catch { /* ignore */ }
+  }
+  if (succeeded === 0) {
+    console.warn("[MIGRATIONS] ⚠️  Column migrations could not run automatically.");
+    console.warn("[MIGRATIONS] → Go to Supabase SQL editor and run the SQL from: GET /api/admin/migration-sql");
   }
 }
 

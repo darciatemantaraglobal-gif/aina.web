@@ -202,6 +202,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [reportedMsgIds, setReportedMsgIds] = useState<Set<string>>(new Set());
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const [revisedAnswer, setRevisedAnswer] = useState("");
   const [submittingReport, setSubmittingReport] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [streamingMsg, setStreamingMsg] = useState<StreamingMsg | null>(null);
@@ -394,17 +395,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           user_question: precedingUserMsg?.content ?? null,
           reason: reportReason,
           additional_note: reportNote.trim() || null,
+          revised_answer: revisedAnswer.trim() || null,
         }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Gagal mengirim laporan" }));
         throw new Error(err.error || "Gagal mengirim laporan");
       }
+      const result = await res.json().catch(() => ({}));
       setReportedMsgIds(prev => new Set(prev).add(msgId));
       setReportingMsgId(null);
       setReportReason("");
       setReportNote("");
-      toast.success("Laporan berhasil dikirim");
+      setRevisedAnswer("");
+      toast.success(result.has_revision
+        ? "Laporan terkirim! Revisi kamu akan ditinjau admin sebelum masuk KB."
+        : "Laporan berhasil dikirim");
     } catch (e: any) {
       toast.error(e.message || "Gagal mengirim laporan, coba lagi");
     } finally {
@@ -856,16 +862,31 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                             ))}
                           </div>
                           {reportReason && (
-                            <div className="space-y-1">
-                              <p className="text-[10px] text-muted-foreground">Catatan tambahan <span className="opacity-60">(opsional)</span></p>
-                              <textarea
-                                value={reportNote}
-                                onChange={e => setReportNote(e.target.value)}
-                                placeholder="Tulis detail masalahnya di sini, contoh: angka yang salah, prosedur yang berubah, dll."
-                                rows={2}
-                                maxLength={400}
-                                className="w-full resize-none rounded-lg border border-input bg-secondary px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                              />
+                            <div className="space-y-2">
+                              <div className="space-y-1">
+                                <p className="text-[10px] text-muted-foreground">Catatan tambahan <span className="opacity-60">(opsional)</span></p>
+                                <textarea
+                                  value={reportNote}
+                                  onChange={e => setReportNote(e.target.value)}
+                                  placeholder="Tulis detail masalahnya di sini, contoh: angka yang salah, prosedur yang berubah, dll."
+                                  rows={2}
+                                  maxLength={400}
+                                  className="w-full resize-none rounded-lg border border-input bg-secondary px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[10px] text-muted-foreground">
+                                  Kirim revisi ke KB <span className="opacity-60">(opsional — admin akan meninjau sebelum dipublish)</span>
+                                </p>
+                                <textarea
+                                  value={revisedAnswer}
+                                  onChange={e => setRevisedAnswer(e.target.value)}
+                                  placeholder="Tuliskan jawaban yang lebih tepat di sini. Jika disetujui admin, akan masuk ke Knowledge Base AINA."
+                                  rows={3}
+                                  maxLength={5000}
+                                  className="w-full resize-none rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                />
+                              </div>
                             </div>
                           )}
                           <div className="flex gap-2">
@@ -875,10 +896,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                               className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 hover:bg-primary/90 transition-colors"
                             >
                               {submittingReport ? <span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> : <Flag className="h-3 w-3" />}
-                              Kirim Laporan
+                              {revisedAnswer.trim() ? "Kirim + Usulkan Revisi" : "Kirim Laporan"}
                             </button>
                             <button
-                              onClick={() => { setReportingMsgId(null); setReportReason(""); setReportNote(""); }}
+                              onClick={() => { setReportingMsgId(null); setReportReason(""); setReportNote(""); setRevisedAnswer(""); }}
                               className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                             >
                               Batal

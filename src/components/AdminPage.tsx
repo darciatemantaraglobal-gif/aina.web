@@ -1241,6 +1241,11 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                             <EyeOff className="h-2.5 w-2.5" /> Tersembunyi
                           </span>
                         )}
+                        {art.title?.startsWith("[Koreksi AI]") && (
+                          <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs text-blue-400 flex items-center gap-1">
+                            ✏️ Koreksi AI
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">{fmtDate(art.created_at)}</span>
                       </div>
                       <h3 className="mt-1.5 font-medium text-foreground">{art.title}</h3>
