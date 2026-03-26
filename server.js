@@ -4062,6 +4062,46 @@ app.get("/api/admin/chats", async (req, res) => {
   res.json(result);
 });
 
+/* ── Master Admin: Delete a single chat (+ its messages) ── */
+app.delete("/api/admin/chats/:chatId", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { chatId } = req.params;
+
+  // Delete messages first (in case FK constraint exists without cascade)
+  await supabase.from("messages").delete().eq("chat_id", chatId);
+  const { error } = await supabase.from("chats").delete().eq("id", chatId);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  console.log(`[ADMIN] Chat ${chatId} deleted by master admin ${admin.id}`);
+  res.json({ success: true });
+});
+
+/* ── Master Admin: Bulk-delete old chats ──────────────── */
+app.delete("/api/admin/chats/bulk-old", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const days = Math.min(Math.max(7, parseInt(req.query.days) || 90), 365);
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  // Fetch IDs to delete first
+  const { data: oldChats } = await supabase
+    .from("chats").select("id").lt("updated_at", cutoff);
+  if (!oldChats || oldChats.length === 0) return res.json({ deleted: 0 });
+
+  const ids = oldChats.map(c => c.id);
+  await supabase.from("messages").delete().in("chat_id", ids);
+  const { error, count } = await supabase.from("chats").delete({ count: "exact" }).in("id", ids);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  console.log(`[ADMIN] Bulk-deleted ${count} chats older than ${days} days by master admin ${admin.id}`);
+  res.json({ deleted: count ?? ids.length });
+});
+
 app.get("/api/admin/chats/:chatId/messages", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });

@@ -1387,6 +1387,9 @@ function ChatMonitorTab() {
   const [selected, setSelected] = useState<ChatEntry | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [msgLoading, setMsgLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState(false);
 
   const load = useCallback(async (q = "") => {
     setLoading(true);
@@ -1417,6 +1420,28 @@ function ChatMonitorTab() {
     setMsgLoading(false);
   };
 
+  const deleteChat = async (chatId: string) => {
+    setDeletingId(chatId);
+    try {
+      await adminFetch(`/api/admin/chats/${chatId}`, { method: "DELETE" });
+      setChats(prev => prev.filter(c => c.id !== chatId));
+      setSelected(null);
+      toast.success("Chat berhasil dihapus");
+    } catch (e: any) { toast.error(e.message); }
+    setDeletingId(null);
+  };
+
+  const bulkDeleteOld = async () => {
+    setBulkDeleting(true);
+    setConfirmBulk(false);
+    try {
+      const data = await adminFetch("/api/admin/chats/bulk-old?days=90", { method: "DELETE" });
+      toast.success(`${data.deleted} chat lama (>90 hari) berhasil dihapus`);
+      load(search);
+    } catch (e: any) { toast.error(e.message); }
+    setBulkDeleting(false);
+  };
+
   return (
     <>
       <div className="space-y-4">
@@ -1425,9 +1450,25 @@ function ChatMonitorTab() {
             <h2 className="font-display text-lg font-bold text-foreground">Monitor Chat</h2>
             <p className="text-sm text-muted-foreground">{chats.length} percakapan terbaru</p>
           </div>
-          <button onClick={() => load(search)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {confirmBulk ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-1.5">
+                <span className="text-xs text-destructive">Hapus semua &gt;90 hari?</span>
+                <button onClick={bulkDeleteOld} disabled={bulkDeleting} className="text-xs font-semibold text-destructive hover:underline">Ya</button>
+                <span className="text-xs text-muted-foreground">·</span>
+                <button onClick={() => setConfirmBulk(false)} className="text-xs text-muted-foreground hover:text-foreground">Batal</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmBulk(true)} disabled={bulkDeleting}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-destructive/40 hover:text-destructive transition-colors">
+                <Trash2 className="h-3.5 w-3.5" />
+                Hapus Lama
+              </button>
+            )}
+            <button onClick={() => load(search)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSearch} className="relative flex gap-2">
@@ -1486,7 +1527,23 @@ function ChatMonitorTab() {
                   <DialogTitle className="text-sm font-semibold text-foreground truncate">{selected.profile?.full_name ?? selected.profile?.email ?? "Pengguna"}</DialogTitle>
                   <p className="text-xs text-muted-foreground truncate">{selected.title}</p>
                 </div>
-                <span className="shrink-0 text-xs text-muted-foreground">{fmtDate(selected.updated_at)}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{fmtDate(selected.updated_at)}</span>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Hapus chat "${selected.title}"? Semua pesan akan ikut terhapus permanen.`)) {
+                        deleteChat(selected.id);
+                      }
+                    }}
+                    disabled={deletingId === selected.id}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-destructive/30 text-destructive/60 hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50"
+                    title="Hapus chat ini"
+                  >
+                    {deletingId === selected.id
+                      ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                      : <Trash2 className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -2253,8 +2310,8 @@ function PerformanceTab() {
           adminFetch("/api/admin/eval/summary"),
           adminFetch("/api/admin/eval/benchmarks"),
         ]);
-        setEvalSum(es);
-        setBenchmarks(bm);
+        setEvalSum(Array.isArray(es) ? es : (es?.summary ?? []));
+        setBenchmarks(Array.isArray(bm) ? bm : (bm?.benchmarks ?? []));
       }
     } catch (e: any) { toast.error(e.message); }
     setLoading(false);
