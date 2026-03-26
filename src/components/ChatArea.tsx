@@ -16,6 +16,7 @@ interface Message {
   fileName?: string;
   intent?: string;
   confidence?: string;
+  sources?: string[];
 }
 
 interface AttachedFile {
@@ -178,6 +179,7 @@ interface StreamingMsg {
   displayed: string;
   intent?: string;
   confidence?: string;
+  sources?: string[];
 }
 
 const STREAM_CHARS_PER_TICK = 6;
@@ -228,6 +230,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         timestamp: new Date(),
         intent:     streamingMsg.intent,
         confidence: streamingMsg.confidence,
+        sources:    streamingMsg.sources,
       }]);
       setStreamingMsg(null);
       return;
@@ -584,8 +587,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         content: data.reply,
       });
 
-      // Start typewriter animation (carry intent + confidence for feedback signal)
-      setStreamingMsg({ id: msgId, full: fullContent, displayed: "", intent: data.intent, confidence: data.confidence });
+      // Start typewriter animation (carry intent, confidence, and sources for badge rendering)
+      setStreamingMsg({ id: msgId, full: fullContent, displayed: "", intent: data.intent, confidence: data.confidence, sources: data.sources ?? [] });
 
       await supabase
         .from("chats")
@@ -724,9 +727,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </ReactMarkdown>
                     </div>
 
-                    {/* Source badges */}
+                    {/* Source badges — prefer server-provided sources (new messages),
+                        fall back to parsing text for historical messages in DB */}
                     {(() => {
-                      const sources = extractSources(msg.content);
+                      const sources = msg.sources?.length ? msg.sources : extractSources(msg.content);
                       return sources.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {sources.map((src, i) => (

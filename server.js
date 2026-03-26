@@ -1898,7 +1898,19 @@ ${intentHint}${confidence.hint}${answerModeHint}
     }
     const reply = cleanReply(result.reply);
     console.log(`Responded using model: ${result.model}`);
-    res.json({ reply, model: result.model, intent: intent.primary, confidence: confidence.level });
+
+    // Build structured source list for frontend badges — derived from what was actually used,
+    // not from model text (model is told not to write "Sumber: ..." anymore).
+    const responseSources = [];
+    if (pinnedUpdates.length > 0)                        responseSources.push("Breaking Update");
+    if (articles.length > 0)                             articles.slice(0, 2).forEach(a => responseSources.push(a.title));
+    if (perplexityResult)                                responseSources.push("Pencarian Web");
+    if (queryType === "currency" && exchangeRates)       responseSources.push("Kurs Real-time");
+    if (wikiResult)                                      responseSources.push("Wikipedia");
+    if (ddgResult)                                       responseSources.push("DuckDuckGo");
+    if (responseSources.length === 0)                    responseSources.push("Pengetahuan Umum");
+
+    res.json({ reply, model: result.model, intent: intent.primary, confidence: confidence.level, sources: responseSources });
     // Fire-and-forget: extract memories + record intel signals (Phase 6 + Phase 12)
     setImmediate(() => {
       extractAndSaveMemories(user.id, [...messages, { role: "assistant", content: reply }], apiKey);
