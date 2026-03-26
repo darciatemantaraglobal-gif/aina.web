@@ -2804,7 +2804,7 @@ app.post("/api/master/announcements", writeLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
 
-  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at } = req.body;
+  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url } = req.body;
   if (!title?.trim() || !message?.trim()) return res.status(400).json({ error: "title and message required" });
   const validTypes = ["welcome", "announcement"];
   const validAudiences = ["new_users", "old_users", "all_users"];
@@ -2823,6 +2823,7 @@ app.post("/api/master/announcements", writeLimiter, async (req, res) => {
     dismissible: dismissible !== false,
     start_at: start_at || null,
     end_at: end_at || null,
+    image_url: image_url?.trim().slice(0, 1000) || null,
     created_by: admin.id,
   }).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -2834,7 +2835,7 @@ app.patch("/api/master/announcements/:id", writeLimiter, async (req, res) => {
   if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
 
   const { id } = req.params;
-  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at } = req.body;
+  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url } = req.body;
   const supabase = getAdminClient();
 
   const updates = { updated_at: new Date().toISOString() };
@@ -2848,6 +2849,7 @@ app.patch("/api/master/announcements/:id", writeLimiter, async (req, res) => {
   if (dismissible !== undefined) updates.dismissible = dismissible;
   if (start_at !== undefined) updates.start_at = start_at || null;
   if (end_at !== undefined) updates.end_at = end_at || null;
+  if (image_url !== undefined) updates.image_url = image_url?.trim().slice(0, 1000) || null;
 
   const { data, error } = await supabase.from("system_announcements").update(updates).eq("id", id).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -4870,6 +4872,7 @@ CREATE TABLE IF NOT EXISTS public.system_announcements (
   is_active BOOLEAN NOT NULL DEFAULT true,
   button_text TEXT,
   button_link TEXT,
+  image_url TEXT,
   dismissible BOOLEAN NOT NULL DEFAULT true,
   start_at TIMESTAMPTZ,
   end_at TIMESTAMPTZ,
@@ -4877,6 +4880,7 @@ CREATE TABLE IF NOT EXISTS public.system_announcements (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 CREATE TABLE IF NOT EXISTS public.user_announcement_views (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -5601,6 +5605,7 @@ async function runColumnMigrations() {
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS review_notes TEXT;",
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;",
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;",
+    "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS image_url TEXT;",
     // Announcement tables (CREATE via migration SQL if not exists)
     `CREATE TABLE IF NOT EXISTS public.system_announcements (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

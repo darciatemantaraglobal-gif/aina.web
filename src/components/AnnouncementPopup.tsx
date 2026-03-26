@@ -11,6 +11,7 @@ interface Announcement {
   button_text?: string;
   button_link?: string;
   dismissible: boolean;
+  image_url?: string;
 }
 
 const AnnouncementPopup = () => {
@@ -109,7 +110,16 @@ const AnnouncementPopup = () => {
         </div>
 
         {/* Body */}
-        <div className="px-5 py-4">
+        <div className="px-5 py-4 space-y-3">
+          {current.image_url && (
+            <div className="overflow-hidden rounded-xl border border-border bg-secondary">
+              <img
+                src={current.image_url}
+                alt={current.title}
+                className="w-full max-h-72 object-contain"
+              />
+            </div>
+          )}
           <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{current.message}</p>
         </div>
 

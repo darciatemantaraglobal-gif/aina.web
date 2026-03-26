@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,7 +14,7 @@ import {
   RefreshCw, TrendingUp, UserCheck, Plus,
   Pencil, Trash2, Eye, EyeOff, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
-  ExternalLink, ChevronDown, Megaphone, Save,
+  ExternalLink, ChevronDown, Megaphone, Save, Upload, Image,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -2670,6 +2670,7 @@ interface Announcement {
   id: string; title: string; message: string; type: string;
   target_audience: string; is_active: boolean;
   button_text?: string; button_link?: string; dismissible: boolean;
+  image_url?: string;
   start_at?: string; end_at?: string;
   created_by?: string; created_at: string; updated_at: string;
 }
@@ -2681,6 +2682,9 @@ function AnnouncementsTab() {
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [imgUploading, setImgUploading] = useState(false);
+  const [imgUrl, setImgUrl] = useState("");
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const blank = { title: "", message: "", type: "announcement", target_audience: "all_users", is_active: true, button_text: "", button_link: "", dismissible: true, start_at: "", end_at: "" };
   const [form, setForm] = useState<typeof blank>(blank);
@@ -2694,9 +2698,10 @@ function AnnouncementsTab() {
 
   useEffect(() => { load(); }, []);
 
-  const openNew = () => { setEditing(null); setForm(blank); setShowForm(true); };
+  const openNew = () => { setEditing(null); setForm(blank); setImgUrl(""); setShowForm(true); };
   const openEdit = (a: Announcement) => {
     setEditing(a);
+    setImgUrl(a.image_url ?? "");
     setForm({
       title: a.title, message: a.message, type: a.type, target_audience: a.target_audience,
       is_active: a.is_active, button_text: a.button_text ?? "", button_link: a.button_link ?? "",
@@ -2706,11 +2711,40 @@ function AnnouncementsTab() {
     setShowForm(true);
   };
 
+  const uploadImage = async (file: File) => {
+    setImgUploading(true);
+    try {
+      const auth = await getAuthHeader();
+      const res = await fetch("/api/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify({ filename: file.name, contentType: file.type }),
+      });
+      if (!res.ok) { toast.error("Gagal mendapat URL upload"); return; }
+      const { uploadUrl, publicUrl } = await res.json();
+      const uploadRes = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!uploadRes.ok) { toast.error("Gagal upload gambar"); return; }
+      setImgUrl(publicUrl);
+      toast.success("Gambar berhasil diupload");
+    } catch {
+      toast.error("Upload gagal. Coba lagi.");
+    } finally {
+      setImgUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!form.title.trim() || !form.message.trim()) { toast.error("Judul dan pesan harus diisi"); return; }
     setSaving(true);
     try {
-      const body = { ...form, button_text: form.button_text || null, button_link: form.button_link || null, start_at: form.start_at || null, end_at: form.end_at || null };
+      const body = {
+        ...form,
+        button_text: form.button_text || null,
+        button_link: form.button_link || null,
+        start_at: form.start_at || null,
+        end_at: form.end_at || null,
+        image_url: imgUrl || null,
+      };
       if (editing) await adminFetch(`/api/master/announcements/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       else await adminFetch("/api/master/announcements", { method: "POST", body: JSON.stringify(body) });
       toast.success(editing ? "Pengumuman diperbarui" : "Pengumuman dibuat");
@@ -2755,6 +2789,43 @@ function AnnouncementsTab() {
 
           <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Judul pengumuman" className="bg-secondary" />
           <Textarea value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} placeholder="Isi pesan (markdown didukung)" rows={4} className="bg-secondary resize-none" />
+
+          {/* Image upload */}
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">Poster / Gambar <span className="text-muted-foreground/60">(opsional)</span></p>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = ""; }}
+            />
+            {imgUrl ? (
+              <div className="relative overflow-hidden rounded-xl border border-border bg-secondary">
+                <img src={imgUrl} alt="Preview" className="max-h-48 w-full object-contain" />
+                <button
+                  type="button"
+                  onClick={() => setImgUrl("")}
+                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={imgUploading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-secondary px-4 py-5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                {imgUploading ? (
+                  <><span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Mengupload...</>
+                ) : (
+                  <><Upload className="h-4 w-4" /> Upload poster / gambar (JPG, PNG, WebP, GIF)</>
+                )}
+              </button>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
@@ -2838,6 +2909,11 @@ function AnnouncementsTab() {
                     <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{audienceLabel[a.target_audience] ?? a.target_audience}</span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{a.message}</p>
+                  {a.image_url && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+                      <Image className="h-3 w-3" /> Ada poster
+                    </div>
+                  )}
                   {(a.start_at || a.end_at) && (
                     <p className="mt-1 text-[10px] text-muted-foreground/60">
                       {a.start_at ? `Mulai: ${fmtDate(a.start_at)}` : ""}{a.start_at && a.end_at ? " · " : ""}{a.end_at ? `Berakhir: ${fmtDate(a.end_at)}` : ""}
