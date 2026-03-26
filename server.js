@@ -1433,7 +1433,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Build exchange rate context (Frankfurter API)
   let exchangeContext = "";
   if (exchangeRates) {
-    exchangeContext = `\n\n---\n## Data Kurs Real-time (${exchangeRates.date})\nData langsung dari Frankfurter API — gunakan ini untuk menjawab pertanyaan tentang nilai tukar:\n- 1 EGP = Rp ${exchangeRates.egpToIdr.toFixed(2)} (IDR)\n- 1 EGP = $${exchangeRates.egpToUsd.toFixed(4)} (USD)\n- 1 USD = Rp ${exchangeRates.usdToIdr.toFixed(0)} (IDR)\n- 1 USD = ${exchangeRates.usdToEgp.toFixed(2)} EGP\nSumber: Frankfurter (ECB data)\n---`;
+    exchangeContext = `\n\n---\n## Data Kurs Real-time (${exchangeRates.date})\nData langsung dari Frankfurter API — gunakan ini untuk menjawab pertanyaan tentang nilai tukar:\n- 1 EGP = Rp ${exchangeRates.egpToIdr.toFixed(2)} (IDR)\n- 1 EGP = $${exchangeRates.egpToUsd.toFixed(4)} (USD)\n- 1 USD = Rp ${exchangeRates.usdToIdr.toFixed(0)} (IDR)\n- 1 USD = ${exchangeRates.usdToEgp.toFixed(2)} EGP\nSumber: Frankfurter (ECB data)\n\nPetunjuk tambahan: Setelah menyebutkan angka kurs, selalu tambahkan kalimat singkat yang menyarankan user untuk cek widget Kurs di halaman utama AINA untuk data yang selalu update secara real-time. Contoh: "Kamu juga bisa pantau kurs terbaru langsung di fitur Kurs di halaman utama AINA."\n---`;
     console.log(`[Exchange] fetched rates for ${exchangeRates.date}: 1 EGP = ${exchangeRates.egpToIdr.toFixed(2)} IDR`);
   }
 

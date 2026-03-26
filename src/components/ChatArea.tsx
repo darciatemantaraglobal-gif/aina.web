@@ -69,6 +69,8 @@ const AinaLogo = ({ className }: { className?: string }) => (
 
 function cleanMarkdown(text: string): string {
   return text
+    // Strip "Sumber: ..." lines — already rendered as small styled badges below the message
+    .replace(/^\*{0,2}sumber\*{0,2}[\s:*]+.+$/gim, "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?p>/gi, "\n")
     .replace(/<\/?b>/gi, "**")
