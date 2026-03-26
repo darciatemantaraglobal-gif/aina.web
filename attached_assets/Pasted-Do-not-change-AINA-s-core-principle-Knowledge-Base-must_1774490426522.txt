@@ -1,0 +1,95 @@
+Do not change AINA's core principle:
+Knowledge Base must remain the first and highest-priority source.
+
+I want to improve AINA's model selection strategy so it becomes more cost-efficient, more stable, and better aligned with the KB-first architecture.
+
+Main goal:
+Use cheaper models for lightweight queries, stronger models for more complex queries, and keep safe fallbacks — while preserving AINA's existing retrieval pipeline, trust layer, memory system, and answer behavior.
+
+Critical rules:
+1. Knowledge Base stays first.
+   - If KB is relevant and strong enough, it must remain the main grounding source.
+   - Do not bypass KB just because a model is available.
+   - Pinned / verified internal updates must still remain above external sources and above model memory.
+
+2. Models are not sources.
+   - Models should compose and explain answers.
+   - KB, pinned updates, and external retrieval remain the actual source layers.
+
+3. Add model routing before generation, not before retrieval.
+   - Retrieval logic should stay intact.
+   - Model routing should happen after source/context preparation.
+
+Implement a lightweight cost-efficient model routing strategy with 3 levels:
+
+A. Lightweight queries → cheap model
+Use a lightweight / low-cost model for:
+- short factual questions
+- simple definitions
+- FAQ-like questions
+- suggested question generation
+- low-risk, low-complexity responses
+- cases where KB is already strong and answer generation is simple
+
+B. Standard queries → main model
+Use the main model for:
+- normal user chat
+- procedural answers
+- recommendation answers
+- memory-aware responses
+- moderate reasoning
+- cases where response quality matters more
+
+C. Heavy/admin-only queries → premium model (optional, restricted)
+Use premium models only for:
+- admin/internal testing
+- debugging
+- complex internal tasks
+- long-form or difficult reasoning
+Do not use premium models for normal user traffic by default.
+
+Add fallback behavior:
+- If the selected model fails, times out, or is unavailable:
+  1. fall back to the next appropriate paid model
+  2. then fall back to a free safety-net model if needed
+- Keep the existing waterfall resilience, but make it routing-aware instead of sending everything to the same primary model first.
+
+Important:
+- Do not break KB-first behavior
+- Do not break pinned-update priority
+- Do not break trust/confidence logic
+- Do not break memory retrieval/injection
+- Do not change API structure unless necessary
+- Keep implementation modular and easy to adjust later
+
+Use AINA's existing signals if possible:
+- intentPrimary
+- confidence level
+- KB strength
+- query length / complexity
+- whether current-role / time-sensitive / dynamic query handling is active
+
+Suggested routing logic:
+- If KB is strong and query is simple → cheap model
+- If intent is procedural, recommendation, or memory-aware → main model
+- If admin/internal heavy task → premium model only when explicitly allowed
+- If current-role / dynamic query is active, model choice must still respect source/trust rules and must not answer from stale model memory
+
+Recommended model strategy:
+- Cheap/default lightweight tier: use a low-cost fast model
+- Main tier: use a stronger but still cost-efficient model
+- Premium tier: internal/admin only
+- Fallback tier: free or ultra-cheap safety model
+
+Also add support for prompt caching if compatible, so repeated system prompt/context can reduce token costs.
+
+Please return:
+1. proposed routing architecture
+2. exact files/functions to change
+3. exact routing rules
+4. how fallback works
+5. how this integrates with KB-first logic
+6. which model goes in each slot
+7. how to keep costs low with a $5 budget
+8. safe rollout plan
+9. exact diff or code changes

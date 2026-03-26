@@ -618,7 +618,7 @@ async function recordIntelSignal({ intent, kbStrength, hasKB, hasPinned, hasWiki
 }
 
 async function fetchWikipediaSummary(query) {
-  const TIMEOUT = 8000;
+  const TIMEOUT = 4000;
   const trimmed = query.trim();
   // Skip very short or purely conversational messages
   if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed)) return null;
@@ -672,7 +672,7 @@ async function fetchWikipediaSummary(query) {
 
 /* ── Fetch DuckDuckGo instant answer ─────────────────── */
 async function fetchDuckDuckGoAnswer(query) {
-  const TIMEOUT = 6000;
+  const TIMEOUT = 3000;
   const trimmed = query.trim();
   if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed)) return null;
   try {
@@ -729,7 +729,7 @@ async function fetchPerplexityContext(query) {
     return null;
   }
 
-  const TIMEOUT = 10000;
+  const TIMEOUT = 6000;
   try {
     const res = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -1309,20 +1309,24 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     }
   }
 
-  // Priority chain: try best models first, fallback to smaller ones
-  // Avoid racing all models — small 3B models respond fast but produce poor Indonesian output
-  const MODELS_PRIORITY = [
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemma-3-27b-it:free",
-    "mistralai/mistral-small-3.1-24b-instruct:free",
-    "openai/gpt-oss-120b:free",
-    "openai/gpt-oss-20b:free",
-  ];
-  const MODELS_FALLBACK = [
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "minimax/minimax-m2.5:free",
-    "stepfun/step-3.5-flash:free",
-  ];
+  // ── Tiered model routing ────────────────────────────────────────────────────
+  // Tier A (lightweight): fast + cheap — casual, short queries, KB-strong simple answers
+  // Tier B (standard):   quality   — procedural, memory-aware, complex, time-sensitive
+  // Fallback:            free safety-net — only if both paid tiers fail
+  //
+  // Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
+  // ──────────────────────────────────────────────────────────────────────────────
+  const MODEL_TIERS = {
+    lightweight: {
+      primary:   "google/gemini-2.0-flash-001",          // fast, cheap, long context
+      fallback:  "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
+    },
+    standard: {
+      primary:   "openai/gpt-4o-mini",                   // best Indonesian quality
+      fallback:  "google/gemini-2.0-flash-001",           // paid fallback
+      emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
+    },
+  };
 
   // Wave 1 — fast internal fetches (always run in parallel)
   const [articles, pinnedUpdates, exchangeRates] = await Promise.all([
@@ -1608,11 +1612,27 @@ ${intentHint}${confidence.hint}
   // Vision-capable model for image uploads; free model chain for text
   const VISION_MODEL = "google/gemini-2.0-flash-001";
 
-  // allowTruncated=false: throw if finish_reason==="length" (so race picks a complete model)
-  // allowTruncated=true: accept truncated response as last resort
-  const tryModel = async (model, allowTruncated = false) => {
+  // ── Model tier selector — runs AFTER retrieval + context prep ──────────────
+  // Uses signals already computed: intentPrimary, kbStrength, query length.
+  // Returns "lightweight" or "standard". Premium is reserved for future admin use.
+  function selectModelTier(intentPrimary, kbStrength, query) {
+    const q = (query ?? "").trim();
+    // Casual / small-talk → always lightweight (no heavy reasoning needed)
+    if (intentPrimary === "casual") return "lightweight";
+    // Short query + strong KB = simple answer generation → lightweight
+    if (kbStrength === "strong" && q.length < 150) return "lightweight";
+    // Factual + strong KB → lightweight (model just needs to present KB info)
+    if (kbStrength === "strong" && intentPrimary === "factual") return "lightweight";
+    // Everything else: procedural, recommendation, memory-aware, time-sensitive → standard
+    return "standard";
+  }
+
+  // allowTruncated=false: reject if finish_reason==="length"
+  // allowTruncated=true: accept truncated as last resort
+  // timeoutMs: paid models get 20s (they're fast), free fallback gets 45s
+  const tryModel = async (model, allowTruncated = false, timeoutMs = 20000) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -1635,7 +1655,6 @@ ${intentHint}${confidence.hint}
       const content = data.choices?.[0]?.message?.content;
       const finishReason = data.choices?.[0]?.finish_reason;
       if (!content) throw new Error("empty response");
-      // If response was cut off by token limit, reject so the race tries the next model
       if (!allowTruncated && finishReason === "length") {
         console.warn(`[tryModel] ${model} truncated (finish_reason=length), skipping`);
         throw new Error("response truncated");
@@ -1647,21 +1666,45 @@ ${intentHint}${confidence.hint}
     }
   };
 
-  // Race only priority models first; fallback to secondary set if all fail
-  const racePriority = () => Promise.any(MODELS_PRIORITY.map(m => tryModel(m, false)));
-  // Fallback: try secondary models, accept truncated as last resort
-  const raceFallback = () => Promise.any(MODELS_FALLBACK.map(m => tryModel(m, false)))
-    .catch(() => Promise.any(MODELS_PRIORITY.concat(MODELS_FALLBACK).map(m => tryModel(m, true))));
+  // Sequential tiered waterfall — no parallel racing to avoid wasting paid calls
+  const runTieredWaterfall = async (tier) => {
+    const t = MODEL_TIERS[tier];
+    // 1. Try primary model for this tier
+    try {
+      return await tryModel(t.primary, false, 20000);
+    } catch (e) {
+      console.warn(`[Routing] ${tier} primary (${t.primary}) failed: ${e.message}`);
+    }
+    // 2. Try fallback model
+    if (t.fallback) {
+      try {
+        const fbTimeout = t.fallback.includes(":free") ? 45000 : 20000;
+        return await tryModel(t.fallback, false, fbTimeout);
+      } catch (e) {
+        console.warn(`[Routing] ${tier} fallback (${t.fallback}) failed: ${e.message}`);
+      }
+    }
+    // 3. Try emergency free model (standard tier only)
+    if (t.emergency) {
+      return await tryModel(t.emergency, true, 45000);
+    }
+    throw new Error(`All models in tier '${tier}' failed`);
+  };
 
   try {
     let result;
     if (useVisionModel) {
-      result = await tryModel(VISION_MODEL);
+      result = await tryModel(VISION_MODEL, false, 20000);
     } else {
+      const tier = selectModelTier(intent.primary, kbStrength, lastUserMessage);
+      console.log(`[Routing] tier=${tier} intent=${intent.primary} kb=${kbStrength} qlen=${lastUserMessage.length}`);
       try {
-        result = await racePriority();
+        result = await runTieredWaterfall(tier);
       } catch {
-        result = await raceFallback();
+        // Last resort: try standard tier if lightweight failed, or vice versa
+        const fallbackTier = tier === "lightweight" ? "standard" : "lightweight";
+        console.warn(`[Routing] tier ${tier} exhausted, trying ${fallbackTier}`);
+        result = await runTieredWaterfall(fallbackTier);
       }
     }
     const reply = cleanReply(result.reply);
