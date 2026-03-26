@@ -1158,7 +1158,18 @@ function buildAnswerModeHint(mode) {
     return `\n\n**[Mode Jawaban: DETAIL]** Berikan penjelasan yang lengkap dan komprehensif. Jelaskan latar belakang, langkah-langkah, konteks praktis, dan tips jika relevan. Gunakan heading dan struktur yang jelas. Panjang boleh lebih dari biasa asalkan tidak repetitif dan setiap kalimat punya nilai.`;
   }
   // balanced — default
-  return `\n\n**[Mode Jawaban: BALANCED]** Jawab langsung di kalimat atau poin pertama — jangan menunda inti. Lanjutkan dengan penjelasan singkat yang memberikan konteks atau alasan (biasanya 3-6 kalimat, atau daftar 4-6 poin). Tambahkan satu contoh praktis atau tips jika itu membantu pemahaman. Jangan terlalu singkat (satu kalimat saja terasa tidak memuaskan), jangan berlebihan. Target: jawaban yang terasa lengkap dan natural, bukan setengah-setengah.`;
+  return `\n\n**[Mode Jawaban: BALANCED]** Struktur jawaban wajib mengikuti 3 bagian ini secara berurutan:
+
+1. **Jawaban utama** — Langsung jawab di kalimat atau poin pertama. Jelas dan tidak ragu-ragu.
+2. **Penjelasan singkat** — Berikan konteks, alasan, atau makna yang membantu user memahami lebih dalam (1–3 kalimat atau daftar 3–6 poin). Jangan terlalu singkat, tapi jangan berlebihan.
+3. **Tawaran lanjutan (opsional, 1 kalimat)** — Di akhir jawaban, tawarkan bantuan relevan berikutnya secara natural. Tawaran ini HARUS spesifik terhadap topik yang ditanya — jangan generik seperti "ada yang bisa aku bantu lagi?". Contoh yang baik: "Kalau kamu mau, aku bisa jelasin langkah-langkah pengurusannya juga." atau "Aku juga bisa bantu rekomendasiin jenis kosan yang pas buat mahasiswa baru."
+
+**Kapan TIDAK menambahkan tawaran lanjutan:**
+- Jawaban sudah panjang/prosedural (ada langkah-langkah bernomor) — tawaran di akhir akan terasa berlebihan
+- Pertanyaan sudah sangat spesifik dan lengkap dijawab — tidak ada natural next step yang relevan
+- Topik sederhana/faktual yang sudah selesai sempurna dengan 1-2 kalimat
+
+**Tone:** Hangat, natural, seperti senior yang helpful — bukan robot, bukan over-promising. Kalimat pendek-menengah. Inti selalu di depan.`;
 }
 
 /* ── Context cleaning utilities ──────────────────────── */
