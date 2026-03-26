@@ -6,6 +6,7 @@ import FeedbackButton from "@/components/FeedbackButton";
 import WelcomeModal from "@/components/WelcomeModal";
 import BreakingUpdatesBanner from "@/components/BreakingUpdatesBanner";
 import SetupProfileModal from "@/components/SetupProfileModal";
+import AnnouncementPopup from "@/components/AnnouncementPopup";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -395,6 +396,7 @@ const Dashboard = () => {
       )}
       <FeedbackButton />
       {!showSetup && <WelcomeModal />}
+      {!showSetup && <AnnouncementPopup />}
     </div>
   );
 };

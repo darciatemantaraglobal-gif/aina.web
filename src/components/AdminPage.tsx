@@ -14,6 +14,7 @@ import {
   RefreshCw, TrendingUp, UserCheck, Plus,
   Pencil, Trash2, Eye, EyeOff, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
+  ExternalLink, ChevronDown, Megaphone, Save,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -26,6 +27,8 @@ interface Profile {
 interface ContributorRequest {
   id: string; user_id: string; full_name: string; education: string;
   enrollment_year: number; expertise: string; status: string; created_at: string;
+  reason?: string; article_content?: string; article_file_url?: string;
+  portfolio_link?: string; review_notes?: string; reviewed_by?: string; reviewed_at?: string;
 }
 interface Article {
   id: string; author_id: string; title: string; content: string;
@@ -54,6 +57,7 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   approved: "bg-green-500/20 text-green-400 border-green-500/30",
   rejected: "bg-red-500/20 text-red-400 border-red-500/30",
+  article_reviewed: "bg-blue-500/20 text-blue-400 border-blue-500/30",
 };
 const CATEGORY_COLORS: Record<string, string> = {
   Administrasi: "bg-violet-500/15 text-violet-400",
@@ -758,7 +762,10 @@ function UsersTab() {
 function RequestsTab() {
   const [requests, setRequests] = useState<ContributorRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
+  const [filter, setFilter] = useState<"pending" | "article_reviewed" | "approved" | "rejected">("pending");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [acting, setActing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -771,69 +778,157 @@ function RequestsTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handle = async (id: string, status: "approved" | "rejected") => {
+  const handle = async (id: string, status: "approved" | "rejected" | "article_reviewed") => {
+    setActing(id + status);
     try {
-      await adminFetch(`/api/admin/requests/${id}/review`, { method: "POST", body: JSON.stringify({ status }) });
-      toast.success(status === "approved" ? "Disetujui — user jadi Contributor" : "Permintaan ditolak");
+      await adminFetch(`/api/admin/requests/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify({ status, review_notes: reviewNotes[id] }),
+      });
+      const msg = status === "approved" ? "Disetujui — user jadi Kontributor!" : status === "rejected" ? "Pendaftaran ditolak" : "Artikel ditandai sudah diperiksa";
+      toast.success(msg);
       load();
     } catch (e: any) { toast.error(e.message); }
+    setActing(null);
   };
 
-  const tabs: Array<"pending" | "approved" | "rejected"> = ["pending", "approved", "rejected"];
+  const statusLabel: Record<string, string> = {
+    pending: "Menunggu", article_reviewed: "Artikel Diperiksa", approved: "Disetujui", rejected: "Ditolak",
+  };
+
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-display text-lg font-bold text-foreground">Permintaan Kontributor</h2>
-        <p className="text-sm text-muted-foreground">Review dan kelola pengajuan menjadi kontributor.</p>
+        <h2 className="font-display text-lg font-bold text-foreground">Pendaftaran Kontributor</h2>
+        <p className="text-sm text-muted-foreground">Review artikel sampel dan kelola pengajuan menjadi kontributor.</p>
       </div>
-      <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
-        {tabs.map(t => (
+      <div className="flex gap-1 rounded-xl border border-border bg-card p-1 overflow-x-auto">
+        {(["pending", "article_reviewed", "approved", "rejected"] as const).map(t => (
           <button key={t} onClick={() => setFilter(t)}
-            className={`flex-1 rounded-lg py-1.5 text-xs font-medium capitalize transition-colors ${filter === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-            {t === "pending" ? "Menunggu" : t === "approved" ? "Disetujui" : "Ditolak"}
+            className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${filter === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            {statusLabel[t]}
           </button>
         ))}
       </div>
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-card" />)}</div>
+        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-card" />)}</div>
       ) : requests.length === 0 ? (
         <div className="flex flex-col items-center py-12 text-center">
           <Clock className="mb-3 h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">Tidak ada permintaan {filter === "pending" ? "menunggu" : filter === "approved" ? "disetujui" : "ditolak"}.</p>
+          <p className="text-sm text-muted-foreground">Tidak ada pendaftaran {statusLabel[filter].toLowerCase()}.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {requests.map(req => (
-            <div key={req.id} className="rounded-2xl border border-border bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <Initials name={req.full_name} />
-                  <div>
-                    <p className="font-medium text-foreground">{req.full_name}</p>
-                    <p className="text-xs text-muted-foreground">{req.education}</p>
-                    <div className="mt-1.5 flex flex-wrap gap-2">
-                      <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-xs text-muted-foreground">Masuk {req.enrollment_year}</span>
-                      <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{req.expertise}</span>
-                      <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_COLORS[req.status]}`}>
-                        {req.status === "pending" ? "Menunggu" : req.status === "approved" ? "Disetujui" : "Ditolak"}
-                      </span>
+          {requests.map(req => {
+            const isExpanded = expandedId === req.id;
+            return (
+              <div key={req.id} className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                {/* Header row */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <Initials name={req.full_name} />
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">{req.full_name}</p>
+                      <p className="text-xs text-muted-foreground">{req.education}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-xs text-muted-foreground">Masuk {req.enrollment_year}</span>
+                        <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-xs text-muted-foreground">{req.expertise}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_COLORS[req.status] ?? STATUS_COLORS.pending}`}>
+                          {statusLabel[req.status] ?? req.status}
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <p className="shrink-0 text-right text-xs text-muted-foreground">{fmtDate(req.created_at)}</p>
                 </div>
-                {req.status === "pending" && (
-                  <div className="flex shrink-0 gap-2">
-                    <Button size="sm" variant="outline" className="h-8 gap-1.5 border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => handle(req.id, "approved")}>
-                      <Check className="h-3.5 w-3.5" /> Setuju
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-8 gap-1.5 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => handle(req.id, "rejected")}>
-                      <X className="h-3.5 w-3.5" /> Tolak
-                    </Button>
+
+                {/* Reason */}
+                {req.reason && (
+                  <div className="rounded-xl bg-secondary/60 px-3 py-2">
+                    <p className="text-xs font-medium text-muted-foreground mb-0.5">Alasan</p>
+                    <p className="text-sm text-foreground">{req.reason}</p>
+                  </div>
+                )}
+
+                {/* Article */}
+                {(req.article_content || req.article_file_url) && (
+                  <div className="rounded-xl border border-border bg-secondary/40">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isExpanded ? null : req.id)}
+                      className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium text-foreground"
+                    >
+                      <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" /> Artikel Sampel</span>
+                      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-border px-3 py-2.5">
+                        {req.article_content ? (
+                          <p className="whitespace-pre-wrap text-sm text-foreground/90 leading-relaxed">{req.article_content}</p>
+                        ) : req.article_file_url ? (
+                          <a href={req.article_file_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary hover:bg-primary/20 transition-colors">
+                            <ExternalLink className="h-3.5 w-3.5" /> Buka file artikel
+                          </a>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Portfolio */}
+                {req.portfolio_link && (
+                  <a href={req.portfolio_link} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    <ExternalLink className="h-3 w-3" /> {req.portfolio_link}
+                  </a>
+                )}
+
+                {/* Previous review notes */}
+                {req.review_notes && (
+                  <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 px-3 py-2">
+                    <p className="text-xs font-medium text-blue-400 mb-0.5">Catatan Sebelumnya</p>
+                    <p className="text-xs text-foreground">{req.review_notes}</p>
+                  </div>
+                )}
+
+                {/* Action area — pending or article_reviewed */}
+                {(req.status === "pending" || req.status === "article_reviewed") && (
+                  <div className="space-y-2 pt-1 border-t border-border">
+                    <textarea
+                      value={reviewNotes[req.id] ?? ""}
+                      onChange={e => setReviewNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
+                      placeholder="Catatan untuk pendaftar (opsional, akan disimpan)"
+                      rows={2}
+                      className="w-full resize-none rounded-xl border border-input bg-secondary px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      {req.status === "pending" && (
+                        <Button size="sm" variant="outline"
+                          className="h-8 gap-1.5 border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs"
+                          disabled={!!acting}
+                          onClick={() => handle(req.id, "article_reviewed")}>
+                          <Eye className="h-3.5 w-3.5" /> Artikel Diperiksa
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline"
+                        className="h-8 gap-1.5 border-green-500/30 text-green-400 hover:bg-green-500/10 text-xs"
+                        disabled={!!acting}
+                        onClick={() => handle(req.id, "approved")}>
+                        <Check className="h-3.5 w-3.5" /> Setujui
+                      </Button>
+                      <Button size="sm" variant="outline"
+                        className="h-8 gap-1.5 border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
+                        disabled={!!acting}
+                        onClick={() => handle(req.id, "rejected")}>
+                        <X className="h-3.5 w-3.5" /> Tolak
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
-              <p className="mt-2 text-right text-xs text-muted-foreground">{fmtDate(req.created_at)}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -2570,8 +2665,207 @@ function PerformanceTab() {
   );
 }
 
+/* ─── Announcements Tab (Master Admin) ───────────────── */
+interface Announcement {
+  id: string; title: string; message: string; type: string;
+  target_audience: string; is_active: boolean;
+  button_text?: string; button_link?: string; dismissible: boolean;
+  start_at?: string; end_at?: string;
+  created_by?: string; created_at: string; updated_at: string;
+}
+
+function AnnouncementsTab() {
+  const [list, setList] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Announcement | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const blank = { title: "", message: "", type: "announcement", target_audience: "all_users", is_active: true, button_text: "", button_link: "", dismissible: true, start_at: "", end_at: "" };
+  const [form, setForm] = useState<typeof blank>(blank);
+
+  const load = async () => {
+    setLoading(true);
+    try { const d = await adminFetch("/api/master/announcements"); setList(d); }
+    catch (e: any) { toast.error(e.message); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openNew = () => { setEditing(null); setForm(blank); setShowForm(true); };
+  const openEdit = (a: Announcement) => {
+    setEditing(a);
+    setForm({
+      title: a.title, message: a.message, type: a.type, target_audience: a.target_audience,
+      is_active: a.is_active, button_text: a.button_text ?? "", button_link: a.button_link ?? "",
+      dismissible: a.dismissible, start_at: a.start_at ? a.start_at.slice(0, 16) : "",
+      end_at: a.end_at ? a.end_at.slice(0, 16) : "",
+    });
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.title.trim() || !form.message.trim()) { toast.error("Judul dan pesan harus diisi"); return; }
+    setSaving(true);
+    try {
+      const body = { ...form, button_text: form.button_text || null, button_link: form.button_link || null, start_at: form.start_at || null, end_at: form.end_at || null };
+      if (editing) await adminFetch(`/api/master/announcements/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      else await adminFetch("/api/master/announcements", { method: "POST", body: JSON.stringify(body) });
+      toast.success(editing ? "Pengumuman diperbarui" : "Pengumuman dibuat");
+      setShowForm(false); load();
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id);
+    try { await adminFetch(`/api/master/announcements/${id}`, { method: "DELETE" }); toast.success("Dihapus"); load(); }
+    catch (e: any) { toast.error(e.message); }
+    setDeleting(null);
+  };
+
+  const handleToggle = async (a: Announcement) => {
+    try {
+      await adminFetch(`/api/master/announcements/${a.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !a.is_active }) });
+      setList(prev => prev.map(x => x.id === a.id ? { ...x, is_active: !x.is_active } : x));
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const audienceLabel: Record<string, string> = { all_users: "Semua Pengguna", new_users: "User Baru (≤7 hari)", old_users: "User Lama" };
+  const typeLabel: Record<string, string> = { welcome: "Selamat Datang", announcement: "Pengumuman" };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-display text-lg font-bold text-foreground">Pengumuman / Popup</h2>
+          <p className="text-sm text-muted-foreground">Kelola popup yang tampil saat pengguna buka dashboard.</p>
+        </div>
+        <Button variant="hero" size="sm" className="gap-1.5" onClick={openNew}>
+          <Plus className="h-4 w-4" /> Buat Baru
+        </Button>
+      </div>
+
+      {/* Form */}
+      {showForm && (
+        <div className="rounded-2xl border border-primary/20 bg-card p-4 space-y-3">
+          <h3 className="font-medium text-foreground text-sm">{editing ? "Edit Pengumuman" : "Buat Pengumuman Baru"}</h3>
+
+          <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Judul pengumuman" className="bg-secondary" />
+          <Textarea value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} placeholder="Isi pesan (markdown didukung)" rows={4} className="bg-secondary resize-none" />
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Tipe</p>
+              <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
+                <SelectTrigger className="bg-secondary h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="announcement">Pengumuman</SelectItem>
+                  <SelectItem value="welcome">Selamat Datang</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Target</p>
+              <Select value={form.target_audience} onValueChange={v => setForm(p => ({ ...p, target_audience: v }))}>
+                <SelectTrigger className="bg-secondary h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all_users">Semua</SelectItem>
+                  <SelectItem value="new_users">User Baru</SelectItem>
+                  <SelectItem value="old_users">User Lama</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Input value={form.button_text} onChange={e => setForm(p => ({ ...p, button_text: e.target.value }))} placeholder="Teks tombol (opsional)" className="bg-secondary text-xs" />
+            <Input value={form.button_link} onChange={e => setForm(p => ({ ...p, button_link: e.target.value }))} placeholder="Link tombol (opsional)" className="bg-secondary text-xs" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Mulai (opsional)</p>
+              <Input type="datetime-local" value={form.start_at} onChange={e => setForm(p => ({ ...p, start_at: e.target.value }))} className="bg-secondary text-xs" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Berakhir (opsional)</p>
+              <Input type="datetime-local" value={form.end_at} onChange={e => setForm(p => ({ ...p, end_at: e.target.value }))} className="bg-secondary text-xs" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.is_active} onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} className="rounded" />
+              <span className="text-xs text-foreground">Aktif</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.dismissible} onChange={e => setForm(p => ({ ...p, dismissible: e.target.checked }))} className="rounded" />
+              <span className="text-xs text-foreground">Bisa ditutup</span>
+            </label>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Batal</Button>
+            <Button size="sm" disabled={saving} onClick={handleSave} className="gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
+              <Save className="h-3.5 w-3.5" /> {saving ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}</div>
+      ) : list.length === 0 ? (
+        <div className="flex flex-col items-center py-12 text-center">
+          <Megaphone className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">Belum ada pengumuman. Buat pengumuman pertama!</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {list.map(a => (
+            <div key={a.id} className={`rounded-2xl border bg-card p-4 ${a.is_active ? "border-primary/20" : "border-border opacity-60"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-foreground text-sm">{a.title}</p>
+                    <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${a.is_active ? "border-green-500/30 bg-green-500/10 text-green-400" : "border-border bg-secondary text-muted-foreground"}`}>
+                      {a.is_active ? "Aktif" : "Nonaktif"}
+                    </span>
+                    <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{typeLabel[a.type] ?? a.type}</span>
+                    <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{audienceLabel[a.target_audience] ?? a.target_audience}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{a.message}</p>
+                  {(a.start_at || a.end_at) && (
+                    <p className="mt-1 text-[10px] text-muted-foreground/60">
+                      {a.start_at ? `Mulai: ${fmtDate(a.start_at)}` : ""}{a.start_at && a.end_at ? " · " : ""}{a.end_at ? `Berakhir: ${fmtDate(a.end_at)}` : ""}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => handleToggle(a)} title={a.is_active ? "Nonaktifkan" : "Aktifkan"}>
+                    {a.is_active ? <ToggleRight className="h-4 w-4 text-primary" /> : <ToggleLeft className="h-4 w-4" />}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => openEdit(a)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400" disabled={deleting === a.id} onClick={() => handleDelete(a.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -2626,6 +2920,7 @@ const AdminPage = () => {
     ...(isMasterAdmin ? [{ id: "waitlist" as Tab, label: "Waitlist Pro", icon: Crown }] : []),
     ...(isMasterAdmin ? [{ id: "security" as Tab, label: "Security", icon: ShieldAlert }] : []),
     ...(isMasterAdmin ? [{ id: "performance" as Tab, label: "Performa AI", icon: TrendingUp }] : []),
+    ...(isMasterAdmin ? [{ id: "announcements" as Tab, label: "Pengumuman", icon: Megaphone }] : []),
   ];
 
   return (
@@ -2673,6 +2968,7 @@ const AdminPage = () => {
         {activeTab === "waitlist" && isMasterAdmin && <WaitlistTab />}
         {activeTab === "security" && isMasterAdmin && <SecurityLogsTab />}
         {activeTab === "performance" && isMasterAdmin && <PerformanceTab />}
+        {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
       </div>
     </div>
   );

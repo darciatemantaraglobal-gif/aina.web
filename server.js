@@ -2619,14 +2619,27 @@ app.post("/api/admin/requests/:id/review", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const { id } = req.params;
-  const { status } = req.body;
-  if (!["approved", "rejected"].includes(status)) return res.status(400).json({ error: "Invalid status" });
+  const { status, review_notes } = req.body;
+  if (!["approved", "rejected", "article_reviewed"].includes(status)) return res.status(400).json({ error: "Invalid status" });
 
   const supabase = getAdminClient();
   const { data: request } = await supabase.from("contributor_requests").select("user_id").eq("id", id).single();
   if (!request) return res.status(404).json({ error: "Request not found" });
 
-  await supabase.from("contributor_requests").update({ status }).eq("id", id);
+  const updatePayload = {
+    status,
+    reviewed_by: admin.id || null,
+    reviewed_at: new Date().toISOString(),
+  };
+  if (review_notes !== undefined) updatePayload.review_notes = review_notes?.slice(0, 1000) || null;
+
+  // article_reviewed = admin peeked at article but not yet decided; skip role grant
+  if (status === "article_reviewed") {
+    await supabase.from("contributor_requests").update(updatePayload).eq("id", id);
+    return res.json({ success: true });
+  }
+
+  await supabase.from("contributor_requests").update(updatePayload).eq("id", id);
 
   const userInfo = await getUserEmail(request.user_id);
   const appUrl = process.env.REPLIT_DEV_DOMAIN
@@ -2686,6 +2699,168 @@ Terima kasih sudah tertarik berkontribusi untuk komunitas Masisir!`,
     }
   }
 
+  res.json({ success: true });
+});
+
+/* ── Announcements (user-facing) ─────────────────────── */
+app.get("/api/announcements/active", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const now = new Date().toISOString();
+
+  // Get user profile to determine if they're a new user (registered ≤ 7 days ago)
+  const { data: profile } = await supabase.from("profiles").select("created_at").eq("user_id", user.id).single();
+  const isNewUser = profile?.created_at
+    ? (Date.now() - new Date(profile.created_at).getTime()) < 7 * 24 * 60 * 60 * 1000
+    : false;
+
+  // Fetch active announcements that haven't expired and match audience
+  let query = supabase
+    .from("system_announcements")
+    .select("*")
+    .eq("is_active", true)
+    .or(`start_at.is.null,start_at.lte.${now}`)
+    .or(`end_at.is.null,end_at.gte.${now}`)
+    .order("created_at", { ascending: false });
+
+  const { data: announcements, error } = await query;
+  if (error) return res.json([]);
+  if (!announcements || announcements.length === 0) return res.json([]);
+
+  // Filter by audience
+  const filtered = announcements.filter(a => {
+    if (a.target_audience === "all_users") return true;
+    if (a.target_audience === "new_users") return isNewUser;
+    if (a.target_audience === "old_users") return !isNewUser;
+    return false;
+  });
+
+  if (filtered.length === 0) return res.json([]);
+
+  // Get dismissed/seen announcements for this user
+  const ids = filtered.map(a => a.id);
+  const { data: views } = await supabase
+    .from("user_announcement_views")
+    .select("announcement_id, dismissed_at")
+    .eq("user_id", user.id)
+    .in("announcement_id", ids);
+
+  const dismissedIds = new Set((views || []).filter(v => v.dismissed_at).map(v => v.announcement_id));
+
+  // Only return unseen/undismissed announcements
+  const unseen = filtered.filter(a => !dismissedIds.has(a.id));
+
+  // Mark as seen (upsert without dismissed_at)
+  if (unseen.length > 0) {
+    const seenRecords = unseen.map(a => ({
+      user_id: user.id,
+      announcement_id: a.id,
+      seen_at: now,
+    }));
+    await supabase.from("user_announcement_views").upsert(seenRecords, {
+      onConflict: "user_id,announcement_id",
+      ignoreDuplicates: true,
+    });
+  }
+
+  res.json(unseen);
+});
+
+app.post("/api/announcements/:id/dismiss", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { id } = req.params;
+  const supabase = getAdminClient();
+  const now = new Date().toISOString();
+
+  await supabase.from("user_announcement_views").upsert({
+    user_id: user.id,
+    announcement_id: id,
+    seen_at: now,
+    dismissed_at: now,
+  }, { onConflict: "user_id,announcement_id" });
+
+  res.json({ success: true });
+});
+
+/* ── Master Admin: Announcement CRUD ────────────────── */
+app.get("/api/master/announcements", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("system_announcements")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
+});
+
+app.post("/api/master/announcements", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+
+  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at } = req.body;
+  if (!title?.trim() || !message?.trim()) return res.status(400).json({ error: "title and message required" });
+  const validTypes = ["welcome", "announcement"];
+  const validAudiences = ["new_users", "old_users", "all_users"];
+  if (type && !validTypes.includes(type)) return res.status(400).json({ error: "Invalid type" });
+  if (target_audience && !validAudiences.includes(target_audience)) return res.status(400).json({ error: "Invalid target_audience" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("system_announcements").insert({
+    title: title.trim().slice(0, 200),
+    message: message.trim().slice(0, 2000),
+    type: type || "announcement",
+    target_audience: target_audience || "all_users",
+    is_active: is_active !== false,
+    button_text: button_text?.trim().slice(0, 100) || null,
+    button_link: button_link?.trim().slice(0, 500) || null,
+    dismissible: dismissible !== false,
+    start_at: start_at || null,
+    end_at: end_at || null,
+    created_by: admin.id,
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.patch("/api/master/announcements/:id", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+
+  const { id } = req.params;
+  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at } = req.body;
+  const supabase = getAdminClient();
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (title !== undefined) updates.title = title.trim().slice(0, 200);
+  if (message !== undefined) updates.message = message.trim().slice(0, 2000);
+  if (type !== undefined) updates.type = type;
+  if (target_audience !== undefined) updates.target_audience = target_audience;
+  if (is_active !== undefined) updates.is_active = is_active;
+  if (button_text !== undefined) updates.button_text = button_text?.trim().slice(0, 100) || null;
+  if (button_link !== undefined) updates.button_link = button_link?.trim().slice(0, 500) || null;
+  if (dismissible !== undefined) updates.dismissible = dismissible;
+  if (start_at !== undefined) updates.start_at = start_at || null;
+  if (end_at !== undefined) updates.end_at = end_at || null;
+
+  const { data, error } = await supabase.from("system_announcements").update(updates).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete("/api/master/announcements/:id", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+
+  const { id } = req.params;
+  const supabase = getAdminClient();
+  await supabase.from("system_announcements").delete().eq("id", id);
   res.json({ success: true });
 });
 
@@ -4674,7 +4849,43 @@ ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NU
 
 -- Memory type + long-term flag (Phase 6: typed memory — safe to re-run)
 ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';
-ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;`;
+ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;
+
+-- Contributor requests new fields (enhanced registration with article sample)
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reason TEXT;
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS article_content TEXT;
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS article_file_url TEXT;
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS portfolio_link TEXT;
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS review_notes TEXT;
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+-- Announcement tables
+CREATE TABLE IF NOT EXISTS public.system_announcements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'announcement' CHECK (type IN ('welcome','announcement')),
+  target_audience TEXT NOT NULL DEFAULT 'all_users' CHECK (target_audience IN ('new_users','old_users','all_users')),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  button_text TEXT,
+  button_link TEXT,
+  dismissible BOOLEAN NOT NULL DEFAULT true,
+  start_at TIMESTAMPTZ,
+  end_at TIMESTAMPTZ,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.user_announcement_views (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  announcement_id UUID REFERENCES public.system_announcements(id) ON DELETE CASCADE NOT NULL,
+  seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  dismissed_at TIMESTAMPTZ,
+  UNIQUE(user_id, announcement_id)
+);`;
 
   const neededSql = missing.map(t => sqlBlocks[t]).filter(Boolean).join("\n\n");
   const fullSql = [neededSql, columnsSql].filter(Boolean).join("\n\n");
@@ -5340,6 +5551,7 @@ async function checkRequiredTables() {
     "notifications", "user_badges",
     "beta_feedback", "user_memories",
     "eval_benchmarks", "eval_results", "eval_edge_cases",
+    "system_announcements", "user_announcement_views",
   ];
 
   const missing = [];
@@ -5381,6 +5593,39 @@ async function runColumnMigrations() {
     "ALTER TABLE public.intel_retrieval_stats ADD COLUMN IF NOT EXISTS had_perplexity BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS user_question TEXT;",
     "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS additional_note TEXT;",
+    // Contributor requests new fields
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reason TEXT;",
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS article_content TEXT;",
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS article_file_url TEXT;",
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS portfolio_link TEXT;",
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS review_notes TEXT;",
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;",
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;",
+    // Announcement tables (CREATE via migration SQL if not exists)
+    `CREATE TABLE IF NOT EXISTS public.system_announcements (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'announcement' CHECK (type IN ('welcome','announcement')),
+      target_audience TEXT NOT NULL DEFAULT 'all_users' CHECK (target_audience IN ('new_users','old_users','all_users')),
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      button_text TEXT,
+      button_link TEXT,
+      dismissible BOOLEAN NOT NULL DEFAULT true,
+      start_at TIMESTAMPTZ,
+      end_at TIMESTAMPTZ,
+      created_by UUID REFERENCES auth.users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    `CREATE TABLE IF NOT EXISTS public.user_announcement_views (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+      announcement_id UUID REFERENCES public.system_announcements(id) ON DELETE CASCADE NOT NULL,
+      seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      dismissed_at TIMESTAMPTZ,
+      UNIQUE(user_id, announcement_id)
+    );`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

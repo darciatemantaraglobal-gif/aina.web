@@ -37,7 +37,9 @@ Managed entirely by Supabase. Schema is in `supabase/migrations/`. Tables:
 - `user_roles` — role assignments (user/contributor/senior_contributor/admin)
 - `chats` + `messages` — AI chat history
 - `knowledge_base` — crowdsourced articles
-- `contributor_requests` — contributor applications
+- `contributor_requests` — contributor applications (includes `reason`, `article_content`, `article_file_url`, `portfolio_link`, `review_notes`, `reviewed_by`, `reviewed_at`; status: `pending` | `article_reviewed` | `approved` | `rejected`)
+- `system_announcements` — admin-managed popup announcements (type, target_audience, is_active, schedule, optional CTA button)
+- `user_announcement_views` — tracks which announcements each user has seen/dismissed
 - `tasks` — personal productivity tasks
 - `user_badges` — badge/achievement system
 - `notifications` — in-app notifications

@@ -156,6 +156,14 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [regEdu, setRegEdu] = useState("");
   const [regYear, setRegYear] = useState("");
   const [regExpertise, setRegExpertise] = useState("");
+  const [regReason, setRegReason] = useState("");
+  const [regArticleMode, setRegArticleMode] = useState<"text" | "file">("text");
+  const [regArticleText, setRegArticleText] = useState("");
+  const [regArticleFileUrl, setRegArticleFileUrl] = useState("");
+  const [regArticleFileName, setRegArticleFileName] = useState("");
+  const [regPortfolio, setRegPortfolio] = useState("");
+  const [regArticleUploading, setRegArticleUploading] = useState(false);
+  const regArticleInputRef = useRef<HTMLInputElement>(null);
 
   // Manual article write dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -253,9 +261,40 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
     }
   };
 
+  const uploadRegArticleFile = async (file: File) => {
+    if (!file) return;
+    setRegArticleUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Login diperlukan"); return; }
+      const res = await fetch("/api/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ filename: file.name, contentType: file.type }),
+      });
+      if (!res.ok) { toast.error("Gagal mendapatkan URL upload"); return; }
+      const { uploadUrl, publicUrl } = await res.json();
+      const uploadRes = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!uploadRes.ok) { toast.error("Gagal upload file"); return; }
+      setRegArticleFileUrl(publicUrl);
+      setRegArticleFileName(file.name);
+      toast.success("File berhasil diupload");
+    } catch {
+      toast.error("Upload gagal. Coba lagi.");
+    } finally {
+      setRegArticleUploading(false);
+    }
+  };
+
   const submitRequest = async () => {
     if (!regName.trim() || !regEdu.trim() || !regYear.trim() || !regExpertise.trim()) {
-      toast.error("Semua field harus diisi");
+      toast.error("Nama, pendidikan, tahun masuk, dan keahlian harus diisi");
+      return;
+    }
+    if (!regReason.trim()) { toast.error("Alasan ingin jadi kontributor harus diisi"); return; }
+    const hasArticle = regArticleMode === "text" ? regArticleText.trim().length > 0 : !!regArticleFileUrl;
+    if (!hasArticle) {
+      toast.error(regArticleMode === "text" ? "Tulis artikel sampel dulu ya" : "Upload file artikel dulu ya");
       return;
     }
     const year = parseInt(regYear);
@@ -271,19 +310,29 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         uid = session?.user?.id;
       }
       if (!uid) return;
-      const { error } = await supabase.from("contributor_requests").insert({
+      const payload: Record<string, any> = {
         user_id: uid,
         full_name: regName.trim(),
         education: regEdu.trim(),
         enrollment_year: year,
         expertise: regExpertise.trim(),
-      });
-      if (error) { toast.error("Gagal mengirim permintaan: " + error.message); return; }
+        reason: regReason.trim().slice(0, 1000),
+        article_content: regArticleMode === "text" ? regArticleText.trim().slice(0, 10000) : null,
+        article_file_url: regArticleMode === "file" ? regArticleFileUrl : null,
+        portfolio_link: regPortfolio.trim() || null,
+      };
+      let { error } = await supabase.from("contributor_requests").insert(payload);
+      if (error?.message?.includes("column")) {
+        // Fallback: new columns might not exist yet, send base fields only
+        const base = { user_id: uid, full_name: regName.trim(), education: regEdu.trim(), enrollment_year: year, expertise: regExpertise.trim() };
+        const res2 = await supabase.from("contributor_requests").insert(base);
+        if (res2.error) { toast.error("Gagal mengirim: " + res2.error.message); return; }
+      } else if (error) { toast.error("Gagal mengirim permintaan: " + error.message); return; }
       setSubmitterName(regName.trim());
       setHasRequest(true);
       setRequestStatus("pending");
       setJustSubmitted(true);
-      toast.success("Permintaan berhasil dikirim! Menunggu persetujuan admin.");
+      toast.success("Pendaftaran berhasil dikirim! Menunggu persetujuan admin.");
     } catch {
       toast.error("Koneksi gagal. Coba lagi.");
     } finally {
@@ -562,9 +611,16 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     <div className="flex items-center gap-3 rounded-xl bg-secondary p-4">
                       {statusIcon(requestStatus)}
                       <div>
-                        <p className="text-sm font-medium text-foreground capitalize">Status: {requestStatus}</p>
+                        <p className="text-sm font-medium text-foreground">
+                          {requestStatus === "pending" && "Menunggu Tinjauan"}
+                          {requestStatus === "article_reviewed" && "Artikel Diperiksa ✏️"}
+                          {requestStatus === "rejected" && "Ditolak"}
+                          {!["pending","article_reviewed","rejected"].includes(requestStatus as string) && requestStatus}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {requestStatus === "pending" ? "Permintaanmu sedang ditinjau admin." : "Maaf, permintaanmu ditolak."}
+                          {requestStatus === "pending" && "Pendaftaranmu sedang ditinjau admin."}
+                          {requestStatus === "article_reviewed" && "Admin sudah membaca artikelmu dan sedang mempertimbangkan keputusan."}
+                          {requestStatus === "rejected" && "Maaf, pendaftaranmu belum disetujui kali ini."}
                         </p>
                       </div>
                     </div>
@@ -573,11 +629,94 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                 </>
               ) : (
                 <div className="space-y-3">
-                  <Input placeholder="Nama lengkap" value={regName} onChange={(e) => setRegName(e.target.value)} className="bg-secondary" />
-                  <Input placeholder="Pendidikan (misal: S1 Syariah Al-Azhar)" value={regEdu} onChange={(e) => setRegEdu(e.target.value)} className="bg-secondary" />
-                  <Input placeholder="Tahun masuk (misal: 2022)" value={regYear} onChange={(e) => setRegYear(e.target.value)} className="bg-secondary" />
-                  <Input placeholder="Keahlian (misal: Administrasi, Bahasa Arab)" value={regExpertise} onChange={(e) => setRegExpertise(e.target.value)} className="bg-secondary" />
-                  <Button variant="hero" onClick={submitRequest} disabled={submitting} className="gap-1.5">
+                  <p className="text-xs text-muted-foreground">Lengkapi data berikut — admin akan meninjau artikel sampel kamu sebelum memberi akses kontributor.</p>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Input placeholder="Nama lengkap" value={regName} onChange={(e) => setRegName(e.target.value)} className="bg-secondary" />
+                    <Input placeholder="Pendidikan (misal: S1 Syariah Al-Azhar)" value={regEdu} onChange={(e) => setRegEdu(e.target.value)} className="bg-secondary" />
+                    <Input placeholder="Tahun masuk (misal: 2022)" value={regYear} onChange={(e) => setRegYear(e.target.value)} className="bg-secondary" />
+                    <Input placeholder="Bidang/keahlian (misal: Administrasi, Bahasa Arab)" value={regExpertise} onChange={(e) => setRegExpertise(e.target.value)} className="bg-secondary" />
+                  </div>
+
+                  <textarea
+                    value={regReason}
+                    onChange={e => setRegReason(e.target.value)}
+                    placeholder="Mengapa ingin menjadi kontributor AINA? Apa yang ingin kamu bagikan?"
+                    rows={3}
+                    maxLength={1000}
+                    className="w-full resize-none rounded-xl border border-input bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+
+                  {/* Article submission */}
+                  <div className="rounded-xl border border-border bg-secondary/50 p-3 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-foreground">Artikel Sampel <span className="text-destructive">*</span></p>
+                      <div className="flex gap-1 rounded-lg border border-border bg-card p-0.5">
+                        {(["text", "file"] as const).map(mode => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setRegArticleMode(mode)}
+                            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${regArticleMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                          >
+                            {mode === "text" ? "Tulis langsung" : "Upload file"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {regArticleMode === "text" ? (
+                      <textarea
+                        value={regArticleText}
+                        onChange={e => setRegArticleText(e.target.value)}
+                        placeholder="Tulis artikel sampel di sini. Boleh tentang topik apa saja yang relevan dengan kehidupan Masisir — prosedur, tips, info, dst."
+                        rows={6}
+                        maxLength={10000}
+                        className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    ) : (
+                      <div>
+                        <input
+                          ref={regArticleInputRef}
+                          type="file"
+                          accept=".pdf,.docx,.txt"
+                          className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadRegArticleFile(f); }}
+                        />
+                        {regArticleFileUrl ? (
+                          <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 p-3">
+                            <FileText className="h-4 w-4 text-green-400 shrink-0" />
+                            <span className="flex-1 truncate text-sm text-green-400">{regArticleFileName}</span>
+                            <button type="button" onClick={() => { setRegArticleFileUrl(""); setRegArticleFileName(""); }} className="text-muted-foreground hover:text-foreground">
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => regArticleInputRef.current?.click()}
+                            disabled={regArticleUploading}
+                            className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card px-4 py-5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
+                          >
+                            {regArticleUploading ? (
+                              <><span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Mengupload...</>
+                            ) : (
+                              <><Upload className="h-4 w-4" /> Klik untuk upload PDF / DOCX / TXT</>
+                            )}
+                          </button>
+                        )}
+                        <p className="mt-1.5 text-[10px] text-muted-foreground/60">Maks. 10 MB. Format: PDF, DOCX, TXT.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <Input
+                    placeholder="Link portofolio / tulisan lain (opsional)"
+                    value={regPortfolio}
+                    onChange={(e) => setRegPortfolio(e.target.value)}
+                    className="bg-secondary"
+                  />
+
+                  <Button variant="hero" onClick={submitRequest} disabled={submitting || regArticleUploading} className="gap-1.5">
                     {submitting ? (
                       <>
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
@@ -586,7 +725,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     ) : (
                       <>
                         <Send className="h-4 w-4" />
-                        Kirim Permintaan
+                        Kirim Pendaftaran
                       </>
                     )}
                   </Button>

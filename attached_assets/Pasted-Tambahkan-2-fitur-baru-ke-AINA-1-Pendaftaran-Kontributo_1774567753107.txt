@@ -1,0 +1,71 @@
+Tambahkan 2 fitur baru ke AINA:
+
+1. Pendaftaran Kontributor dengan upload artikel
+Tujuan:
+Calon kontributor harus mengirim artikel sebagai salah satu syarat seleksi sebelum diterima.
+
+Kebutuhan:
+- Tambahkan field baru pada form pendaftaran kontributor:
+  - nama
+  - email
+  - bidang/topik yang dikuasai
+  - alasan ingin jadi kontributor
+  - upload artikel
+  - opsional: link portofolio / tulisan lain
+- Artikel bisa dikirim dalam 2 cara:
+  - upload file (pdf/docx)
+  - atau input teks langsung
+- Simpan data ke tabel dengan status:
+  - pending_review
+  - article_reviewed
+  - accepted
+  - rejected
+- Tambahkan field admin:
+  - review_notes
+  - reviewed_by
+  - reviewed_at
+- Pastikan file artikel tersimpan aman dan bisa direview oleh admin
+
+2. Master Admin Popup / Announcement Manager
+Tujuan:
+Master admin bisa mengatur popup yang tampil ke user baru maupun user lama.
+
+Kebutuhan:
+- Buat fitur master admin untuk membuat, edit, aktif/nonaktif popup atau announcement
+- Jenis popup:
+  - welcome popup (untuk user baru setelah daftar)
+  - announcement popup (untuk user lama / semua user)
+- Buat tabel system_announcements dengan field:
+  - id
+  - title
+  - message
+  - type (welcome / announcement)
+  - target_audience (new_users / old_users / all_users)
+  - is_active
+  - button_text (optional)
+  - button_link (optional)
+  - dismissible
+  - start_at
+  - end_at
+  - created_by
+  - created_at
+  - updated_at
+- Buat tracking tabel user_announcement_views:
+  - user_id
+  - announcement_id
+  - seen_at
+  - dismissed_at
+- Logic tampilan:
+  - user baru melihat welcome popup aktif jika belum pernah lihat
+  - user lama melihat announcement aktif jika belum pernah lihat
+- Popup tidak boleh muncul terus-menerus setelah sudah dismissed/seen
+- Role:
+  - hanya master admin yang bisa kelola popup/announcement
+  - admin biasa tidak bisa edit fitur ini
+
+Tolong return:
+- schema tabel yang dibutuhkan
+- file/function yang perlu diubah
+- flow logic untuk frontend + backend
+- role access master admin vs admin biasa
+- safe rollout plan
