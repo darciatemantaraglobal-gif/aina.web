@@ -706,14 +706,27 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
-  if (kbStrength === "strong") return false; // KB is sufficient
+  if (kbStrength === "strong") return false; // KB already covers it — no need
 
-  const currentRole = /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris)\b/i.test(q)
+  // ── Signal 1: Current office-holder / named-role queries ─────────────────
+  // These change frequently and models' training data can be stale
+  const currentRole = /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris|ambassador|duta besar)\b/i.test(q)
     || /\b(presiden|menteri|rektor|direktur|ceo|gubernur|ketua|kepala)\b.{0,30}\bsiapa\b/i.test(q);
 
-  const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|kebijakan baru|aturan terbaru|perubahan|berubah|update|berita|terkini|baru-baru|biaya hidup)\b/i.test(q);
+  // ── Signal 2: Explicit time-sensitive keywords ────────────────────────────
+  const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|kebijakan baru|aturan terbaru|perubahan|berubah|update|berita|baru-baru|biaya hidup|terbaru|ter-update)\b/i.test(q);
 
-  return currentRole || timeSensitive;
+  // ── Signal 3: Factual query with absent/weak KB ───────────────────────────
+  // KB doesn't have the answer → model must rely on training data which may be stale
+  // Perplexity fills the gap with live web search
+  const weakKbFact = (kbStrength === "absent" || kbStrength === "weak")
+    && (intentPrimary === "factual" || intentPrimary === "confused");
+
+  // ── Signal 4: Topics that naturally change over time ─────────────────────
+  // News, sports, prices, policies, disasters, elections, regulations
+  const dynamicTopic = /\b(berita|news|pertandingan|skor|score|ranking|peringkat|harga|tarif|fee|tiket|jadwal|penerbangan|flight|cuaca|weather|olimpiade|piala dunia|world cup|liga|champions|election|pemilu|pemerintahan|kebijakan|regulasi|fatwa|putusan|sidang|kasus|bencana|gempa|banjir|virus|vaksin|vaccine|inflasi|resesi|gdp|populasi|sensus|statistik)\b/i.test(q);
+
+  return currentRole || timeSensitive || weakKbFact || dynamicTopic;
 }
 
 /**
@@ -1325,8 +1338,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     },
     // Tier B — stronger model for complex, procedural, and dynamic queries
     standard: {
-      primary:   "google/gemini-2.0-flash-001",            // main standard ($0.10/1M in, fast)
-      fallback:  "openai/gpt-4o-mini",                     // backup (best Indonesian quality)
+      primary:   "google/gemini-2.0-flash-001",            // main standard — training cutoff early 2025, knows post-election world
+      fallback:  "openai/gpt-4o-mini",                     // backup — good quality but cutoff Oct 2023
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
     },
   };
