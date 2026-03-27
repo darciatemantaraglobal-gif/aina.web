@@ -130,15 +130,15 @@ const AnnouncementPopup = () => {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center transition-all duration-300 ${
+      className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-300 ${
         visible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
       <div
-        className={`relative z-10 w-full sm:max-w-sm overflow-hidden
-          rounded-t-3xl sm:rounded-3xl border border-border/50 bg-card shadow-2xl
+        className={`relative z-10 w-full max-w-sm mx-4 overflow-hidden
+          rounded-3xl border border-border/50 bg-card shadow-2xl
           transition-all duration-300
           ${visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-10 scale-95 opacity-0"}
         `}
@@ -161,11 +161,6 @@ const AnnouncementPopup = () => {
         >
           <X className="h-4 w-4" />
         </button>
-
-        {/* Drag handle mobile */}
-        <div className="flex justify-center pt-3 pb-0 sm:hidden">
-          <div className="h-1 w-10 rounded-full bg-white/20" />
-        </div>
 
         {/* Image area — slides */}
         <div className="overflow-hidden">
