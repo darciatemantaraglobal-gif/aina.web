@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import {
   Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot,
   Upload, X, RefreshCw, Sparkles, Pencil, Check, ChevronDown, ChevronUp,
+  Link2, Loader2,
 } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
@@ -173,6 +174,12 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [artType, setArtType] = useState("narrative");
   const [artKeywords, setArtKeywords] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // URL import dialog
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [urlFetching, setUrlFetching] = useState(false);
+  const [artFromUrl, setArtFromUrl] = useState(false);
 
   // PDF upload dialog
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
@@ -337,6 +344,42 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Koneksi gagal. Coba lagi.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // URL → KB import
+  const fetchFromUrl = async () => {
+    const trimmed = importUrl.trim();
+    if (!trimmed) { toast.error("Masukkan URL dulu"); return; }
+    try { new URL(trimmed); } catch { toast.error("URL tidak valid. Contoh: https://ppmi-mesir.org/artikel"); return; }
+
+    setUrlFetching(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { toast.error("Sesi berakhir, login ulang."); return; }
+      const res = await fetch("/api/kb/fetch-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || "Gagal memproses URL"); return; }
+
+      // Pre-fill the article dialog with AI-generated draft
+      setArtTitle(json.title ?? "");
+      setArtContent(json.content ?? "");
+      setArtCategory(json.category ?? "");
+      setArtType(json.article_type ?? "narrative");
+      setArtKeywords(json.keywords ?? "");
+      setArtFromUrl(true);
+      setUrlDialogOpen(false);
+      setImportUrl("");
+      setDialogOpen(true);
+      toast.success("Draft artikel siap! Review konten sebelum dikirim.");
+    } catch {
+      toast.error("Koneksi gagal. Coba lagi.");
+    } finally {
+      setUrlFetching(false);
     }
   };
 
@@ -1082,19 +1125,85 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             {/* ── Artikelku ─────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg font-semibold text-foreground">Artikelku</h2>
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Tulis Artikel
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setUrlDialogOpen(true); setImportUrl(""); }}>
+                  <Link2 className="h-4 w-4" />
+                  Import URL
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Tulis Artikel
+                </Button>
+              </div>
             </div>
 
+            {/* URL import dialog */}
+            <Dialog open={urlDialogOpen} onOpenChange={(open) => { setUrlDialogOpen(open); if (!open) setImportUrl(""); }}>
+              <DialogContent className="bg-card border-border max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-display flex items-center gap-2">
+                    <Link2 className="h-4 w-4 text-primary" />
+                    Import Artikel dari URL
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground leading-relaxed">
+                    Paste link dari website, portal berita, atau blog — AINA akan otomatis membaca kontennya dan membuat draft artikel KB. Kamu tinggal review dan submit.
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">URL Sumber</p>
+                    <Input
+                      placeholder="https://ppmi-mesir.org/artikel/..."
+                      value={importUrl}
+                      onChange={(e) => setImportUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && !urlFetching && fetchFromUrl()}
+                      className="bg-secondary text-sm"
+                      disabled={urlFetching}
+                    />
+                    <p className="text-[10px] text-muted-foreground">Contoh sumber: website PPMI, portal berita Masisir, blog personal, website KBRI Kairo, dll.</p>
+                  </div>
+                  <Button
+                    variant="hero"
+                    className="w-full gap-2"
+                    onClick={fetchFromUrl}
+                    disabled={urlFetching || !importUrl.trim()}
+                  >
+                    {urlFetching ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Membaca & Membuat Draft...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Generate Artikel
+                      </>
+                    )}
+                  </Button>
+                  {urlFetching && (
+                    <p className="text-center text-xs text-muted-foreground animate-pulse">
+                      AINA sedang membaca halaman dan menulis artikel... (5–15 detik)
+                    </p>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+
             {/* Manual write dialog */}
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtFromUrl(false); } }}>
               <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle className="font-display">Tulis Artikel Baru</DialogTitle>
+                  <DialogTitle className="font-display">
+                    {artFromUrl ? "Review Draft Artikel (dari URL)" : "Tulis Artikel Baru"}
+                  </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-3">
+                  {artFromUrl && (
+                    <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-600 dark:text-amber-400">
+                      <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>Draft ini dibuat otomatis oleh AINA dari URL yang kamu berikan. Mohon <strong>review dan edit</strong> konten sebelum submit — pastikan informasi akurat dan sesuai.</span>
+                    </div>
+                  )}
                   <Input
                     placeholder="Judul artikel"
                     value={artTitle}

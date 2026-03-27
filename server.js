@@ -3859,6 +3859,140 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan
   }
 });
 
+/* ── URL → KB article generator ──────────────────────── */
+app.post("/api/kb/fetch-url", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
+  if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa mengimpor URL" });
+
+  const { url } = req.body;
+  if (!url || typeof url !== "string") return res.status(400).json({ error: "URL diperlukan" });
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error("invalid");
+  } catch {
+    return res.status(400).json({ error: "URL tidak valid. Pastikan format: https://..." });
+  }
+
+  try {
+    console.log(`[URL-KB] fetching: ${url}`);
+    const pageRes = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; AINA-Bot/1.0; +https://ainalabs.pro)" },
+    });
+    if (!pageRes.ok) return res.status(400).json({ error: `Halaman tidak bisa diakses (HTTP ${pageRes.status})` });
+
+    const html = await pageRes.text();
+
+    // Strip scripts, styles, nav, header, footer — keep main content
+    const cleaned = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+      .replace(/<header[\s\S]*?<\/header>/gi, "")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+      .replace(/<aside[\s\S]*?<\/aside>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 9000);
+
+    if (cleaned.length < 80) {
+      return res.status(400).json({ error: "Konten halaman terlalu sedikit atau tidak bisa dibaca" });
+    }
+
+    console.log(`[URL-KB] extracted ${cleaned.length} chars, generating article...`);
+
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(25000),
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA KB URL Import",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [
+          {
+            role: "system",
+            content: `Kamu adalah asisten yang mengubah konten website menjadi artikel Knowledge Base untuk mahasiswa Indonesia di Mesir (Masisir).
+
+TUGAS: Baca konten halaman dan buat artikel KB yang informatif, terstruktur, dan berguna untuk Masisir.
+
+ATURAN:
+- Tulis dalam Bahasa Indonesia yang jelas dan mudah dipahami
+- Fokus pada informasi yang benar-benar berguna untuk mahasiswa Indonesia di Mesir
+- Buang semua iklan, menu navigasi, footer, komentar, sidebar, dan konten tidak relevan
+- Gunakan Markdown: ## untuk sub-judul, - untuk bullet list, 1. 2. 3. untuk langkah-langkah
+- Jika konten berupa langkah/prosedur → pilih article_type "step_by_step"
+- Jika konten berupa informasi/narasi → pilih article_type "narrative"
+
+KATEGORI (pilih SATU yang paling cocok, tulis PERSIS):
+- Administrasi → iqomah, visa, paspor, dokumen resmi, KBRI
+- Akademik → perkuliahan, Al-Azhar, pendaftaran, ujian, beasiswa
+- Kehidupan Mesir → tips sehari-hari, budaya, keamanan, hiburan
+- Transport → metro, taksi, Uber, bus, transportasi Kairo
+- Tempat Tinggal → flat, sewa, lokasi hunian, kost
+- Kuliner → restoran halal, makanan, harga, rekomendasi makan
+
+OUTPUT WAJIB dalam format JSON murni (tanpa markdown, tanpa komentar):
+{"title":"...","category":"...","article_type":"...","keywords":"...","content":"..."}`,
+          },
+          {
+            role: "user",
+            content: `URL sumber: ${url}\n\nKonten halaman:\n${cleaned}`,
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 2500,
+      }),
+    });
+
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content ?? "";
+
+    let parsed;
+    try {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    } catch { /* fall through */ }
+
+    if (!parsed?.title || !parsed?.content || !parsed?.category) {
+      console.error("[URL-KB] AI parse failed, raw:", raw.slice(0, 300));
+      return res.status(502).json({ error: "Gagal menghasilkan artikel dari konten ini. Coba URL lain." });
+    }
+
+    const validCats = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+    if (!validCats.includes(parsed.category)) parsed.category = "Kehidupan Mesir";
+    if (!["narrative", "step_by_step"].includes(parsed.article_type)) parsed.article_type = "narrative";
+
+    console.log(`[URL-KB] generated: "${parsed.title}" (${parsed.category})`);
+    return res.json({
+      title:        parsed.title.slice(0, 200),
+      category:     parsed.category,
+      article_type: parsed.article_type,
+      keywords:     (parsed.keywords ?? "").slice(0, 500),
+      content:      parsed.content.slice(0, 50000),
+      source_url:   url,
+    });
+  } catch (err) {
+    console.error("[URL-KB] error:", err.message);
+    if (err.name === "TimeoutError" || err.message?.includes("abort")) {
+      return res.status(408).json({ error: "URL terlalu lama diakses. Coba lagi atau cek koneksi." });
+    }
+    return res.status(500).json({ error: "Gagal memproses URL: " + err.message });
+  }
+});
+
 app.post("/api/articles", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Login diperlukan" });
