@@ -7,6 +7,8 @@ import multer from "multer";
 import { createHash } from "crypto";
 
 const app = express();
+// Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
 
 // Polyfill DOMMatrix for Node.js — older pdfjs-dist versions (used by pdf-parse)
