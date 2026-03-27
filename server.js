@@ -2909,6 +2909,22 @@ app.delete("/api/master/announcements/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+// Reset all user views for an announcement so it re-appears for everyone
+app.delete("/api/master/announcements/:id/views", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+
+  const { id } = req.params;
+  const supabase = getAdminClient();
+  const { error, count } = await supabase
+    .from("user_announcement_views")
+    .delete({ count: "exact" })
+    .eq("announcement_id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  console.log(`[ANNOUNCE] Reset ${count ?? "?"} views for announcement ${id} by admin ${admin.id}`);
+  res.json({ success: true, reset: count ?? 0 });
+});
+
 /* ── Admin: Knowledge Base ───────────────────────────── */
 app.get("/api/admin/articles", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);

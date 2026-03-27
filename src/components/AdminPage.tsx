@@ -14,7 +14,7 @@ import {
   RefreshCw, TrendingUp, UserCheck, Plus,
   Pencil, Trash2, Eye, EyeOff, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
-  ExternalLink, ChevronDown, Megaphone, Save, Upload, Image,
+  ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -2790,6 +2790,8 @@ function AnnouncementsTab() {
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [resetting, setResetting] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Announcement | null>(null);
   const [imgUploading, setImgUploading] = useState(false);
   const [imgUrl, setImgUrl] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -2862,10 +2864,20 @@ function AnnouncementsTab() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!window.confirm("Hapus pengumuman ini secara permanen?")) return;
     setDeleting(id);
     try { await adminFetch(`/api/master/announcements/${id}`, { method: "DELETE" }); toast.success("Dihapus"); load(); }
     catch (e: any) { toast.error(e.message); }
     setDeleting(null);
+  };
+
+  const handleResetViews = async (id: string) => {
+    setResetting(id);
+    try {
+      const result = await adminFetch(`/api/master/announcements/${id}/views`, { method: "DELETE" });
+      toast.success(`Berhasil direset — pengumuman akan muncul lagi untuk semua pengguna`);
+    } catch (e: any) { toast.error(e.message); }
+    setResetting(null);
   };
 
   const handleToggle = async (a: Announcement) => {
@@ -3029,6 +3041,12 @@ function AnnouncementsTab() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary" onClick={() => setPreview(a)} title="Preview popup">
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-blue-400" disabled={resetting === a.id} onClick={() => handleResetViews(a.id)} title="Reset semua views (popup muncul lagi)">
+                    {resetting === a.id ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  </Button>
                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => handleToggle(a)} title={a.is_active ? "Nonaktifkan" : "Aktifkan"}>
                     {a.is_active ? <ToggleRight className="h-4 w-4 text-primary" /> : <ToggleLeft className="h-4 w-4" />}
                   </Button>
@@ -3045,6 +3063,40 @@ function AnnouncementsTab() {
         </div>
       )}
     </div>
+
+    {/* Preview dialog */}
+    <Dialog open={!!preview} onOpenChange={open => !open && setPreview(null)}>
+      <DialogContent className="max-w-md gap-0 p-0 overflow-hidden">
+        {preview && (() => {
+          const Icon = preview.type === "welcome" ? PartyPopper : Megaphone;
+          return (
+            <>
+              <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${preview.type === "welcome" ? "bg-amber-500/20" : "bg-primary/20"}`}>
+                  <Icon className={`h-4 w-4 ${preview.type === "welcome" ? "text-amber-400" : "text-primary"}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <DialogTitle className="font-display font-bold text-foreground leading-tight">{preview.title}</DialogTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">{preview.type === "welcome" ? "Selamat datang" : "Pengumuman dari AINA"}</p>
+                </div>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                {preview.image_url && (
+                  <div className="overflow-hidden rounded-xl border border-border bg-secondary">
+                    <img src={preview.image_url} alt={preview.title} className="w-full max-h-72 object-contain" />
+                  </div>
+                )}
+                <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{preview.message}</p>
+              </div>
+              <div className="flex items-center justify-between border-t border-border px-5 py-3">
+                <p className="text-xs text-muted-foreground italic">Preview saja — tidak ada data yang tersimpan</p>
+                <Button size="sm" variant="outline" onClick={() => setPreview(null)}>Tutup</Button>
+              </div>
+            </>
+          );
+        })()}
+      </DialogContent>
+    </Dialog>
   );
 }
 
