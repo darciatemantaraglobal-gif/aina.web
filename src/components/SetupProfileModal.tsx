@@ -150,7 +150,7 @@ export default function SetupProfileModal({ userId, onComplete, initialValues }:
           {/* Logo & Welcome */}
           <div className="mb-6 flex flex-col items-center text-center">
             <div className="relative mb-4">
-              <img src={ainaLogo} alt="AINA" className="h-14 w-14 object-contain drop-shadow-[0_0_20px_hsl(270_80%_65%/0.4)]" />
+              <img src={ainaLogo} alt="AINA" className="h-14 w-14 object-contain" />
               <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px]">
                 <Sparkles className="h-3 w-3 text-white" />
               </span>

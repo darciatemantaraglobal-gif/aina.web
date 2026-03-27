@@ -208,7 +208,7 @@ const HeroChat = () => {
           <img
             src={ainaHero}
             alt="AINA"
-            className="w-auto object-contain drop-shadow-[0_0_60px_hsl(270_80%_65%/0.4)]"
+            className="w-auto object-contain"
             style={{ height: "clamp(8rem, 26vh, 17rem)" }}
           />
         </div>

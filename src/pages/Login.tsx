@@ -179,7 +179,7 @@ const Login = () => {
         <div className="relative z-10 w-full max-w-sm">
           {/* Logo + title */}
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
-            <img src={ainaLogo} alt="AINA" className="h-14 w-14 object-contain drop-shadow-[0_0_20px_hsl(270_80%_65%/0.4)]" />
+            <img src={ainaLogo} alt="AINA" className="h-14 w-14 object-contain" />
             <div>
               <h1 className="font-display text-2xl font-bold text-foreground">Selamat datang</h1>
               <p className="mt-0.5 text-sm text-muted-foreground">Pilih cara untuk masuk ke AINA</p>
@@ -254,7 +254,7 @@ const Login = () => {
         <div className="relative z-10 w-full max-w-sm">
           {/* Back + Logo */}
           <div className="mb-6 flex flex-col items-center gap-3 text-center">
-            <img src={ainaLogo} alt="AINA" className="h-12 w-12 object-contain drop-shadow-[0_0_16px_hsl(270_80%_65%/0.4)]" />
+            <img src={ainaLogo} alt="AINA" className="h-12 w-12 object-contain" />
             <div>
               <h1 className="font-display text-xl font-bold text-foreground">
                 {mode === "register" ? "Buat Akun AINA" : "Masuk ke AINA"}
@@ -463,7 +463,7 @@ const Login = () => {
       {view === "forgotPassword" && (
         <div className="relative z-10 w-full max-w-sm">
           <div className="mb-6 flex flex-col items-center gap-3 text-center">
-            <img src={ainaLogo} alt="AINA" className="h-12 w-12 object-contain drop-shadow-[0_0_16px_hsl(270_80%_65%/0.4)]" />
+            <img src={ainaLogo} alt="AINA" className="h-12 w-12 object-contain" />
             <div>
               <h1 className="font-display text-xl font-bold text-foreground">Lupa Password?</h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
