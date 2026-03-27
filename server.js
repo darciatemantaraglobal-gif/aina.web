@@ -4268,6 +4268,24 @@ app.delete("/api/admin/chats/:chatId", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ── Master Admin: Bulk-delete selected chats ─────────── */
+app.delete("/api/admin/chats/bulk-selected", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids must be a non-empty array" });
+  if (ids.length > 200) return res.status(400).json({ error: "Maximum 200 chats per bulk delete" });
+
+  await supabase.from("messages").delete().in("chat_id", ids);
+  const { error, count } = await supabase.from("chats").delete({ count: "exact" }).in("id", ids);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  console.log(`[ADMIN] Bulk-deleted ${count} selected chats by master admin ${admin.id}`);
+  res.json({ deleted: count ?? ids.length });
+});
+
 /* ── Master Admin: Bulk-delete old chats ──────────────── */
 app.delete("/api/admin/chats/bulk-old", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
