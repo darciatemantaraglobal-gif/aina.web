@@ -2782,33 +2782,19 @@ app.get("/api/announcements/active", async (req, res) => {
 
   if (filtered.length === 0) return res.json([]);
 
-  // Get dismissed/seen announcements for this user
-  const ids = filtered.map(a => a.id);
-  const { data: views } = await supabase
-    .from("user_announcement_views")
-    .select("announcement_id, dismissed_at")
-    .eq("user_id", user.id)
-    .in("announcement_id", ids);
+  // Always return all active announcements — shown every session like an ad.
+  // Mark as seen (for analytics), but never filter by dismissed status.
+  const seenRecords = filtered.map(a => ({
+    user_id: user.id,
+    announcement_id: a.id,
+    seen_at: now,
+  }));
+  await supabase.from("user_announcement_views").upsert(seenRecords, {
+    onConflict: "user_id,announcement_id",
+    ignoreDuplicates: true,
+  });
 
-  const dismissedIds = new Set((views || []).filter(v => v.dismissed_at).map(v => v.announcement_id));
-
-  // Only return unseen/undismissed announcements
-  const unseen = filtered.filter(a => !dismissedIds.has(a.id));
-
-  // Mark as seen (upsert without dismissed_at)
-  if (unseen.length > 0) {
-    const seenRecords = unseen.map(a => ({
-      user_id: user.id,
-      announcement_id: a.id,
-      seen_at: now,
-    }));
-    await supabase.from("user_announcement_views").upsert(seenRecords, {
-      onConflict: "user_id,announcement_id",
-      ignoreDuplicates: true,
-    });
-  }
-
-  res.json(unseen);
+  res.json(filtered);
 });
 
 app.post("/api/announcements/:id/dismiss", async (req, res) => {

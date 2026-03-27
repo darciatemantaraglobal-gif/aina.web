@@ -46,7 +46,8 @@ const AnnouncementPopup = () => {
     if (session) fetchAnnouncements();
   }, [session, fetchAnnouncements]);
 
-  const dismiss = async (id: string) => {
+  const dismiss = (id: string) => {
+    // Close locally for this session only — popup will show again on next visit (ad behaviour)
     setVisible(false);
     setTimeout(() => {
       const remaining = queue.filter(a => a.id !== id);
@@ -59,15 +60,6 @@ const AnnouncementPopup = () => {
         setCurrent(null);
       }
     }, 300);
-
-    try {
-      if (session?.access_token) {
-        await fetch(`/api/announcements/${id}/dismiss`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-      }
-    } catch { /* ignore */ }
   };
 
   if (!current) return null;
@@ -78,11 +70,8 @@ const AnnouncementPopup = () => {
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ${visible ? "opacity-100" : "pointer-events-none opacity-0"}`}
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => { if (current.dismissible) dismiss(current.id); }}
-      />
+      {/* Backdrop — tidak bisa diklik untuk tutup, harus pakai tombol X */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
       {/* Card */}
       <div
@@ -99,14 +88,12 @@ const AnnouncementPopup = () => {
               {current.type === "welcome" ? "Selamat datang" : "Pengumuman dari AINA"}
             </p>
           </div>
-          {current.dismissible && (
-            <button
-              onClick={() => dismiss(current.id)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            onClick={() => dismiss(current.id)}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Body */}
@@ -138,11 +125,9 @@ const AnnouncementPopup = () => {
               <ExternalLink className="h-3.5 w-3.5" />
             </Button>
           )}
-          {current.dismissible && (
-            <Button size="sm" variant="outline" onClick={() => dismiss(current.id)}>
-              Tutup
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={() => dismiss(current.id)}>
+            Tutup
+          </Button>
         </div>
       </div>
     </div>
