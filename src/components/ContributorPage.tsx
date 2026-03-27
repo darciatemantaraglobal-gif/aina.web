@@ -355,8 +355,13 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
     setUrlFetching(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) { toast.error("Sesi berakhir, login ulang."); return; }
+      // Force-refresh the token to avoid stale JWT causing 401
+      let { data: { session } } = await supabase.auth.getSession();
+      if (session && session.expires_at && session.expires_at * 1000 < Date.now() + 30_000) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        session = refreshed.session;
+      }
+      if (!session?.access_token) { toast.error("Sesi berakhir, silakan login ulang."); return; }
       const res = await fetch("/api/kb/fetch-url", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },

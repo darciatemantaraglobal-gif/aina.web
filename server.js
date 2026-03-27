@@ -3985,9 +3985,19 @@ OUTPUT WAJIB dalam format JSON murni (tanpa markdown, tanpa komentar):
       source_url:   url,
     });
   } catch (err) {
-    console.error("[URL-KB] error:", err.message);
+    console.error("[URL-KB] error:", err.message, err.cause?.code);
     if (err.name === "TimeoutError" || err.message?.includes("abort")) {
-      return res.status(408).json({ error: "URL terlalu lama diakses. Coba lagi atau cek koneksi." });
+      return res.status(408).json({ error: "Waktu akses habis. Coba lagi atau cek apakah URL bisa dibuka di browser." });
+    }
+    const causeCode = err.cause?.code;
+    if (causeCode === "ENOTFOUND" || causeCode === "EAI_AGAIN") {
+      return res.status(400).json({ error: "Domain tidak ditemukan. Periksa URL — pastikan bisa dibuka di browser kamu." });
+    }
+    if (causeCode === "ECONNREFUSED" || causeCode === "ECONNRESET") {
+      return res.status(400).json({ error: "Koneksi ke situs ditolak. Coba URL lain." });
+    }
+    if (err.message?.includes("fetch failed")) {
+      return res.status(400).json({ error: "Tidak bisa mengakses URL ini dari server. Coba URL dari sumber lain (misalnya: blog.ppmi-mesir.org, masisir.net, dll)." });
     }
     return res.status(500).json({ error: "Gagal memproses URL: " + err.message });
   }
