@@ -3980,7 +3980,7 @@ app.post("/api/kb/fetch-url", writeLimiter, async (req, res) => {
         "X-Title": "AINA KB URL Import",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "google/gemini-2.0-flash-lite-001",
         messages: [
           {
             role: "system",
