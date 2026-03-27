@@ -154,9 +154,32 @@ const MD_COMPONENTS = {
       <pre className="p-4 font-mono text-sm text-foreground leading-relaxed">{children}</pre>
     </div>
   ),
-  blockquote: ({ children }: any) => (
-    <blockquote className="mb-4 border-l-[3px] border-primary/40 pl-4 text-foreground/70 italic">{children}</blockquote>
-  ),
+  blockquote: ({ children }: any) => {
+    // Detect if the blockquote contains Arabic text
+    function extractText(node: any): string {
+      if (typeof node === "string") return node;
+      if (Array.isArray(node)) return node.map(extractText).join("");
+      if (node?.props?.children) return extractText(node.props.children);
+      return "";
+    }
+    const text = extractText(children);
+    const isArabic = /[\u0600-\u06FF]/.test(text);
+
+    if (isArabic) {
+      return (
+        <blockquote
+          dir="rtl"
+          className="my-4 rounded-xl border border-emerald-500/20 bg-emerald-950/30 px-6 py-4 text-right text-foreground"
+          style={{ fontFamily: "'Amiri', serif", fontSize: "1.25rem", lineHeight: "2.2" }}
+        >
+          {children}
+        </blockquote>
+      );
+    }
+    return (
+      <blockquote className="mb-4 border-l-[3px] border-primary/40 pl-4 text-foreground/70 italic">{children}</blockquote>
+    );
+  },
   hr: () => <hr className="my-5 border-border/60" />,
   table: ({ children }: any) => (
     <div className="mb-4 overflow-x-auto rounded-xl border border-border">
