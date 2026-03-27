@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   MessageSquare, Plus, Search, Send, Trash2, RefreshCw,
   BookMarked, CheckCircle, Clock, MessageCircle, ThumbsUp, X,
+  ImagePlus, Loader2,
 } from "lucide-react";
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -17,6 +18,7 @@ interface Thread {
   title: string;
   content: string;
   category: string;
+  image_url?: string | null;
   reply_count: number;
   vote_count: number;
   user_voted: boolean;
@@ -32,6 +34,7 @@ interface Reply {
   thread_id: string;
   user_id: string;
   content: string;
+  image_url?: string | null;
   created_at: string;
   author_name: string | null;
   author_avatar: string | null;
@@ -78,6 +81,53 @@ async function threadsFetch(path: string, options: RequestInit = {}) {
   return res.json();
 }
 
+/* ─── Image Upload Helper ────────────────────────────── */
+async function uploadThreadImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.size > 5 * 1024 * 1024) { reject(new Error("Ukuran gambar maksimal 5MB")); return; }
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const imageBase64 = e.target?.result as string;
+        const auth = await getAuthHeader();
+        const res = await fetch("/api/threads/upload-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: auth },
+          body: JSON.stringify({ imageBase64, mimeType: file.type }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Upload gagal" }));
+          reject(new Error(err.error || "Upload gagal"));
+          return;
+        }
+        const data = await res.json();
+        resolve(data.url);
+      } catch (err: any) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error("Gagal membaca file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ─── Image Preview Component ────────────────────────── */
+function ImagePreview({ url, onRemove }: { url: string; onRemove: () => void }) {
+  return (
+    <div className="relative inline-block">
+      <img src={url} alt="preview" className="max-h-40 w-auto rounded-xl border border-border object-cover" />
+      <button
+        onClick={onRemove}
+        type="button"
+        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-background border border-border text-muted-foreground hover:text-destructive transition-colors shadow-sm"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+/* ─── Avatar ─────────────────────────────────────────── */
 function AvatarDisplay({ name, avatarUrl, size = "md" }: { name: string | null; avatarUrl: string | null; size?: "sm" | "md" }) {
   const [imgError, setImgError] = useState(false);
   const letters = (name ?? "?").split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase();
@@ -106,22 +156,46 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("");
   const [saving, setSaving] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) { setTitle(""); setContent(""); setCategory(""); }
+    if (open) {
+      setTitle(""); setContent(""); setCategory("");
+      setImagePreviewUrl(null); setUploadedImageUrl(null);
+    }
   }, [open]);
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImagePreviewUrl(URL.createObjectURL(file));
+    setUploading(true);
+    try {
+      const url = await uploadThreadImage(file);
+      setUploadedImageUrl(url);
+    } catch (err: any) {
+      toast.error(err.message);
+      setImagePreviewUrl(null);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleSubmit = async () => {
     if (!title.trim() || !content.trim() || !category) {
       toast.error("Semua field harus diisi");
       return;
     }
+    if (uploading) { toast.error("Tunggu upload foto selesai"); return; }
     setSaving(true);
     try {
-      const data = await threadsFetch("/api/threads", {
-        method: "POST",
-        body: JSON.stringify({ title: title.trim(), content: content.trim(), category }),
-      });
+      const body: any = { title: title.trim(), content: content.trim(), category };
+      if (uploadedImageUrl) body.image_url = uploadedImageUrl;
+      const data = await threadsFetch("/api/threads", { method: "POST", body: JSON.stringify(body) });
       toast.success("Thread berhasil dibuat!");
       onCreated(data);
       onClose();
@@ -144,12 +218,10 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
         className="relative z-10 flex w-full max-w-lg flex-col rounded-t-[28px] sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-[60%] sm:slide-in-from-bottom-4 sm:zoom-in-95 duration-300"
         style={{ maxHeight: "90dvh" }}
       >
-        {/* Handle bar — tap to close on mobile */}
         <div className="sm:hidden shrink-0 flex items-center justify-center pt-3 pb-1 cursor-grab" onClick={onClose}>
           <div className="h-1 w-12 rounded-full bg-border/80" />
         </div>
 
-        {/* Header */}
         <div className="shrink-0 flex items-center justify-between gap-3 px-5 pt-3 pb-3 sm:pt-5 border-b border-border">
           <h2 className="font-display text-base font-bold text-foreground">Buat Thread Baru</h2>
           <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
@@ -157,7 +229,6 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
           </button>
         </div>
 
-        {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Judul</label>
@@ -186,26 +257,59 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
               placeholder="Bagikan informasi, pengalaman, atau pertanyaanmu..."
               value={content}
               onChange={e => setContent(e.target.value)}
-              className="min-h-[130px] bg-card resize-none"
+              className="min-h-[110px] bg-card resize-none"
+            />
+          </div>
+
+          {/* Image upload */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Foto (opsional)</label>
+            {imagePreviewUrl ? (
+              <div className="space-y-2">
+                <ImagePreview
+                  url={imagePreviewUrl}
+                  onRemove={() => { setImagePreviewUrl(null); setUploadedImageUrl(null); }}
+                />
+                {uploading && (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Mengupload foto...
+                  </p>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors w-full"
+              >
+                <ImagePlus className="h-4 w-4 shrink-0" />
+                Tambah foto (maks 5MB)
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleImageSelect}
             />
           </div>
         </div>
 
-        {/* Fixed footer */}
         <div
           className="shrink-0 border-t border-border px-5 pt-3 pb-4"
           style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
         >
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} className="flex-1" disabled={saving}>
+            <Button variant="outline" onClick={onClose} className="flex-1" disabled={saving || uploading}>
               Batal
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={saving}
+              disabled={saving || uploading}
               className="flex-1 bg-gradient-purple text-primary-foreground hover:opacity-90"
             >
-              {saving ? "Memposting..." : "Post Thread"}
+              {saving ? "Memposting..." : uploading ? "Mengupload foto..." : "Post Thread"}
             </Button>
           </div>
         </div>
@@ -227,6 +331,9 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
   const [thread, setThread] = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
+  const [replyImagePreviewUrl, setReplyImagePreviewUrl] = useState<string | null>(null);
+  const [replyUploadedImageUrl, setReplyUploadedImageUrl] = useState<string | null>(null);
+  const [replyUploading, setReplyUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [voting, setVoting] = useState(false);
@@ -234,6 +341,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
   const [localVoteCount, setLocalVoteCount] = useState(0);
   const repliesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const replyFileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -284,15 +392,34 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
     }
   };
 
+  const handleReplyImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReplyImagePreviewUrl(URL.createObjectURL(file));
+    setReplyUploading(true);
+    try {
+      const url = await uploadThreadImage(file);
+      setReplyUploadedImageUrl(url);
+    } catch (err: any) {
+      toast.error(err.message);
+      setReplyImagePreviewUrl(null);
+    } finally {
+      setReplyUploading(false);
+      if (replyFileInputRef.current) replyFileInputRef.current.value = "";
+    }
+  };
+
   const handleReply = async () => {
-    if (!replyContent.trim()) return;
+    if (!replyContent.trim() && !replyUploadedImageUrl) return;
+    if (replyUploading) { toast.error("Tunggu upload foto selesai"); return; }
     setSending(true);
     try {
-      await threadsFetch(`/api/threads/${threadId}/replies`, {
-        method: "POST",
-        body: JSON.stringify({ content: replyContent.trim() }),
-      });
+      const body: any = { content: replyContent.trim() || "📷" };
+      if (replyUploadedImageUrl) body.image_url = replyUploadedImageUrl;
+      await threadsFetch(`/api/threads/${threadId}/replies`, { method: "POST", body: JSON.stringify(body) });
       setReplyContent("");
+      setReplyImagePreviewUrl(null);
+      setReplyUploadedImageUrl(null);
       await load();
     } catch (e: any) {
       toast.error(e.message);
@@ -339,6 +466,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
     }
   };
 
+  const canSendReply = !sending && !replyUploading && (replyContent.trim().length > 0 || !!replyUploadedImageUrl);
   const canDeleteThread = thread && (thread.user_id === currentUserId || isAdmin);
 
   return (
@@ -352,7 +480,6 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
         className="relative z-10 flex w-full max-w-2xl flex-col rounded-t-[28px] sm:rounded-3xl border border-border bg-background shadow-2xl animate-in slide-in-from-bottom-[60%] sm:slide-in-from-bottom-4 sm:zoom-in-95 duration-300"
         style={{ maxHeight: "92dvh" }}
       >
-        {/* Handle bar — mobile only, tappable area */}
         <div className="sm:hidden shrink-0 flex items-center justify-center pt-3 pb-1 cursor-grab active:cursor-grabbing" onClick={onClose}>
           <div className="h-1 w-12 rounded-full bg-border/80" />
         </div>
@@ -363,23 +490,20 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
           </div>
         ) : thread ? (
           <>
-            {/* ── Fixed top bar: compact header ── */}
+            {/* Fixed top bar */}
             <div className="shrink-0 border-b border-border px-4 pt-2 pb-3 sm:px-5 sm:pt-4 sm:pb-4">
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  {/* Category + KB badge */}
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_COLORS[thread.category] ?? "bg-secondary text-muted-foreground"}`}>
                       {thread.category}
                     </span>
                     {thread.promoted_to_kb && (
                       <span className="flex items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-400">
-                        <CheckCircle className="h-3 w-3" />
-                        KB
+                        <CheckCircle className="h-3 w-3" />KB
                       </span>
                     )}
                   </div>
-                  {/* Title — capped at 2 lines on mobile so header stays compact */}
                   <h2 className="font-display text-sm font-bold leading-snug text-foreground line-clamp-2 sm:line-clamp-none sm:text-base">
                     {thread.title}
                   </h2>
@@ -393,11 +517,10 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
               </div>
             </div>
 
-            {/* ── Scrollable body: author + content + actions + replies ── */}
+            {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto">
               {/* Thread body */}
               <div className="px-4 py-4 sm:px-5 border-b border-border/40">
-                {/* Author row */}
                 <div className="flex items-center gap-2 mb-3">
                   <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} size="sm" />
                   <span className="text-xs font-semibold text-foreground/80">{thread.author_name ?? "Pengguna"}</span>
@@ -405,10 +528,21 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                   <span className="text-xs text-muted-foreground">{fmtDate(thread.created_at)}</span>
                 </div>
 
-                {/* Content */}
                 <p className="whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
                   {thread.content}
                 </p>
+
+                {/* Thread image */}
+                {thread.image_url && (
+                  <div className="mt-3 overflow-hidden rounded-xl border border-border">
+                    <img
+                      src={thread.image_url}
+                      alt="foto thread"
+                      className="w-full max-h-72 object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                      onClick={() => window.open(thread.image_url!, "_blank")}
+                    />
+                  </div>
+                )}
 
                 {/* Action row */}
                 <div className="mt-4 flex items-center gap-2 flex-wrap">
@@ -449,7 +583,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                 </div>
               </div>
 
-              {/* Replies section header */}
+              {/* Replies section */}
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 backdrop-blur-sm px-4 py-2.5 sm:px-5 border-b border-border/30">
                 <MessageCircle className="h-3.5 w-3.5 text-muted-foreground/60" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
@@ -457,7 +591,6 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                 </span>
               </div>
 
-              {/* Replies list */}
               <div className="px-4 py-4 sm:px-5 space-y-5">
                 {thread.replies.length === 0 ? (
                   <div className="flex flex-col items-center py-8 text-center">
@@ -483,9 +616,21 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                             </button>
                           )}
                         </div>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
-                          {reply.content}
-                        </p>
+                        {reply.content !== "📷" && (
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
+                            {reply.content}
+                          </p>
+                        )}
+                        {reply.image_url && (
+                          <div className="mt-2 overflow-hidden rounded-xl border border-border max-w-xs">
+                            <img
+                              src={reply.image_url}
+                              alt="foto balasan"
+                              className="w-full object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                              onClick={() => window.open(reply.image_url!, "_blank")}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -494,12 +639,45 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
               </div>
             </div>
 
-            {/* ── Fixed bottom: reply input ── */}
+            {/* Fixed bottom: reply input */}
             <div
-              className="shrink-0 border-t border-border bg-background px-4 pt-3 pb-3 sm:px-5 sm:pt-4 sm:pb-4"
+              className="shrink-0 border-t border-border bg-background px-4 pt-3 pb-3 sm:px-5 sm:pt-4 sm:pb-4 space-y-2"
               style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
             >
+              {/* Image preview in reply */}
+              {replyImagePreviewUrl && (
+                <div className="flex items-center gap-2">
+                  <ImagePreview
+                    url={replyImagePreviewUrl}
+                    onRemove={() => { setReplyImagePreviewUrl(null); setReplyUploadedImageUrl(null); }}
+                  />
+                  {replyUploading && (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Mengupload...
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-2 items-end">
+                {/* Image attach button */}
+                <button
+                  type="button"
+                  onClick={() => replyFileInputRef.current?.click()}
+                  disabled={!!replyImagePreviewUrl || replyUploading}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-40"
+                  title="Lampirkan foto"
+                >
+                  <ImagePlus className="h-4 w-4" />
+                </button>
+                <input
+                  ref={replyFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleReplyImageSelect}
+                />
+
                 <Textarea
                   ref={textareaRef}
                   placeholder="Tulis balasanmu..."
@@ -508,7 +686,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                   onKeyDown={e => {
                     if (e.key === "Enter" && !e.shiftKey && window.innerWidth >= 640) {
                       e.preventDefault();
-                      handleReply();
+                      if (canSendReply) handleReply();
                     }
                   }}
                   className="min-h-[44px] max-h-[100px] resize-none bg-card text-sm leading-relaxed"
@@ -516,7 +694,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                 />
                 <Button
                   onClick={handleReply}
-                  disabled={sending || !replyContent.trim()}
+                  disabled={!canSendReply}
                   className="h-11 w-11 shrink-0 bg-gradient-purple px-0 text-primary-foreground hover:opacity-90 rounded-xl"
                 >
                   {sending
@@ -525,7 +703,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                   }
                 </Button>
               </div>
-              <p className="mt-1.5 hidden sm:block text-xs text-muted-foreground/60">
+              <p className="hidden sm:block text-xs text-muted-foreground/60">
                 Enter untuk kirim · Shift+Enter untuk baris baru
               </p>
             </div>
@@ -635,7 +813,6 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
           </Button>
         </div>
 
-        {/* Search */}
         <div className="mt-3 relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
@@ -646,7 +823,6 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
           />
         </div>
 
-        {/* Category filter */}
         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
           <button
             onClick={() => setCategoryFilter("all")}
@@ -713,19 +889,16 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
               </button>
             </div>
 
-            {filtered.map((thread, idx) => (
+            {filtered.map((thread, i) => (
               <div
                 key={thread.id}
                 onClick={() => setSelectedThreadId(thread.id)}
-                style={{ animationDelay: `${idx * 40}ms`, animationFillMode: "both" }}
+                style={{ animationDelay: `${i * 40}ms`, animationFillMode: "both" }}
                 className="flex w-full gap-3 rounded-2xl border border-border bg-card p-3.5 text-left transition-colors hover:border-primary/30 hover:bg-card/80 cursor-pointer animate-in fade-in slide-in-from-bottom-3 duration-300 md:p-4"
               >
-                {/* Avatar */}
                 <AvatarDisplay name={thread.author_name} avatarUrl={thread.author_avatar} />
 
-                {/* Content */}
                 <div className="flex-1 min-w-0">
-                  {/* Category + KB badge */}
                   <div className="flex flex-wrap items-center gap-1.5 mb-1">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${CATEGORY_COLORS[thread.category] ?? "bg-secondary text-muted-foreground"}`}>
                       {thread.category}
@@ -735,15 +908,16 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
                         <CheckCircle className="h-2.5 w-2.5" /> KB
                       </span>
                     )}
+                    {thread.image_url && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        📷
+                      </span>
+                    )}
                   </div>
 
-                  {/* Title */}
                   <p className="font-semibold text-sm text-foreground line-clamp-1 leading-snug">{thread.title}</p>
-
-                  {/* Preview */}
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-relaxed">{thread.content}</p>
 
-                  {/* Meta row */}
                   <div className="mt-2 flex items-center gap-0 flex-wrap">
                     <span className="mr-2 text-xs font-medium text-foreground/60 truncate max-w-[100px]">{thread.author_name ?? "Pengguna"}</span>
                     <span className="mr-3 flex items-center gap-1 text-xs text-muted-foreground">
@@ -772,14 +946,12 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
         )}
       </div>
 
-      {/* Create Sheet */}
       <CreateThreadSheet
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={handleCreated}
       />
 
-      {/* Detail Sheet */}
       {selectedThreadId && (
         <ThreadDetailSheet
           threadId={selectedThreadId}

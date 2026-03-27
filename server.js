@@ -197,6 +197,10 @@ async function initStorage() {
       await supabase.storage.createBucket("announcements", { public: true, fileSizeLimit: 5242880 }); // 5 MB cap
       console.log("Storage bucket 'announcements' created");
     }
+    if (!names.includes("thread-images")) {
+      await supabase.storage.createBucket("thread-images", { public: true, fileSizeLimit: 5242880 }); // 5 MB cap
+      console.log("Storage bucket 'thread-images' created");
+    }
   } catch (e) {
     console.warn("Storage init warning:", e.message);
   }
@@ -3737,11 +3741,38 @@ app.get("/api/threads", async (req, res) => {
   })));
 });
 
+/* ── Thread image upload ─────────────────────────────── */
+app.post("/api/threads/upload-image", uploadLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { imageBase64, mimeType } = req.body;
+  if (!imageBase64) return res.status(400).json({ error: "imageBase64 required" });
+
+  const safeMime = typeof mimeType === "string" ? mimeType.toLowerCase() : "image/jpeg";
+  const ext = ALLOWED_IMAGE_TYPES.get(safeMime);
+  if (!ext) return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan JPEG, PNG, atau WebP." });
+
+  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  const buffer = Buffer.from(base64Data, "base64");
+  if (buffer.length > 5 * 1024 * 1024) return res.status(400).json({ error: "Ukuran gambar maksimal 5MB" });
+
+  const supabase = getAdminClient();
+  const storagePath = `${user.id}/${Date.now()}.${ext}`;
+  const { error: uploadErr } = await supabase.storage
+    .from("thread-images")
+    .upload(storagePath, buffer, { contentType: safeMime, upsert: false });
+  if (uploadErr) return res.status(500).json({ error: uploadErr.message });
+
+  const { data: { publicUrl } } = supabase.storage.from("thread-images").getPublicUrl(storagePath);
+  res.json({ url: publicUrl });
+});
+
 app.post("/api/threads", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { title, content, category } = req.body;
+  const { title, content, category, image_url } = req.body;
   if (!title?.trim() || !content?.trim() || !category) return res.status(400).json({ error: "title, content, category required" });
   if (title.trim().length > 200) return res.status(400).json({ error: "Judul terlalu panjang (maks 200 karakter)" });
   if (content.trim().length > 10000) return res.status(400).json({ error: "Konten terlalu panjang (maks 10.000 karakter)" });
@@ -3749,8 +3780,10 @@ app.post("/api/threads", writeLimiter, async (req, res) => {
   if (!valid.includes(category)) return res.status(400).json({ error: "Invalid category" });
 
   const supabase = getAdminClient();
+  const insert = { user_id: user.id, title: title.trim(), content: content.trim(), category, image_url: (image_url && typeof image_url === "string") ? image_url : undefined };
+
   const { data, error } = await supabase.from("threads")
-    .insert({ user_id: user.id, title: title.trim(), content: content.trim(), category })
+    .insert(insert)
     .select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data);
@@ -3794,7 +3827,7 @@ app.post("/api/threads/:id/replies", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { content } = req.body;
+  const { content, image_url } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: "content required" });
   if (content.trim().length > 2000) return res.status(400).json({ error: "Balasan terlalu panjang (maks 2.000 karakter)" });
 
@@ -3803,8 +3836,10 @@ app.post("/api/threads/:id/replies", writeLimiter, async (req, res) => {
   const { data: thread } = await supabase.from("threads").select("id").eq("id", id).single();
   if (!thread) return res.status(404).json({ error: "Thread not found" });
 
+  const replyInsert = { thread_id: id, user_id: user.id, content: content.trim(), image_url: (image_url && typeof image_url === "string") ? image_url : undefined };
+
   const { data, error } = await supabase.from("thread_replies")
-    .insert({ thread_id: id, user_id: user.id, content: content.trim() })
+    .insert(replyInsert)
     .select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data);
@@ -5737,6 +5772,8 @@ async function runColumnMigrations() {
 
   const migrations = [
     "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hidden_from_leaderboard BOOLEAN NOT NULL DEFAULT FALSE;",
+    "ALTER TABLE public.threads ADD COLUMN IF NOT EXISTS image_url TEXT;",
+    "ALTER TABLE public.thread_replies ADD COLUMN IF NOT EXISTS image_url TEXT;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS keywords TEXT NOT NULL DEFAULT '';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",

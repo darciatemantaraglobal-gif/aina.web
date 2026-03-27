@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { X, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { X, Megaphone, PartyPopper, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Announcement {
   id: string;
@@ -16,43 +16,52 @@ interface Announcement {
 
 const AUTO_MS = 5000;
 
+async function getAuthHeader(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session ? `Bearer ${session.access_token}` : "";
+}
+
 const AnnouncementPopup = () => {
   const [items, setItems] = useState<Announcement[]>([]);
   const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(false);
-  const [session, setSession] = useState<any>(null);
-
   const [sliding, setSliding] = useState(false);
   const [slideDir, setSlideDir] = useState<"left" | "right">("left");
   const [progressKey, setProgressKey] = useState(0);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const slidingRef = useRef(false);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s));
-  }, []);
+  const fetchedRef = useRef(false);
 
   const fetchAnnouncements = useCallback(async () => {
-    if (!session?.access_token) return;
+    if (fetchedRef.current) return;
+    const auth = await getAuthHeader();
+    if (!auth) return;
+    fetchedRef.current = true;
     try {
       const res = await fetch("/api/announcements/active", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: auth },
       });
       if (!res.ok) return;
       const data: Announcement[] = await res.json();
       if (data && data.length > 0) {
         setItems(data);
         setIdx(0);
-        setVisible(true);
         setProgressKey(0);
+        setVisible(true);
       }
     } catch {}
-  }, [session?.access_token]);
+  }, []);
 
   useEffect(() => {
-    if (session) fetchAnnouncements();
-  }, [session, fetchAnnouncements]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) fetchAnnouncements();
+    });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) fetchAnnouncements();
+    });
+    return () => subscription.unsubscribe();
+  }, [fetchAnnouncements]);
 
   const navigate = useCallback((newIdx: number, dir: "left" | "right") => {
     if (slidingRef.current) return;
@@ -64,7 +73,7 @@ const AnnouncementPopup = () => {
       setProgressKey(k => k + 1);
       setSliding(false);
       slidingRef.current = false;
-    }, 280);
+    }, 250);
   }, []);
 
   const goNext = useCallback((total: number, current: number) => {
@@ -75,8 +84,7 @@ const AnnouncementPopup = () => {
     navigate((current - 1 + total) % total, "right");
   }, [navigate]);
 
-  useEffect(() => {
-    if (!visible || items.length <= 1) return;
+  const resetTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setIdx(prev => {
@@ -85,20 +93,13 @@ const AnnouncementPopup = () => {
         return prev;
       });
     }, AUTO_MS);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [visible, items.length, navigate]);
+  }, [items.length, navigate]);
 
-  const resetTimer = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (items.length > 1) {
-      timerRef.current = setInterval(() => {
-        setIdx(prev => {
-          navigate((prev + 1) % items.length, "left");
-          return prev;
-        });
-      }, AUTO_MS);
-    }
-  };
+  useEffect(() => {
+    if (!visible || items.length <= 1) return;
+    resetTimer();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [visible, items.length, resetTimer]);
 
   const closeAll = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -110,7 +111,6 @@ const AnnouncementPopup = () => {
 
   const current = items[idx];
   const multi = items.length > 1;
-  const Icon = current.type === "welcome" ? PartyPopper : Megaphone;
 
   return (
     <div
@@ -118,91 +118,84 @@ const AnnouncementPopup = () => {
         visible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
-      {/* Card — bottom-sheet on mobile, floating modal on desktop */}
       <div
-        className={`relative z-10 w-full sm:max-w-md overflow-hidden
-          rounded-t-3xl sm:rounded-2xl border border-border bg-card shadow-2xl
+        className={`relative z-10 w-full sm:max-w-sm overflow-hidden
+          rounded-t-3xl sm:rounded-3xl border border-border/50 bg-card shadow-2xl
           transition-all duration-300
           ${visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-10 scale-95 opacity-0"}
         `}
       >
-        {/* Auto-advance progress bar */}
+        {/* Progress bar — multi-slide */}
         {multi && (
-          <div className="absolute top-0 left-0 right-0 z-10 h-[3px] bg-border/60">
+          <div className="absolute top-0 left-0 right-0 z-20 h-[3px] bg-white/10">
             <div
               key={progressKey}
-              className="h-full bg-primary rounded-full"
+              className="h-full bg-white/60 rounded-full"
               style={{ animation: `ad-progress ${AUTO_MS}ms linear forwards` }}
             />
           </div>
         )}
 
-        {/* Drag handle — mobile hint */}
-        <div className="flex justify-center pt-3 pb-1 sm:hidden">
-          <div className="h-1 w-10 rounded-full bg-border" />
+        {/* X button — floating top-right */}
+        <button
+          onClick={closeAll}
+          className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        {/* Drag handle mobile */}
+        <div className="flex justify-center pt-3 pb-0 sm:hidden">
+          <div className="h-1 w-10 rounded-full bg-white/20" />
         </div>
 
-        {/* Header */}
-        <div className="flex items-start gap-3 px-5 pt-3 pb-4 sm:pt-5 sm:border-b sm:border-border">
-          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-            current.type === "welcome" ? "bg-amber-500/20" : "bg-primary/20"
-          }`}>
-            <Icon className={`h-4 w-4 ${current.type === "welcome" ? "text-amber-400" : "text-primary"}`} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-display font-bold text-foreground leading-tight text-sm sm:text-base">{current.title}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {current.type === "welcome" ? "Selamat datang" : "Pengumuman dari AINA"}
-              {multi && <span className="ml-1.5 opacity-60">· {idx + 1}/{items.length}</span>}
-            </p>
-          </div>
-          <button
-            onClick={closeAll}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Body with slide animation */}
+        {/* Image area — slides */}
         <div className="overflow-hidden">
           <div
-            className="px-5 py-4 space-y-3 transition-all duration-300 ease-in-out"
+            className="transition-all duration-250 ease-in-out"
             style={{
               opacity: sliding ? 0 : 1,
               transform: sliding
-                ? slideDir === "left" ? "translateX(-16px)" : "translateX(16px)"
+                ? slideDir === "left" ? "translateX(-20px)" : "translateX(20px)"
                 : "translateX(0)",
             }}
           >
-            {current.image_url && (
-              <div className="overflow-hidden rounded-xl border border-border bg-secondary">
-                <img
-                  src={current.image_url}
-                  alt={current.title}
-                  className="w-full max-h-44 sm:max-h-64 object-contain"
-                />
+            {current.image_url ? (
+              <img
+                src={current.image_url}
+                alt={current.title}
+                className="w-full object-cover"
+                style={{ maxHeight: "65vw", minHeight: "180px" }}
+              />
+            ) : (
+              <div className="flex items-center justify-center bg-gradient-to-br from-primary/20 to-violet-500/10 py-10">
+                <div className="text-4xl">📢</div>
               </div>
             )}
-            <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{current.message}</p>
+
+            {/* Caption */}
+            <div className="px-4 pt-3 pb-1">
+              <p className="font-semibold text-sm text-foreground leading-snug">{current.title}</p>
+              {current.message && (
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                  {current.message}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-2 border-t border-border px-5 py-3">
+        <div className="flex items-center gap-2 px-4 py-3">
           {/* Dot indicators */}
           {multi && (
             <div className="flex items-center gap-1.5 flex-1">
               {items.map((_, i) => (
                 <button
                   key={i}
-                  onClick={() => {
-                    navigate(i, i > idx ? "left" : "right");
-                    resetTimer();
-                  }}
+                  onClick={() => { navigate(i, i > idx ? "left" : "right"); resetTimer(); }}
                   className={`h-1.5 rounded-full transition-all duration-300 ${
                     i === idx ? "w-5 bg-primary" : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60"
                   }`}
@@ -211,18 +204,18 @@ const AnnouncementPopup = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-1.5 ml-auto">
+          <div className="flex items-center gap-1 ml-auto">
             {multi && (
               <>
                 <button
                   onClick={() => { goPrev(items.length, idx); resetTimer(); }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => { goNext(items.length, idx); resetTimer(); }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
@@ -232,14 +225,14 @@ const AnnouncementPopup = () => {
               <Button
                 size="sm"
                 variant="hero"
-                className="gap-1.5 h-8 text-xs"
+                className="h-7 px-3 text-xs gap-1"
                 onClick={() => window.open(current.button_link, "_blank")}
               >
                 {current.button_text}
                 <ExternalLink className="h-3 w-3" />
               </Button>
             )}
-            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={closeAll}>
+            <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={closeAll}>
               Tutup
             </Button>
           </div>
