@@ -2891,6 +2891,7 @@ function AnnouncementsTab() {
   const typeLabel: Record<string, string> = { welcome: "Selamat Datang", announcement: "Pengumuman" };
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
@@ -3097,6 +3098,7 @@ function AnnouncementsTab() {
         })()}
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
