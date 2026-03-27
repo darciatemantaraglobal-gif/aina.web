@@ -106,6 +106,7 @@ const Dashboard = () => {
   }>({});
 
   const [chats, setChats] = useState<Chat[]>([]);
+  const [fadingChatIds, setFadingChatIds] = useState<Set<string>>(new Set());
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
 
@@ -194,6 +195,31 @@ const Dashboard = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
+
+  // Realtime: when admin deletes a chat, fade it out and remove from sidebar
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`chat-deletions-${userId}`)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "chats" }, (payload) => {
+        const deletedId = (payload.old as any)?.id as string | undefined;
+        if (!deletedId) return;
+        // Only react if this chat is in our list
+        setChats(prev => {
+          if (!prev.find(c => c.id === deletedId)) return prev;
+          // Kick off fade-out animation, then remove after delay
+          setFadingChatIds(f => new Set(f).add(deletedId));
+          setTimeout(() => {
+            setChats(c => c.filter(x => x.id !== deletedId));
+            setFadingChatIds(f => { const n = new Set(f); n.delete(deletedId); return n; });
+          }, 400);
+          return prev; // keep in list during animation
+        });
+        setActiveChatId(prev => prev === deletedId ? null : prev);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId]);
 
   const loadChats = useCallback(async (restoreLast = false) => {
     try {
@@ -293,6 +319,7 @@ const Dashboard = () => {
           isAdmin={isAdmin}
           onClose={() => setSidebarOpen(false)}
           chats={chats}
+          fadingChatIds={fadingChatIds}
           activeChatId={activeChatId}
           onNewChat={handleNewChat}
           onSelectChat={handleSelectChat}

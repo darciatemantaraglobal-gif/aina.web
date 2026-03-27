@@ -4310,24 +4310,8 @@ app.get("/api/admin/chats", async (req, res) => {
   res.json(result);
 });
 
-/* ── Master Admin: Delete a single chat (+ its messages) ── */
-app.delete("/api/admin/chats/:chatId", async (req, res) => {
-  const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Unauthorized" });
-
-  const supabase = getAdminClient();
-  const { chatId } = req.params;
-
-  // Delete messages first (in case FK constraint exists without cascade)
-  await supabase.from("messages").delete().eq("chat_id", chatId);
-  const { error } = await supabase.from("chats").delete().eq("id", chatId);
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
-
-  console.log(`[ADMIN] Chat ${chatId} deleted by master admin ${admin.id}`);
-  res.json({ success: true });
-});
-
 /* ── Master Admin: Bulk-delete selected chats ─────────── */
+/* IMPORTANT: specific routes must come BEFORE /:chatId param route */
 app.delete("/api/admin/chats/bulk-selected", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
@@ -4366,6 +4350,23 @@ app.delete("/api/admin/chats/bulk-old", async (req, res) => {
 
   console.log(`[ADMIN] Bulk-deleted ${count} chats older than ${days} days by master admin ${admin.id}`);
   res.json({ deleted: count ?? ids.length });
+});
+
+/* ── Master Admin: Delete a single chat (+ its messages) ── */
+app.delete("/api/admin/chats/:chatId", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { chatId } = req.params;
+
+  // Delete messages first (in case FK constraint exists without cascade)
+  await supabase.from("messages").delete().eq("chat_id", chatId);
+  const { error } = await supabase.from("chats").delete().eq("id", chatId);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  console.log(`[ADMIN] Chat ${chatId} deleted by master admin ${admin.id}`);
+  res.json({ success: true });
 });
 
 app.get("/api/admin/chats/:chatId/messages", async (req, res) => {
@@ -5742,6 +5743,8 @@ async function runColumnMigrations() {
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;",
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;",
     "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS image_url TEXT;",
+    // Enable realtime on chats so admin deletions appear instantly for users
+    "ALTER PUBLICATION supabase_realtime ADD TABLE IF NOT EXISTS public.chats;",
     // Announcement tables (CREATE via migration SQL if not exists)
     `CREATE TABLE IF NOT EXISTS public.system_announcements (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

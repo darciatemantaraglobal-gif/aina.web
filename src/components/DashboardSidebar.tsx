@@ -46,6 +46,7 @@ interface DashboardSidebarProps {
   isAdmin?: boolean;
   onClose?: () => void;
   chats?: Chat[];
+  fadingChatIds?: Set<string>;
   activeChatId?: string | null;
   onNewChat?: () => void;
   onSelectChat?: (chatId: string) => void;
@@ -415,6 +416,7 @@ const DashboardSidebar = ({
   isAdmin = false,
   onClose,
   chats = [],
+  fadingChatIds,
   activeChatId,
   onNewChat,
   onSelectChat,
@@ -551,11 +553,14 @@ const DashboardSidebar = ({
                   .map((chat) => (
                   <div
                     key={chat.id}
-                    className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors ${
-                      activeChatId === chat.id
-                        ? "bg-primary/15 text-primary"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition-all duration-400 ${
+                      fadingChatIds?.has(chat.id)
+                        ? "opacity-0 scale-95 pointer-events-none"
+                        : activeChatId === chat.id
+                          ? "bg-primary/15 text-primary"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent"
                     }`}
+                    style={fadingChatIds?.has(chat.id) ? { transition: "opacity 0.4s ease, transform 0.4s ease" } : undefined}
                   >
                     <button
                       onClick={() => onSelectChat?.(chat.id)}
