@@ -123,6 +123,7 @@ external_success, fallback_used, final_source, answer_mode
 - **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Laporan tabs
 - **Leaderboard** — Top contributors ranked by article count + top voted KB articles with live upvote toggle
 - **Upvote System** — Toggle upvotes on threads (list + detail view) and approved KB articles; counts maintained via DB triggers
+- **Guided Tour** — Custom 8-step onboarding tour (`GuidedTour.tsx`) auto-shown to first-time users; spotlight + tooltip overlay via React portal; skippable and restartable via "Panduan Fitur" button in sidebar; state persisted in `localStorage` under `aina_tour_seen_v1`
 
 ## Key Files
 

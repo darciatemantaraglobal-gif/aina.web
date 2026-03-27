@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, Component, ReactNode, useCallback } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
@@ -7,9 +7,12 @@ import WelcomeModal from "@/components/WelcomeModal";
 import BreakingUpdatesBanner from "@/components/BreakingUpdatesBanner";
 import SetupProfileModal from "@/components/SetupProfileModal";
 import AnnouncementPopup from "@/components/AnnouncementPopup";
+import GuidedTour, { type TourStep } from "@/components/GuidedTour";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, Newspaper, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+
+const TOUR_KEY = "aina_tour_seen_v1";
 
 class TabErrorBoundary extends Component<
   { children: ReactNode; tabName: string },
@@ -109,6 +112,7 @@ const Dashboard = () => {
   const [fadingChatIds, setFadingChatIds] = useState<Set<string>>(new Set());
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
+  const [showTour, setShowTour] = useState(false);
 
   // Persist last active chat across page reloads
   useEffect(() => {
@@ -194,6 +198,14 @@ const Dashboard = () => {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady]);
+
+  // Show guided tour for first-time users
+  useEffect(() => {
+    if (!authReady) return;
+    if (localStorage.getItem(TOUR_KEY)) return;
+    const t = setTimeout(() => setShowTour(true), 1500);
+    return () => clearTimeout(t);
   }, [authReady]);
 
   // Realtime: when admin deletes a chat, fade it out and remove from sidebar
@@ -293,6 +305,70 @@ const Dashboard = () => {
     setSidebarOpen(false);
   }, []);
 
+  const handleStartTour = useCallback(() => {
+    setShowTour(true);
+  }, []);
+
+  const handleTourComplete = useCallback(() => {
+    localStorage.setItem(TOUR_KEY, "1");
+    setShowTour(false);
+  }, []);
+
+  const tourSteps = useMemo<TourStep[]>(() => [
+    {
+      title: "Selamat datang di AINA! 👋",
+      content: "AINA adalah asisten AI khusus untuk Masisir — mahasiswa Indonesia di Mesir. Yuk, kenalan sama fitur-fitur utamanya dalam 1 menit!",
+    },
+    {
+      target: '[data-tour="nav-chat"]',
+      title: "Chat AI",
+      content: "Tanyakan apa saja ke AINA — info kampus Al-Azhar, visa, kehidupan di Mesir, sampai bantu nulis tugas atau terjemah. AINA dilatih khusus untuk kebutuhan Masisir.",
+      onBefore: () => setSidebarOpen(true),
+      delay: 600,
+    },
+    {
+      target: '[data-tour="chat-input"]',
+      title: "Mulai Bertanya",
+      content: "Ketik pertanyaanmu di sini dan tekan Enter. Bisa juga upload gambar atau dokumen! Pengguna gratis dapat 3 chat/hari — jadi Kontributor untuk lebih banyak.",
+      onBefore: () => setSidebarOpen(false),
+      delay: 500,
+    },
+    {
+      target: '[data-tour="nav-threads"]',
+      title: "Threads — Diskusi Komunitas",
+      content: "Forum diskusi sesama Masisir. Tanya, jawab, dan berbagi pengalaman. Jawaban terbaik dari komunitas bisa masuk ke knowledge base AINA!",
+      onBefore: () => setSidebarOpen(true),
+      delay: 600,
+    },
+    {
+      target: '[data-tour="nav-productivity"]',
+      title: "Productivity Tools",
+      content: "Kalkulator IP/GPA, konverter tanggal Hijriyah, to-do list, pencatat keuangan, dan banyak tools harian lain yang berguna untuk Masisir.",
+      onBefore: () => setSidebarOpen(true),
+      delay: 600,
+    },
+    {
+      target: '[data-tour="nav-leaderboard"]',
+      title: "Leaderboard",
+      content: "Lihat siapa Masisir paling aktif dan bermanfaat di AINA. Semakin banyak kontribusimu, semakin tinggi peringkat dan semakin besar manfaatnya!",
+      onBefore: () => setSidebarOpen(true),
+      delay: 600,
+    },
+    {
+      target: '[data-tour="nav-contributor"]',
+      title: "Jadi Kontributor",
+      content: "Kontributor AINA dapat akses chat lebih banyak, badge eksklusif, dan ikut membangun knowledge base untuk seluruh Masisir. Gratis!",
+      onBefore: () => setSidebarOpen(true),
+      delay: 600,
+    },
+    {
+      title: "Siap Menjelajahi AINA! 🚀",
+      content: "Itu semua fitur utama AINA. Kalau mau ulangi panduan ini kapan saja, klik 'Panduan Fitur' di bagian bawah sidebar. Selamat belajar!",
+      onBefore: () => setSidebarOpen(false),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
   if (!authReady) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
@@ -329,6 +405,7 @@ const Dashboard = () => {
           onNewChat={handleNewChat}
           onSelectChat={handleSelectChat}
           onDeleteChat={handleDeleteChat}
+          onStartTour={handleStartTour}
         />
       </div>
 
@@ -430,6 +507,13 @@ const Dashboard = () => {
       <FeedbackButton />
       {!showSetup && <WelcomeModal onGoContributor={handleGoContributor} />}
       {!showSetup && <AnnouncementPopup />}
+      {showTour && (
+        <GuidedTour
+          steps={tourSteps}
+          onComplete={handleTourComplete}
+          onSkip={handleTourComplete}
+        />
+      )}
     </div>
   );
 };

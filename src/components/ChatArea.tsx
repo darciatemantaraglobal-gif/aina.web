@@ -1150,6 +1150,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               </button>
               <textarea
                 ref={textareaRef}
+                data-tour="chat-input"
                 value={input}
                 onChange={(e) => { setInput(e.target.value); autoResize(); }}
                 onKeyDown={(e) => {

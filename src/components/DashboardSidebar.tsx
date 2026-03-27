@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Check,
   Search,
+  Compass,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -51,6 +52,7 @@ interface DashboardSidebarProps {
   onNewChat?: () => void;
   onSelectChat?: (chatId: string) => void;
   onDeleteChat?: (chatId: string) => void;
+  onStartTour?: () => void;
 }
 
 const PERSONALIZATION_KEY = "aina_personalization";
@@ -423,6 +425,7 @@ const DashboardSidebar = ({
   onNewChat,
   onSelectChat,
   onDeleteChat,
+  onStartTour,
 }: DashboardSidebarProps) => {
   const navItems = isAdmin
     ? [...baseNavItems, { id: "admin", label: "Admin", icon: Shield }]
@@ -508,6 +511,7 @@ const DashboardSidebar = ({
         {navItems.map((item) => (
           <button
             key={item.id}
+            data-tour={`nav-${item.id}`}
             onClick={() => onTabChange(item.id)}
             className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
               activeTab === item.id
@@ -599,6 +603,19 @@ const DashboardSidebar = ({
       {/* ── Bottom: Notifications + Home + Profile ───────── */}
       <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-3 space-y-0.5">
         <NotificationBell collapsed={collapsed} />
+
+        {onStartTour && (
+          <button
+            onClick={onStartTour}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground ${
+              collapsed ? "justify-center" : ""
+            }`}
+            title="Panduan Fitur"
+          >
+            <Compass className="h-4 w-4 shrink-0" />
+            {!collapsed && "Panduan Fitur"}
+          </button>
+        )}
 
         <button
           onClick={handleGoHome}
