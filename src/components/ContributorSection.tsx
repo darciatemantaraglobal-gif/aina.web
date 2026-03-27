@@ -1,7 +1,8 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Users, CheckCircle, Star, BookOpen, Award } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const benefits = [
   { icon: Star, text: "Dapatkan badge Contributor eksklusif di profil kamu" },
@@ -18,8 +19,18 @@ const requirements = [
 ];
 
 const ContributorSection = () => {
+  const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   useEffect(() => { setVisible(true); }, []);
+
+  const handleGoContributor = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      navigate("/dashboard?tab=contributor");
+    } else {
+      navigate("/login", { state: { redirectAfter: "/dashboard?tab=contributor" } });
+    }
+  }, [navigate]);
 
   return (
     <section className="relative py-20 px-4">
@@ -67,14 +78,12 @@ const ContributorSection = () => {
         </div>
 
         <div className={`mt-10 text-center transition-all duration-700 delay-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <Link to="/login" state={{ redirectTo: "/dashboard", tab: "contributor" }}>
-            <Button variant="hero" size="lg">
-              <Users className="mr-2 h-4 w-4" />
-              Daftar Jadi Kontributor
-            </Button>
-          </Link>
+          <Button variant="hero" size="lg" onClick={handleGoContributor}>
+            <Users className="mr-2 h-4 w-4" />
+            Daftar Jadi Kontributor
+          </Button>
           <p className="mt-3 text-xs text-muted-foreground">
-            Kamu akan diminta login dan mengisi formulir pendaftaran.
+            Kamu akan diarahkan ke formulir pendaftaran.
           </p>
         </div>
       </div>

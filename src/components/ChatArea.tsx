@@ -33,6 +33,7 @@ interface ChatAreaProps {
   onChatCreated: (chatId: string, title: string) => void;
   onNewChat?: () => void;
   initialMessage?: string;
+  onGoContributor?: () => void;
 }
 
 const API_URL = "/api/chat";
@@ -185,7 +186,7 @@ interface StreamingMsg {
 const STREAM_CHARS_PER_TICK = 6;
 const STREAM_INTERVAL_MS = 16;
 
-const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage }: ChatAreaProps) => {
+const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage, onGoContributor }: ChatAreaProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -1010,7 +1011,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               <div className="space-y-3">
                 {/* Upgrade option */}
                 <button
-                  onClick={() => navigate("/pricing")}
+                  onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
                   className="group w-full rounded-2xl border border-purple-500/30 bg-gradient-to-br from-violet-600/10 to-purple-700/10 p-4 text-left transition-all hover:border-purple-500/60 hover:from-violet-600/20 hover:to-purple-700/20"
                 >
                   <div className="flex items-center gap-3">
@@ -1029,7 +1030,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
                 {/* Contributor option */}
                 <button
-                  onClick={() => navigate("/contributor")}
+                  onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
                   className="group w-full rounded-2xl border border-border bg-secondary/50 p-4 text-left transition-all hover:border-border/80 hover:bg-secondary"
                 >
                   <div className="flex items-center gap-3">

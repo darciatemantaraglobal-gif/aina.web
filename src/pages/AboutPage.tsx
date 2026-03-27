@@ -1,11 +1,12 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Lightbulb, ArrowRight, Zap, Star, TrendingUp,
 } from "lucide-react";
 import ainaLogo from "@/assets/aina-logo.png";
+import { supabase } from "@/integrations/supabase/client";
 
 /* ─── Intersection Observer hook ─────────────────────────── */
 function useInView(threshold = 0.15) {
@@ -99,11 +100,21 @@ const TEAM_GROUPS: TeamGroup[] = [
 
 /* ─── Page ───────────────────────────────────────────────── */
 const AboutPage = () => {
+  const navigate = useNavigate();
   const heroRef = useInView(0.1);
   const storyRef = useInView(0.1);
   const missionRef = useInView(0.1);
   const teamRef = useInView(0.1);
   const ctaRef = useInView(0.1);
+
+  const handleGoContributor = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      navigate("/dashboard?tab=contributor");
+    } else {
+      navigate("/login", { state: { redirectAfter: "/dashboard?tab=contributor" } });
+    }
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -162,11 +173,9 @@ const AboutPage = () => {
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
             </Link>
-            <Link to="/contributor">
-              <button className="rounded-xl border border-border/60 bg-card/40 px-6 py-2.5 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/5 md:px-7 md:py-3">
-                Jadi Kontributor
-              </button>
-            </Link>
+            <button onClick={handleGoContributor} className="rounded-xl border border-border/60 bg-card/40 px-6 py-2.5 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/5 md:px-7 md:py-3">
+              Jadi Kontributor
+            </button>
           </div>
 
           {/* Logo glow — hidden on mobile, visible on md+ */}
@@ -411,11 +420,9 @@ const AboutPage = () => {
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </button>
                 </Link>
-                <Link to="/contributor">
-                  <button className="rounded-xl border border-border/60 bg-background/40 px-6 py-2.5 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/8 md:px-8 md:py-3">
-                    Jadi Kontributor
-                  </button>
-                </Link>
+                <button onClick={handleGoContributor} className="rounded-xl border border-border/60 bg-background/40 px-6 py-2.5 text-sm font-semibold text-foreground backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-primary/8 md:px-8 md:py-3">
+                  Jadi Kontributor
+                </button>
               </div>
             </div>
           </div>

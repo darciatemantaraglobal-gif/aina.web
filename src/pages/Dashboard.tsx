@@ -288,6 +288,11 @@ const Dashboard = () => {
     setSidebarOpen(false);
   }, []);
 
+  const handleGoContributor = useCallback(() => {
+    setActiveTab("contributor");
+    setSidebarOpen(false);
+  }, []);
+
   if (!authReady) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
@@ -338,6 +343,7 @@ const Dashboard = () => {
             onChatCreated={handleChatCreated}
             onNewChat={handleNewChat}
             initialMessage={pendingMessage}
+            onGoContributor={handleGoContributor}
           />
         </div>
 
@@ -422,7 +428,7 @@ const Dashboard = () => {
         />
       )}
       <FeedbackButton />
-      {!showSetup && <WelcomeModal />}
+      {!showSetup && <WelcomeModal onGoContributor={handleGoContributor} />}
       {!showSetup && <AnnouncementPopup />}
     </div>
   );

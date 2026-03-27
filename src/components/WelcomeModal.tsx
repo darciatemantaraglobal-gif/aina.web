@@ -4,7 +4,11 @@ import { useNavigate } from "react-router-dom";
 
 const STORAGE_KEY = "aina_welcome_seen_v1";
 
-const WelcomeModal = () => {
+interface WelcomeModalProps {
+  onGoContributor?: () => void;
+}
+
+const WelcomeModal = ({ onGoContributor }: WelcomeModalProps) => {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -23,7 +27,11 @@ const WelcomeModal = () => {
 
   const goContributor = () => {
     dismiss();
-    navigate("/contributor");
+    if (onGoContributor) {
+      onGoContributor();
+    } else {
+      navigate("/dashboard?tab=contributor");
+    }
   };
 
   if (!open) return null;

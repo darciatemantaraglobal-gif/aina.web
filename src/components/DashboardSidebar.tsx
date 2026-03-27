@@ -360,8 +360,8 @@ function ProfileDropdown({
             sublabel="Jadi Contributor — gratis!"
             accent
             onClick={() => {
-              navigate("/pricing");
-              onClose();
+              onTabChange("contributor");
+              onClose?.();
             }}
           />
           <MenuItem

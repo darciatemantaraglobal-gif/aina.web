@@ -1,8 +1,9 @@
 import { Check, Zap, MessageSquare, LayoutDashboard, BookOpen, Star, Users, Shield, Lock, Upload, Infinity, Clock, Sparkles } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
 import PaymentModal from "./PaymentModal";
 import { usePayment } from "@/hooks/usePayment";
+import { supabase } from "@/integrations/supabase/client";
 
 const FREE_FEATURES = [
   { icon: MessageSquare, text: "3 chat dengan AINA per hari" },
@@ -30,12 +31,22 @@ const CONTRIBUTOR_FEATURES = [
 ];
 
 const PricingSection = () => {
+  const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const [annual, setAnnual] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const { config } = usePayment();
 
   useEffect(() => { setVisible(true); }, []);
+
+  const handleGoContributor = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      navigate("/dashboard?tab=contributor");
+    } else {
+      navigate("/login", { state: { redirectAfter: "/dashboard?tab=contributor" } });
+    }
+  }, [navigate]);
 
 
   return (
@@ -211,11 +222,9 @@ const PricingSection = () => {
               ))}
             </ul>
 
-            <Link to="/contributor">
-              <button className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 py-2.5 text-xs font-semibold text-amber-400 transition-all hover:bg-amber-500/20 sm:py-3 sm:text-sm">
-                Daftar Jadi Kontributor
-              </button>
-            </Link>
+            <button onClick={handleGoContributor} className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 py-2.5 text-xs font-semibold text-amber-400 transition-all hover:bg-amber-500/20 sm:py-3 sm:text-sm">
+              Daftar Jadi Kontributor
+            </button>
           </div>
         </div>
 
