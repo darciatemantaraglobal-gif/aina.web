@@ -23,6 +23,7 @@ interface Profile {
   email: string | null; avatar_url: string | null; level: string; contribution_count: number;
   created_at: string; roles: string[]; is_banned?: boolean;
   is_pro?: boolean; pro_expires_at?: string | null;
+  hidden_from_leaderboard?: boolean;
 }
 interface ContributorRequest {
   id: string; user_id: string; full_name: string; education: string;
@@ -106,12 +107,13 @@ function AvatarDisplay({ name, avatarUrl, size = 9 }: { name: string | null; ava
 }
 
 /* ─── User Profile Modal (Master Admin only) ─────────── */
-function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle, onProToggle }: {
+function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle, onProToggle, onLeaderboardToggle }: {
   user: Profile; onClose: () => void;
   onSetRole: (userId: string, role: string) => Promise<void>;
   onDelete: (user: Profile) => void;
   onBanToggle: (user: Profile) => void;
   onProToggle: (user: Profile) => void;
+  onLeaderboardToggle: (user: Profile) => void;
 }) {
   const [settingRole, setSettingRole] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -231,14 +233,23 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle, onP
           </button>
           <button
             onClick={() => { onClose(); onProToggle(user); }}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl border py-2 text-xs font-medium transition-colors ${
-              user.is_pro
-                ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-            }`}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/30 py-2 text-xs font-medium text-amber-400 hover:bg-amber-500/10 transition-colors"
           >
             <Crown className="h-3.5 w-3.5" />
             {user.is_pro ? "Cabut Akses Pro" : "Beri Akses Pro (30 hari)"}
+          </button>
+          <button
+            onClick={() => { onClose(); onLeaderboardToggle(user); }}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border py-2 text-xs font-medium transition-colors ${
+              user.hidden_from_leaderboard
+                ? "border-green-500/30 text-green-400 hover:bg-green-500/10"
+                : "border-border text-muted-foreground hover:border-orange-500/30 hover:text-orange-400 hover:bg-orange-500/5"
+            }`}
+          >
+            {user.hidden_from_leaderboard
+              ? <><Eye className="h-3.5 w-3.5" /> Tampilkan di Leaderboard</>
+              : <><EyeOff className="h-3.5 w-3.5" /> Sembunyikan dari Leaderboard</>
+            }
           </button>
           <button onClick={() => { onClose(); onDelete(user); }}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors">
@@ -430,6 +441,21 @@ function UsersTab() {
     }
   };
 
+  const toggleLeaderboardVisibility = async (user: Profile) => {
+    const hidden = !user.hidden_from_leaderboard;
+    const name = user.full_name ?? user.email ?? "User";
+    try {
+      await adminFetch(`/api/master/users/${user.user_id}/leaderboard-visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ hidden }),
+      });
+      toast.success(hidden ? `${name} disembunyikan dari leaderboard` : `${name} ditampilkan kembali di leaderboard`);
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
   const exportUsersCSV = async () => {
     try {
       const authHeader = await getAuthHeader();
@@ -605,6 +631,11 @@ function UsersTab() {
                         <ShieldOff className="h-3 w-3" /> Banned
                       </span>
                     )}
+                    {u.hidden_from_leaderboard && (
+                      <span className="hidden items-center gap-1 rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-400 sm:flex">
+                        <EyeOff className="h-3 w-3" /> Hidden
+                      </span>
+                    )}
                     <span className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${ROLE_COLORS[role]}`}>
                       {ROLE_LABELS[role]}
                     </span>
@@ -625,6 +656,7 @@ function UsersTab() {
           onDelete={u => { setViewProfile(null); setDeleteConfirm(u); }}
           onBanToggle={u => { setViewProfile(null); setBanConfirm(u); }}
           onProToggle={u => { setViewProfile(null); setProConfirm(u); }}
+          onLeaderboardToggle={u => { setViewProfile(null); toggleLeaderboardVisibility(u); }}
         />
       )}
 

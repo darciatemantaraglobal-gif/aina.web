@@ -4003,6 +4003,7 @@ app.get("/api/leaderboard", async (req, res) => {
       .select("user_id, full_name, avatar_url, contribution_count")
       .order("contribution_count", { ascending: false })
       .gt("contribution_count", 0)
+      .neq("hidden_from_leaderboard", true)
       .limit(20),
     supabase
       .from("knowledge_base")
@@ -4448,6 +4449,23 @@ app.post("/api/admin/users/:userId/unban", async (req, res) => {
 
   console.log(`[ADMIN] User ${userId} UNBANNED by ${admin.email}`);
   res.json({ success: true });
+});
+
+/* ── Toggle Leaderboard Visibility (Master Admin only) ── */
+app.patch("/api/master/users/:userId/leaderboard-visibility", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { userId } = req.params;
+  const { hidden } = req.body;
+  if (typeof hidden !== "boolean") return res.status(400).json({ error: "hidden (boolean) diperlukan" });
+
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("profiles").update({ hidden_from_leaderboard: hidden }).eq("user_id", userId);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  console.log(`[ADMIN] User ${userId} leaderboard visibility set to hidden=${hidden} by ${admin.email}`);
+  res.json({ success: true, hidden });
 });
 
 /* ── Pinned Updates (Breaking Updates) ───────────────── */
@@ -4966,6 +4984,9 @@ UPDATE public.profiles SET setup_completed = TRUE WHERE full_name IS NOT NULL AN
 
 -- Ban flag (safe to re-run)
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
+
+-- Leaderboard visibility flag (safe to re-run)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hidden_from_leaderboard BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Article type column
 ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS article_type TEXT NOT NULL DEFAULT 'narrative'
@@ -5715,6 +5736,7 @@ async function runColumnMigrations() {
   }
 
   const migrations = [
+    "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hidden_from_leaderboard BOOLEAN NOT NULL DEFAULT FALSE;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS keywords TEXT NOT NULL DEFAULT '';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",
