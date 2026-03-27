@@ -69,14 +69,24 @@ npm install   # Install dependencies
 npm run dev   # Start both backend (port 3001) and frontend (port 5000) using concurrently
 ```
 
-## Replit Setup Notes
+## Deployment Workflow
 
+**Replit is the development environment only.** Production is hosted on Vercel via GitHub.
+
+1. **Develop & test** on Replit (`npm run dev`)
+2. **Push to GitHub** when done
+3. **Vercel auto-deploys** from GitHub on every push
+
+### Environment Variables
+- **Replit Secrets** (dev only): `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `RESEND_API_KEY`, `PERPLEXITY_API_KEY`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`
+- **Replit shared env** (dev only): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `MASTER_ADMIN_IDS`, `EMAIL_FROM`, `PORT`
+- **Vercel dashboard**: All the same secrets/env vars must also be set there for production to work
+
+### Replit Setup Notes
 - `concurrently` is a devDependency; dev script uses explicit `node_modules/.bin/concurrently` path for Replit compatibility
-- All environment variables are set via Replit's environment (not `.env` file in production)
-- Secrets stored in Replit Secrets: `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`
-- Public env vars stored in Replit shared env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `MASTER_ADMIN_IDS`, `EMAIL_FROM`, `PORT`
 - Supabase Storage buckets (`avatars`, `temp-uploads`, `announcements`, `thread-images`) are auto-created on server startup if missing
 - If Vite fails to start with a source map error in `node_modules/lucide-react`, delete the corrupt `.map` file and restart
+- Do NOT use Replit's built-in deploy/publish — production goes through Vercel
 
 ## Pricing & Payments
 
