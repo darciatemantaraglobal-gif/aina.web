@@ -15,10 +15,19 @@ interface Announcement {
 }
 
 const AUTO_MS = 5000;
+const DISMISSED_KEY = "aina_dismissed_announcements";
 
 async function getAuthHeader(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
   return session ? `Bearer ${session.access_token}` : "";
+}
+
+function getDismissed(): string[] {
+  try { return JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]"); } catch { return []; }
+}
+
+function saveDismissed(ids: string[]) {
+  try { localStorage.setItem(DISMISSED_KEY, JSON.stringify([...new Set([...getDismissed(), ...ids])])); } catch {}
 }
 
 const AnnouncementPopup = () => {
@@ -44,8 +53,10 @@ const AnnouncementPopup = () => {
       });
       if (!res.ok) return;
       const data: Announcement[] = await res.json();
-      if (data && data.length > 0) {
-        setItems(data);
+      const dismissed = getDismissed();
+      const filtered = (data || []).filter(a => !dismissed.includes(a.id));
+      if (filtered.length > 0) {
+        setItems(filtered);
         setIdx(0);
         setProgressKey(0);
         setVisible(true);
@@ -105,6 +116,11 @@ const AnnouncementPopup = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setVisible(false);
     setTimeout(() => setItems([]), 350);
+  };
+
+  const dismissForever = () => {
+    saveDismissed(items.map(a => a.id));
+    closeAll();
   };
 
   if (items.length === 0) return null;
@@ -232,6 +248,9 @@ const AnnouncementPopup = () => {
                 <ExternalLink className="h-3 w-3" />
               </Button>
             )}
+            <Button size="sm" variant="ghost" className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground" onClick={dismissForever}>
+              Jangan tampilkan lagi
+            </Button>
             <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={closeAll}>
               Tutup
             </Button>
