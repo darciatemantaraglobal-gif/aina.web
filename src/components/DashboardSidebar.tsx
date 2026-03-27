@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   MessageSquare,
@@ -571,10 +572,16 @@ function ProfileDropdown({
   );
 
   if (showPersonalization) {
-    return <PersonalizationModal onClose={() => { setShowPersonalization(false); onClose(); }} />;
+    return createPortal(
+      <PersonalizationModal onClose={() => { setShowPersonalization(false); onClose(); }} />,
+      document.body
+    );
   }
   if (showHelp) {
-    return <HelpModal onClose={() => { setShowHelp(false); onClose(); }} />;
+    return createPortal(
+      <HelpModal onClose={() => { setShowHelp(false); onClose(); }} />,
+      document.body
+    );
   }
 
   return (
