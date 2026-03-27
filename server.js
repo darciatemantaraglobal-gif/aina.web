@@ -1852,7 +1852,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       ].filter(Boolean).join(" | ");
       return `**Hadits ${i + 1}:**\n${h.text}\n${meta}`;
     }).join("\n\n");
-    dorarContext = `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية) [kepercayaan: tinggi — ensiklopedia hadits terpercaya]\n\n**INSTRUKSI:** Sajikan hadits-hadits di bawah ini sebagai referensi. Untuk setiap hadits yang relevan:\n1. Kutip teks Arab aslinya\n2. Berikan terjemahan Bahasa Indonesia yang akurat dan natural\n3. Jelaskan relevansinya dengan pertanyaan user\nJangan tampilkan metadata Arab mentah (الراوي/المحدث/dll) — cukup atribusikan nama perawi dan tingkat keaslian dalam teks Indonesia.\n\n${hadithBlocks}\n---`;
+    dorarContext = `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية) [kepercayaan: tinggi — ensiklopedia hadits terpercaya]\n\n**INSTRUKSI FORMAT — WAJIB DIIKUTI:** Untuk setiap hadits yang relevan dengan pertanyaan user, tampilkan dengan format PERSIS seperti ini:\n\n> *[teks Arab asli hadits persis seperti di bawah — jangan diubah, jangan dihilangkan]*\n\n*Artinya:* "[terjemahan Bahasa Indonesia yang akurat dan natural]"\n\n*(HR. [nama kitab/perawi], [tingkat keaslian seperti: shahih/hasan/dll])*\n\nLalu jelaskan relevansi atau hukumnya dalam 1-3 kalimat.\n\nATURAN KERAS: WAJIB tampilkan teks Arab asli sebelum terjemahan — jangan lewati atau ringkas teks Arabnya. User perlu membaca teks Arab aslinya.\n\n${hadithBlocks}\n---`;
     console.log(`[Dorar] injected ${dorarResult.hadiths.length} hadith(s) for "${dorarResult.searchTerm}"`);
   }
 
@@ -1940,6 +1940,7 @@ ${intentHint}${confidence.hint}${answerModeHint}
 
 **Sumber:**
 - JANGAN sebutkan atau mencantumkan sumber dalam teks jawaban — sumber sudah ditampilkan otomatis sebagai badge oleh sistem di bawah setiap pesan. Tidak perlu menulis baris "Sumber: ..." di akhir jawaban, dan tidak perlu menyebut nama sumber secara eksplisit di dalam teks (misalnya "Menurut Wikipedia...", "Berdasarkan Frankfurter...", dll).
+- **PENGECUALIAN — dalil/hadits:** Jika menyertakan hadits atau ayat Al-Qur'an sebagai dalil, WAJIB tampilkan teks Arabnya langsung di jawaban (sebagai blockquote atau paragraf tersendiri), diikuti terjemahan Indonesia di bawahnya. Ini BUKAN atribusi sumber — ini adalah konten yang memang harus ditampilkan agar user bisa membaca teks aslinya.
 - Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
