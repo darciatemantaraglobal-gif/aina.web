@@ -40,7 +40,7 @@ const Navbar = () => {
             <img
               src={ainaLogo}
               alt="AINA"
-              className="h-7 w-7 object-contain transition-all duration-300 group-hover:drop-shadow-[0_0_10px_hsl(270_80%_65%/0.8)] md:h-8 md:w-8"
+              className="h-5 w-5 object-contain transition-all duration-300 group-hover:drop-shadow-[0_0_10px_hsl(270_80%_65%/0.8)] md:h-6 md:w-6"
             />
             <span className="font-sunspire text-lg text-foreground tracking-wider transition-colors duration-300 group-hover:text-primary md:text-xl">
               AINA
