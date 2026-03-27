@@ -465,6 +465,7 @@ function shouldFetchExternal(intentPrimary, kbStrength, query) {
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
   if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no external needed
+  if (intentPrimary === "fiqh") return false; // Dorar.net handles Islamic references — Wikipedia/DDG not reliable for fiqh
   if (kbStrength === "strong") return false;
   // KB absent or weak → always try Wikipedia/DDG as last-resort fallback
   // (only reached when Perplexity is unavailable or fails)
@@ -856,7 +857,7 @@ function stripHtml(html) {
 function parseDorarHtml(html) {
   const blocks = html.split(/-{3,}/).filter(b => b.trim().length > 20);
   const results = [];
-  for (const block of blocks.slice(0, 3)) {
+  for (const block of blocks.slice(0, 5)) {
     // Extract hadith text (inside <div class="hadith">)
     const hadithMatch = block.match(/class="hadith"[^>]*>([\s\S]*?)<\/div>/i);
     const hadithHtml = hadithMatch ? hadithMatch[1] : "";
@@ -923,6 +924,7 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
   if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no web search needed
+  if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Perplexity not used for fiqh
   if (kbStrength === "strong") return false;
   // KB is absent or weak → always try Perplexity
   return true;
@@ -1270,9 +1272,13 @@ function detectIntent(text) {
   const isRecommend  = /\b(rekomen|rekomendasi|saranin|suggest|yang bagus|yang enak|yang murah|yang terbaik|mending yang mana|pilih yang mana)\b/.test(t);
   const isBrainstorm = /\b(ide|pilihan|opsi|alternatif|apa saja|apa aja|apa yang bisa|bisa apa|ada nggak|ada yang|kira-kira apa)\b/.test(t);
 
-  // Priority resolution — arabic_writing checked before Indonesian intents
+  // Fiqh / Islamic knowledge — detects questions about Islamic rulings, hadith, fiqh, aqidah, etc.
+  const isFiqhIntent = !isArabicWriting && isFiqhQuery(text);
+
+  // Priority resolution — arabic_writing checked before Indonesian intents; fiqh before generic
   let primary;
   if (isArabicWriting)            primary = "arabic_writing";
+  else if (isFiqhIntent)          primary = "fiqh";
   else if (isConfused && isProcedural) primary = "confused_procedural";
   else if (isConfused)            primary = "confused";
   else if (isProcedural)          primary = "procedural";
@@ -1339,6 +1345,18 @@ function buildIntentHint({ primary, casual }) {
       "للقواعد النحوية والصرفية: اشرح القاعدة بتعريف واضح، ثم أعطِ أمثلة تطبيقية متنوعة من القرآن أو الأدب العربي إن أمكن. " +
       "للترجمة (عربي↔إندونيسي): ترجم بدقة مع مراعاة السياق الأكاديمي والمعنى الضمني، ولا تترجم كلمة بكلمة. " +
       "لا تستخدم مقدمات مثل 'بالطبع' أو 'إليك' — ابدأ مباشرة بالمحتوى المطلوب.",
+
+    fiqh:
+      "Kamu sedang menjawab pertanyaan ilmu agama Islam. Ikuti metodologi ilmiah Islam:\n" +
+      "1. **Dalil Al-Qur'an** — jika ada ayat yang relevan, cantumkan teks Arabnya (sebagai blockquote), lalu terjemahan Indonesia di bawahnya, lalu nomor surah:ayat dalam kurung.\n" +
+      "2. **Dalil Hadits** — gunakan hadits dari konteks Dorar.net yang disediakan. Tampilkan teks Arab hadits asli → terjemahan Indonesia → atribusi (HR. nama kitab, tingkat keaslian: shahih/hasan/dhaif).\n" +
+      "3. **Pendapat ulama / ijma / qiyas** — sebutkan secara singkat jika relevan, terutama jika ada ikhtilaf (perbedaan pendapat) yang penting diketahui.\n" +
+      "4. **Kesimpulan hukum** — nyatakan dengan jelas (wajib/sunnah/haram/makruh/mubah) di akhir, dengan bahasa yang mudah dipahami awam.\n" +
+      "ATURAN KERAS:\n" +
+      "- JANGAN berfatwa atau menyatakan hukum tanpa dalil yang jelas dari konteks atau pengetahuanmu.\n" +
+      "- Jika ada perbedaan pendapat ulama yang signifikan, sebutkan dengan jujur — jangan memilih satu tanpa menginformasikan adanya ikhtilaf.\n" +
+      "- Jika pertanyaan terlalu kompleks atau butuh fatwa resmi, sarankan user bertanya langsung ke ulama/lembaga fatwa yang terpercaya.\n" +
+      "- WAJIB tampilkan teks Arab asli dalil — jangan hanya terjemahan saja. User perlu bisa membaca dan memverifikasi teks aslinya.",
   };
 
   const label = primary.toUpperCase().replace("_", "/");
@@ -1614,7 +1632,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     fetchRelevantArticles(lastUserMessage),
     fetchPinnedUpdates(),
     isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
-    (isFiqhQuery(lastUserMessage) && intent.primary !== "casual") ? fetchDorarHadith(lastUserMessage) : Promise.resolve(null),
+    intent.primary === "fiqh" ? fetchDorarHadith(lastUserMessage) : Promise.resolve(null),
   ]);
 
   // Assess KB coverage strength before deciding whether to hit external sources
@@ -1883,7 +1901,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
 Tanggal & waktu saat ini (Kairo): ${todayStr}. Gunakan info ini saat user bertanya tentang sesuatu "sekarang", "saat ini", atau "terkini". Pengetahuanmu memiliki batas waktu, jadi UTAMAKAN data dari Pencarian Web atau sumber eksternal yang disediakan di konteks ini jika ada.
 
-Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD, dan **bantuan akademik bahasa Arab** (إنشاء/karangan, تلخيص/ringkasan, شرح النصوص/analisis teks, قواعد نحو وصرف/tata bahasa, ترجمة Arab↔Indonesia, تعبير/ekspresi tertulis).
+Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD, **bantuan akademik bahasa Arab** (إنشاء/karangan, تلخيص/ringkasan, شرح النصوص/analisis teks, قواعد نحو وصرف/tata bahasa, ترجمة Arab↔Indonesia), dan **ilmu agama Islam** (fiqh, hadits, tafsir, aqidah, akhlak — bersumber dari Al-Qur'an, Sunnah shahih, dan pendapat ulama mu'tabar).
 
 **Bahasa Arab & tugas akademik:**
 - Jika user menulis dalam bahasa Arab atau meminta bantuan tugas berbahasa Arab, WAJIB balas dalam bahasa Arab yang fasih dan jelas (فصحى معاصرة), sesuai level akademik Al-Azhar.
@@ -2026,6 +2044,9 @@ ${intentHint}${confidence.hint}${answerModeHint}
 
     // Arabic writing always needs the stronger model for quality output
     if (intentPrimary === "arabic_writing") return "standard";
+
+    // Fiqh / Islamic knowledge — always Tier B for scholarly accuracy
+    if (intentPrimary === "fiqh") return "standard";
 
     // KB is strong → model only needs to present/format the KB content; no heavy reasoning
     if (kbStrength === "strong" && ["factual", "procedural", "confused", "confused_procedural"].includes(intentPrimary)) return "lightweight";
