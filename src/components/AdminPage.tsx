@@ -2497,21 +2497,48 @@ function StatCard({ label, value, sub, color }: { label: string; value: string |
 function PerfTable({ cols, rows, empty }: { cols: string[]; rows: React.ReactNode[][]; empty: string }) {
   if (rows.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">{empty}</p>;
   return (
-    <div className="rounded-2xl border border-border overflow-hidden">
-      <table className="w-full text-xs">
+    <div className="rounded-2xl border border-border overflow-x-auto">
+      <table className="w-full min-w-max text-xs">
         <thead>
           <tr className="border-b border-border bg-card">
-            {cols.map(c => <th key={c} className="px-3 py-2.5 text-left font-medium text-muted-foreground">{c}</th>)}
+            {cols.map(c => <th key={c} className="whitespace-nowrap px-3 py-2.5 text-left font-medium text-muted-foreground">{c}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
             <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-card/60">
-              {row.map((cell, j) => <td key={j} className="px-3 py-2.5 text-foreground/90">{cell}</td>)}
+              {row.map((cell, j) => <td key={j} className="whitespace-nowrap px-3 py-2.5 text-foreground/90">{cell}</td>)}
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function PerfGuide({ items }: { items: Array<{ term: string; desc: string; color?: string }> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/40 overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <span className="flex items-center gap-1.5 font-medium">
+          <span className="text-base leading-none">📖</span> Cara membaca tabel ini
+        </span>
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="border-t border-border/40 px-3 py-2.5 space-y-2">
+          {items.map(({ term, desc, color }) => (
+            <div key={term} className="flex gap-2 text-xs">
+              <span className={`shrink-0 font-semibold ${color ?? "text-primary"}`}>{term}</span>
+              <span className="text-muted-foreground">{desc}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2610,6 +2637,14 @@ function PerformanceTab() {
           {/* ── SUMMARY ── */}
           {view === "summary" && summary && (
             <div className="space-y-5">
+              <PerfGuide items={[
+                { term: "Satisfaction Rate", desc: "Persentase user yang memberi rating 👍. Target ≥70% (hijau), 40–69% perlu perhatian (kuning), <40% kritis (merah).", color: "text-green-400" },
+                { term: "KB Usage", desc: "Seberapa sering AINA menjawab dari Knowledge Base — sumber paling terpercaya. Semakin tinggi semakin baik." },
+                { term: "Wikipedia / DuckDuckGo", desc: "Sumber fallback eksternal. Wikipedia lebih terpercaya dari DDG. Idealnya rendah jika KB sudah lengkap.", color: "text-yellow-400" },
+                { term: "Needs Verification", desc: "Persentase jawaban tanpa sumber kuat. Jika >30% (merah), berarti KB perlu banyak artikel baru.", color: "text-red-400" },
+                { term: "Top FAQ Topics", desc: "Pertanyaan yang paling sering ditanyakan — jadikan panduan topik artikel KB berikutnya." },
+                { term: "Top Edge Cases", desc: "Pola kegagalan yang terdeteksi. Semakin kosong semakin baik.", color: "text-red-400" },
+              ]} />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <StatCard
                   label="Satisfaction Rate"
@@ -2663,6 +2698,14 @@ function PerformanceTab() {
 
           {/* ── RATINGS ── */}
           {view === "ratings" && (
+            <div className="space-y-3">
+            <PerfGuide items={[
+              { term: "Intent", desc: "Kategori pertanyaan yang dideteksi AINA — misalnya procedural, factual, confused, dll." },
+              { term: "Confidence", desc: "Keyakinan AINA saat menjawab: high (punya KB kuat), medium (sumber campuran), low (tanpa sumber).", color: "text-yellow-400" },
+              { term: "👍 Positif / 👎 Negatif", desc: "Jumlah rating dari user. User menekan tombol jempol di bawah setiap jawaban AINA." },
+              { term: "Satisfaction", desc: "Persentase positif dari total rating. ≥70% hijau = bagus, <40% merah = perlu perbaikan.", color: "text-green-400" },
+              { term: "Cara pakai", desc: "Perhatikan baris dengan Satisfaction rendah — itu topik yang perlu artikel KB baru atau perbaikan prompt.", color: "text-muted-foreground" },
+            ]} />
             <PerfTable
               cols={["Intent", "Confidence", "👍 Positif", "👎 Negatif", "Total", "Satisfaction"]}
               empty="Belum ada rating. User perlu menekan tombol 👍/👎 di chat terlebih dahulu."
@@ -2675,12 +2718,21 @@ function PerformanceTab() {
                 pctBar(r.satisfaction_rate),
               ])}
             />
+            </div>
           )}
 
           {/* ── RETRIEVAL ── */}
           {view === "retrieval" && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">Agregat per kombinasi intent × kb_strength × confidence. Menunjukkan seberapa sering tiap sumber digunakan.</p>
+              <PerfGuide items={[
+                { term: "Intent", desc: "Kategori topik pertanyaan yang dideteksi AINA." },
+                { term: "KB Strength", desc: "Kualitas artikel KB yang ditemukan: strong (relevan & lengkap), weak (ada tapi kurang), none (tidak ada).", color: "text-yellow-400" },
+                { term: "Confidence", desc: "Tingkat keyakinan AINA: high / medium / low." },
+                { term: "KB% / Wiki% / DDG%", desc: "Persentase turn yang menggunakan masing-masing sumber dalam kombinasi ini. KB% tinggi = bagus.", color: "text-green-400" },
+                { term: "Pinned%", desc: "Persentase turn yang menggunakan artikel yang sengaja di-pin oleh admin." },
+                { term: "Cara pakai", desc: "Kombinasi intent + KB Strength = 'none' dengan banyak turn → tandanya perlu artikel KB baru untuk topik itu.", color: "text-muted-foreground" },
+              ]} />
               <PerfTable
                 cols={["Intent", "KB Strength", "Confidence", "Turn", "KB%", "Wiki%", "DDG%", "Pinned%"]}
                 empty="Belum ada data retrieval. Pastikan SQL Phase 12 sudah dijalankan."
@@ -2705,6 +2757,13 @@ function PerformanceTab() {
           {view === "edge_cases" && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">Pola kegagalan yang terdeteksi otomatis per turn chat. Semakin tinggi frekuensi, semakin perlu perhatian.</p>
+              <PerfGuide items={[
+                { term: "Pola (pattern_type)", desc: "Jenis kegagalan yang terdeteksi, misalnya: off_topic (pertanyaan di luar konteks), sensitive (topik sensitif), jailbreak (percobaan manipulasi), confused (AINA tidak yakin).", color: "text-red-400" },
+                { term: "Topik", desc: "Petunjuk topik spesifik dari turn yang terdeteksi — dianonimkan, bukan teks asli user." },
+                { term: "Frekuensi", desc: "Berapa kali pola ini muncul. Semakin besar angka, semakin perlu ditangani." },
+                { term: "Terakhir", desc: "Kapan terakhir kali pola ini terdeteksi." },
+                { term: "Cara pakai", desc: "Jika off_topic sering muncul → KB perlu dilengkapi. Jika jailbreak tinggi → system prompt perlu diperkuat.", color: "text-muted-foreground" },
+              ]} />
               <PerfTable
                 cols={["Pola", "Topik", "Frekuensi", "Terakhir"]}
                 empty="Belum ada edge case. Bagus — artinya AINA belum pernah terdeteksi masuk pola berbahaya."
@@ -2722,6 +2781,12 @@ function PerformanceTab() {
           {view === "faq" && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">Topik pertanyaan yang paling sering muncul (dihash, anonim). Gunakan ini untuk menentukan artikel KB berikutnya.</p>
+              <PerfGuide items={[
+                { term: "Topik Cluster", desc: "Kelompok topik yang dideteksi dari pola pertanyaan user — dianonimkan agar tidak ada data pribadi." },
+                { term: "Contoh Pertanyaan", desc: "Satu contoh pertanyaan dari cluster tersebut (disamarkan). Membantu memahami apa yang dimaksud user." },
+                { term: "Frekuensi", desc: "Berapa kali topik ini ditanyakan. Semakin tinggi = semakin banyak user membutuhkan info ini." },
+                { term: "Cara pakai", desc: "Topik dengan frekuensi tinggi tapi belum ada artikel KB → prioritaskan untuk ditulis oleh kontributor.", color: "text-muted-foreground" },
+              ]} />
               <PerfTable
                 cols={["Topik Cluster", "Contoh Pertanyaan", "Frekuensi", "Terakhir"]}
                 empty="Belum ada pola FAQ. SQL Phase 12 perlu dijalankan terlebih dahulu."
@@ -2738,6 +2803,13 @@ function PerformanceTab() {
           {/* ── EVAL ── */}
           {view === "eval" && (
             <div className="space-y-5">
+              <PerfGuide items={[
+                { term: "Skor per Versi", desc: "Rata-rata skor evaluasi per versi sistem (prompt + model). Skor dihitung dari benchmark questions yang sudah ditentukan." },
+                { term: "Skala skor", desc: "0–100. ≥80 bagus (hijau), 60–79 perlu peningkatan (kuning), <60 kritis (merah).", color: "text-green-400" },
+                { term: "Benchmark Questions", desc: "Pertanyaan uji standar yang dikelompokkan per kategori: factual, procedural, confused, dll. Dijalankan secara manual untuk mengukur kualitas respons AINA." },
+                { term: "Titik hijau / abu", desc: "Hijau = soal aktif digunakan dalam evaluasi. Abu = soal dinonaktifkan." },
+                { term: "Cara pakai", desc: "Bandingkan skor antar versi setelah perubahan prompt atau model — pastikan skor tidak turun sebelum deploy.", color: "text-muted-foreground" },
+              ]} />
               <div>
                 <h3 className="mb-3 text-sm font-semibold text-foreground">Skor per Versi</h3>
                 {evalSum.length === 0 ? (
