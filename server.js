@@ -81,8 +81,9 @@ app.use(cors({
 /* ── Body parser — default small limit ──────────────── */
 // Avatar upload route overrides this with its own limit (see below)
 app.use((req, res, next) => {
-  const avatarRoute = req.path === "/api/upload-avatar";
-  express.json({ limit: avatarRoute ? "2mb" : "64kb" })(req, res, next);
+  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image"];
+  const limit = largeRoutes.includes(req.path) ? "8mb" : "64kb";
+  express.json({ limit })(req, res, next);
 });
 
 /* ── Rate limiters ───────────────────────────────────── */
