@@ -24,6 +24,8 @@ interface Profile {
   created_at: string; roles: string[]; is_banned?: boolean;
   is_pro?: boolean; pro_expires_at?: string | null;
   hidden_from_leaderboard?: boolean;
+  custom_about?: string | null;
+  custom_instructions?: string | null;
 }
 interface ContributorRequest {
   id: string; user_id: string; full_name: string; education: string;
@@ -207,6 +209,25 @@ function UserProfileModal({ user, onClose, onSetRole, onDelete, onBanToggle, onP
               <span className="text-foreground">{fmtDate(user.created_at)}</span>
             </div>
           </div>
+          {/* Personalisasi Pribadi — only shown if user has set custom instructions */}
+          {(user.custom_about || user.custom_instructions) && (
+            <div className="rounded-xl border border-border bg-card/60 p-3 space-y-2.5 text-xs">
+              <p className="font-semibold text-foreground/80">Instruksi Personal</p>
+              {user.custom_about && (
+                <div>
+                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Tentang User</p>
+                  <p className="whitespace-pre-wrap text-foreground/80 leading-relaxed">{user.custom_about}</p>
+                </div>
+              )}
+              {user.custom_instructions && (
+                <div>
+                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Cara AINA Membalas</p>
+                  <p className="whitespace-pre-wrap text-foreground/80 leading-relaxed">{user.custom_instructions}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">Ubah Role</p>
             <div className="grid grid-cols-2 gap-1.5">

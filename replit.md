@@ -125,7 +125,7 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
 - **AI Chat** — Multi-model fallback via OpenRouter (10 free models, `Promise.any()`)
 - **Knowledge Base** — Contributor-submitted articles, admin moderation workflow
 - **Article Types** — `narrative` vs `step_by_step` with format-aware AI prompting
-- **User Personalization** — Profile study info (faculty, jurusan, angkatan, kota asal) injected into AI context
+- **User Personalization** — Profile study info (faculty, jurusan, angkatan, kota asal) injected into AI context; ChatGPT-style "Custom Instructions" (`custom_about` + `custom_instructions` in profiles, max 500 chars each, saved to DB via `PATCH /api/profile/custom-instructions`); master admin can read each user's custom instructions in user detail modal
 - **Breaking Updates** — Admin pins urgent info; auto-injected at highest priority into every AI chat
 - **Message Reports** — Users flag inaccurate AI responses; admin reviews in dashboard
 - **RBAC** — user / contributor / senior_contributor / admin; rate limit 3 msgs/day for free users

@@ -1825,13 +1825,29 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     const chatStyle = sanitize(userProfile.chatStyle);
     const userName = sanitize(userProfile.userName);
     if (userName) parts.push(`Panggil user dengan: "${userName}"`);
-    if (parts.length > 0) {
+    // Custom instructions (ChatGPT-style personalization — stored in DB)
+    // Use separate sanitizer that allows up to 500 chars (sanitize() caps at 100)
+    const sanitizeLong = (v) => typeof v === "string"
+      ? v.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, " ").trim().slice(0, 500)
+      : null;
+    const customAbout        = sanitizeLong(userProfile.custom_about);
+    const customInstructions = sanitizeLong(userProfile.custom_instructions);
+
+    if (parts.length > 0 || customAbout || customInstructions) {
       let styleNote = "";
       if (chatStyle === "formal") styleNote += "\nGunakan bahasa yang formal dan sopan dalam setiap jawaban.";
       else styleNote += "\nGunakan bahasa yang santai, akrab, dan bersahabat (bisa pakai 'kamu', 'nih', 'ya', dsb).";
-      // Note: answer length/depth is controlled by answerModeHint (concise/balanced/detailed)
-      // and injected separately into the system prompt — not repeated here.
-      personalizationContext = `\n\n---\n## Profil & Preferensi User\n${parts.join("\n")}${styleNote}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
+
+      let customBlock = "";
+      if (customAbout) {
+        customBlock += `\n\n**Tentang user (ditulis sendiri oleh user):**\n${customAbout}`;
+      }
+      if (customInstructions) {
+        customBlock += `\n\n**Instruksi personal dari user (WAJIB dipatuhi dalam setiap jawaban):**\n${customInstructions}`;
+      }
+
+      const profileBlock = parts.length > 0 ? parts.join("\n") : "";
+      personalizationContext = `\n\n---\n## Profil & Preferensi User\n${profileBlock}${styleNote}${customBlock}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
     }
   }
 
@@ -2285,6 +2301,48 @@ app.delete("/api/memories", writeLimiter, async (req, res) => {
   if (error || !user) return res.status(401).json({ error: "Unauthorized" });
 
   await supabase.from("user_memories").delete().eq("user_id", user.id);
+  res.json({ success: true });
+});
+
+/* ── Custom Instructions (ChatGPT-style personalization) ─────── */
+app.get("/api/profile/custom-instructions", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+  const { data, error: dbErr } = await supabase
+    .from("profiles")
+    .select("custom_about, custom_instructions")
+    .eq("user_id", user.id)
+    .single();
+  if (dbErr) return res.status(500).json({ error: "DB error" });
+  res.json({ custom_about: data?.custom_about ?? "", custom_instructions: data?.custom_instructions ?? "" });
+});
+
+app.patch("/api/profile/custom-instructions", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const sanitizeField = (v) => {
+    if (typeof v !== "string") return null;
+    return v.trim().slice(0, 1500) || null; // 1500 chars max per field
+  };
+  const custom_about        = sanitizeField(req.body?.custom_about);
+  const custom_instructions = sanitizeField(req.body?.custom_instructions);
+
+  const { error: dbErr } = await supabase
+    .from("profiles")
+    .update({ custom_about, custom_instructions, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id);
+  if (dbErr) return res.status(500).json({ error: "DB error" });
   res.json({ success: true });
 });
 
@@ -5490,6 +5548,10 @@ ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NU
 ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';
 ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;
 
+-- Custom Instructions (ChatGPT-style personalization)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_about TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_instructions TEXT;
+
 -- Contributor requests new fields (enhanced registration with article sample)
 ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reason TEXT;
 ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS article_content TEXT;
@@ -6246,6 +6308,9 @@ async function runColumnMigrations() {
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;",
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;",
     "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS image_url TEXT;",
+    // Custom instructions / personalization (ChatGPT-style)
+    "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_about TEXT;",
+    "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_instructions TEXT;",
     // Enable realtime on chats so admin deletions appear instantly for users
     "ALTER PUBLICATION supabase_realtime ADD TABLE IF NOT EXISTS public.chats;",
     // Announcement tables (CREATE via migration SQL if not exists)

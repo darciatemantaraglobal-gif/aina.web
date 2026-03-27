@@ -124,13 +124,55 @@ function AvatarDisplay({ name, avatarUrl, size = "sm" }: { name: string | null; 
 }
 
 /* ─── Personalization Modal ──────────────────────────────────── */
+async function apiFetch(path: string, options?: RequestInit) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  return fetch(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+}
+
 function PersonalizationModal({ onClose }: { onClose: () => void }) {
   const [prefs, setPrefs] = useState<AinaPersonalization>(getPersonalization);
+  const [customAbout, setCustomAbout]               = useState("");
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [loadingCI, setLoadingCI]                   = useState(true);
+  const [saving, setSaving]                         = useState(false);
+  const [activeTab, setActiveTab]                   = useState<"pref" | "ci">("pref");
 
-  const save = () => {
+  useEffect(() => {
+    apiFetch("/api/profile/custom-instructions")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setCustomAbout(d.custom_about ?? "");
+          setCustomInstructions(d.custom_instructions ?? "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingCI(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
     savePersonalization(prefs);
-    toast.success("Preferensi disimpan");
-    onClose();
+    try {
+      await apiFetch("/api/profile/custom-instructions", {
+        method: "PATCH",
+        body: JSON.stringify({ custom_about: customAbout, custom_instructions: customInstructions }),
+      });
+      toast.success("Preferensi disimpan");
+      onClose();
+    } catch {
+      toast.error("Gagal menyimpan instruksi personal");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const OptionButton = ({
@@ -155,14 +197,17 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
     </button>
   );
 
+  const ciHasContent = customAbout.trim().length > 0 || customInstructions.trim().length > 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-xs rounded-2xl border border-sidebar-border bg-sidebar p-5 shadow-2xl"
+        className="relative w-full max-w-sm rounded-2xl border border-sidebar-border bg-sidebar shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-sidebar-border px-5 py-4">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold text-sidebar-foreground">Personalisasi AINA</h3>
@@ -172,83 +217,172 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="space-y-4">
-          {/* Gaya bahasa */}
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
-              Gaya Bahasa AINA
-            </p>
-            <div className="flex gap-2">
-              <OptionButton
-                active={prefs.chatStyle === "santai"}
-                onClick={() => setPrefs((p) => ({ ...p, chatStyle: "santai" }))}
-              >
-                Santai
-              </OptionButton>
-              <OptionButton
-                active={prefs.chatStyle === "formal"}
-                onClick={() => setPrefs((p) => ({ ...p, chatStyle: "formal" }))}
-              >
-                Formal
-              </OptionButton>
-            </div>
-          </div>
-
-          {/* Gaya Respons */}
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
-              Gaya Respons AINA
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {RESPONSE_STYLE_ORDER.map((key, i) => {
-                const style = RESPONSE_STYLES[key];
-                const Icon = style.icon;
-                const isActive = prefs.responseStyle === key;
-                const isLast = i === RESPONSE_STYLE_ORDER.length - 1;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setPrefs((p) => ({ ...p, responseStyle: key }))}
-                    className={`${isLast ? "col-span-2" : ""} flex items-start gap-2 rounded-xl border p-2.5 text-left transition-all ${
-                      isActive
-                        ? "border-primary/50 bg-primary/10 text-sidebar-foreground"
-                        : "border-sidebar-border bg-sidebar-accent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:border-sidebar-border/80"
-                    }`}
-                  >
-                    <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${isActive ? "text-primary" : ""}`} />
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-semibold leading-tight">{style.shortLabel}</p>
-                      <p className="mt-0.5 text-[10px] leading-tight opacity-70">{style.desc}</p>
-                    </div>
-                    {isActive && <Check className="ml-auto mt-0.5 h-3 w-3 shrink-0 text-primary" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Nama panggilan */}
-          <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
-              Nama Panggilanmu
-            </p>
-            <input
-              type="text"
-              value={prefs.userName}
-              onChange={(e) => setPrefs((p) => ({ ...p, userName: e.target.value }))}
-              placeholder="Kosongkan jika tidak ingin dipanggil"
-              maxLength={30}
-              className="w-full rounded-lg border border-sidebar-border bg-sidebar-accent px-3 py-2 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </div>
+        {/* Tabs */}
+        <div className="flex border-b border-sidebar-border">
+          <button
+            onClick={() => setActiveTab("pref")}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
+              activeTab === "pref"
+                ? "border-b-2 border-primary text-primary"
+                : "text-sidebar-foreground/50 hover:text-sidebar-foreground"
+            }`}
+          >
+            Preferensi
+          </button>
+          <button
+            onClick={() => setActiveTab("ci")}
+            className={`relative flex-1 py-2.5 text-xs font-medium transition-colors ${
+              activeTab === "ci"
+                ? "border-b-2 border-primary text-primary"
+                : "text-sidebar-foreground/50 hover:text-sidebar-foreground"
+            }`}
+          >
+            Instruksi Personal
+            {ciHasContent && activeTab !== "ci" && (
+              <span className="absolute right-4 top-2 h-1.5 w-1.5 rounded-full bg-primary" />
+            )}
+          </button>
         </div>
 
-        <button
-          onClick={save}
-          className="mt-5 w-full rounded-xl bg-primary py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          Simpan Preferensi
-        </button>
+        <div className="max-h-[60vh] overflow-y-auto">
+          {/* ── Tab: Preferensi ── */}
+          {activeTab === "pref" && (
+            <div className="space-y-4 p-5">
+              {/* Gaya bahasa */}
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
+                  Gaya Bahasa AINA
+                </p>
+                <div className="flex gap-2">
+                  <OptionButton
+                    active={prefs.chatStyle === "santai"}
+                    onClick={() => setPrefs((p) => ({ ...p, chatStyle: "santai" }))}
+                  >
+                    Santai
+                  </OptionButton>
+                  <OptionButton
+                    active={prefs.chatStyle === "formal"}
+                    onClick={() => setPrefs((p) => ({ ...p, chatStyle: "formal" }))}
+                  >
+                    Formal
+                  </OptionButton>
+                </div>
+              </div>
+
+              {/* Gaya Respons */}
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
+                  Gaya Respons AINA
+                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {RESPONSE_STYLE_ORDER.map((key, i) => {
+                    const style = RESPONSE_STYLES[key];
+                    const Icon = style.icon;
+                    const isActive = prefs.responseStyle === key;
+                    const isLast = i === RESPONSE_STYLE_ORDER.length - 1;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setPrefs((p) => ({ ...p, responseStyle: key }))}
+                        className={`${isLast ? "col-span-2" : ""} flex items-start gap-2 rounded-xl border p-2.5 text-left transition-all ${
+                          isActive
+                            ? "border-primary/50 bg-primary/10 text-sidebar-foreground"
+                            : "border-sidebar-border bg-sidebar-accent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:border-sidebar-border/80"
+                        }`}
+                      >
+                        <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${isActive ? "text-primary" : ""}`} />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold leading-tight">{style.shortLabel}</p>
+                          <p className="mt-0.5 text-[10px] leading-tight opacity-70">{style.desc}</p>
+                        </div>
+                        {isActive && <Check className="ml-auto mt-0.5 h-3 w-3 shrink-0 text-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Nama panggilan */}
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
+                  Nama Panggilanmu
+                </p>
+                <input
+                  type="text"
+                  value={prefs.userName}
+                  onChange={(e) => setPrefs((p) => ({ ...p, userName: e.target.value }))}
+                  placeholder="Kosongkan jika tidak ingin dipanggil"
+                  maxLength={30}
+                  className="w-full rounded-lg border border-sidebar-border bg-sidebar-accent px-3 py-2 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── Tab: Instruksi Personal ── */}
+          {activeTab === "ci" && (
+            <div className="space-y-4 p-5">
+              <p className="text-[11px] leading-relaxed text-sidebar-foreground/60">
+                Beri tahu AINA siapa kamu dan gimana cara kamu mau dibantu — supaya setiap jawaban terasa lebih personal dan relevan.
+              </p>
+
+              {/* Tentang Kamu */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
+                    Tentang Kamu
+                  </p>
+                  <span className={`text-[10px] ${customAbout.length > 450 ? "text-orange-400" : "text-sidebar-foreground/30"}`}>
+                    {customAbout.length}/500
+                  </span>
+                </div>
+                <textarea
+                  value={customAbout}
+                  onChange={(e) => setCustomAbout(e.target.value.slice(0, 500))}
+                  placeholder={"Contoh: Saya mahasiswa semester 3 jurusan Syariah di Al-Azhar, baru 1 tahun di Mesir, asal dari Jawa Tengah."}
+                  rows={4}
+                  className="w-full resize-none rounded-lg border border-sidebar-border bg-sidebar-accent px-3 py-2 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary"
+                  disabled={loadingCI}
+                />
+              </div>
+
+              {/* Cara AINA Membalas */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
+                    Cara AINA Membalasmu
+                  </p>
+                  <span className={`text-[10px] ${customInstructions.length > 450 ? "text-orange-400" : "text-sidebar-foreground/30"}`}>
+                    {customInstructions.length}/500
+                  </span>
+                </div>
+                <textarea
+                  value={customInstructions}
+                  onChange={(e) => setCustomInstructions(e.target.value.slice(0, 500))}
+                  placeholder={"Contoh: Selalu kasih contoh praktis. Kalau ada istilah Arab, tolong terjemahkan juga. Jangan terlalu panjang."}
+                  rows={4}
+                  className="w-full resize-none rounded-lg border border-sidebar-border bg-sidebar-accent px-3 py-2 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary"
+                  disabled={loadingCI}
+                />
+              </div>
+
+              {loadingCI && (
+                <p className="text-center text-[11px] text-sidebar-foreground/40">Memuat instruksi tersimpan...</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-sidebar-border px-5 py-4">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="w-full rounded-xl bg-primary py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          >
+            {saving ? "Menyimpan..." : "Simpan Preferensi"}
+          </button>
+        </div>
       </div>
     </div>
   );
