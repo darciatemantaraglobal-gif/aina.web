@@ -96,6 +96,7 @@ npm run dev   # Start both backend (port 3001) and frontend (port 5000) using co
 3. **Layer 3 — Model fallback**: Training knowledge, used for stable facts (definitions, history, concepts) or when all external sources fail.
 4. **Wikipedia/DDG**: Only active when Perplexity API key is entirely unconfigured. Not used in normal flow.
 5. **Currency (exchange-rate API)**: Currency/kurs queries bypass Perplexity entirely. Uses Frankfurter API. If API fails → hard block injected into prompt to prevent hallucinated numbers.
+6. **Dorar.net (حديث)**: Runs in parallel with Wave 1 fetches for ANY fiqh/Islamic query (Indonesian or Arabic). Fetches from `dorar.net/dorar_api.json?skey=<Arabic term>`. Returns up to 3 hadiths; AI translates + explains in Indonesian. Badge displayed in emerald green. Trust score: 82 (high). Detected via `isFiqhQuery()` + `FIQH_TERM_MAP` (ID→Arabic keyword mapping).
 
 **Answer mode system** (`detectAnswerMode` / `buildAnswerModeHint` in server.js):
 - `concise` — 2-3 sentences / 3-4 bullets max

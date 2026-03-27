@@ -788,15 +788,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       const sources = msg.sources?.length ? msg.sources : extractSources(msg.content);
                       return sources.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {sources.map((src, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] text-primary/70"
-                            >
-                              <BookMarked className="h-2.5 w-2.5 shrink-0" />
-                              <span className="truncate max-w-[180px]">{src}</span>
-                            </span>
-                          ))}
+                          {sources.map((src, i) => {
+                            const isDorar = src === "Dorar.net";
+                            return (
+                              <span
+                                key={i}
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${
+                                  isDorar
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "border-primary/20 bg-primary/5 text-primary/70"
+                                }`}
+                              >
+                                <BookMarked className="h-2.5 w-2.5 shrink-0" />
+                                <span className="truncate max-w-[180px]">{src}</span>
+                              </span>
+                            );
+                          })}
                         </div>
                       ) : null;
                     })()}

@@ -588,6 +588,7 @@ const SOURCE_TRUST_SCORES = {
   kb_article:       90, // Contributor-submitted, admin-approved
   exchange_rate:    85, // Real-time ECB/Frankfurter data
   perplexity:       78, // Real-time web search — current, but unverified by admin
+  dorar:            82, // Dorar.net hadith encyclopedia — scholarly Islamic primary sources
   wikipedia:        60, // Public encyclopedia — mostly reliable, occasionally outdated
   duckduckgo:       35, // General web instant answer — unverified
   model_knowledge:  20, // LLM training data — may be stale
@@ -772,6 +773,132 @@ async function fetchDuckDuckGoAnswer(query) {
     const url = data.AbstractURL || data.DefinitionURL || "";
     return { text: text.trim(), source, url };
   } catch {
+    return null;
+  }
+}
+
+/* ── Dorar.net Hadith/Fiqh API ───────────────────────── */
+
+// Map common Indonesian fiqh terms → Arabic for Dorar search
+const FIQH_TERM_MAP = {
+  "shalat": "صلاة", "solat": "صلاة", "salat": "صلاة",
+  "puasa": "صوم", "shaum": "صوم",
+  "zakat": "زكاة",
+  "haji": "حج", "hajj": "حج",
+  "umrah": "عمرة", "umroh": "عمرة",
+  "nikah": "نكاح", "pernikahan": "نكاح", "kawin": "نكاح",
+  "talak": "طلاق", "cerai": "طلاق",
+  "wudhu": "وضوء", "wudlu": "وضوء",
+  "tayamum": "تيمم",
+  "najis": "نجاسة",
+  "riba": "ربا", "bunga bank": "ربا",
+  "hijab": "حجاب", "jilbab": "حجاب",
+  "aurat": "عورة",
+  "warisan": "ميراث", "waris": "ميراث",
+  "wakaf": "وقف",
+  "sedekah": "صدقة",
+  "fatwa": "فتوى",
+  "qurban": "أضحية", "kurban": "أضحية",
+  "aqiqah": "عقيقة",
+  "sujud": "سجود",
+  "thaharah": "طهارة", "bersuci": "طهارة",
+  "mandi wajib": "غسل",
+  "halal": "حلال",
+  "haram": "حرام",
+  "makruh": "مكروه",
+  "mubah": "مباح",
+  "sunnah": "سنة",
+  "wajib": "واجب فرض",
+  "fardhu": "فرض",
+  "jihad": "جهاد",
+  "jual beli": "بيع وشراء",
+  "muamalah": "معاملات",
+  "hutang": "دين",
+  "qadha": "قضاء",
+};
+
+// Detect fiqh-related queries (Arabic or Indonesian)
+function isFiqhQuery(query) {
+  const lq = query.toLowerCase();
+  // Indonesian fiqh keywords
+  const hasIdFiqh = Object.keys(FIQH_TERM_MAP).some(k => lq.includes(k))
+    || /\b(hukum islam|hukum syar|boleh tidak|apakah boleh|apakah haram|apakah halal|dalil|hadits|hadis|quran|alquran|fiqh|fiqih|ibadah|muamalah|aqidah)\b/i.test(lq);
+  // Arabic fiqh keywords
+  const hasArFiqh = /[\u0600-\u06FF]/.test(query)
+    && /(حكم|فقه|صلاة|زكاة|صوم|حج|نكاح|طلاق|وضوء|طهارة|حلال|حرام|سنة|واجب|مكروه|مباح|ربا|عبادة|معاملة|ميراث|فتوى|قرآن|حديث|دليل)/.test(query);
+  return hasIdFiqh || hasArFiqh;
+}
+
+// Extract the best Arabic search term from user query
+function extractDorarSearchTerm(query) {
+  const lq = query.toLowerCase();
+  // If Arabic script present, pull the Arabic words directly
+  if (/[\u0600-\u06FF]/.test(query)) {
+    const arabicWords = query.match(/[\u0600-\u06FF]{2,}/g) ?? [];
+    // Filter out common Arabic stop words
+    const stops = new Set(["في","من","على","إلى","أن","هو","هي","ما","هل","كان","كيف","لا","وما","عن","مع","بعد","قبل","كل","هذا","هذه"]);
+    return arabicWords.filter(w => !stops.has(w)).slice(0, 4).join(" ");
+  }
+  // Map Indonesian term → Arabic
+  for (const [id, ar] of Object.entries(FIQH_TERM_MAP)) {
+    if (lq.includes(id)) return ar;
+  }
+  // Fallback: key content words
+  return query.split(/\s+/).filter(w => w.length > 4).slice(0, 3).join(" ");
+}
+
+// Strip HTML tags and normalise whitespace
+function stripHtml(html) {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Parse Dorar HTML result into structured hadith objects
+function parseDorarHtml(html) {
+  const blocks = html.split(/-{3,}/).filter(b => b.trim().length > 20);
+  const results = [];
+  for (const block of blocks.slice(0, 3)) {
+    // Extract hadith text (inside <div class="hadith">)
+    const hadithMatch = block.match(/class="hadith"[^>]*>([\s\S]*?)<\/div>/i);
+    const hadithHtml = hadithMatch ? hadithMatch[1] : "";
+    const hadithText = stripHtml(hadithHtml).replace(/^\d+\s*-\s*/, "").trim();
+    if (hadithText.length < 10) continue;
+
+    // Extract metadata fields
+    const rawi    = block.match(/الراوي[:\s]*<\/span>\s*([^<]+)/)?.[1]?.trim() ?? "";
+    const mohdith = block.match(/المحدث[:\s]*<\/span>\s*([^<]+)/)?.[1]?.trim() ?? "";
+    const source  = block.match(/المصدر[:\s]*<\/span>\s*([^<]+)/)?.[1]?.trim() ?? "";
+    const grade   = block.match(/خلاصة حكم المحدث[:\s]*<\/span>[\s\S]*?<span[^>]*>([^<]+)<\/span>/)?.[1]?.trim() ?? "";
+
+    results.push({ text: hadithText, rawi, mohdith, source, grade });
+  }
+  return results;
+}
+
+async function fetchDorarHadith(query) {
+  const TIMEOUT = 5000;
+  try {
+    const searchTerm = extractDorarSearchTerm(query);
+    if (!searchTerm || searchTerm.length < 2) return null;
+    console.log(`[Dorar] searching: "${searchTerm}" (from: "${query.slice(0, 50)}")`);
+
+    const q = encodeURIComponent(searchTerm.slice(0, 100));
+    const res = await fetch(
+      `https://dorar.net/dorar_api.json?skey=${q}`,
+      { signal: AbortSignal.timeout(TIMEOUT), headers: { "User-Agent": "AINA-Bot/1.0" } }
+    );
+    if (!res.ok) { console.log(`[Dorar] HTTP ${res.status}`); return null; }
+
+    const data = await res.json();
+    const html = data?.ahadith?.result ?? "";
+    if (!html || html.length < 50) return null;
+
+    const hadiths = parseDorarHtml(html);
+    if (hadiths.length === 0) { console.log("[Dorar] no parseable hadiths"); return null; }
+
+    console.log(`[Dorar] found ${hadiths.length} hadith(s) for "${searchTerm}"`);
+    return { searchTerm, hadiths };
+  } catch (err) {
+    console.log(`[Dorar] fetch error: ${err.message}`);
     return null;
   }
 }
@@ -1483,10 +1610,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   };
 
   // Wave 1 — fast internal fetches (always run in parallel)
-  const [articles, pinnedUpdates, exchangeRates] = await Promise.all([
+  const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage),
     fetchPinnedUpdates(),
     isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
+    (isFiqhQuery(lastUserMessage) && intent.primary !== "casual") ? fetchDorarHadith(lastUserMessage) : Promise.resolve(null),
   ]);
 
   // Assess KB coverage strength before deciding whether to hit external sources
@@ -1712,6 +1840,22 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Perplexity] injected: trust=${SOURCE_TRUST_SCORES.perplexity} tier=high (KB=${kbStrength}, intent=${intent.primary})`);
   }
 
+  // Build Dorar.net context — injected for fiqh/Islamic queries; AI translates Arabic hadiths to Indonesian
+  let dorarContext = "";
+  if (dorarResult && dorarResult.hadiths.length > 0) {
+    const hadithBlocks = dorarResult.hadiths.map((h, i) => {
+      const meta = [
+        h.rawi   ? `الراوي: ${h.rawi}` : "",
+        h.mohdith ? `المحدث: ${h.mohdith}` : "",
+        h.source  ? `المصدر: ${h.source}` : "",
+        h.grade   ? `الحكم: ${h.grade}` : "",
+      ].filter(Boolean).join(" | ");
+      return `**Hadits ${i + 1}:**\n${h.text}\n${meta}`;
+    }).join("\n\n");
+    dorarContext = `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية) [kepercayaan: tinggi — ensiklopedia hadits terpercaya]\n\n**INSTRUKSI:** Sajikan hadits-hadits di bawah ini sebagai referensi. Untuk setiap hadits yang relevan:\n1. Kutip teks Arab aslinya\n2. Berikan terjemahan Bahasa Indonesia yang akurat dan natural\n3. Jelaskan relevansinya dengan pertanyaan user\nJangan tampilkan metadata Arab mentah (الراوي/المحدث/dll) — cukup atribusikan nama perawi dan tingkat keaslian dalam teks Indonesia.\n\n${hadithBlocks}\n---`;
+    console.log(`[Dorar] injected ${dorarResult.hadiths.length} hadith(s) for "${dorarResult.searchTerm}"`);
+  }
+
   // Compute external trust level — used to refine confidence classification (Phase 9)
   const externalTrust = computeExternalTrustLevel(!!wikiContext, !!ddgContext, !!perplexityContext);
   if (externalTrust) {
@@ -1796,7 +1940,7 @@ ${intentHint}${confidence.hint}${answerModeHint}
 
 **Sumber:**
 - JANGAN sebutkan atau mencantumkan sumber dalam teks jawaban — sumber sudah ditampilkan otomatis sebagai badge oleh sistem di bawah setiap pesan. Tidak perlu menulis baris "Sumber: ..." di akhir jawaban, dan tidak perlu menyebut nama sumber secara eksplisit di dalam teks (misalnya "Menurut Wikipedia...", "Berdasarkan Frankfurter...", dll).
-- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${perplexityContext}${wikiContext}${ddgContext}`;
+- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}`;
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
@@ -1980,6 +2124,7 @@ ${intentHint}${confidence.hint}${answerModeHint}
     if (articles.length > 0)                             articles.filter(a => !a.hidden).slice(0, 2).forEach(a => responseSources.push(a.title));
     if (perplexityResult)                                responseSources.push("Pencarian Web");
     if (queryType === "currency" && exchangeRates)       responseSources.push("Kurs Real-time");
+    if (dorarResult && dorarResult.hadiths.length > 0)  responseSources.push("Dorar.net");
     if (wikiResult)                                      responseSources.push("Wikipedia");
     if (ddgResult)                                       responseSources.push("DuckDuckGo");
     if (responseSources.length === 0)                    responseSources.push("Pengetahuan Umum");
