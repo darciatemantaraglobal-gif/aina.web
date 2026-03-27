@@ -111,6 +111,35 @@ async function uploadThreadImage(file: File): Promise<string> {
   });
 }
 
+/* ─── Image Lightbox ─────────────────────────────────── */
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+      >
+        <X className="h-5 w-5" />
+      </button>
+      <img
+        src={url}
+        alt="foto"
+        className="max-h-[90dvh] max-w-full rounded-2xl object-contain shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
 /* ─── Image Preview Component ────────────────────────── */
 function ImagePreview({ url, onRemove }: { url: string; onRemove: () => void }) {
   return (
@@ -336,6 +365,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
   const [replyUploading, setReplyUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [voting, setVoting] = useState(false);
   const [localVoted, setLocalVoted] = useState(false);
   const [localVoteCount, setLocalVoteCount] = useState(0);
@@ -538,8 +568,8 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                     <img
                       src={thread.image_url}
                       alt="foto thread"
-                      className="w-full max-h-72 object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                      onClick={() => window.open(thread.image_url!, "_blank")}
+                      className="w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity"
+                      onClick={() => setLightboxUrl(thread.image_url!)}
                     />
                   </div>
                 )}
@@ -626,8 +656,8 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                             <img
                               src={reply.image_url}
                               alt="foto balasan"
-                              className="w-full object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                              onClick={() => window.open(reply.image_url!, "_blank")}
+                              className="w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity"
+                              onClick={() => setLightboxUrl(reply.image_url!)}
                             />
                           </div>
                         )}
@@ -710,6 +740,9 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
           </>
         ) : null}
       </div>
+
+      {/* Lightbox */}
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
     </div>
   );
 }
