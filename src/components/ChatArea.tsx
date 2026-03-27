@@ -781,9 +781,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </ReactMarkdown>
                     </div>
 
-                    {/* Source badges — prefer server-provided sources (new messages),
-                        fall back to parsing text for historical messages in DB */}
+                    {/* Source badges — only for informational intent (not casual).
+                        Prefer server-provided sources; fall back to text parsing for older DB messages. */}
                     {(() => {
+                      if (msg.intent === "casual") return null;
                       const sources = msg.sources?.length ? msg.sources : extractSources(msg.content);
                       return sources.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
