@@ -464,6 +464,7 @@ function shouldFetchExternal(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
+  if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no external needed
   if (kbStrength === "strong") return false;
   // KB absent or weak → always try Wikipedia/DDG as last-resort fallback
   // (only reached when Perplexity is unavailable or fails)
@@ -794,6 +795,7 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
+  if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no web search needed
   if (kbStrength === "strong") return false;
   // KB is absent or weak → always try Perplexity
   return true;
@@ -1129,15 +1131,22 @@ function detectIntent(text) {
   // Casual tone flag — keyword-based only, no length check
   const isCasual = /\b(dong|deh|nih|btw|wkwk|haha|hehe|sih|loh|lho|gitu|gitu ya|ya kan|nggak sih|gak sih)\b/.test(t);
 
+  // Arabic academic writing — detected on original text (Arabic is case-insensitive by nature)
+  // Triggers when query contains Arabic characters AND an academic-writing keyword
+  const hasArabicScript = /[\u0600-\u06FF]/.test(text);
+  const hasArabicWritingKw = /(إنشاء|اكتب|كتابة|تلخيص|لخّص|لخص|خلاصة|شرح|اشرح|فسّر|فسر|قواعد|نحو|صرف|ترجم|ترجمة|تحليل|صياغة|مقالة|بحث|ملخص|وضّح|وضح|عرّف|عرف|اذكر|مقدمة|خاتمة|تعبير|تعريف)/.test(text);
+  const isArabicWriting = hasArabicScript && hasArabicWritingKw;
+
   // Primary intent signals (evaluated independently before priority resolution)
   const isConfused   = /bingung|galau|khawatir|takut|pusing|stres|stress|overwhelm|nggak tau|tidak tau|ga tau|gak tau|harus mulai dari mana|nggak ngerti|tidak mengerti|susah banget|ribet banget|tolong bantu/.test(t);
   const isProcedural = /\b(cara|bagaimana cara|gimana cara|langkah|prosedur|tahapan|proses|tutorial|panduan|step|caranya|gimana sih cara|ngurus|ngurusin|mendaftar|cara daftar|gimana daftar)\b/.test(t);
   const isRecommend  = /\b(rekomen|rekomendasi|saranin|suggest|yang bagus|yang enak|yang murah|yang terbaik|mending yang mana|pilih yang mana)\b/.test(t);
   const isBrainstorm = /\b(ide|pilihan|opsi|alternatif|apa saja|apa aja|apa yang bisa|bisa apa|ada nggak|ada yang|kira-kira apa)\b/.test(t);
 
-  // Priority resolution — mixed case handled first
+  // Priority resolution — arabic_writing checked before Indonesian intents
   let primary;
-  if (isConfused && isProcedural) primary = "confused_procedural";
+  if (isArabicWriting)            primary = "arabic_writing";
+  else if (isConfused && isProcedural) primary = "confused_procedural";
   else if (isConfused)            primary = "confused";
   else if (isProcedural)          primary = "procedural";
   else if (isRecommend)           primary = "recommendation";
@@ -1194,6 +1203,15 @@ function buildIntentHint({ primary, casual }) {
       "Setiap ide dalam format bullet, diikuti 1–2 kalimat penjelasan yang relevan dan konkret. " +
       "Susun dari yang paling mudah diakses ke yang lebih spesifik, atau dari yang paling umum ke yang paling niche. " +
       "Jangan ulangi ide dengan kata berbeda.",
+
+    arabic_writing:
+      "أجب باللغة العربية الفصحى الواضحة المناسبة لمستوى طلاب الجامعة في الأزهر الشريف. " +
+      "للإنشاء/المقالة: اكتب نصاً متكاملاً بمقدمة (فقرة افتتاحية تطرح الموضوع) وعرض (فقرات تفصيلية بأفكار منظمة) وخاتمة (ملخص وخلاصة). استخدم أسلوباً أكاديمياً راقياً مع الترابط المنطقي بين الأفكار. " +
+      "للتلخيص: قدم ملخصاً دقيقاً يحافظ على الأفكار الرئيسية ويحذف التفاصيل الثانوية، مع الحفاظ على لغة النص الأصلية وأسلوبه. " +
+      "للشرح/التفسير: وضّح المعنى بأسلوب سهل وواضح مع ذكر السياق والأمثلة التوضيحية عند الحاجة. " +
+      "للقواعد النحوية والصرفية: اشرح القاعدة بتعريف واضح، ثم أعطِ أمثلة تطبيقية متنوعة من القرآن أو الأدب العربي إن أمكن. " +
+      "للترجمة (عربي↔إندونيسي): ترجم بدقة مع مراعاة السياق الأكاديمي والمعنى الضمني، ولا تترجم كلمة بكلمة. " +
+      "لا تستخدم مقدمات مثل 'بالطبع' أو 'إليك' — ابدأ مباشرة بالمحتوى المطلوب.",
   };
 
   const label = primary.toUpperCase().replace("_", "/");
@@ -1721,7 +1739,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
 Tanggal & waktu saat ini (Kairo): ${todayStr}. Gunakan info ini saat user bertanya tentang sesuatu "sekarang", "saat ini", atau "terkini". Pengetahuanmu memiliki batas waktu, jadi UTAMAKAN data dari Pencarian Web atau sumber eksternal yang disediakan di konteks ini jika ada.
 
-Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD.
+Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidupan di Mesir (transportasi, kuliner halal, tempat tinggal, biaya hidup), info Al-Azhar, tips sehari-hari di Kairo, kurs EGP/IDR/USD, dan **bantuan akademik bahasa Arab** (إنشاء/karangan, تلخيص/ringkasan, شرح النصوص/analisis teks, قواعد نحو وصرف/tata bahasa, ترجمة Arab↔Indonesia, تعبير/ekspresi tertulis).
+
+**Bahasa Arab & tugas akademik:**
+- Jika user menulis dalam bahasa Arab atau meminta bantuan tugas berbahasa Arab, WAJIB balas dalam bahasa Arab yang fasih dan jelas (فصحى معاصرة), sesuai level akademik Al-Azhar.
+- Jika user meminta terjemahan Arab↔Indonesia, berikan terjemahan yang akurat dan natural — bukan terjemahan kata per kata.
+- Jika ada campuran Arab-Indonesia dalam satu pertanyaan, sesuaikan bahasa jawaban dengan mayoritas pertanyaan atau ikuti bahasa yang digunakan user untuk bagian utama pertanyaannya.
 
 ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 
@@ -1855,6 +1878,9 @@ ${intentHint}${confidence.hint}${answerModeHint}
     // ── Safe Tier A routes ────────────────────────────────────────────────────
     // Casual / small-talk: no KB reasoning needed
     if (intentPrimary === "casual") return "lightweight";
+
+    // Arabic writing always needs the stronger model for quality output
+    if (intentPrimary === "arabic_writing") return "standard";
 
     // KB is strong → model only needs to present/format the KB content; no heavy reasoning
     if (kbStrength === "strong" && ["factual", "procedural", "confused", "confused_procedural"].includes(intentPrimary)) return "lightweight";

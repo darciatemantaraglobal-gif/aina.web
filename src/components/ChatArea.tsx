@@ -775,7 +775,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1 min-h-0">
-                    <div className="py-1">
+                    <div className="py-1" dir="auto">
                       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                         {cleanMarkdown(msg.content)}
                       </ReactMarkdown>
@@ -929,19 +929,27 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   )}
 
                   {/* Follow-up suggestions — only on last AI message */}
-                  {isLastAI && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {["Jelaskan lebih detail", "Buat panduan langkah-langkah", "Ada hal lain terkait ini?"].map(s => (
-                        <button
-                          key={s}
-                          onClick={() => handleSend(s)}
-                          className="rounded-full border border-border/50 bg-secondary/30 px-3 py-1 text-[11px] text-muted-foreground/70 transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {isLastAI && (() => {
+                    const arabicRatio = (msg.content.match(/[\u0600-\u06FF]/g)?.length ?? 0) / Math.max(msg.content.length, 1);
+                    const isArabicReply = arabicRatio > 0.25;
+                    const suggestions = isArabicReply
+                      ? ["أعطني مثالاً آخر", "وضّح أكثر", "اكتب نسخة أطول"]
+                      : ["Jelaskan lebih detail", "Buat panduan langkah-langkah", "Ada hal lain terkait ini?"];
+                    return (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {suggestions.map(s => (
+                          <button
+                            key={s}
+                            onClick={() => handleSend(s)}
+                            className="rounded-full border border-border/50 bg-secondary/30 px-3 py-1 text-[11px] text-muted-foreground/70 transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
+                            dir={isArabicReply ? "rtl" : "ltr"}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   </div>
                 )}
 
@@ -1152,6 +1160,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               <textarea
                 ref={textareaRef}
                 data-tour="chat-input"
+                dir="auto"
                 value={input}
                 onChange={(e) => { setInput(e.target.value); autoResize(); }}
                 onKeyDown={(e) => {
