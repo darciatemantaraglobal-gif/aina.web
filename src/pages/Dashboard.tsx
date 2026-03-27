@@ -357,14 +357,39 @@ const Dashboard = () => {
     {
       target: '[data-tour="nav-contributor"]',
       title: "Jadi Kontributor",
-      content: "Kontributor AINA dapat akses chat lebih banyak, badge eksklusif, dan ikut membangun knowledge base untuk seluruh Masisir. Gratis!",
+      content: "Kontributor AINA dapat akses chat lebih banyak, badge eksklusif, dan ikut membangun knowledge base untuk seluruh Masisir. Yuk, lihat cara daftarnya!",
       onBefore: () => setSidebarOpen(true),
       delay: 600,
     },
     {
+      target: '[data-tour="contributor-registration"]',
+      title: "Formulir Pendaftaran Kontributor",
+      content: "Isi nama, pendidikan, tahun masuk, dan bidang keahlianmu. Tuliskan juga alasan ingin berkontribusi — ini membantu admin mengenal kamu lebih baik.",
+      onBefore: () => { setActiveTab("contributor"); setSidebarOpen(false); },
+      delay: 900,
+    },
+    {
+      target: '[data-tour="contributor-article-sample"]',
+      title: "Artikel Sampel — Wajib Diisi",
+      content: "Admin akan menilai kemampuan menulismu melalui artikel sampel ini. Bisa tulis langsung di kotak teks, atau upload file PDF / DOCX / TXT. Topik bebas — seputar kehidupan Masisir di Mesir.",
+      delay: 400,
+    },
+    {
+      target: '[data-tour="contributor-submit"]',
+      title: "Kirim Pendaftaran",
+      content: "Klik tombol ini untuk mengirim pendaftaranmu. Admin akan meninjau artikel sampelmu dan memberi keputusan. Biasanya dalam 1–3 hari kerja. Kamu akan diberi tahu hasilnya.",
+      delay: 400,
+    },
+    {
+      target: '[data-tour="contributor-write-area"]',
+      title: "Upload Artikel (Setelah Jadi Kontributor)",
+      content: "Setelah disetujui, kamu bisa: ① Klik 'Tulis Artikel' untuk nulis langsung di editor, atau ② 'Upload PDF / Dokumen' untuk upload file — AI akan otomatis membaca dan mengkategorikan isinya! Artikel yang lolos review admin langsung masuk Knowledge Base AINA.",
+      delay: 400,
+    },
+    {
       title: "Siap Menjelajahi AINA! 🚀",
-      content: "Itu semua fitur utama AINA. Kalau mau ulangi panduan ini kapan saja, klik 'Panduan Fitur' di bagian bawah sidebar. Selamat belajar!",
-      onBefore: () => setSidebarOpen(false),
+      content: "Itu semua fitur utama AINA. Kalau mau ulangi panduan ini kapan saja, klik 'Panduan Fitur' di bagian bawah sidebar. Selamat belajar dan berkontribusi!",
+      onBefore: () => { setActiveTab("chat"); setSidebarOpen(false); },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], []);

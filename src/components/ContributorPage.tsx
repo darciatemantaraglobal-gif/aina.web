@@ -572,7 +572,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
         {/* Registration / Status */}
         {!isContributor && (
-          <Card className="border-border bg-card">
+          <Card data-tour="contributor-registration" className="border-border bg-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Users className="h-5 w-5 text-primary" />
@@ -648,7 +648,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                   />
 
                   {/* Article submission */}
-                  <div className="rounded-xl border border-border bg-secondary/50 p-3 space-y-2.5">
+                  <div data-tour="contributor-article-sample" className="rounded-xl border border-border bg-secondary/50 p-3 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-medium text-foreground">Artikel Sampel <span className="text-destructive">*</span></p>
                       <div className="flex gap-1 rounded-lg border border-border bg-card p-0.5">
@@ -716,7 +716,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     className="bg-secondary"
                   />
 
-                  <Button variant="hero" onClick={submitRequest} disabled={submitting || regArticleUploading} className="gap-1.5">
+                  <Button data-tour="contributor-submit" variant="hero" onClick={submitRequest} disabled={submitting || regArticleUploading} className="gap-1.5">
                     {submitting ? (
                       <>
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
@@ -739,7 +739,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         {isContributor && (
           <>
             {/* Welcome banner */}
-            <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5">
+            <div data-tour="contributor-write-area" className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-purple">
                   <Sparkles className="h-5 w-5 text-primary-foreground" />
