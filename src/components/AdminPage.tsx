@@ -1907,6 +1907,15 @@ function ReportsTab() {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const deleteReport = async (id: string) => {
+    if (!window.confirm("Hapus laporan ini secara permanen?")) return;
+    try {
+      await adminFetch(`/api/admin/reports/${id}`, { method: "DELETE" });
+      toast.success("Laporan dihapus");
+      load();
+    } catch (e: any) { toast.error(e.message); }
+  };
+
   const REASON_COLORS: Record<string, string> = {
     "Informasi tidak akurat": "bg-red-500/15 text-red-400",
     "Sumber tidak sesuai": "bg-orange-500/15 text-orange-400",
@@ -2008,16 +2017,21 @@ function ReportsTab() {
                   )}
                 </div>
 
-                {r.status === "pending" && (
-                  <div className="flex shrink-0 flex-col gap-2">
-                    <Button size="sm" variant="outline" className="h-8 gap-1 border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => updateStatus(r.id, "reviewed")} title="Tandai Ditinjau">
-                      <Check className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => updateStatus(r.id, "dismissed")} title="Abaikan">
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )}
+                <div className="flex shrink-0 flex-col gap-2">
+                  {r.status === "pending" && (
+                    <>
+                      <Button size="sm" variant="outline" className="h-8 gap-1 border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => updateStatus(r.id, "reviewed")} title="Tandai Ditinjau">
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 gap-1 text-muted-foreground hover:text-foreground" onClick={() => updateStatus(r.id, "dismissed")} title="Abaikan">
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                  <Button size="sm" variant="outline" className="h-8 gap-1 border-red-500/30 text-red-400 hover:bg-red-500/10" onClick={() => deleteReport(r.id)} title="Hapus laporan">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           ))}

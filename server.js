@@ -4663,6 +4663,23 @@ app.patch("/api/admin/reports/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/admin/reports/:id", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+
+  try {
+    const { error } = await supabase.from("message_reports").delete().eq("id", id);
+    if (error) throw error;
+    console.log(`[REPORT] Report ${id} deleted by admin ${admin.id}`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* ── Migration SQL — admin helper ───────────────────────*/
 // Returns the SQL needed to create any missing tables.
 // Admin can paste this into the Supabase SQL editor.
