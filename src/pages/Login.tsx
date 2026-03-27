@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Mail, Lock, ArrowRight, ArrowLeft, X, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,12 @@ const GoogleIcon = () => (
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const pending = (location.state as any)?.pendingMessage;
+    if (pending) sessionStorage.setItem("pendingMessage", pending);
+  }, []);
 
   const [view, setView] = useState<View>("main");
   const [mode, setMode] = useState<Mode>("register");
@@ -162,7 +168,7 @@ const Login = () => {
 
       {/* Close button */}
       <button
-        onClick={() => navigate(-1)}
+        onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}
         className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground"
       >
         <X className="h-4 w-4" />

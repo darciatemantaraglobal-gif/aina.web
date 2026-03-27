@@ -117,7 +117,7 @@ const WelcomeModal = ({ onGoContributor }: WelcomeModalProps) => {
           <div className="mt-2.5 flex items-start gap-2 rounded-xl border border-border bg-secondary/20 p-2.5 sm:mt-4 sm:p-3">
             <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
-              Masukan kamu sangat berharga. Gunakan tombol <span className="font-medium text-foreground">Feedback Beta</span> di pojok kanan bawah untuk lapor bug atau saran.
+              Masukan kamu sangat berharga. Gunakan tombol <span className="font-medium text-foreground">Feedback</span> di pojok kanan bawah untuk lapor bug atau saran.
             </p>
           </div>
 
