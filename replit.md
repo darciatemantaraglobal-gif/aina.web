@@ -103,17 +103,21 @@ npm run dev   # Start both backend (port 3001) and frontend (port 5000) using co
 - `arabic_writing` — Arabic academic writing tasks. Always Tier B model. No external fetch. Arabic response mandatory.
 - `factual/procedural/confused/recommendation/brainstorming` — General Indonesian intents. Tier A/B based on KB strength.
 
-**Answer mode system** (`detectAnswerMode` / `buildAnswerModeHint` in server.js):
-- `concise` — 2-3 sentences / 3-4 bullets max
-- `balanced` (default) — direct answer + short explanation + practical context; feels complete, not clipped
-- `detailed` — full explanation, organized, with context and tips
-- Detected from `userProfile.answerMode` → legacy `responseLength` (`ringkas`/`lengkap`) → default `balanced`
-- Injected as a `[Mode Jawaban]` block at the end of the system prompt
+**Response Style system** (`detectResponseStyle` / `buildResponseStyleHint` in server.js):
+Five user-selectable styles stored in `localStorage` as `responseStyle` inside `aina_personalization`:
+- `short_direct` — 1–3 sentence maximum, no preamble
+- `step_by_step` (default) — numbered steps, logical order, ≤2 sentences per step
+- `detailed_complete` — comprehensive with headings, context, tips, caveats
+- `practical_ready_to_use` — checklist / template / copy-paste output, minimal prose
+- `casual_easy_to_understand` — conversational, analogies, short sentences, light emoji ok
+- Detection priority: `userProfile.responseStyle` → legacy `answerMode` → legacy `responseLength` → default `step_by_step`
+- Injected as a `[Gaya Respons]` block at end of system prompt; defined in `src/lib/responseStyles.ts`
+- UI: 2-column card grid in PersonalizationModal (last card spans full width)
 
 **Structured per-turn log** (`[SourceDecision]` JSON):
 ```
 kb_used, kb_strength, query_type, external_type, external_called,
-external_success, fallback_used, final_source, answer_mode
+external_success, fallback_used, final_source, answer_mode (=responseStyle key)
 ```
 
 ## Features

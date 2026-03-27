@@ -27,6 +27,12 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import {
+  RESPONSE_STYLES,
+  RESPONSE_STYLE_ORDER,
+  DEFAULT_RESPONSE_STYLE,
+  type ResponseStyleKey,
+} from "@/lib/responseStyles";
 import NotificationBell from "@/components/NotificationBell";
 
 interface Chat {
@@ -60,15 +66,26 @@ const PERSONALIZATION_KEY = "aina_personalization";
 export interface AinaPersonalization {
   chatStyle: "santai" | "formal";
   responseLength: "ringkas" | "detail";
+  responseStyle: ResponseStyleKey;
   userName: string;
 }
 
 export function getPersonalization(): AinaPersonalization {
   try {
     const raw = localStorage.getItem(PERSONALIZATION_KEY);
-    if (raw) return JSON.parse(raw) as AinaPersonalization;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AinaPersonalization>;
+      return {
+        chatStyle: parsed.chatStyle ?? "santai",
+        responseLength: parsed.responseLength ?? "detail",
+        responseStyle: (parsed.responseStyle && parsed.responseStyle in RESPONSE_STYLES)
+          ? parsed.responseStyle
+          : DEFAULT_RESPONSE_STYLE,
+        userName: parsed.userName ?? "",
+      };
+    }
   } catch {}
-  return { chatStyle: "santai", responseLength: "detail", userName: "" };
+  return { chatStyle: "santai", responseLength: "detail", responseStyle: DEFAULT_RESPONSE_STYLE, userName: "" };
 }
 
 function savePersonalization(p: AinaPersonalization) {
@@ -177,24 +194,36 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Panjang jawaban */}
+          {/* Gaya Respons */}
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
-              Panjang Jawaban
+              Gaya Respons AINA
             </p>
-            <div className="flex gap-2">
-              <OptionButton
-                active={prefs.responseLength === "ringkas"}
-                onClick={() => setPrefs((p) => ({ ...p, responseLength: "ringkas" }))}
-              >
-                Ringkas
-              </OptionButton>
-              <OptionButton
-                active={prefs.responseLength === "detail"}
-                onClick={() => setPrefs((p) => ({ ...p, responseLength: "detail" }))}
-              >
-                Detail
-              </OptionButton>
+            <div className="grid grid-cols-2 gap-1.5">
+              {RESPONSE_STYLE_ORDER.map((key, i) => {
+                const style = RESPONSE_STYLES[key];
+                const Icon = style.icon;
+                const isActive = prefs.responseStyle === key;
+                const isLast = i === RESPONSE_STYLE_ORDER.length - 1;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setPrefs((p) => ({ ...p, responseStyle: key }))}
+                    className={`${isLast ? "col-span-2" : ""} flex items-start gap-2 rounded-xl border p-2.5 text-left transition-all ${
+                      isActive
+                        ? "border-primary/50 bg-primary/10 text-sidebar-foreground"
+                        : "border-sidebar-border bg-sidebar-accent text-sidebar-foreground/60 hover:text-sidebar-foreground hover:border-sidebar-border/80"
+                    }`}
+                  >
+                    <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${isActive ? "text-primary" : ""}`} />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold leading-tight">{style.shortLabel}</p>
+                      <p className="mt-0.5 text-[10px] leading-tight opacity-70">{style.desc}</p>
+                    </div>
+                    {isActive && <Check className="ml-auto mt-0.5 h-3 w-3 shrink-0 text-primary" />}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

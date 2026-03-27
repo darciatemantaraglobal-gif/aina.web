@@ -1379,47 +1379,84 @@ function buildIntentHint({ primary, casual }) {
   return `\n\n**[Gaya respons — ${label}]** ${hints[primary] ?? hints.factual}${toneNote}`;
 }
 
-/* ── Answer mode: concise / balanced / detailed ─────── */
+/* ── Response Style System ───────────────────────────────────────
+ * Five user-selectable styles that control how AINA structures and
+ * tones its answers. Replacing the old concise/balanced/detailed system.
+ * Default: "step_by_step". Extensible — add new keys + hint below.
+ * ─────────────────────────────────────────────────────────────── */
+
+const VALID_RESPONSE_STYLES = new Set([
+  "short_direct",
+  "step_by_step",
+  "detailed_complete",
+  "practical_ready_to_use",
+  "casual_easy_to_understand",
+]);
 
 /**
- * Detect the answer mode from userProfile.
- * Priority: explicit answerMode field → mapped responseLength → default "balanced"
+ * Detect which response style to use.
+ * Priority: responseStyle field → legacy answerMode → legacy responseLength → default
  */
-function detectAnswerMode(userProfile) {
-  const raw = userProfile?.answerMode;
-  if (raw === "concise" || raw === "balanced" || raw === "detailed") return raw;
-  // Map legacy responseLength field
+function detectResponseStyle(userProfile) {
+  // 1. New responseStyle field (from frontend selector)
+  const rs = userProfile?.responseStyle;
+  if (rs && VALID_RESPONSE_STYLES.has(rs)) return rs;
+
+  // 2. Legacy answerMode field (backward compat)
+  const am = userProfile?.answerMode;
+  if (am === "concise")  return "short_direct";
+  if (am === "detailed") return "detailed_complete";
+
+  // 3. Legacy responseLength field (backward compat)
   const rl = userProfile?.responseLength;
-  if (rl === "ringkas") return "concise";
-  if (rl === "lengkap") return "detailed";
-  return "balanced"; // default — not too short, not overwhelming
+  if (rl === "ringkas") return "short_direct";
+  if (rl === "lengkap") return "detailed_complete";
+
+  return "step_by_step"; // default
 }
+
+const RESPONSE_STYLE_HINTS = {
+  short_direct: `\n\n**[Gaya Respons: SINGKAT & LANGSUNG]**
+Jawab inti pertanyaan dalam 1–3 kalimat. Tanpa pendahuluan atau elaborasi yang tidak diminta.
+Jika ada langkah-langkah, batas maksimal 3 poin, masing-masing satu kalimat.
+Prioritaskan kepadatan informasi: setiap kata harus punya nilai. Berhenti begitu inti sudah tersampaikan.`,
+
+  step_by_step: `\n\n**[Gaya Respons: LANGKAH DEMI LANGKAH]**
+Wajib gunakan format bernomor (1. 2. 3.) untuk setiap langkah atau poin utama.
+Setiap nomor = satu aksi atau satu ide yang spesifik. Maksimal 2 kalimat per langkah — aksi dulu, detail menyusul.
+Tambahkan ⚠️ atau 💡 hanya jika ada hal kritis yang sering terlewat.
+Urutan harus logis dan mudah diikuti dari awal sampai akhir.
+Jika pertanyaan tidak cocok format langkah (misalnya faktual singkat), tetap jawab dengan ringkas dan jelas.`,
+
+  detailed_complete: `\n\n**[Gaya Respons: DETAIL & LENGKAP]**
+Berikan jawaban yang komprehensif — latar belakang, alasan, langkah-langkah, tips, dan hal yang perlu diwaspadai.
+Gunakan heading ## untuk membagi bagian utama. Gunakan bullet atau nomor sesuai konten.
+Panjang tidak masalah asalkan setiap kalimat bernilai — tidak ada padding atau pengulangan.
+Targetkan pemahaman mendalam: user harus bisa bertindak AND mengerti mengapa, setelah membaca.`,
+
+  practical_ready_to_use: `\n\n**[Gaya Respons: PRAKTIS & SIAP PAKAI]**
+Prioritaskan output yang LANGSUNG bisa dipakai tanpa perlu diadaptasi:
+- 📋 **Checklist** → gunakan format "- [ ] Langkah..." untuk daftar yang bisa dicentang
+- 📝 **Template pesan/surat** → tulis dalam blockquote siap copy-paste
+- ⚡ **Aksi langsung** → daftar tindakan konkret berurutan dari yang paling segera
+Tandai jenis output dengan label yang sesuai di awal. Minimalis di penjelasan — maksimal di konten siap pakai.
+Jika pertanyaan tidak cocok format ini, jawab dengan langkah-langkah konkret yang bisa langsung dieksekusi.`,
+
+  casual_easy_to_understand: `\n\n**[Gaya Respons: SANTAI & MUDAH DIPAHAMI]**
+Tulis seperti menjelaskan ke teman — bukan laporan, bukan dokumen resmi.
+Gunakan kalimat pendek, bahasa sehari-hari, dan analogi sederhana jika membantu.
+Kalau terpaksa pakai istilah teknis, langsung jelaskan artinya dalam kurung atau kalimat berikutnya.
+Boleh pakai emoji sesekali (max 1-2) kalau terasa pas dan natural.
+Tujuannya: siapapun — termasuk yang baru pertama kali di Mesir — harus bisa langsung ngerti.`,
+};
 
 /**
- * Build a system-prompt hint that controls answer length and depth.
- * Injected alongside intentHint so the model understands the expected style.
+ * Build the system-prompt injection for the selected response style.
  */
-function buildAnswerModeHint(mode) {
-  if (mode === "concise") {
-    return `\n\n**[Mode Jawaban: RINGKAS]** Jawaban harus singkat dan langsung — maksimal 2-3 kalimat atau 3-4 poin bullet. Tidak perlu elaborasi atau contoh tambahan kecuali benar-benar kritis. Fokus pada inti saja.`;
-  }
-  if (mode === "detailed") {
-    return `\n\n**[Mode Jawaban: DETAIL]** Berikan penjelasan yang lengkap dan komprehensif. Jelaskan latar belakang, langkah-langkah, konteks praktis, dan tips jika relevan. Gunakan heading dan struktur yang jelas. Panjang boleh lebih dari biasa asalkan tidak repetitif dan setiap kalimat punya nilai.`;
-  }
-  // balanced — default
-  return `\n\n**[Mode Jawaban: BALANCED]** Struktur jawaban wajib mengikuti 3 bagian ini secara berurutan:
-
-1. **Jawaban utama** — Langsung jawab di kalimat atau poin pertama. Jelas dan tidak ragu-ragu.
-2. **Penjelasan singkat** — Berikan konteks, alasan, atau makna yang membantu user memahami lebih dalam (1–3 kalimat atau daftar 3–6 poin). Jangan terlalu singkat, tapi jangan berlebihan.
-3. **Tawaran lanjutan (opsional, 1 kalimat)** — Di akhir jawaban, tawarkan bantuan relevan berikutnya secara natural. Tawaran ini HARUS spesifik terhadap topik yang ditanya — jangan generik seperti "ada yang bisa aku bantu lagi?". Contoh yang baik: "Kalau kamu mau, aku bisa jelasin langkah-langkah pengurusannya juga." atau "Aku juga bisa bantu rekomendasiin jenis kosan yang pas buat mahasiswa baru."
-
-**Kapan TIDAK menambahkan tawaran lanjutan:**
-- Jawaban sudah panjang/prosedural (ada langkah-langkah bernomor) — tawaran di akhir akan terasa berlebihan
-- Pertanyaan sudah sangat spesifik dan lengkap dijawab — tidak ada natural next step yang relevan
-- Topik sederhana/faktual yang sudah selesai sempurna dengan 1-2 kalimat
-
-**Tone:** Hangat, natural, seperti senior yang helpful — bukan robot, bukan over-promising. Kalimat pendek-menengah. Inti selalu di depan.`;
+function buildResponseStyleHint(style) {
+  return RESPONSE_STYLE_HINTS[style] ?? RESPONSE_STYLE_HINTS.step_by_step;
 }
+
 
 /* ── Context cleaning utilities ──────────────────────── */
 // Trim text to maxLen chars, cutting at the last sentence boundary
@@ -1698,9 +1735,10 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (queryType === "currency") console.log(`[Source] currency query → exchange API only (no Wikipedia/DDG/Perplexity)`);
   }
 
-  // ── Answer mode ──────────────────────────────────────────────────────────
-  const answerMode = detectAnswerMode(userProfile);
-  const answerModeHint = buildAnswerModeHint(answerMode);
+  // ── Response style ────────────────────────────────────────────────────────
+  const answerMode = detectResponseStyle(userProfile);
+  const answerModeHint = buildResponseStyleHint(answerMode);
+  console.log(`[ResponseStyle] ${answerMode}`);
 
   // ── Structured source decision log ──────────────────────────────────────
   const sourceLog = {
