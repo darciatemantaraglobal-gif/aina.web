@@ -146,12 +146,12 @@ function ArticleDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="pointer-events-none absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
-      <div className="relative z-10 flex w-full max-w-2xl flex-col rounded-t-3xl sm:rounded-3xl border border-border bg-background shadow-2xl max-h-[92dvh] sm:max-h-[85vh]">
+      <div className="relative z-10 flex w-full max-w-2xl flex-col rounded-3xl border border-border bg-background shadow-2xl max-h-[88dvh]">
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
           <div className="flex items-center gap-2">

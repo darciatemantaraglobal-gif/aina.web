@@ -54,15 +54,15 @@ const FeedbackButton = () => {
       <button
         onClick={() => setOpen(true)}
         title="Kirim Feedback Beta"
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-muted-foreground shadow-lg transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground hover:shadow-xl"
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-muted-foreground shadow-lg transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground hover:shadow-xl sm:px-4"
       >
         <MessageSquarePlus className="h-4 w-4 text-primary" />
-        <span>Feedback Beta</span>
+        <span className="hidden sm:inline">Feedback Beta</span>
       </button>
 
       {/* Modal overlay */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-end p-4 sm:items-center sm:justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
 
           <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">

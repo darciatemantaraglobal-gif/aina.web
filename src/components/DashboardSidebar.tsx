@@ -137,9 +137,10 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-start sm:items-center sm:justify-start sm:pl-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative mb-4 ml-4 w-72 rounded-2xl border border-sidebar-border bg-sidebar p-5 shadow-2xl"
+        className="relative w-full max-w-xs rounded-2xl border border-sidebar-border bg-sidebar p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -244,9 +245,10 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-start sm:items-center sm:justify-start sm:pl-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative mb-4 ml-4 w-72 max-h-[80vh] overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar p-5 shadow-2xl"
+        className="relative w-full max-w-xs max-h-[80vh] overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
