@@ -2823,16 +2823,16 @@ function AnnouncementsTab() {
     setImgUploading(true);
     try {
       const auth = await getAuthHeader();
-      const res = await fetch("/api/upload-url", {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/upload-image", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: auth },
-        body: JSON.stringify({ filename: file.name, contentType: file.type }),
+        headers: { Authorization: auth },
+        body: formData,
       });
-      if (!res.ok) { toast.error("Gagal mendapat URL upload"); return; }
-      const { uploadUrl, publicUrl } = await res.json();
-      const uploadRes = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!uploadRes.ok) { toast.error("Gagal upload gambar"); return; }
-      setImgUrl(publicUrl);
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error ?? "Gagal upload gambar"); return; }
+      setImgUrl(json.publicUrl);
       toast.success("Gambar berhasil diupload");
     } catch {
       toast.error("Upload gagal. Coba lagi.");

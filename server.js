@@ -191,6 +191,10 @@ async function initStorage() {
       await supabase.storage.createBucket("temp-uploads", { public: false, fileSizeLimit: 20971520 }); // 20 MB cap
       console.log("Storage bucket 'temp-uploads' created");
     }
+    if (!names.includes("announcements")) {
+      await supabase.storage.createBucket("announcements", { public: true, fileSizeLimit: 5242880 }); // 5 MB cap
+      console.log("Storage bucket 'announcements' created");
+    }
   } catch (e) {
     console.warn("Storage init warning:", e.message);
   }
@@ -2362,6 +2366,45 @@ app.post("/api/upload-url", async (req, res) => {
   }
 
   return res.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
+});
+
+/* ── Admin: Direct image upload for announcements ─────── */
+const adminImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Hanya JPG, PNG, WebP, atau GIF yang diizinkan."));
+  },
+});
+
+app.post("/api/admin/upload-image", uploadLimiter, (req, res, next) => {
+  adminImageUpload.single("file")(req, res, err => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  if (!req.file) return res.status(400).json({ error: "File tidak ditemukan" });
+
+  const supabase = getAdminClient();
+  const ext = req.file.mimetype.split("/")[1].replace("jpeg", "jpg");
+  const storagePath = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from("announcements")
+    .upload(storagePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+
+  if (error) {
+    console.error("[admin/upload-image] storage error:", error.message);
+    return res.status(500).json({ error: "Gagal menyimpan gambar: " + error.message });
+  }
+
+  const { data: { publicUrl } } = supabase.storage.from("announcements").getPublicUrl(storagePath);
+  return res.json({ publicUrl });
 });
 
 /* ── Upload URL for chat (any authenticated user) ────── */
