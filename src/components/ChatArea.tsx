@@ -741,7 +741,9 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : (
           <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
-            {messages.map((msg) => (
+            {messages.map((msg, msgIdx) => {
+              const isLastAI = msg.role === "assistant" && msgIdx === messages.length - 1 && !isLoading && !streamingMsg;
+              return (
               <div
                 key={msg.id}
                 className={`flex gap-3 min-w-0 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
@@ -917,11 +919,34 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       )}
                     </div>
                   </div>
+
+                  {/* Report hint — always visible below action row */}
+                  {!reportedMsgIds.has(msg.id) && reportingMsgId !== msg.id && (
+                    <p className="mt-1 pl-0.5 text-[10px] text-muted-foreground/35">
+                      Jawaban tidak akurat? Gunakan 🚩 Laporkan di atas untuk membantu AINA berkembang.
+                    </p>
+                  )}
+
+                  {/* Follow-up suggestions — only on last AI message */}
+                  {isLastAI && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {["Jelaskan lebih detail", "Buat panduan langkah-langkah", "Ada hal lain terkait ini?"].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => handleSend(s)}
+                          className="rounded-full border border-border/50 bg-secondary/30 px-3 py-1 text-[11px] text-muted-foreground/70 transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   </div>
                 )}
 
               </div>
-            ))}
+              );
+            })}
 
             {/* Streaming typewriter bubble */}
             {streamingMsg && (

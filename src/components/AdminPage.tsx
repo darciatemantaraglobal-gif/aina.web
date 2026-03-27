@@ -2242,6 +2242,12 @@ const TYPE_COLORS: Record<string, string> = {
   "RATE-LIMITED": "bg-orange-500/15 text-orange-400 border-orange-500/30",
 };
 
+const TYPE_META: Record<string, { label: string; desc: string; warn: string }> = {
+  "AUTH-FAIL":    { label: "Gagal Login",       desc: "Token tidak valid atau akses ditolak",              warn: "Banyak dari 1 IP = brute force" },
+  "FORBIDDEN":    { label: "Akses Terlarang",   desc: "Request ke endpoint admin tanpa izin",              warn: "Banyak muncul = seseorang mencoba masuk paksa" },
+  "RATE-LIMITED": { label: "Rate Limit Terlampaui", desc: "IP mengirim terlalu banyak request sekaligus", warn: "Banyak muncul = kemungkinan bot/DDoS" },
+};
+
 function SecurityLogsTab() {
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   const [total, setTotal] = useState(0);
@@ -2294,45 +2300,69 @@ function SecurityLogsTab() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-red-400" /> Security Log
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {total} event tersimpan (maks. 500, reset saat server restart)
+            {total} event tersimpan · maks. 500 · reset saat server restart
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button onClick={() => load(typeFilter)}
-            className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
             <RefreshCw className="h-3 w-3" /> Refresh
           </button>
           <button onClick={handleClear} disabled={clearing || events.length === 0}
-            className="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40">
-            <Trash className="h-3 w-3" /> Hapus Semua
+            className="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40">
+            <Trash className="h-3 w-3" /> Hapus
           </button>
         </div>
       </div>
 
+      {/* Guide */}
+      <PerfGuide items={[
+        { term: "Gagal Login (AUTH-FAIL)", desc: "Token tidak valid atau request tidak terautentikasi. Wajar terjadi sesekali. Waspada jika banyak dari 1 IP dalam waktu singkat — bisa brute force.", color: "text-yellow-400" },
+        { term: "Akses Terlarang (FORBIDDEN)", desc: "Seseorang mencoba mengakses endpoint admin tanpa izin. 1–2 bisa normal, tapi banyak dari IP yang sama = probing/scanning sistem.", color: "text-red-400" },
+        { term: "Rate Limit (RATE-LIMITED)", desc: "IP mengirim terlalu banyak request sekaligus dan kena batas. Wajar untuk 1 user aktif, curigai jika muncul ratusan kali dari 1 IP.", color: "text-orange-400" },
+        { term: "Kolom Method", desc: "GET = membaca data, POST = mengirim data, DELETE = menghapus. POST/DELETE ke endpoint admin yang gagal lebih berbahaya dari GET." },
+        { term: "Kolom Path", desc: "Endpoint server yang dituju. Jika banyak percobaan ke /api/admin/* dari IP asing, segera waspadai." },
+        { term: "Kolom IP", desc: "Alamat IP pengirim. Salin ke situs seperti ipinfo.io untuk lihat lokasi & pemilik IP tersebut.", color: "text-primary" },
+        { term: "User-Agent (UA)", desc: "Identitas browser/alat pengirim. Hover untuk lihat teks lengkap. 'python-requests' atau 'curl' biasanya tanda bot/scanner.", color: "text-muted-foreground" },
+      ]} />
+
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
-        {(["AUTH-FAIL", "FORBIDDEN", "RATE-LIMITED"] as const).map(t => (
-          <div key={t} className={`rounded-xl border p-3 ${TYPE_COLORS[t]}`}>
-            <div className="text-lg font-bold">{counts[t]}</div>
-            <div className="text-xs opacity-80">{t}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {(["AUTH-FAIL", "FORBIDDEN", "RATE-LIMITED"] as const).map(t => {
+          const meta = TYPE_META[t];
+          const isAlert = counts[t] > 10;
+          return (
+            <div key={t} className={`rounded-xl border p-3 space-y-1 ${TYPE_COLORS[t]}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold opacity-80">{meta.label}</span>
+                {isAlert && <span className="rounded-full bg-current/10 px-2 py-0.5 text-[10px] font-bold opacity-90">⚠ Tinggi</span>}
+              </div>
+              <div className="text-2xl font-bold">{counts[t]}</div>
+              <div className="text-[11px] opacity-70 leading-snug">{meta.desc}</div>
+              <div className="text-[10px] opacity-50 italic">{meta.warn}</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Filter */}
-      <div className="flex items-center gap-2">
-        <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">Filter:</span>
-        {["all", "AUTH-FAIL", "FORBIDDEN", "RATE-LIMITED"].map(f => (
-          <button key={f} onClick={() => handleFilter(f)}
-            className={`rounded-full border px-3 py-0.5 text-xs transition-colors ${typeFilter === f ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
-            {f === "all" ? "Semua" : f}
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        {[
+          { id: "all",          label: "Semua" },
+          { id: "AUTH-FAIL",    label: "Gagal Login" },
+          { id: "FORBIDDEN",    label: "Akses Terlarang" },
+          { id: "RATE-LIMITED", label: "Rate Limit" },
+        ].map(f => (
+          <button key={f.id} onClick={() => handleFilter(f.id)}
+            className={`rounded-full border px-3 py-0.5 text-xs transition-colors ${typeFilter === f.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
+            {f.label}{f.id !== "all" && counts[f.id as keyof typeof counts] > 0 ? ` (${counts[f.id as keyof typeof counts]})` : ""}
           </button>
         ))}
       </div>
@@ -2345,42 +2375,41 @@ function SecurityLogsTab() {
       ) : events.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
           <ShieldAlert className="h-8 w-8 opacity-30" />
-          <p className="text-sm">Tidak ada event keamanan yang tercatat.</p>
+          <p className="text-sm font-medium">Tidak ada event keamanan yang tercatat.</p>
+          <p className="text-xs opacity-70">Bagus! Sistem aman.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Waktu</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tipe</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Method</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Path</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">IP</th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">User-Agent</th>
+        <div className="rounded-xl border border-border overflow-x-auto">
+          <table className="w-full min-w-max text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium text-muted-foreground">Waktu</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium text-muted-foreground">Tipe</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium text-muted-foreground">Method</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium text-muted-foreground">Path</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium text-muted-foreground">IP</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium text-muted-foreground">User-Agent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((ev, i) => (
+                <tr key={ev.id} className={`border-b border-border/50 last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-muted-foreground">
+                    {new Date(ev.timestamp).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${TYPE_COLORS[ev.type]}`}>
+                      {TYPE_META[ev.type]?.label ?? ev.type}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono font-semibold text-foreground">{ev.method}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-foreground max-w-[200px] truncate">{ev.path}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-primary">{ev.ip}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-muted-foreground max-w-[220px] truncate" title={ev.ua}>{ev.ua}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {events.map((ev, i) => (
-                  <tr key={ev.id} className={`border-b border-border/50 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-muted-foreground">
-                      {new Date(ev.timestamp).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${TYPE_COLORS[ev.type]}`}>
-                        {ev.type}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 font-mono font-semibold text-foreground">{ev.method}</td>
-                    <td className="max-w-[180px] truncate px-3 py-2 font-mono text-foreground">{ev.path}</td>
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-primary">{ev.ip}</td>
-                    <td className="max-w-[200px] truncate px-3 py-2 text-muted-foreground" title={ev.ua}>{ev.ua}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
