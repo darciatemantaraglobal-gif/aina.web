@@ -1890,11 +1890,19 @@ function ReportsTab() {
 
   const updateStatus = async (id: string, status: "reviewed" | "dismissed") => {
     try {
-      await adminFetch(`/api/admin/reports/${id}`, {
+      const result = await adminFetch(`/api/admin/reports/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      toast.success(status === "reviewed" ? "Laporan ditandai sudah ditinjau" : "Laporan diabaikan");
+      if (status === "reviewed") {
+        if (result?.kb_approved > 0) {
+          toast.success("Laporan ditinjau — koreksi KB langsung disetujui dan aktif di Knowledge Base!");
+        } else {
+          toast.success("Laporan ditandai sudah ditinjau");
+        }
+      } else {
+        toast.success("Laporan diabaikan");
+      }
       load();
     } catch (e: any) { toast.error(e.message); }
   };

@@ -4537,6 +4537,7 @@ app.post("/api/report-message", writeLimiter, async (req, res) => {
     console.log(`[REPORT] New report ${reportId} by user ${user.id}: "${reason}"`);
 
     // If the reporter provided a revised answer, create a pending KB entry for admin review
+    let kbCreated = false;
     if (revised_answer?.trim()) {
       const questionSnippet = (user_question || "Pertanyaan tidak diketahui").slice(0, 140);
       const kbTitle = `[Koreksi AI] ${questionSnippet}`;
@@ -4545,7 +4546,9 @@ app.post("/api/report-message", writeLimiter, async (req, res) => {
         `**Jawaban yang diusulkan:**\n${revised_answer.trim()}`,
         `---\n*Diajukan sebagai koreksi atas jawaban AI. ID Laporan: ${reportId}*`,
       ].filter(Boolean).join("\n\n");
-      const { error: kbErr } = await supabase.from("knowledge_base").insert({
+
+      // Try full insert first (with optional columns that require migration)
+      let { error: kbErr } = await supabase.from("knowledge_base").insert({
         author_id: user.id,
         title: kbTitle,
         content: kbContent,
@@ -4554,11 +4557,25 @@ app.post("/api/report-message", writeLimiter, async (req, res) => {
         article_type: "narrative",
         keywords: "koreksi, ai correction, perbaikan",
       });
+
+      // If optional columns don't exist yet, retry with only core columns
+      if (kbErr && (kbErr.message?.includes("article_type") || kbErr.message?.includes("keywords") || kbErr.message?.includes("column"))) {
+        console.warn(`[REPORT] Retrying KB insert without optional columns: ${kbErr.message}`);
+        const retry = await supabase.from("knowledge_base").insert({
+          author_id: user.id,
+          title: kbTitle,
+          content: kbContent,
+          category: "Administrasi",
+          status: "pending",
+        });
+        kbErr = retry.error;
+      }
+
       if (kbErr) console.error(`[REPORT] Failed to create KB revision entry: ${kbErr.message}`);
-      else console.log(`[REPORT] Revision KB entry created from report ${reportId}`);
+      else { kbCreated = true; console.log(`[REPORT] Revision KB entry created from report ${reportId}`); }
     }
 
-    res.json({ success: true, id: reportId, has_revision: !!revised_answer?.trim() });
+    res.json({ success: true, id: reportId, has_revision: !!revised_answer?.trim(), kb_created: kbCreated });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -4615,7 +4632,32 @@ app.patch("/api/admin/reports/:id", async (req, res) => {
   try {
     const { error } = await supabase.from("message_reports").update(updates).eq("id", id);
     if (error) throw error;
-    res.json({ success: true });
+
+    // If marked as reviewed, auto-approve any linked KB correction entries
+    let kbApproved = 0;
+    if (status === "reviewed") {
+      try {
+        const searchPattern = `%ID Laporan: ${id}%`;
+        const { data: kbEntries } = await supabase
+          .from("knowledge_base")
+          .select("id")
+          .like("content", searchPattern)
+          .eq("status", "pending");
+
+        if (kbEntries && kbEntries.length > 0) {
+          await supabase
+            .from("knowledge_base")
+            .update({ status: "approved" })
+            .in("id", kbEntries.map(e => e.id));
+          kbApproved = kbEntries.length;
+          console.log(`[REPORT] Auto-approved ${kbApproved} KB entry(ies) linked to report ${id}`);
+        }
+      } catch (kbE) {
+        console.error(`[REPORT] Failed to auto-approve linked KB entries: ${kbE.message}`);
+      }
+    }
+
+    res.json({ success: true, kb_approved: kbApproved });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
