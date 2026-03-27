@@ -364,7 +364,7 @@ async function fetchRelevantArticles(userQuestion) {
     detectKeywordsCol(supabase),
   ]);
   const selectCols = [
-    "title, content, category",
+    "title, content, category, hidden",
     hasTypeCol ? ", article_type" : "",
     hasKwCol   ? ", keywords"     : "",
   ].join("");
@@ -1555,7 +1555,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       if (cleanedContent.length < a.content.length) {
         console.log(`[CtxClean] Article "${a.title}": ${a.content.length} → ${cleanedContent.length} chars`);
       }
-      return `### Artikel ${i + 1}: ${a.title} [${a.category}]${typeHint}\n${cleanedContent}`;
+      // Hidden articles: use anonymous label so the AI uses the knowledge but never cites the real title
+      const displayTitle = a.hidden
+        ? `Referensi Internal [${a.category}]`
+        : `${a.title} [${a.category}]`;
+      return `### Artikel ${i + 1}: ${displayTitle}${typeHint}\n${cleanedContent}`;
     }).join("\n\n");
 
     // Detect potentially conflicting articles: 2+ articles in the same category
@@ -1947,7 +1951,7 @@ ${intentHint}${confidence.hint}${answerModeHint}
     // not from model text (model is told not to write "Sumber: ..." anymore).
     const responseSources = [];
     if (pinnedUpdates.length > 0)                        responseSources.push("Breaking Update");
-    if (articles.length > 0)                             articles.slice(0, 2).forEach(a => responseSources.push(a.title));
+    if (articles.length > 0)                             articles.filter(a => !a.hidden).slice(0, 2).forEach(a => responseSources.push(a.title));
     if (perplexityResult)                                responseSources.push("Pencarian Web");
     if (queryType === "currency" && exchangeRates)       responseSources.push("Kurs Real-time");
     if (wikiResult)                                      responseSources.push("Wikipedia");
