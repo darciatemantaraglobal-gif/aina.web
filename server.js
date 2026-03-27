@@ -3883,31 +3883,91 @@ app.post("/api/kb/fetch-url", writeLimiter, async (req, res) => {
   try {
     console.log(`[URL-KB] fetching: ${url}`);
     const pageRes = await fetch(url, {
-      signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; AINA-Bot/1.0; +https://ainalabs.pro)" },
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "identity",
+        "Cache-Control": "no-cache",
+      },
     });
     if (!pageRes.ok) return res.status(400).json({ error: `Halaman tidak bisa diakses (HTTP ${pageRes.status})` });
 
     const html = await pageRes.text();
 
-    // Strip scripts, styles, nav, header, footer — keep main content
-    const cleaned = html
+    // Strip noise tags first (scripts, styles, ads, etc.)
+    const stripped = html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<nav[\s\S]*?<\/nav>/gi, "")
-      .replace(/<header[\s\S]*?<\/header>/gi, "")
-      .replace(/<footer[\s\S]*?<\/footer>/gi, "")
-      .replace(/<aside[\s\S]*?<\/aside>/gi, "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 9000);
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
+      .replace(/<!--[\s\S]*?-->/g, "");
 
-    if (cleaned.length < 80) {
-      return res.status(400).json({ error: "Konten halaman terlalu sedikit atau tidak bisa dibaca" });
+    // Helper: extract inner text from an HTML block
+    const toText = (block) =>
+      block
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#\d+;/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    // Smart extraction: try specific content containers first (handles WordPress, news portals, blogs)
+    let cleaned = "";
+
+    // Priority 1: <article> tag — most semantic, used by WP & news sites
+    const articleMatch = stripped.match(/<article[\s\S]*?<\/article>/i);
+    if (articleMatch) {
+      const t = toText(articleMatch[0]);
+      if (t.length > 200) { cleaned = t; console.log(`[URL-KB] source: <article> tag (${t.length} chars)`); }
     }
 
-    console.log(`[URL-KB] extracted ${cleaned.length} chars, generating article...`);
+    // Priority 2: <main> tag
+    if (!cleaned) {
+      const mainMatch = stripped.match(/<main[\s\S]*?<\/main>/i);
+      if (mainMatch) {
+        const t = toText(mainMatch[0]);
+        if (t.length > 200) { cleaned = t; console.log(`[URL-KB] source: <main> tag (${t.length} chars)`); }
+      }
+    }
+
+    // Priority 3: common content class names (WordPress, Indonesian news portals)
+    if (!cleaned) {
+      const contentPatterns = [
+        /class="[^"]*(?:entry-content|post-content|article-content|article-body|single-content|content-area|main-content|post-body|the-content)[^"]*"[\s\S]*?(?=<\/div>(?:\s*<\/div>){0,3}\s*(?:<div|<aside|<footer|<section|$))/i,
+      ];
+      for (const pat of contentPatterns) {
+        const m = stripped.match(pat);
+        if (m) {
+          const t = toText(m[0]);
+          if (t.length > 200) { cleaned = t; console.log(`[URL-KB] source: content class (${t.length} chars)`); break; }
+        }
+      }
+    }
+
+    // Priority 4: fallback — full page minus nav/header/footer/aside
+    if (!cleaned) {
+      const fallback = stripped
+        .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+        .replace(/<header[\s\S]*?<\/header>/gi, "")
+        .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+        .replace(/<aside[\s\S]*?<\/aside>/gi, "");
+      cleaned = toText(fallback);
+      console.log(`[URL-KB] source: full page fallback (${cleaned.length} chars)`);
+    }
+
+    // Trim to 9000 chars max for AI context
+    cleaned = cleaned.slice(0, 9000);
+
+    if (cleaned.length < 100) {
+      return res.status(400).json({ error: "Konten artikel terlalu sedikit. Pastikan URL mengarah ke halaman artikel, bukan halaman beranda." });
+    }
+
+    console.log(`[URL-KB] final content: ${cleaned.length} chars — generating article...`);
 
     const apiKey = process.env.OPENROUTER_API_KEY;
     const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
