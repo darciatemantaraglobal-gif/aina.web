@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin } from "lucide-react";
 import { RESPONSE_STYLES, RESPONSE_STYLE_ORDER, type ResponseStyleKey } from "@/lib/responseStyles";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -236,6 +236,40 @@ const MD_COMPONENTS = {
     );
   },
   hr: () => <hr className="my-5 border-border/60" />,
+  a: ({ href, children }: any) => {
+    const isGoogleMaps = href && (
+      href.includes("google.com/maps") ||
+      href.includes("maps.google.com") ||
+      href.includes("goo.gl/maps")
+    );
+    if (isGoogleMaps) {
+      const label = typeof children === "string"
+        ? children.replace(/^📍\s*/, "").trim()
+        : "Lihat di Maps";
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 my-1 px-3 py-2 rounded-lg border border-green-500/30 bg-green-500/8 hover:bg-green-500/15 transition-colors text-green-600 dark:text-green-400 text-sm font-medium no-underline"
+        >
+          <MapPin className="w-3.5 h-3.5 shrink-0" />
+          <span>{label}</span>
+          <span className="text-xs text-green-500/70 ml-1">↗ Google Maps</span>
+        </a>
+      );
+    }
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all"
+      >
+        {children}
+      </a>
+    );
+  },
   table: ({ children }: any) => (
     <div className="mb-4 overflow-x-auto rounded-xl border border-border">
       <table className="min-w-full text-sm">{children}</table>
