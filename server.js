@@ -13,6 +13,7 @@ import {
 } from './api/engine/promptBuilder.js';
 import { validateResponse, postProcessResponse, buildSourceBadges } from './api/engine/responseFormatter.js';
 import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
+import { createProductivityRouter } from "./server/routes/productivity.js";
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
@@ -6827,105 +6828,8 @@ async function callOpenRouterForFocus(prompt) {
   return data.choices?.[0]?.message?.content || "";
 }
 
-// ── Daily Focus: GET today ──────────────────────────────
-app.get("/api/productivity/focus/today", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const supabase = getAdminClient();
-  const today = new Date().toISOString().slice(0, 10);
-
-  const { data, error } = await supabase
-    .from("daily_focus_items")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("focus_date", today)
-    .order("priority", { ascending: true, nullsFirst: false });
-
-  if (error) return res.status(500).json({ error: "Gagal memuat fokus" });
-  res.json({ items: data || [] });
-});
-
-// ── Daily Focus: POST create ────────────────────────────
-app.post("/api/productivity/focus", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const { title, description, source_type, focus_date, priority, original_input } = req.body;
-  if (!title?.trim()) return res.status(400).json({ error: "Judul fokus diperlukan" });
-
-  const supabase = getAdminClient();
-  const today = focus_date || new Date().toISOString().slice(0, 10);
-
-  const { count } = await supabase
-    .from("daily_focus_items")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("focus_date", today)
-    .neq("status", "done");
-
-  if ((count || 0) >= 3) {
-    return res.status(400).json({ error: "Maksimal 3 fokus aktif per hari" });
-  }
-
-  const { data, error } = await supabase
-    .from("daily_focus_items")
-    .insert({
-      user_id: user.id,
-      focus_date: today,
-      title: title.trim(),
-      description: description?.trim() || null,
-      source_type: source_type || "manual",
-      priority: priority || null,
-      original_input: original_input?.trim() || null,
-    })
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: "Gagal menyimpan fokus" });
-  res.json({ item: data });
-});
-
-// ── Daily Focus: PATCH update ───────────────────────────
-app.patch("/api/productivity/focus/:id", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const { id } = req.params;
-  const allowed = ["status", "title", "description", "priority"];
-  const updates = {};
-  for (const k of allowed) {
-    if (req.body[k] !== undefined) updates[k] = req.body[k];
-  }
-
-  const supabase = getAdminClient();
-  const { data, error } = await supabase
-    .from("daily_focus_items")
-    .update(updates)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: "Gagal mengupdate fokus" });
-  res.json({ item: data });
-});
-
-// ── Daily Focus: DELETE ─────────────────────────────────
-app.delete("/api/productivity/focus/:id", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const supabase = getAdminClient();
-  const { error } = await supabase
-    .from("daily_focus_items")
-    .delete()
-    .eq("id", req.params.id)
-    .eq("user_id", user.id);
-
-  if (error) return res.status(500).json({ error: "Gagal menghapus fokus" });
-  res.json({ ok: true });
-});
+// ── Productivity CRUD routes (moved to server/routes/productivity.js) ──────
+app.use("/api/productivity", createProductivityRouter({ verifyAuth, getAdminClient }));
 
 // ── Daily Focus: POST AI Assist ─────────────────────────
 app.post("/api/productivity/focus/ai-assist", async (req, res) => {
@@ -6981,90 +6885,6 @@ app.post("/api/productivity/focus/ai-suggest", async (req, res) => {
     console.error("[AI Suggest Focus]", e.message);
     res.status(500).json({ error: "Gagal menghubungi AI, coba lagi" });
   }
-});
-
-// ── Admin Tracker: GET list ─────────────────────────────
-app.get("/api/productivity/tracker", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const supabase = getAdminClient();
-  const { status, urgent } = req.query;
-  let query = supabase.from("admin_tracker_items").select("*").eq("user_id", user.id);
-  if (status) query = query.eq("status", status);
-  if (urgent === "true") query = query.eq("is_urgent", true);
-  query = query.order("is_urgent", { ascending: false }).order("due_date", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false });
-
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: "Gagal memuat tracker" });
-  res.json({ items: data || [] });
-});
-
-// ── Admin Tracker: POST create ──────────────────────────
-app.post("/api/productivity/tracker", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const { title, category, notes, due_date, is_urgent, reminder_enabled } = req.body;
-  if (!title?.trim()) return res.status(400).json({ error: "Judul diperlukan" });
-
-  const supabase = getAdminClient();
-  const { data, error } = await supabase
-    .from("admin_tracker_items")
-    .insert({
-      user_id: user.id,
-      title: title.trim(),
-      category: category || "lainnya",
-      notes: notes?.trim() || null,
-      due_date: due_date || null,
-      is_urgent: !!is_urgent,
-      reminder_enabled: reminder_enabled !== false,
-    })
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: "Gagal menyimpan item" });
-  res.json({ item: data });
-});
-
-// ── Admin Tracker: PATCH update ─────────────────────────
-app.patch("/api/productivity/tracker/:id", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const allowed = ["title", "category", "notes", "due_date", "status", "is_urgent", "reminder_enabled", "checklist_steps"];
-  const updates = {};
-  for (const k of allowed) {
-    if (req.body[k] !== undefined) updates[k] = req.body[k];
-  }
-
-  const supabase = getAdminClient();
-  const { data, error } = await supabase
-    .from("admin_tracker_items")
-    .update(updates)
-    .eq("id", req.params.id)
-    .eq("user_id", user.id)
-    .select()
-    .single();
-
-  if (error) return res.status(500).json({ error: "Gagal mengupdate item" });
-  res.json({ item: data });
-});
-
-// ── Admin Tracker: DELETE ───────────────────────────────
-app.delete("/api/productivity/tracker/:id", async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Login diperlukan" });
-
-  const supabase = getAdminClient();
-  const { error } = await supabase
-    .from("admin_tracker_items")
-    .delete()
-    .eq("id", req.params.id)
-    .eq("user_id", user.id);
-
-  if (error) return res.status(500).json({ error: "Gagal menghapus item" });
-  res.json({ ok: true });
 });
 
 // ── Reminders: GET summary (in-app panel) ──────────────
