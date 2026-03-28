@@ -384,15 +384,8 @@ async function fetchRelevantArticles(userQuestion) {
     .filter(w => w.length > 3)
     .slice(0, 5);
 
-  if (keywords.length === 0) {
-    const { data } = await supabase
-      .from("knowledge_base")
-      .select(selectCols)
-      .eq("status", "approved")
-      .order("created_at", { ascending: false })
-      .limit(5);
-    return data ?? [];
-  }
+  // No meaningful keywords → no KB match possible
+  if (keywords.length === 0) return [];
 
   // Use server-side OR filter across keywords — avoids loading all articles in memory
   // Also matches against contributor-defined `keywords` column for precise query targeting
@@ -411,16 +404,9 @@ async function fetchRelevantArticles(userQuestion) {
     .or(orFilter)
     .limit(5);
 
-  if (matched && matched.length > 0) return matched;
-
-  // Fallback: return recent articles
-  const { data: recent } = await supabase
-    .from("knowledge_base")
-    .select(selectCols)
-    .eq("status", "approved")
-    .order("created_at", { ascending: false })
-    .limit(3);
-  return recent ?? [];
+  // Only return articles that genuinely matched — no fallback to recent articles
+  // (returning unrelated recent articles inflates kbStrength and causes wrong confidence labels)
+  return matched ?? [];
 }
 
 const DAILY_FREE_LIMIT = 3;
