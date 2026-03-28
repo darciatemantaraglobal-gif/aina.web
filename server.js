@@ -4724,6 +4724,116 @@ app.delete("/api/saved-answers/:id", writeLimiter, async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── NEWS (BERITA MASISIR) ─────────────────────────────────────────────────
+
+const NEWS_CATEGORIES = new Set([
+  "breaking_news", "administrasi", "kuliner",
+  "kehidupan_mesir", "transportasi", "aigypt",
+]);
+
+/* GET /api/news — public, paginated, filterable by category */
+app.get("/api/news", async (req, res) => {
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const category = req.query.category;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+
+  let query = supabase
+    .from("masisir_news")
+    .select("id, title, content, category, image_url, source_url, source_name, is_pinned, published_at, created_at")
+    .eq("is_active", true)
+    .order("is_pinned", { ascending: false })
+    .order("published_at", { ascending: false })
+    .limit(limit);
+
+  if (category && NEWS_CATEGORIES.has(category)) {
+    query = query.eq("category", category);
+  }
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ news: data ?? [] });
+});
+
+/* POST /api/admin/news — create news item (admin only) */
+app.post("/api/admin/news", strictLimiter, async (req, res) => {
+  const user = await verifyUser(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Tidak diizinkan" });
+  const admin = await verifyAdmin(user.id);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { title, content, category, image_url, source_url, source_name, is_pinned = false, published_at } = req.body;
+  if (!title?.trim() || !content?.trim()) return res.status(400).json({ error: "Judul dan konten wajib diisi" });
+  if (category && !NEWS_CATEGORIES.has(category)) return res.status(400).json({ error: "Kategori tidak valid" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("masisir_news")
+    .insert({
+      title: title.trim(),
+      content: content.trim(),
+      category: category || "kehidupan_mesir",
+      image_url: image_url?.trim() || null,
+      source_url: source_url?.trim() || null,
+      source_name: source_name?.trim() || null,
+      is_pinned: !!is_pinned,
+      author_id: user.id,
+      published_at: published_at || new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ news: data });
+});
+
+/* PUT /api/admin/news/:id — update news item (admin only) */
+app.put("/api/admin/news/:id", strictLimiter, async (req, res) => {
+  const user = await verifyUser(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Tidak diizinkan" });
+  const admin = await verifyAdmin(user.id);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { title, content, category, image_url, source_url, source_name, is_pinned, is_active, published_at } = req.body;
+  if (category && !NEWS_CATEGORIES.has(category)) return res.status(400).json({ error: "Kategori tidak valid" });
+
+  const supabase = getAdminClient();
+  const updates = { updated_at: new Date().toISOString() };
+  if (title !== undefined) updates.title = title.trim();
+  if (content !== undefined) updates.content = content.trim();
+  if (category !== undefined) updates.category = category;
+  if (image_url !== undefined) updates.image_url = image_url?.trim() || null;
+  if (source_url !== undefined) updates.source_url = source_url?.trim() || null;
+  if (source_name !== undefined) updates.source_name = source_name?.trim() || null;
+  if (is_pinned !== undefined) updates.is_pinned = !!is_pinned;
+  if (is_active !== undefined) updates.is_active = !!is_active;
+  if (published_at !== undefined) updates.published_at = published_at;
+
+  const { data, error } = await supabase
+    .from("masisir_news")
+    .update(updates)
+    .eq("id", req.params.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ news: data });
+});
+
+/* DELETE /api/admin/news/:id — delete news item (admin only) */
+app.delete("/api/admin/news/:id", strictLimiter, async (req, res) => {
+  const user = await verifyUser(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Tidak diizinkan" });
+  const admin = await verifyAdmin(user.id);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("masisir_news").delete().eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ success: true });
+});
+
 // ─── BADGE SYSTEM ──────────────────────────────────────────────────────────
 
 const BADGE_DEFS = {
@@ -6320,6 +6430,7 @@ async function checkRequiredTables() {
     "beta_feedback", "user_memories",
     "eval_benchmarks", "eval_results", "eval_edge_cases",
     "system_announcements", "user_announcement_views",
+    "masisir_news",
   ];
 
   const missing = [];
@@ -6429,6 +6540,22 @@ async function runColumnMigrations() {
       UNIQUE(user_id, message_id)
     );`,
     `ALTER TABLE public.saved_answers ADD COLUMN IF NOT EXISTS promoted_to_kb BOOLEAN NOT NULL DEFAULT false;`,
+    // Masisir news table
+    `CREATE TABLE IF NOT EXISTS public.masisir_news (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'kehidupan_mesir' CHECK (category IN ('breaking_news','administrasi','kuliner','kehidupan_mesir','transportasi','aigypt')),
+      image_url TEXT,
+      source_url TEXT,
+      source_name TEXT,
+      author_id UUID REFERENCES auth.users(id),
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      is_pinned BOOLEAN NOT NULL DEFAULT false,
+      published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

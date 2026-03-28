@@ -15,7 +15,7 @@ import {
   Pencil, Trash2, Eye, EyeOff, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
-  ThumbsUp, Bookmark, Star,
+  ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -3486,8 +3486,210 @@ function FeedbackSignalsTab() {
   );
 }
 
+/* ─── News Management Tab ───────────────────────────── */
+interface NewsItem {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  image_url?: string;
+  source_url?: string;
+  source_name?: string;
+  is_pinned: boolean;
+  is_active: boolean;
+  published_at: string;
+}
+
+const NEWS_CATS = [
+  { id: "breaking_news", label: "Breaking News", icon: Zap, color: "text-red-500" },
+  { id: "administrasi", label: "Administrasi", icon: FileText, color: "text-blue-500" },
+  { id: "kuliner", label: "Kuliner", icon: Utensils, color: "text-orange-500" },
+  { id: "kehidupan_mesir", label: "Kehidupan Mesir", icon: Globe, color: "text-green-500" },
+  { id: "transportasi", label: "Transportasi", icon: Bus, color: "text-cyan-500" },
+  { id: "aigypt", label: "Berita AIGYPT", icon: GraduationCap, color: "text-violet-500" },
+];
+
+function getCatLabel(id: string) {
+  return NEWS_CATS.find(c => c.id === id)?.label ?? id;
+}
+
+function NewsManagementTab() {
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<NewsItem | null>(null);
+  const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false });
+  const [saving, setSaving] = useState(false);
+
+  const fetchNews = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/news?limit=100", { credentials: "include" });
+      const data = await res.json();
+      setNews(data.news ?? []);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchNews(); }, [fetchNews]);
+
+  async function getToken() {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? "";
+  }
+
+  function openCreate() {
+    setEditing(null);
+    setForm({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false });
+    setShowForm(true);
+  }
+
+  function openEdit(item: NewsItem) {
+    setEditing(item);
+    setForm({ title: item.title, content: item.content, category: item.category, image_url: item.image_url ?? "", source_url: item.source_url ?? "", source_name: item.source_name ?? "", is_pinned: item.is_pinned });
+    setShowForm(true);
+  }
+
+  async function handleSave() {
+    if (!form.title.trim() || !form.content.trim()) return toast.error("Judul dan konten wajib diisi");
+    setSaving(true);
+    try {
+      const token = await getToken();
+      const url = editing ? `/api/admin/news/${editing.id}` : "/api/admin/news";
+      const method = editing ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(form) });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      toast.success(editing ? "Berita diperbarui" : "Berita ditambahkan");
+      setShowForm(false);
+      fetchNews();
+    } catch (e: any) { toast.error(e.message ?? "Gagal menyimpan"); } finally { setSaving(false); }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Hapus berita ini?")) return;
+    const token = await getToken();
+    const res = await fetch(`/api/admin/news/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) { toast.success("Berita dihapus"); fetchNews(); }
+    else toast.error("Gagal menghapus");
+  }
+
+  async function togglePin(item: NewsItem) {
+    const token = await getToken();
+    await fetch(`/api/admin/news/${item.id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ is_pinned: !item.is_pinned }) });
+    fetchNews();
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold text-foreground">Berita Masisir</h2>
+          <p className="text-xs text-muted-foreground">{news.length} berita aktif</p>
+        </div>
+        <Button size="sm" onClick={openCreate} className="gap-1.5">
+          <Plus className="h-3.5 w-3.5" /> Tambah Berita
+        </Button>
+      </div>
+
+      {/* Form dialog */}
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Edit Berita" : "Tambah Berita Baru"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Judul *</label>
+              <Input placeholder="Judul berita..." value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Kategori</label>
+              <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {NEWS_CATS.map(c => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Konten *</label>
+              <Textarea placeholder="Isi berita..." value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={6} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">URL Gambar (opsional)</label>
+              <Input placeholder="https://..." value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">URL Sumber (opsional)</label>
+                <Input placeholder="https://..." value={form.source_url} onChange={e => setForm(f => ({ ...f, source_url: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Nama Sumber</label>
+                <Input placeholder="mis: KBRI Kairo" value={form.source_name} onChange={e => setForm(f => ({ ...f, source_name: e.target.value }))} />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.is_pinned} onChange={e => setForm(f => ({ ...f, is_pinned: e.target.checked }))} className="rounded" />
+              <span className="text-sm">Pinned (tampil di atas)</span>
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Batal</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Menyimpan..." : (editing ? "Simpan Perubahan" : "Tambah")}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* News list */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : news.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border py-12 text-center">
+          <Newspaper className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground">Belum ada berita. Klik "Tambah Berita" untuk memulai.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {news.map(item => {
+            const cat = NEWS_CATS.find(c => c.id === item.category);
+            const Icon = cat?.icon ?? Newspaper;
+            return (
+              <div key={item.id} className={`flex items-start gap-3 rounded-xl border p-3 ${item.is_pinned ? "border-primary/30 bg-primary/5" : "border-border bg-card"}`}>
+                <div className={`mt-0.5 shrink-0 ${cat?.color ?? "text-muted-foreground"}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-foreground truncate">{item.title}</span>
+                    {item.is_pinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
+                    <span className="text-[10px] text-muted-foreground">{getCatLabel(item.category)}</span>
+                  </div>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground line-clamp-2">{item.content}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button onClick={() => togglePin(item)} title={item.is_pinned ? "Unpin" : "Pin"} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                    <Pin className={`h-3.5 w-3.5 ${item.is_pinned ? "text-primary fill-primary" : ""}`} />
+                  </button>
+                  <button onClick={() => openEdit(item)} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => handleDelete(item.id)} className="rounded-lg p-1.5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -3538,6 +3740,7 @@ const AdminPage = () => {
     { id: "requests", label: "Requests", icon: UserCheck, badge: stats.pendingRequests || undefined },
     { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
     { id: "updates", label: "Breaking Updates", icon: Zap },
+    { id: "news", label: "Berita", icon: Newspaper },
     { id: "reports", label: "Laporan", icon: Flag },
     ...(isMasterAdmin ? [{ id: "waitlist" as Tab, label: "Waitlist Pro", icon: Crown }] : []),
     ...(isMasterAdmin ? [{ id: "security" as Tab, label: "Security", icon: ShieldAlert }] : []),
@@ -3588,6 +3791,7 @@ const AdminPage = () => {
         {activeTab === "performance" && isMasterAdmin && <PerformanceTab />}
         {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
         {activeTab === "signals" && isMasterAdmin && <FeedbackSignalsTab />}
+        {activeTab === "news" && <NewsManagementTab />}
       </div>
     </div>
   );

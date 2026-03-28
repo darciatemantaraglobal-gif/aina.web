@@ -59,6 +59,7 @@ const AdminPage = lazy(() => import("@/components/AdminPage"));
 const ThreadsPage = lazy(() => import("@/components/ThreadsPage"));
 const LeaderboardPage = lazy(() => import("@/components/LeaderboardPage"));
 const SavedAnswersPage = lazy(() => import("@/components/SavedAnswersPage"));
+const NewsPage = lazy(() => import("@/components/NewsPage"));
 
 interface Chat {
   id: string;
@@ -525,6 +526,14 @@ const Dashboard = () => {
                 <TabErrorBoundary tabName="Jawaban Tersimpan">
                   <Suspense fallback={<TabLoader />}>
                     <SavedAnswersPage />
+                  </Suspense>
+                </TabErrorBoundary>
+              )}
+
+              {activeTab === "berita" && (
+                <TabErrorBoundary tabName="Berita Masisir">
+                  <Suspense fallback={<TabLoader />}>
+                    <NewsPage />
                   </Suspense>
                 </TabErrorBoundary>
               )}
