@@ -3747,7 +3747,7 @@ app.post("/api/parse-articles", writeLimiter, async (req, res) => {
   const fileNote = filename ? ` dari file "${filename}"` : "";
   const ocrNote = isOcr ? "\nCatatan: Teks ini berasal dari OCR (scan dokumen), mungkin ada noise/karakter aneh — abaikan noise, fokus pada informasi yang bermakna." : "";
 
-  const prompt = `Kamu adalah asisten yang membantu mengorganisasi informasi tentang kehidupan mahasiswa Indonesia di Mesir (Masisir).
+  const prompt = `Kamu adalah asisten yang membantu mengorganisasi informasi untuk mahasiswa Indonesia di Mesir (Masisir).
 
 Diberikan teks berikut${fileNote}:${ocrNote}
 
@@ -3759,10 +3759,17 @@ Tugasmu: Baca seluruh teks, lalu identifikasi dan ekstrak SEMUA topik informasi 
 
 Aturan penting:
 - Setiap artikel fokus pada SATU topik
-- Tulis ulang konten agar jelas, rapi, dan informatif dalam bahasa Indonesia yang natural (minimal 80 kata per artikel)
+- Tulis konten dalam bahasa Indonesia yang jelas dan informatif (minimal 80 kata per artikel)
 - Jika teks mengandung langkah-langkah/prosedur, gunakan article_type "step_by_step", selainnya "narrative"
 - Jika hanya ada satu topik dalam teks, buat satu artikel saja
 - Jangan biarkan array articles kosong — selama ada informasi apapun yang berguna, buat artikelnya
+
+PENANGANAN TEKS ARAB (SANGAT PENTING):
+- Jika teks mengandung bahasa Arab (seperti catatan kuliah, mulakhos, materi akademik, hadits, dll), WAJIB sertakan teks Arab aslinya dalam konten artikel
+- Format penulisan bilingual: tulis istilah/kalimat Arab terlebih dahulu, lalu terjemahan/penjelasan Indonesia-nya
+- Contoh format: "**مُلَخَّص الطَّيَّارَات** (Ringkasan Penerbangan): ..." atau gunakan format blockquote/list untuk ayat/kalimat Arab
+- Jangan terjemahkan atau hilangkan teks Arab — mahasiswa membutuhkan teks Arab asli untuk belajar
+- Gunakan format: > *teks Arab* lalu baris baru untuk penjelasan Indonesia
 
 FORMAT KONTEN ARTIKEL (wajib ikuti):
 - Gunakan Markdown di field "content"
@@ -3776,13 +3783,15 @@ FORMAT KONTEN ARTIKEL (wajib ikuti):
 - Pastikan ada spasi yang cukup antar bagian agar mudah dibaca
 - Konten minimal 3 paragraf atau 3 poin list
 
-Kategori yang tersedia (pilih yang paling sesuai):
-- "Administrasi" — iqomah, visa, paspor, KTP, surat-surat resmi
-- "Akademik" — perkuliahan Al-Azhar, pendaftaran, ujian, beasiswa
-- "Kehidupan Mesir" — tips sehari-hari, keamanan, budaya, bahasa
-- "Transport" — metro, taksi, microbus, uber, rute
+Kategori yang tersedia — BACA BAIK-BAIK sebelum memilih:
+- "Akademik" — materi kuliah, catatan pelajaran (mulakhos), ringkasan bab, materi Al-Azhar, ilmu syariah, fiqih, nahwu, sharaf, tafsir, hadits, penerbangan/tayyarat, fisika, matematika, APAPUN yang sifatnya materi ilmu/pelajaran. INI PRIORITAS UTAMA untuk dokumen akademik.
+- "Administrasi" — iqomah, visa, paspor, KTP, surat-surat resmi, prosedur birokrasi
+- "Kehidupan Mesir" — tips sehari-hari, keamanan, budaya, bahasa percakapan, pengalaman hidup
+- "Transport" — metro, taksi, microbus, uber, rute perjalanan
 - "Tempat Tinggal" — sewa flat, lokasi, harga, kontrak
 - "Kuliner" — restoran halal, masakan, harga makanan, dapur
+
+PENTING: Jika dokumen berisi materi pelajaran/ilmu apapun (termasuk mulakhos tayyarat, catatan kuliah, ringkasan bab, dll), SELALU gunakan kategori "Akademik". Jangan gunakan "Kehidupan Mesir" untuk konten akademik.
 
 Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan \\n untuk newline dan \\n\\n untuk baris kosong antar paragraf:
 {"articles":[{"title":"...","category":"...","article_type":"narrative|step_by_step","content":"..."}]}`;
@@ -3799,7 +3808,7 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan
       body: JSON.stringify({
         model: "google/gemini-2.0-flash-001",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 8000,
+        max_tokens: 12000,
       }),
     });
 

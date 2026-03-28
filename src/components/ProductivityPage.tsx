@@ -8,7 +8,7 @@ import {
   ArrowLeft, Clock, FileText, CreditCard, Building2, Stamp,
   GraduationCap, Sparkles, Brain, Pencil, AlertTriangle, Loader2,
   Target, ClipboardList, BookOpen, RefreshCw, Bell, Mail, Send,
-  CheckCheck, SkipForward,
+  CheckCheck, SkipForward, X, Save,
 } from "lucide-react";
 
 /* ════════════════════════════════════════════════════════
@@ -120,6 +120,8 @@ function FocusTab() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<{ title: string; description: string | null; priority: number }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", description: "" });
 
   const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
   const activeCount = items.filter(i => i.status !== "done").length;
@@ -209,6 +211,24 @@ function FocusTab() {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const startEditFocus = (item: FocusItem) => {
+    setEditingId(item.id);
+    setEditForm({ title: item.title, description: item.description ?? "" });
+  };
+
+  const saveEditFocus = async (id: string) => {
+    if (!editForm.title.trim()) { toast.error("Judul tidak boleh kosong"); return; }
+    try {
+      const { item } = await apiCall("PATCH", `/productivity/focus/${id}`, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || null,
+      });
+      setItems(prev => prev.map(i => i.id === id ? item : i));
+      setEditingId(null);
+      toast.success("Fokus diperbarui");
+    } catch (e: any) { toast.error(e.message); }
+  };
+
   const statusCycle: Record<FocusItem["status"], FocusItem["status"]> = {
     pending: "in_progress", in_progress: "done", done: "pending",
   };
@@ -253,51 +273,101 @@ function FocusTab() {
       ) : (
         <div className="space-y-2">
           {items.map(item => (
-            <div key={item.id} className={`group flex items-start gap-3 rounded-xl border px-3 py-3 transition-all ${
-              item.status === "done" ? "border-border bg-card/50 opacity-60" :
-              item.status === "in_progress" ? "border-amber-500/20 bg-amber-500/5" :
-              "border-border bg-card"
+            <div key={item.id} className={`group rounded-xl border transition-all ${
+              editingId === item.id ? "border-primary/40 bg-card p-3" :
+              item.status === "done" ? "border-border bg-card/50 opacity-60 px-3 py-3" :
+              item.status === "in_progress" ? "border-amber-500/20 bg-amber-500/5 px-3 py-3" :
+              "border-border bg-card px-3 py-3"
             }`}>
-              <button
-                onClick={() => updateStatus(item.id, statusCycle[item.status])}
-                className="shrink-0 mt-0.5 transition-colors"
-              >
-                {item.status === "done"
-                  ? <CheckCircle2 className="h-4.5 w-4.5 text-emerald-400" />
-                  : item.status === "in_progress"
-                  ? <div className="h-4.5 w-4.5 rounded-full border-2 border-amber-400 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-amber-400" /></div>
-                  : <Circle className="h-4.5 w-4.5 text-muted-foreground/50" />
-                }
-              </button>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium leading-snug ${item.status === "done" ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                  {item.title}
-                </p>
-                {item.description && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.description}</p>
-                )}
-                <div className="flex items-center gap-2 mt-1">
-                  {item.source_type !== "manual" && (
-                    <span className="text-[10px] text-violet-400 flex items-center gap-0.5">
-                      <Sparkles className="h-2.5 w-2.5" />
-                      AI
-                    </span>
-                  )}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                    item.status === "done" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5" :
-                    item.status === "in_progress" ? "text-amber-400 border-amber-500/20 bg-amber-500/5" :
-                    "text-muted-foreground border-border"
-                  }`}>
-                    {item.status === "done" ? "Selesai" : item.status === "in_progress" ? "Sedang berjalan" : "Pending"}
-                  </span>
+
+              {/* ── Edit mode ── */}
+              {editingId === item.id ? (
+                <div className="space-y-2">
+                  <Input
+                    value={editForm.title}
+                    onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                    className="bg-secondary text-sm h-8"
+                    placeholder="Judul fokus..."
+                    autoFocus
+                    onKeyDown={e => { if (e.key === "Enter") saveEditFocus(item.id); if (e.key === "Escape") setEditingId(null); }}
+                  />
+                  <Input
+                    value={editForm.description}
+                    onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                    className="bg-secondary text-xs h-7"
+                    placeholder="Deskripsi (opsional)..."
+                    onKeyDown={e => { if (e.key === "Escape") setEditingId(null); }}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary transition-all"
+                    >
+                      <X className="h-3 w-3" /> Batal
+                    </button>
+                    <button
+                      onClick={() => saveEditFocus(item.id)}
+                      className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 px-2 py-1 rounded-lg hover:bg-primary/10 transition-all font-medium"
+                    >
+                      <Save className="h-3 w-3" /> Simpan
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <button
-                onClick={() => deleteItem(item.id)}
-                className="shrink-0 rounded-lg p-1.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              ) : (
+                /* ── Normal view ── */
+                <div className="flex items-start gap-3">
+                  <button
+                    onClick={() => updateStatus(item.id, statusCycle[item.status])}
+                    className="shrink-0 mt-0.5 transition-colors"
+                  >
+                    {item.status === "done"
+                      ? <CheckCircle2 className="h-4.5 w-4.5 text-emerald-400" />
+                      : item.status === "in_progress"
+                      ? <div className="h-4.5 w-4.5 rounded-full border-2 border-amber-400 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-amber-400" /></div>
+                      : <Circle className="h-4.5 w-4.5 text-muted-foreground/50" />
+                    }
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium leading-snug ${item.status === "done" ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                      {item.title}
+                    </p>
+                    {item.description && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.description}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      {item.source_type !== "manual" && (
+                        <span className="text-[10px] text-violet-400 flex items-center gap-0.5">
+                          <Sparkles className="h-2.5 w-2.5" />
+                          AI
+                        </span>
+                      )}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                        item.status === "done" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5" :
+                        item.status === "in_progress" ? "text-amber-400 border-amber-500/20 bg-amber-500/5" :
+                        "text-muted-foreground border-border"
+                      }`}>
+                        {item.status === "done" ? "Selesai" : item.status === "in_progress" ? "Sedang berjalan" : "Pending"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <button
+                      onClick={() => startEditFocus(item)}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-all"
+                      title="Edit"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
+                      title="Hapus"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -443,6 +513,8 @@ function TrackerTab() {
   const [form, setForm] = useState({ title: "", category: "lainnya", notes: "", due_date: "", is_urgent: false });
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", category: "lainnya", notes: "", due_date: "", is_urgent: false });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -494,6 +566,33 @@ function TrackerTab() {
       await apiCall("DELETE", `/productivity/tracker/${id}`);
       setItems(prev => prev.filter(i => i.id !== id));
       toast.success("Item dihapus");
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const startEditTracker = (item: TrackerItem) => {
+    setEditingId(item.id);
+    setEditForm({
+      title: item.title,
+      category: item.category,
+      notes: item.notes ?? "",
+      due_date: item.due_date ?? "",
+      is_urgent: item.is_urgent,
+    });
+  };
+
+  const saveEditTracker = async (id: string) => {
+    if (!editForm.title.trim()) { toast.error("Judul tidak boleh kosong"); return; }
+    try {
+      const { item } = await apiCall("PATCH", `/productivity/tracker/${id}`, {
+        title: editForm.title.trim(),
+        category: editForm.category,
+        notes: editForm.notes.trim() || null,
+        due_date: editForm.due_date || null,
+        is_urgent: editForm.is_urgent,
+      });
+      setItems(prev => prev.map(i => i.id === id ? item : i));
+      setEditingId(null);
+      toast.success("Item diperbarui");
     } catch (e: any) { toast.error(e.message); }
   };
 
@@ -633,77 +732,150 @@ function TrackerTab() {
         <div className="space-y-2">
           {filtered.map(item => {
             const due = dueBadge(item.due_date);
+            const isEditing = editingId === item.id;
             return (
               <div
                 key={item.id}
-                className={`group flex items-start gap-3 rounded-xl border px-3 py-3 transition-all ${
-                  item.status === "completed" ? "border-border bg-card/50 opacity-60" :
-                  item.is_urgent ? "border-orange-500/20 bg-orange-500/5" :
-                  "border-border bg-card"
+                className={`group rounded-xl border transition-all ${
+                  isEditing ? "border-primary/40 bg-card p-3" :
+                  item.status === "completed" ? "border-border bg-card/50 opacity-60 px-3 py-3" :
+                  item.is_urgent ? "border-orange-500/20 bg-orange-500/5 px-3 py-3" :
+                  "border-border bg-card px-3 py-3"
                 }`}
               >
-                {/* Status cycle button */}
-                <button
-                  onClick={() => updateStatus(item.id, STATUS_CYCLE[item.status])}
-                  className={`shrink-0 mt-0.5 rounded-full border-2 h-4.5 w-4.5 flex items-center justify-center transition-colors ${
-                    item.status === "completed"
-                      ? "border-emerald-500 bg-emerald-500"
-                      : item.status === "submitted"
-                      ? "border-blue-400 bg-blue-400/20"
-                      : item.status === "preparing"
-                      ? "border-amber-400 bg-amber-400/20"
-                      : "border-muted-foreground/30"
-                  }`}
-                >
-                  {item.status === "completed" && (
-                    <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className={`text-sm font-medium leading-snug ${item.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                      {item.title}
-                    </p>
-                    {item.is_urgent && item.status !== "completed" && (
-                      <AlertTriangle className="h-3 w-3 text-orange-400 shrink-0" />
-                    )}
+                {/* ── Edit mode ── */}
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <Input
+                      value={editForm.title}
+                      onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                      className="bg-secondary text-sm h-8"
+                      placeholder="Nama urusan / dokumen..."
+                      autoFocus
+                      onKeyDown={e => { if (e.key === "Escape") setEditingId(null); }}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={editForm.category}
+                        onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      >
+                        {TRACKER_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                      <input
+                        type="date"
+                        value={editForm.due_date}
+                        onChange={e => setEditForm(f => ({ ...f, due_date: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      />
+                    </div>
+                    <Input
+                      value={editForm.notes}
+                      onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                      className="bg-secondary text-xs h-7"
+                      placeholder="Catatan (opsional)..."
+                    />
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editForm.is_urgent}
+                          onChange={e => setEditForm(f => ({ ...f, is_urgent: e.target.checked }))}
+                          className="rounded border-border"
+                        />
+                        <span className="text-xs text-foreground">Urgent</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary transition-all"
+                        >
+                          <X className="h-3 w-3" /> Batal
+                        </button>
+                        <button
+                          onClick={() => saveEditTracker(item.id)}
+                          className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 px-2 py-1 rounded-lg hover:bg-primary/10 transition-all font-medium"
+                        >
+                          <Save className="h-3 w-3" /> Simpan
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className={`text-[10px] border rounded-full px-2 py-0.5 ${getCatStyle(item.category)}`}>
-                      {getCatLabel(item.category)}
-                    </span>
-                    <span className={`text-[11px] font-medium ${getStatusStyle(item.status)}`}>
-                      {getStatusLabel(item.status)}
-                    </span>
-                    {due && item.status !== "completed" && (
-                      <span className={`text-[11px] flex items-center gap-0.5 ${due.cls}`}>
-                        <Clock className="h-2.5 w-2.5" />{due.label}
-                      </span>
-                    )}
-                  </div>
-                  {item.notes && (
-                    <p className="text-[11px] text-muted-foreground/70 mt-0.5 leading-relaxed">{item.notes}</p>
-                  )}
-                </div>
+                ) : (
+                  /* ── Normal view ── */
+                  <div className="flex items-start gap-3">
+                    {/* Status cycle button */}
+                    <button
+                      onClick={() => updateStatus(item.id, STATUS_CYCLE[item.status])}
+                      className={`shrink-0 mt-0.5 rounded-full border-2 h-4.5 w-4.5 flex items-center justify-center transition-colors ${
+                        item.status === "completed"
+                          ? "border-emerald-500 bg-emerald-500"
+                          : item.status === "submitted"
+                          ? "border-blue-400 bg-blue-400/20"
+                          : item.status === "preparing"
+                          ? "border-amber-400 bg-amber-400/20"
+                          : "border-muted-foreground/30"
+                      }`}
+                    >
+                      {item.status === "completed" && (
+                        <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
 
-                <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                  <button
-                    onClick={() => toggleUrgent(item.id, item.is_urgent)}
-                    className={`rounded-lg p-1.5 transition-all ${item.is_urgent ? "text-orange-400 hover:bg-orange-500/10" : "text-muted-foreground hover:bg-secondary"}`}
-                    title={item.is_urgent ? "Hapus urgent" : "Tandai urgent"}
-                  >
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => deleteItem(item.id)}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className={`text-sm font-medium leading-snug ${item.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                          {item.title}
+                        </p>
+                        {item.is_urgent && item.status !== "completed" && (
+                          <AlertTriangle className="h-3 w-3 text-orange-400 shrink-0" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className={`text-[10px] border rounded-full px-2 py-0.5 ${getCatStyle(item.category)}`}>
+                          {getCatLabel(item.category)}
+                        </span>
+                        <span className={`text-[11px] font-medium ${getStatusStyle(item.status)}`}>
+                          {getStatusLabel(item.status)}
+                        </span>
+                        {due && item.status !== "completed" && (
+                          <span className={`text-[11px] flex items-center gap-0.5 ${due.cls}`}>
+                            <Clock className="h-2.5 w-2.5" />{due.label}
+                          </span>
+                        )}
+                      </div>
+                      {item.notes && (
+                        <p className="text-[11px] text-muted-foreground/70 mt-0.5 leading-relaxed">{item.notes}</p>
+                      )}
+                    </div>
+
+                    <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={() => startEditTracker(item)}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-all"
+                        title="Edit"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => toggleUrgent(item.id, item.is_urgent)}
+                        className={`rounded-lg p-1.5 transition-all ${item.is_urgent ? "text-orange-400 hover:bg-orange-500/10" : "text-muted-foreground hover:bg-secondary"}`}
+                        title={item.is_urgent ? "Hapus urgent" : "Tandai urgent"}
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deleteItem(item.id)}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
+                        title="Hapus"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
