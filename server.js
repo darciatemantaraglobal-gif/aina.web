@@ -1382,6 +1382,7 @@ const VALID_RESPONSE_STYLES = new Set([
   "detailed_complete",
   "practical_ready_to_use",
   "casual_easy_to_understand",
+  "balanced",
 ]);
 
 /**
@@ -1403,7 +1404,7 @@ function detectResponseStyle(userProfile) {
   if (rl === "ringkas") return "short_direct";
   if (rl === "lengkap") return "detailed_complete";
 
-  return "step_by_step"; // default
+  return "balanced"; // default
 }
 
 const RESPONSE_STYLE_HINTS = {
@@ -1449,6 +1450,27 @@ Gunakan kalimat pendek, bahasa sehari-hari, dan analogi sederhana jika membantu.
 Kalau terpaksa pakai istilah teknis, langsung jelaskan artinya dalam kurung atau kalimat berikutnya.
 Boleh pakai emoji sesekali (max 1-2) kalau terasa pas dan natural.
 Tujuannya: siapapun — termasuk yang baru pertama kali di Mesir — harus langsung ngerti tanpa perlu googling ulang.`,
+
+  balanced: `
+
+⚖️ **[MODE JAWABAN DEFAULT: SEIMBANG & INFORMATIF — WAJIB DIIKUTI]**
+Ini mode default AINA. Berikan jawaban yang SUBSTANTIF — bukan sekadar menjawab, tapi benar-benar MEMBANTU.
+
+**Standar minimum untuk pertanyaan informatif/prosedural/faktual:**
+- Minimal 2–3 paragraf atau 4–6 poin bernomor/bullet yang bermakna.
+- Setiap poin harus berisi informasi nyata — bukan pengulangan atau filler.
+- Setelah menjawab inti, WAJIB tambahkan konteks yang berguna: "hal yang perlu diperhatikan", tips praktis, atau informasi terkait yang sering dibutuhkan tapi jarang ditanyakan.
+- Untuk prosedur/administrasi: sertakan SEMUA langkah, dokumen yang diperlukan, dan potensi masalah yang umum terjadi.
+- Untuk pertanyaan faktual: jawab inti, lalu tambahkan konteks/latar belakang yang relevan agar user benar-benar paham — bukan hanya tahu angka/faktanya saja.
+
+**Pengecualian — boleh lebih singkat untuk:**
+- Obrolan santai / salam / ungkapan emosi → respons natural, tidak perlu dipanjangkan.
+- Pertanyaan yang jawabannya memang satu kalimat (mis. "berapa 1+1?") → jawab lugas, tidak perlu ditambahi.
+
+**Yang DILARANG:**
+- Menjawab pertanyaan penting hanya dengan 1–2 kalimat tanpa elaborasi.
+- Memotong penjelasan di tengah jalan karena merasa "sudah cukup".
+- Menulis poin-poin kosong yang tidak menambah nilai.`,
 };
 
 /**
