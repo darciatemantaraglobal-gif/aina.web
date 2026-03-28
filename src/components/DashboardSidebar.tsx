@@ -99,7 +99,6 @@ function savePersonalization(p: AinaPersonalization) {
 }
 
 const baseNavItems = [
-  { id: "chat", label: "Chat AI", icon: MessageSquare },
   { id: "saved", label: "Jawaban Tersimpan", icon: Bookmark },
   { id: "productivity", label: "Productivity", icon: LayoutDashboard },
   { id: "berita", label: "Berita Masisir", icon: Newspaper },
