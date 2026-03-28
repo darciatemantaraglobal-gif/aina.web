@@ -100,7 +100,7 @@ function savePersonalization(p: AinaPersonalization) {
 
 const baseNavItems = [
   { id: "saved", label: "Jawaban Tersimpan", icon: Bookmark },
-  { id: "productivity", label: "Productivity", icon: LayoutDashboard },
+  { id: "productivity", label: "Ruang Produktif", icon: LayoutDashboard },
   { id: "berita", label: "Berita Masisir", icon: Newspaper },
   { id: "threads", label: "Threads", icon: Hash },
   { id: "leaderboard", label: "Leaderboard", icon: Trophy },

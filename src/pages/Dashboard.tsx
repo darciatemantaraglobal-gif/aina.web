@@ -345,8 +345,8 @@ const Dashboard = () => {
     },
     {
       target: '[data-tour="nav-productivity"]',
-      title: "Productivity Tools",
-      content: "Kalkulator IP/GPA, konverter tanggal Hijriyah, to-do list, pencatat keuangan, dan banyak tools harian lain yang berguna untuk Masisir.",
+      title: "Ruang Produktif",
+      content: "Kelola tenggat waktu ujian & dokumen penting, plus panduan langkah demi langkah untuk prosedur umum Masisir — perpanjang iqama, visa, pendaftaran Al-Azhar, dan lainnya.",
       onBefore: () => setSidebarOpen(true),
       delay: 600,
     },
