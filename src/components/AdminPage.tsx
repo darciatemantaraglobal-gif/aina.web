@@ -997,6 +997,351 @@ type ParsedArticle = {
 };
 type BulkStep = "paste" | "parsing" | "preview" | "importing" | "done";
 
+/* ─── Telegram Import Dialog ──────────────────────────── */
+interface TelegramMessage { id: number; date: string; text: string; type: string; from: string; }
+interface TelegramChatInfo { id: number; title: string; type: string; username?: string; }
+type TgStep = "input" | "fetching" | "list" | "parsing" | "preview" | "importing" | "done";
+
+function TelegramImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [step, setStep]           = useState<TgStep>("input");
+  const [chatId, setChatId]       = useState("");
+  const [fetchLimit, setFetchLimit] = useState(50);
+  const [chatInfo, setChatInfo]   = useState<TelegramChatInfo | null>(null);
+  const [messages, setMessages]   = useState<TelegramMessage[]>([]);
+  const [selected, setSelected]   = useState<Set<number>>(new Set());
+  const [note, setNote]           = useState<string | null>(null);
+  const [articles, setArticles]   = useState<ParsedArticle[]>([]);
+  const [importResult, setImportResult] = useState<{ imported: number; total: number } | null>(null);
+  const [error, setError]         = useState("");
+
+  const reset = () => {
+    setStep("input"); setChatId(""); setChatInfo(null); setMessages([]);
+    setSelected(new Set()); setNote(null); setArticles([]); setImportResult(null); setError("");
+  };
+  const handleClose = () => { reset(); onClose(); };
+
+  const handleFetch = async () => {
+    if (!chatId.trim()) { setError("Masukkan username atau ID channel/grup"); return; }
+    setStep("fetching"); setError(""); setNote(null);
+    try {
+      const data = await adminFetch("/api/admin/telegram/fetch", {
+        method: "POST",
+        body: JSON.stringify({ chatId: chatId.trim(), limit: fetchLimit }),
+      });
+      setChatInfo(data.chatInfo);
+      setMessages(data.messages || []);
+      setNote(data.note || null);
+      setStep("list");
+    } catch (e: any) {
+      setError(e.message || "Gagal mengambil pesan Telegram");
+      setStep("input");
+    }
+  };
+
+  const toggleSelect = (id: number) =>
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleAll = () =>
+    setSelected(prev => prev.size === messages.length ? new Set() : new Set(messages.map(m => m.id)));
+
+  const handleParse = async () => {
+    const selectedMsgs = messages.filter(m => selected.has(m.id));
+    if (selectedMsgs.length === 0) { toast.error("Pilih minimal satu pesan dulu"); return; }
+    setStep("parsing");
+    const combined = selectedMsgs
+      .sort((a, b) => a.id - b.id)
+      .map(m => `[${new Date(m.date).toLocaleDateString("id-ID")}]\n${m.text}`)
+      .join("\n\n---\n\n");
+    try {
+      const data = await adminFetch("/api/admin/articles/bulk-parse", {
+        method: "POST",
+        body: JSON.stringify({ rawText: combined }),
+      });
+      setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, maps_url: "", contact_number: "" })));
+      setStep("preview");
+    } catch (e: any) {
+      toast.error(e.message || "Gagal memproses pesan");
+      setStep("list");
+    }
+  };
+
+  const handleImport = async () => {
+    if (articles.length === 0) return;
+    setStep("importing");
+    try {
+      const data = await adminFetch("/api/admin/articles/bulk-import", {
+        method: "POST",
+        body: JSON.stringify({ articles }),
+      });
+      setImportResult({ imported: data.imported, total: data.total });
+      setStep("done");
+      onDone();
+    } catch (e: any) {
+      toast.error(e.message || "Gagal import artikel");
+      setStep("preview");
+    }
+  };
+
+  const removeArticle = (idx: number) => setArticles(prev => prev.filter((_, i) => i !== idx));
+  const updateArticle = (idx: number, field: keyof ParsedArticle, val: string) =>
+    setArticles(prev => prev.map((a, i) => i === idx ? { ...a, [field]: val } : a));
+
+  const stepLabels = [
+    { id: "input",   label: "1. Channel/Grup" },
+    { id: "list",    label: "2. Pilih Pesan" },
+    { id: "preview", label: "3. Preview Artikel" },
+    { id: "done",    label: "4. Selesai" },
+  ];
+  const activeStep = step === "fetching" ? "input" : step === "parsing" ? "list" : step === "importing" ? "preview" : step;
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && handleClose()}>
+      <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="font-display flex items-center gap-2">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-sky-400" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/>
+            </svg>
+            Import dari Telegram
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Step indicator */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          {stepLabels.map((s, i, arr) => (
+            <span key={s.id} className="flex items-center gap-1">
+              <span className={`font-medium ${activeStep === s.id ? "text-primary" : ""}`}>{s.label}</span>
+              {i < arr.length - 1 && <ChevronRight className="h-3 w-3 opacity-40" />}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
+
+          {/* STEP 1: Input */}
+          {(step === "input" || step === "fetching") && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Masukkan username atau ID numerik channel/grup Telegram. Bot harus sudah jadi <strong>admin</strong> atau <strong>member</strong> di sana.
+              </p>
+              {error && (
+                <div className="flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2.5 text-sm text-red-400">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Username atau ID Channel/Grup</label>
+                <Input
+                  value={chatId}
+                  onChange={e => setChatId(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleFetch()}
+                  placeholder="Contoh: @ppmi_mesir atau -1001234567890"
+                  className="bg-secondary font-mono text-sm"
+                  disabled={step === "fetching"}
+                  autoFocus
+                />
+                <p className="text-[11px] text-muted-foreground/60">
+                  Untuk channel/grup privat, pastikan bot sudah ditambahkan sebagai admin. Untuk channel publik, cukup username (@nama).
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Jumlah pesan yang diambil (maks. 100)</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range" min={10} max={100} step={10}
+                    value={fetchLimit}
+                    onChange={e => setFetchLimit(parseInt(e.target.value))}
+                    className="flex-1"
+                    disabled={step === "fetching"}
+                  />
+                  <span className="w-10 text-right text-sm font-medium text-foreground">{fetchLimit}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Message list */}
+          {(step === "list") && (
+            <div className="space-y-3">
+              {chatInfo && (
+                <div className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-2.5">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-sky-400 shrink-0" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/>
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{chatInfo.title}</p>
+                    <p className="text-[11px] text-muted-foreground">{chatInfo.type}{chatInfo.username ? ` · @${chatInfo.username}` : ""} · ID: {chatInfo.id}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-sky-400 font-medium">{messages.length} pesan</span>
+                </div>
+              )}
+
+              {note && (
+                <div className="flex items-start gap-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20 px-3 py-2.5 text-sm text-yellow-400">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span className="text-xs">{note}</span>
+                </div>
+              )}
+
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <p className="text-sm text-muted-foreground">Tidak ada pesan yang bisa diambil.</p>
+                  <p className="text-xs text-muted-foreground/60">Pastikan bot sudah menjadi admin channel dan ada pesan yang dikirim setelah bot ditambahkan.</p>
+                  <Button size="sm" variant="outline" onClick={() => setStep("input")} className="mt-2">Coba Lagi</Button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <button onClick={toggleAll} className="text-xs text-primary hover:opacity-80 transition-opacity">
+                      {selected.size === messages.length ? "Batal Pilih Semua" : `Pilih Semua (${messages.length})`}
+                    </button>
+                    <span className="text-xs text-muted-foreground">{selected.size} dipilih</span>
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {messages.map(msg => (
+                      <div
+                        key={msg.id}
+                        onClick={() => toggleSelect(msg.id)}
+                        className={`flex items-start gap-3 rounded-xl border px-3 py-3 cursor-pointer transition-all ${
+                          selected.has(msg.id)
+                            ? "border-primary/40 bg-primary/5"
+                            : "border-border bg-card hover:border-border/80 hover:bg-card/80"
+                        }`}
+                      >
+                        <div className={`mt-0.5 h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                          selected.has(msg.id) ? "border-primary bg-primary" : "border-border bg-transparent"
+                        }`}>
+                          {selected.has(msg.id) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[11px] font-medium text-primary/80">{msg.from}</span>
+                            <span className="text-[10px] text-muted-foreground/50">
+                              {new Date(msg.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/40">#{msg.id}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{msg.text}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* STEP 2.5: Parsing */}
+          {step === "parsing" && (
+            <div className="flex flex-col items-center gap-4 py-10">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <div className="text-center">
+                <p className="text-sm font-medium text-foreground">AI sedang menganalisis pesan...</p>
+                <p className="text-xs text-muted-foreground mt-1">Memproses {selected.size} pesan menjadi artikel KB</p>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: Preview articles */}
+          {(step === "preview" || step === "importing") && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                AI menghasilkan <strong>{articles.length} artikel</strong> dari {selected.size} pesan yang dipilih. Edit jika perlu, lalu import.
+              </p>
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {articles.map((art, i) => (
+                  <div key={i} className="rounded-xl border border-border bg-card p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input
+                        value={art.title}
+                        onChange={e => updateArticle(i, "title", e.target.value)}
+                        className="flex-1 bg-transparent text-sm font-semibold text-foreground outline-none border-b border-border focus:border-primary/50 transition-colors pb-0.5"
+                        placeholder="Judul artikel"
+                      />
+                      <button onClick={() => removeArticle(i)} className="shrink-0 text-muted-foreground/40 hover:text-red-400 transition-colors">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={art.category}
+                        onChange={e => updateArticle(i, "category", e.target.value)}
+                        className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/30"
+                      >
+                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${CATEGORY_COLORS[art.category] || "bg-muted text-muted-foreground"}`}>
+                        {art.article_type === "step_by_step" ? "Step-by-step" : "Narasi"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{art.content.slice(0, 200)}…</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Done */}
+          {step === "done" && importResult && (
+            <div className="flex flex-col items-center gap-4 py-10 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-500/15">
+                <CheckCircle2 className="h-7 w-7 text-green-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Import Selesai!</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {importResult.imported} dari {importResult.total} artikel berhasil ditambahkan ke Knowledge Base.
+                </p>
+              </div>
+              <Button size="sm" onClick={handleClose}>Tutup</Button>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border pt-4">
+          {step === "input" && (
+            <>
+              <Button variant="ghost" size="sm" onClick={handleClose}>Batal</Button>
+              <Button size="sm" onClick={handleFetch} disabled={!chatId.trim()} className="bg-sky-500 hover:bg-sky-600 text-white gap-1.5">
+                {step === "fetching" ? <><div className="h-3.5 w-3.5 animate-spin rounded-full border border-white border-t-transparent" /> Mengambil...</> : <>Ambil Pesan</>}
+              </Button>
+            </>
+          )}
+          {step === "fetching" && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mx-auto">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+              Menghubungi Telegram...
+            </div>
+          )}
+          {step === "list" && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setStep("input")}>← Kembali</Button>
+              <Button size="sm" onClick={handleParse} disabled={selected.size === 0} className="bg-gradient-purple text-primary-foreground gap-1.5">
+                <Wand2 className="h-3.5 w-3.5" /> Parse {selected.size > 0 ? `${selected.size} Pesan` : ""}  dengan AI
+              </Button>
+            </>
+          )}
+          {step === "preview" && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setStep("list")}>← Kembali</Button>
+              <Button size="sm" onClick={handleImport} disabled={articles.length === 0} className="bg-gradient-purple text-primary-foreground gap-1.5">
+                <FileUp className="h-3.5 w-3.5" /> Import {articles.length} Artikel ke KB
+              </Button>
+            </>
+          )}
+          {step === "importing" && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mx-auto">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              Mengimport artikel...
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const [step, setStep] = useState<BulkStep>("paste");
   const [rawText, setRawText] = useState("");
@@ -1326,6 +1671,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [reformatLoading, setReformatLoading] = useState(false);
   const [reformattingId, setReformattingId] = useState<string | null>(null);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [telegramImportOpen, setTelegramImportOpen] = useState(false);
 
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
@@ -1521,6 +1867,10 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
               </Button>
             </>
           )}
+          <Button onClick={() => setTelegramImportOpen(true)} size="sm" variant="outline" className="gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/></svg>
+            Telegram
+          </Button>
           <Button onClick={() => setBulkImportOpen(true)} size="sm" variant="outline" className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
             <Wand2 className="h-3.5 w-3.5" /> Import Massal
           </Button>
@@ -1755,6 +2105,11 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         open={bulkImportOpen}
         onClose={() => setBulkImportOpen(false)}
         onDone={() => { load(); toast.success("Artikel berhasil diimport ke Knowledge Base!"); }}
+      />
+      <TelegramImportDialog
+        open={telegramImportOpen}
+        onClose={() => setTelegramImportOpen(false)}
+        onDone={() => { load(); toast.success("Artikel dari Telegram berhasil diimport ke Knowledge Base!"); }}
       />
     </div>
   );
