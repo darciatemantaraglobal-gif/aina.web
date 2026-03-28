@@ -12,6 +12,7 @@ import {
   buildSystemPrompt,
 } from './api/engine/promptBuilder.js';
 import { validateResponse, postProcessResponse, buildSourceBadges } from './api/engine/responseFormatter.js';
+import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
@@ -1768,6 +1769,22 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   };
   console.log(`[SourceDecision] ${JSON.stringify(sourceLog)}`);
 
+  // ── Source orchestration: rich metadata + confidence label ────────────────
+  const sourceResult = buildSourceResult({
+    articles,
+    pinnedUpdates,
+    perplexityResult,
+    wikiResult,
+    ddgResult,
+    exchangeRates,
+    dorarResult,
+    kbStrength,
+    queryType,
+    intent,
+    query: lastUserMessage,
+  });
+  logSourceDecision(sourceResult, lastUserMessage);
+
   // ── Build context blocks via modular prompt engine ─────────────────────────
   // Each builder is a pure function: input data → context string.
   // Internal logging (Wikipedia, DDG, Perplexity, Dorar, Exchange) is in each builder.
@@ -2025,7 +2042,22 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (ddgResult)                                       responseSources.push("DuckDuckGo");
     if (responseSources.length === 0)                    responseSources.push("Pengetahuan Umum");
 
-    res.json({ reply, model: result.model, intent: intent.primary, confidence: confidence.level, sources: responseSources });
+    res.json({
+      reply,
+      model:    result.model,
+      intent:   intent.primary,
+      confidence: confidence.level,
+      sources:  responseSources,
+      // ── Structured source metadata (for UI badges + logging) ──────────────
+      sourceMetadata: {
+        confidence:      sourceResult.confidence,
+        primary_source:  sourceResult.primary_source,
+        sources_used:    sourceResult.sources_used,
+        may_be_outdated: sourceResult.may_be_outdated,
+        source_summary:  sourceResult.source_summary,
+        retrieved_at:    sourceResult.retrieved_at,
+      },
+    });
     // Fire-and-forget: extract memories + record intel signals (Phase 6 + Phase 12)
     setImmediate(() => {
       extractAndSaveMemories(user.id, [...messages, { role: "assistant", content: reply }], apiKey);

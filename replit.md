@@ -31,6 +31,7 @@ Modular architecture for AI response generation. Each module is a pure-function 
 | `api/engine/responseStyles.js` | 5 response styles: `short_direct`, `step_by_step`, `detailed_complete`, `practical_ready_to_use`, `casual_easy_to_understand` |
 | `api/engine/promptBuilder.js` | Context block builders (KB, pinned, personalization, memory, exchange, wiki, ddg, perplexity, dorar) + `buildSystemPrompt()` assembler |
 | `api/engine/responseFormatter.js` | Output validation (`validateResponse`), post-processing (`postProcessResponse`), source badge builder (`buildSourceBadges`) |
+| `api/engine/sourceOrchestrator.js` | Source orchestration: `planSourceFetches()` (pre-fetch plan), `buildSourceResult()` (post-fetch rich metadata), `logSourceDecision()` (debug logging), `buildNoSourceResult()` (graceful fallback) |
 
 **Source priority order** (highest → lowest trust):
 1. Pinned/Admin Updates (trust: 100)
@@ -43,6 +44,41 @@ Modular architecture for AI response generation. Each module is a pure-function 
 8. Model knowledge fallback (trust: 20)
 
 **Response style default**: `step_by_step` (user-selectable via profile settings)
+
+### API Response Shape (`/api/chat`)
+
+```json
+{
+  "reply":      "...",
+  "model":      "google/gemini-2.0-flash-001",
+  "intent":     "procedural",
+  "confidence": "high_confidence",
+  "sources":    ["Knowledge Base AINA", "Pencarian Web"],
+  "sourceMetadata": {
+    "confidence":      "verified",
+    "primary_source":  "kb_article",
+    "sources_used": [
+      {
+        "source_name":  "Knowledge Base AINA (2 artikel)",
+        "source_type":  "internal",
+        "trust_score":  90,
+        "retrieved_at": "2026-03-28T00:47:00.000Z",
+        "updated_at":   "2026-03-01T12:00:00.000Z",
+        "is_primary":   true
+      }
+    ],
+    "may_be_outdated": false,
+    "source_summary":  "Knowledge Base AINA (terverifikasi)",
+    "retrieved_at":    "2026-03-28T00:47:00.000Z"
+  }
+}
+```
+
+**Confidence labels** (from `sourceOrchestrator.js`):
+- `verified` — pinned update or KB article (internal, reviewed)
+- `community_based` — community-contributed KB (no peer-review guarantee; reserved for future unreviewed article types)
+- `web_result` — Perplexity / Wikipedia / DuckDuckGo / Exchange API / Dorar
+- `fallback` — model training knowledge only; always sets `may_be_outdated: true`
 
 ## Required Environment Secrets
 

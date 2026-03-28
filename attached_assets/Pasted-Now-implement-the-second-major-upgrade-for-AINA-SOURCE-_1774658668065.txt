@@ -1,0 +1,58 @@
+Now implement the second major upgrade for AINA: SOURCE ORCHESTRATION and TRUST LAYER.
+
+Context:
+AINA already has 3 possible source layers:
+1. Internal AINA Knowledge Base
+2. Web search provider (such as Perplexity)
+3. Wikipedia fallback
+
+Current issue:
+Responses can feel unreliable because sources are mixed without clear trust rules, freshness, or confidence indicators.
+
+Goal:
+Build a scalable source orchestration layer that chooses, ranks, and labels sources before generating the final answer.
+
+Requirements:
+1. Create a source orchestration service that:
+   - queries internal knowledge first
+   - decides whether internal knowledge is enough
+   - if not enough, calls web search
+   - if still weak, falls back to Wikipedia
+2. Add a confidence classification system for answers, for example:
+   - verified
+   - community_based
+   - web_result
+   - fallback
+3. Add freshness metadata where possible:
+   - source_name
+   - source_type
+   - updated_at or retrieved_at
+4. Generate a source summary object that can be passed into the final answer formatter.
+5. Make the system return not just the answer text, but also structured metadata about:
+   - which sources were used
+   - which source was primary
+   - confidence level
+   - whether the answer may be outdated
+6. Add graceful behavior if no strong source is found:
+   - do not hallucinate
+   - respond with uncertainty clearly
+   - suggest checking official channels if relevant
+
+Please build:
+1. source-orchestrator service
+2. confidence scoring logic
+3. source metadata schema / type definitions
+4. source ranking logic
+5. updated backend chat pipeline example
+6. example JSON response shape for frontend use
+
+Important logic:
+- Internal AINA knowledge should always be preferred when relevant.
+- Web search should be used when the answer requires newer or broader information.
+- Wikipedia should only be fallback, not first-choice.
+- The trust system must be transparent and easy to display later in UI.
+
+Also include:
+- recommendations for database fields if I want to store source metadata
+- suggestions for logging and debugging source decisions
+- clean code and scalable structure
