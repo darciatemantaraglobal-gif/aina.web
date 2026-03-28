@@ -1,0 +1,509 @@
+Saya sedang membangun AINA, sebuah AI Assistant untuk mahasiswa Indonesia di Mesir (Masisir). Saya ingin menambahkan sistem productivity yang benar-benar berguna untuk kehidupan mahasiswa, bukan sekadar to-do list biasa.
+
+Saya ingin Anda membantu saya merancang dan mengimplementasikan fitur productivity AINA dengan 3 fitur utama berikut:
+
+1. Daily Focus + AI Automatic Recommendation
+2. Admin & Dokumen Tracker
+3. Smart Reminder System + Email via Resend
+
+Fitur ini harus dibuat dengan pendekatan:
+- sederhana
+- usable
+- mobile-friendly
+- relevan untuk mahasiswa Indonesia di Mesir
+- tidak over-engineered
+- scalable untuk dikembangkan nanti
+
+Stack utama saya menggunakan web app + Supabase. Saya juga sudah punya API Resend untuk email.
+
+==================================================
+KONTEKS PRODUK
+==================================================
+
+AINA bukan aplikasi produktivitas umum.
+AINA adalah AI pendamping mahasiswa Indonesia di Mesir.
+
+Jadi fitur ini harus membantu user:
+- punya arah harian
+- tidak tenggelam dalam terlalu banyak tugas
+- tidak lupa urusan administrasi penting
+- tetap punya momentum walaupun sibuk atau suka menunda
+- merasa dibantu oleh AI, bukan dibebani dashboard rumit
+
+AINA harus terasa seperti:
+“teman cerdas yang bantu saya tetap jalan”
+bukan seperti:
+“sistem task management yang kaku”
+
+==================================================
+FITUR 1 — DAILY FOCUS + AI AUTOMATIC RECOMMENDATION
+==================================================
+
+Saya ingin ada fitur Daily Focus untuk membantu user fokus pada 1–3 hal terpenting hari ini.
+
+Tetapi saya tidak ingin ini hanya jadi to-do list manual.
+Saya ingin ada bantuan AI yang bisa:
+- merapikan input user
+- memilih prioritas
+- menyederhanakan target
+- memecah target besar menjadi langkah kecil
+- memberi saran fokus harian yang realistis
+
+------------------------------------------
+A. User experience yang saya inginkan
+------------------------------------------
+
+Saat user membuka fitur productivity, tampilkan section “Daily Focus Today”.
+
+User bisa memilih salah satu dari 3 mode:
+
+1. Manual
+User menulis fokus hariannya sendiri
+
+2. AI Assist
+User menulis kalimat bebas, misalnya:
+“Hari ini gue mau belajar, urus iqomah, sama lanjut revisi tugas”
+Lalu AI mengubahnya menjadi 1–3 fokus yang rapi, realistis, dan terurut
+
+3. AI Suggest
+AINA membuat rekomendasi fokus harian secara otomatis berdasarkan:
+- task yang belum selesai sebelumnya
+- item admin/dokumen yang urgent
+- due date yang dekat
+- histori fokus user
+- jumlah beban yang realistis
+
+------------------------------------------
+B. Rules Daily Focus
+------------------------------------------
+
+- User maksimal punya 3 fokus aktif per hari
+- Fokus terkait ke tanggal tertentu
+- Status fokus:
+  - pending
+  - in_progress
+  - done
+- Fokus yang selesai tetap disimpan sebagai histori
+- Jika user sudah punya fokus hari ini, tampilkan progresnya
+- AI harus menghindari memberi terlalu banyak tugas
+- AI harus mengutamakan tugas yang paling berdampak dan realistis
+- AI harus bisa memecah tugas besar jadi versi yang lebih ringan
+
+Contoh:
+Input user:
+“Hari ini gue mau belajar ushul fiqh, urus iqomah, sama lanjut website”
+Output AI yang diharapkan:
+1. Baca 2 halaman ushul fiqh dan catat 3 poin inti
+2. Siapkan berkas iqomah yang belum lengkap
+3. Lanjutkan 1 bagian kecil dari website yang paling penting
+
+------------------------------------------
+C. Database yang dibutuhkan untuk Daily Focus
+------------------------------------------
+
+Tolong buat tabel misalnya:
+daily_focus_items
+
+Field minimal:
+- id UUID primary key
+- user_id UUID references auth.users(id)
+- focus_date date not null
+- original_input text nullable
+- title text not null
+- description text nullable
+- source_type text check in ('manual','ai_assist','ai_suggest')
+- status text check in ('pending','in_progress','done')
+- priority integer nullable
+- created_at timestamptz
+- updated_at timestamptz
+
+Tambahkan index yang relevan:
+- by user_id + focus_date
+- by status
+- by created_at
+
+------------------------------------------
+D. Logic AI Daily Focus
+------------------------------------------
+
+Saya ingin helper / service function untuk AI recommendation.
+Buat struktur yang clean agar nanti mudah disambungkan ke model AI AINA.
+
+Minimal ada function untuk:
+- menerima input bebas user
+- mengubahnya menjadi 1–3 focus items
+- membaca tracker admin yang urgent
+- menghasilkan rekomendasi fokus harian
+
+Tolong pisahkan:
+- function untuk build prompt AI
+- function untuk parse response AI
+- function untuk save hasil ke database
+
+Saya ingin AI recommendation punya aturan berikut:
+- maksimal 3 fokus
+- prioritaskan 1 tugas utama + 1 tugas administratif jika ada + 1 tugas ringan jika masih realistis
+- jangan menghasilkan wording terlalu formal
+- gunakan bahasa yang singkat, jelas, dan actionable
+- jangan membuat fokus yang terlalu besar atau abstrak
+
+==================================================
+FITUR 2 — ADMIN & DOKUMEN TRACKER
+==================================================
+
+Saya ingin fitur untuk membantu mahasiswa melacak urusan penting seperti:
+- iqomah
+- paspor
+- visa
+- urusan kampus
+- safar / tiket penting
+- dokumen lainnya
+
+Fitur ini harus terasa seperti:
+“alat bantu hidup rapi”
+bukan alat birokrasi yang rumit
+
+------------------------------------------
+A. User experience yang saya inginkan
+------------------------------------------
+
+Ada section “Urusan Penting / Dokumen”.
+
+User bisa membuat item administrasi / dokumen yang sedang diurus.
+
+Contoh:
+- Perpanjangan iqomah
+- Siapkan paspor untuk safar
+- Ambil shahadah qaid
+- Urus dokumen kampus
+- Cek tiket keberangkatan
+
+Setiap item bisa punya:
+- judul
+- kategori
+- catatan
+- due date
+- status
+- level urgent
+- reminder on/off
+
+------------------------------------------
+B. Kategori awal
+------------------------------------------
+
+Kategori awal:
+- iqomah
+- paspor
+- visa
+- kampus
+- safar
+- lainnya
+
+------------------------------------------
+C. Status item
+------------------------------------------
+
+Status:
+- not_started
+- preparing
+- submitted
+- completed
+
+Tambahkan juga boolean atau field untuk:
+- is_urgent
+- reminder_enabled
+
+------------------------------------------
+D. Database yang dibutuhkan
+------------------------------------------
+
+Tolong buat tabel misalnya:
+admin_tracker_items
+
+Field minimal:
+- id UUID primary key
+- user_id UUID references auth.users(id)
+- title text not null
+- category text check in ('iqomah','paspor','visa','kampus','safar','lainnya')
+- notes text nullable
+- due_date date nullable
+- status text check in ('not_started','preparing','submitted','completed')
+- is_urgent boolean default false
+- reminder_enabled boolean default true
+- created_at timestamptz
+- updated_at timestamptz
+
+Optional jika memungkinkan:
+- checklist_steps jsonb
+- completed_steps jsonb
+
+Tambahkan index:
+- by user_id
+- by due_date
+- by status
+- by is_urgent
+
+------------------------------------------
+E. Logic yang dibutuhkan
+------------------------------------------
+
+Saya ingin CRUD lengkap:
+- create item
+- list item per user
+- update status
+- update urgent flag
+- delete item
+- filter item yang belum selesai
+- filter item yang due date dekat
+- filter item yang urgent
+
+==================================================
+FITUR 3 — SMART REMINDER SYSTEM
+==================================================
+
+Saya ingin sistem reminder yang kontekstual.
+
+Reminder harus berdasarkan:
+- daily focus yang belum selesai
+- admin tracker item yang belum selesai
+- due date yang sudah dekat
+- progress user sebelumnya
+
+Saya tidak mau reminder spam.
+Saya ingin reminder yang cerdas dan terkendali.
+
+------------------------------------------
+A. Jenis reminder
+------------------------------------------
+
+Saya ingin minimal 3 use case:
+
+1. Daily Focus Reminder
+Jika user punya focus hari ini dan belum selesai sampai sore / malam
+
+2. Important Admin Reminder
+Jika user punya item admin/dokumen yang due date-nya dekat atau urgent dan belum selesai
+
+3. Weekly Recap Email
+Setiap minggu, user menerima ringkasan progress:
+- focus yang selesai
+- focus yang belum selesai
+- item admin yang masih pending
+- saran singkat minggu depan
+
+------------------------------------------
+B. Channel reminder
+------------------------------------------
+
+Untuk tahap awal:
+- in-app reminder summary
+- email via Resend
+
+Kalau push notification belum siap, tidak masalah.
+Fokus dulu ke email dan reminder panel di app.
+
+------------------------------------------
+C. Aturan anti-spam
+------------------------------------------
+
+- Jangan kirim reminder berulang untuk item yang sama di hari yang sama
+- Jangan kirim daily reminder kalau semua focus hari itu sudah selesai
+- Jangan kirim admin reminder kalau item sudah completed
+- Weekly recap hanya 1 kali per minggu per user
+- Simpan log reminder yang sudah terkirim
+
+------------------------------------------
+D. Database reminder log
+------------------------------------------
+
+Tolong buat tabel misalnya:
+reminder_logs
+
+Field minimal:
+- id UUID primary key
+- user_id UUID references auth.users(id)
+- target_type text check in ('daily_focus','admin_tracker','weekly_recap')
+- target_id UUID nullable
+- channel text check in ('in_app','email')
+- sent_at timestamptz not null default now()
+- reminder_date date not null
+- metadata jsonb nullable
+
+Tambahkan unique protection atau logic agar tidak duplikat kirim di hari yang sama untuk target yang sama jika memungkinkan.
+
+==================================================
+EMAIL VIA RESEND
+==================================================
+
+Saya sudah punya API Resend.
+Tolong integrasikan email reminder menggunakan Resend.
+
+Saya ingin implementasi untuk 3 template email:
+
+1. Daily gentle reminder
+Contoh tone:
+“Bro, fokus harian lo hari ini masih ada yang belum beres. Gak usah semuanya, lanjut satu langkah kecil dulu.”
+
+2. Important admin reminder
+Contoh tone:
+“Urusan penting lo masih pending dan waktunya makin dekat. Cek lagi biar gak keteteran.”
+
+3. Weekly recap
+Contoh isi:
+- berapa focus selesai minggu ini
+- focus yang belum selesai
+- urusan admin yang masih pending
+- saran singkat dari AINA
+
+Tone email harus:
+- hangat
+- ringan
+- suportif
+- tidak kaku
+- terasa seperti pendamping mahasiswa
+
+Tolong buat struktur email yang sederhana dan enak dibaca di mobile.
+
+==================================================
+RLS / SUPABASE / SECURITY
+==================================================
+
+Saya menggunakan Supabase.
+Semua tabel harus:
+- menggunakan UUID
+- terhubung ke auth.users(id)
+- punya created_at dan updated_at
+- siap untuk row level security
+
+Tolong:
+- aktifkan RLS
+- buat policy agar user hanya bisa membaca dan mengubah datanya sendiri
+- gunakan policy yang aman dan simpel
+
+Contoh:
+- user hanya bisa select miliknya sendiri
+- user hanya bisa insert dengan user_id = auth.uid()
+- user hanya bisa update/delete miliknya sendiri
+
+Tambahkan trigger updated_at untuk tabel yang perlu.
+
+==================================================
+BACKEND / SERVER LOGIC
+==================================================
+
+Saya ingin struktur backend yang rapi dan maintainable.
+
+Tolong buat:
+1. query/database layer
+2. service/business logic layer
+3. email/reminder helper
+4. AI daily focus helper
+
+Saya ingin pemisahan yang jelas antara:
+- database operations
+- AI recommendation logic
+- reminder scheduling logic
+- UI components
+
+Kalau project saya memakai Next.js / server actions / API routes, sesuaikan dengan struktur terbaik yang sederhana.
+
+==================================================
+UI / UX YANG DIINGINKAN
+==================================================
+
+Saya tidak ingin UI yang terlalu kompleks.
+Saya ingin 3 section utama:
+
+1. Daily Focus Today
+- input atau AI suggestion
+- list focus hari ini
+- mark as done
+
+2. Urusan Penting / Dokumen
+- list item admin
+- status badge
+- due date
+- urgent state
+
+3. Reminder Summary
+- info singkat reminder aktif
+- progress singkat hari ini / minggu ini
+
+Tolong buat komponen UI sederhana seperti:
+- FocusCard
+- FocusInputBox
+- AISuggestionBox
+- TrackerCard
+- ReminderSummaryCard
+- WeeklyRecapCard
+
+Desain harus:
+- clean
+- modern
+- ringan
+- mobile friendly
+- tidak ramai
+- mudah dipahami mahasiswa
+
+==================================================
+SCHEDULER / CRON-READY LOGIC
+==================================================
+
+Saya ingin sistem ini siap untuk dihubungkan ke cron job / scheduled function nanti.
+
+Tolong buat function yang bisa dipanggil secara terjadwal untuk:
+- mencari daily focus yang belum selesai dan perlu reminder
+- mencari admin tracker item yang due date-nya dekat
+- mengirim weekly recap
+
+Buat fungsi yang idempotent jika memungkinkan.
+Pastikan ada pengecekan reminder_logs agar tidak kirim dobel.
+
+==================================================
+OUTPUT YANG SAYA MAU DARI ANDA
+==================================================
+
+Tolong kerjakan secara bertahap dan jelas.
+
+Saya ingin Anda:
+1. Mendesain schema database / migration SQL lengkap
+2. Mendesain RLS policies
+3. Membuat backend / service logic
+4. Membuat UI dasar untuk fitur ini
+5. Menghubungkan Resend email
+6. Membuat helper function untuk AI Daily Focus
+7. Membuat scheduler-ready reminder functions
+8. Menjelaskan file apa saja yang dibuat / diubah
+9. Menjelaskan cara test fitur ini secara lokal
+10. Menyebutkan asumsi teknis yang Anda ambil
+
+==================================================
+BATASAN PENTING
+==================================================
+
+- Jangan ubah fitur existing yang tidak relevan
+- Jangan membuat dashboard rumit
+- Jangan membuat task manager kompleks seperti aplikasi project management
+- Jangan keluar dari scope 3 fitur utama ini
+- Prioritaskan kesederhanaan dan usability
+- Fokus ke pengalaman mahasiswa Indonesia di Mesir
+- Kalau ada bagian yang bisa dibuat lebih simpel, pilih versi yang lebih simpel
+
+==================================================
+HASIL YANG SAYA HARAPKAN
+==================================================
+
+Saya ingin hasil akhirnya membuat AINA terasa seperti:
+AI yang membantu mahasiswa:
+- menentukan fokus harian
+- menjaga urusan penting tetap rapi
+- mengingatkan dengan cara yang berguna dan tidak spam
+
+Silakan mulai dari:
+1. schema database
+2. RLS
+3. backend logic
+4. UI
+5. reminder + Resend integration
+
+Tampilkan implementasi yang siap saya review dan lanjutkan.

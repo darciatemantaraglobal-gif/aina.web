@@ -101,7 +101,10 @@ Managed entirely by Supabase. Schema is in `supabase/migrations/`. Tables:
 - `contributor_requests` — contributor applications (includes `reason`, `article_content`, `article_file_url`, `portfolio_link`, `review_notes`, `reviewed_by`, `reviewed_at`; status: `pending` | `article_reviewed` | `approved` | `rejected`)
 - `system_announcements` — admin-managed popup announcements (type, target_audience, is_active, schedule, optional CTA button)
 - `user_announcement_views` — tracks which announcements each user has seen/dismissed
-- `tasks` — personal productivity tasks
+- `tasks` — personal productivity tasks (legacy deadline tab)
+- `daily_focus_items` — Daily Focus productivity (title, status: pending/in_progress/done, source_type: manual/ai_assist/ai_suggest, priority, focus_date)
+- `admin_tracker_items` — Admin & Dokumen Tracker (iqomah/paspor/visa/kampus/safar/lainnya, status: not_started/preparing/submitted/completed, is_urgent, due_date, reminder_enabled)
+- `reminder_logs` — Reminder audit log (target_type: daily_focus/admin_tracker/weekly_recap, channel: in_app/email, reminder_date — prevents duplicate sends same day)
 - `user_badges` — badge/achievement system
 - `notifications` — in-app notifications
 - `thread_votes` — upvotes on threads (user_id + thread_id, UNIQUE; triggers update `threads.vote_count`)
@@ -204,6 +207,12 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
 - **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Laporan tabs
 - **Leaderboard** — Top contributors ranked by article count + top voted KB articles with live upvote toggle
 - **Upvote System** — Toggle upvotes on threads (list + detail view) and approved KB articles; counts maintained via DB triggers
+- **Productivity v2** — 3-tab system in `ProductivityPage.tsx`:
+  - **Fokus Harian** — Daily focus (max 3 active/day), 3 input modes: Manual, AI Bantu (AI processes free text → 1–3 clean focus items), AI Sarankan (AI reads pending focus, urgent admin items, 7-day history → proactive suggestions). Status: pending → in_progress → done (click to cycle). Backend: `GET /api/productivity/focus/today`, `POST /api/productivity/focus`, `PATCH /api/productivity/focus/:id`, `DELETE /api/productivity/focus/:id`, `POST /api/productivity/focus/ai-assist`, `POST /api/productivity/focus/ai-suggest`
+  - **Dokumen & Admin** — Full CRUD tracker for iqomah/paspor/visa/kampus/safar/lainnya, status cycling (not_started → preparing → submitted → completed), urgent flag toggle, due date with urgency badges, filter tabs. Backend: `GET /api/productivity/tracker`, `POST /api/productivity/tracker`, `PATCH /api/productivity/tracker/:id`, `DELETE /api/productivity/tracker/:id`
+  - **Prosedur** — Existing step-by-step guides (preserved, localStorage progress)
+  - **Reminder API** — Email via Resend (requires `RESEND_API_KEY`): `POST /api/productivity/reminders/daily` (daily focus reminder, idempotent — skips if sent today), `POST /api/productivity/reminders/admin` (admin tracker urgent reminder), `POST /api/productivity/reminders/weekly-recap` (weekly summary, idempotent — skips if sent this week). In-app: `GET /api/productivity/reminders/summary`
+  - **Migration**: Run `supabase/migrations/20260328_productivity_v2.sql` in Supabase dashboard
 - **Guided Tour** — Custom 8-step onboarding tour (`GuidedTour.tsx`) auto-shown to first-time users; spotlight + tooltip overlay via React portal; skippable and restartable via "Panduan Fitur" button in sidebar; state persisted in `localStorage` under `aina_tour_seen_v1`
 
 ## Key Files
