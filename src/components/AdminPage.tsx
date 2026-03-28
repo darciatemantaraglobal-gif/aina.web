@@ -16,7 +16,7 @@ import {
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
-  GripVertical,
+  GripVertical, Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -990,7 +990,230 @@ function RequestsTab() {
   );
 }
 
-/* ─── Article Form Dialog ────────────────────────────── */
+/* ─── Bulk Import Dialog ─────────────────────────────── */
+type ParsedArticle = {
+  title: string; content: string; category: string; keywords: string;
+  maps_url?: string; contact_number?: string;
+};
+type BulkStep = "paste" | "parsing" | "preview" | "importing" | "done";
+
+function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [step, setStep] = useState<BulkStep>("paste");
+  const [rawText, setRawText] = useState("");
+  const [articles, setArticles] = useState<ParsedArticle[]>([]);
+  const [importResult, setImportResult] = useState<{ imported: number; total: number } | null>(null);
+  const [parseError, setParseError] = useState("");
+
+  const reset = () => { setStep("paste"); setRawText(""); setArticles([]); setImportResult(null); setParseError(""); };
+
+  const handleClose = () => { reset(); onClose(); };
+
+  const handleParse = async () => {
+    if (!rawText.trim()) { toast.error("Paste teks dulu!"); return; }
+    setStep("parsing"); setParseError("");
+    try {
+      const data = await adminFetch("/api/admin/articles/bulk-parse", {
+        method: "POST", body: JSON.stringify({ rawText }),
+      });
+      setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, maps_url: "", contact_number: "" })));
+      setStep("preview");
+    } catch (e: any) {
+      setParseError(e.message || "Gagal memproses teks");
+      setStep("paste");
+    }
+  };
+
+  const handleImport = async () => {
+    if (articles.length === 0) return;
+    setStep("importing");
+    try {
+      const data = await adminFetch("/api/admin/articles/bulk-import", {
+        method: "POST", body: JSON.stringify({ articles }),
+      });
+      setImportResult({ imported: data.imported, total: data.total });
+      if (data.errors?.length) data.errors.forEach((e: string) => console.warn("[bulk-import]", e));
+      setStep("done");
+      onDone();
+    } catch (e: any) {
+      toast.error(e.message || "Gagal import artikel");
+      setStep("preview");
+    }
+  };
+
+  const removeArticle = (idx: number) => setArticles(prev => prev.filter((_, i) => i !== idx));
+  const updateArticle = (idx: number, field: keyof ParsedArticle, val: string) =>
+    setArticles(prev => prev.map((a, i) => i === idx ? { ...a, [field]: val } : a));
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && handleClose()}>
+      <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="font-display flex items-center gap-2">
+            <Wand2 className="h-4 w-4 text-primary" />
+            Import Massal ke Knowledge Base
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Step indicator */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          {[
+            { id: "paste", label: "1. Paste Teks" },
+            { id: "preview", label: "2. Preview & Edit" },
+            { id: "done", label: "3. Selesai" },
+          ].map((s, i, arr) => (
+            <span key={s.id} className="flex items-center gap-1">
+              <span className={`font-medium ${step === s.id || (step === "parsing" && s.id === "paste") || (step === "importing" && s.id === "preview") ? "text-primary" : ""}`}>
+                {s.label}
+              </span>
+              {i < arr.length - 1 && <ChevronRight className="h-3 w-3 opacity-40" />}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
+          {/* STEP 1: Paste */}
+          {(step === "paste" || step === "parsing") && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Paste teks dari bot Telegram, halaman web, PDF, atau sumber apapun. AI akan otomatis memecah jadi artikel-artikel KB yang terstruktur.
+              </p>
+              {parseError && (
+                <div className="flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{parseError}</span>
+                </div>
+              )}
+              <Textarea
+                placeholder={"Contoh:\nQ: Apa syarat daftar kartu pelajar?\nA: Syaratnya adalah...\n\nQ: Bagaimana cara perpanjang iqomah?\nA: Langkah-langkahnya..."}
+                value={rawText}
+                onChange={e => setRawText(e.target.value)}
+                className="min-h-[280px] bg-secondary resize-none font-mono text-xs"
+                disabled={step === "parsing"}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{rawText.length.toLocaleString()} / 50.000 karakter</span>
+                <span className="text-xs text-muted-foreground">Teks bisa berupa Q&A, FAQ, panduan, atau narasi biasa</span>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Preview */}
+          {(step === "preview" || step === "importing") && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  AI menemukan <span className="text-foreground font-medium">{articles.length} artikel</span>. Edit judul/kategori sebelum import, atau hapus yang tidak relevan.
+                </p>
+                <button onClick={() => setStep("paste")} className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
+                  ← Ubah teks
+                </button>
+              </div>
+              <div className="space-y-3">
+                {articles.map((art, idx) => (
+                  <div key={idx} className="rounded-xl border border-border bg-secondary/30 p-3 space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <input
+                          value={art.title}
+                          onChange={e => updateArticle(idx, "title", e.target.value)}
+                          className="w-full bg-secondary rounded-lg px-3 py-1.5 text-sm font-medium border border-border/60 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                          placeholder="Judul artikel"
+                          disabled={step === "importing"}
+                        />
+                        <div className="flex gap-2 items-center">
+                          <Select value={art.category} onValueChange={v => updateArticle(idx, "category", v)} disabled={step === "importing"}>
+                            <SelectTrigger className="h-7 text-xs bg-secondary w-auto min-w-[140px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CATEGORIES.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          {art.keywords && (
+                            <span className="text-[11px] text-muted-foreground truncate max-w-[200px]" title={art.keywords}>
+                              🏷 {art.keywords.split(",").slice(0, 3).join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => removeArticle(idx)}
+                        disabled={step === "importing"}
+                        className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                        title="Hapus artikel ini"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-secondary/60 rounded-lg p-2.5 max-h-[80px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                      {art.content.slice(0, 300)}{art.content.length > 300 ? "…" : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STEP: Done */}
+          {step === "done" && importResult && (
+            <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+              <CheckCircle2 className="h-12 w-12 text-green-400" />
+              <div>
+                <p className="text-lg font-semibold text-foreground">Import Berhasil!</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {importResult.imported} dari {importResult.total} artikel berhasil ditambahkan ke Knowledge Base dengan status <span className="text-primary font-medium">Disetujui</span>.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Artikel sudah langsung tersedia untuk AINA — tidak perlu review manual.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex gap-2 pt-2 border-t border-border shrink-0">
+          {step === "done" ? (
+            <Button onClick={handleClose} className="flex-1 bg-gradient-purple text-primary-foreground hover:opacity-90">Selesai</Button>
+          ) : step === "paste" ? (
+            <>
+              <Button variant="outline" onClick={handleClose} className="flex-1">Batal</Button>
+              <Button
+                onClick={handleParse}
+                disabled={!rawText.trim() || rawText.length > 50_000}
+                className="flex-1 bg-gradient-purple text-primary-foreground hover:opacity-90 gap-2"
+              >
+                <Wand2 className="h-4 w-4" /> Parse dengan AI
+              </Button>
+            </>
+          ) : step === "parsing" ? (
+            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground py-1">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              AI sedang menganalisis teks...
+            </div>
+          ) : step === "preview" ? (
+            <>
+              <Button variant="outline" onClick={() => setStep("paste")} className="flex-1">← Ubah Teks</Button>
+              <Button
+                onClick={handleImport}
+                disabled={articles.length === 0}
+                className="flex-1 bg-gradient-purple text-primary-foreground hover:opacity-90 gap-2"
+              >
+                <FileUp className="h-4 w-4" /> Import {articles.length} Artikel
+              </Button>
+            </>
+          ) : step === "importing" ? (
+            <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground py-1">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              Mengimpor artikel ke Knowledge Base...
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ArticleFormDialog({
   open, onClose, onSave, initial,
 }: {
@@ -1102,6 +1325,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [reformatLoading, setReformatLoading] = useState(false);
   const [reformattingId, setReformattingId] = useState<string | null>(null);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
@@ -1297,6 +1521,9 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
               </Button>
             </>
           )}
+          <Button onClick={() => setBulkImportOpen(true)} size="sm" variant="outline" className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
+            <Wand2 className="h-3.5 w-3.5" /> Import Massal
+          </Button>
           <Button onClick={() => setAddOpen(true)} size="sm" className="gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
             <Plus className="h-4 w-4" /> Tambah Artikel
           </Button>
@@ -1523,6 +1750,11 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       <ArticleFormDialog
         open={!!editArticle} onClose={() => setEditArticle(null)} onSave={handleEdit}
         initial={editArticle ? { title: editArticle.title, content: editArticle.content, category: editArticle.category, maps_url: editArticle.maps_url ?? "", contact_number: editArticle.contact_number ?? "" } : undefined}
+      />
+      <BulkImportDialog
+        open={bulkImportOpen}
+        onClose={() => setBulkImportOpen(false)}
+        onDone={() => { load(); toast.success("Artikel berhasil diimport ke Knowledge Base!"); }}
       />
     </div>
   );

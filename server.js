@@ -3368,6 +3368,145 @@ Jika ada pertanyaan, jangan ragu untuk menghubungi tim admin.`,
 });
 
 /* ── Admin: Bulk Review Articles ──────────────────── */
+/* POST /api/admin/articles/bulk-parse — parse raw text into articles using AI */
+app.post("/api/admin/articles/bulk-parse", strictLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { rawText } = req.body;
+  if (!rawText?.trim()) return res.status(400).json({ error: "rawText diperlukan" });
+  if (rawText.length > 50_000) return res.status(400).json({ error: "Teks terlalu panjang (maks 50.000 karakter)" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "AI tidak dikonfigurasi" });
+
+  const systemPrompt = `Kamu adalah parser knowledge base untuk AINA, asisten AI untuk mahasiswa Indonesia di Mesir (Masisir).
+
+Tugasmu: analisis teks yang diberikan dan ekstrak semua topik/informasi yang bisa dijadikan artikel knowledge base yang berguna.
+
+Untuk setiap artikel yang kamu temukan, buat objek JSON dengan field berikut:
+- "title": judul singkat dan deskriptif dalam bahasa Indonesia (maks 80 karakter)
+- "content": konten lengkap dalam format markdown yang rapi dan informatif. Pertahankan semua detail penting. Gunakan bullet point (•) untuk daftar, **bold** untuk info kritis.
+- "category": HARUS salah satu dari: administrasi, kehidupan_mesir, akademik, keuangan, transportasi, kesehatan, lainnya
+- "keywords": kata kunci pencarian dipisah koma dalam bahasa Indonesia (5-10 kata kunci relevan)
+
+ATURAN:
+- Ekstrak semua topik yang berbeda sebagai artikel TERPISAH
+- Jangan gabungkan topik yang tidak berkaitan dalam satu artikel
+- Minimal 1 artikel, maksimal 20 artikel
+- Jika teks berisi Q&A atau FAQ, setiap pasang Q&A bisa jadi 1 artikel
+- Jika teks berisi panduan panjang dengan banyak subtopik, pecah jadi beberapa artikel
+- Content harus bermanfaat dan lengkap, bukan hanya ringkasan
+- HANYA kembalikan JSON array, tidak ada teks lain
+
+Format output: [{"title":"...","content":"...","category":"...","keywords":"..."},...]`;
+
+  try {
+    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://aina.masisir.com",
+        "X-Title": "AINA Admin Bulk Parse",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-001",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Parse teks berikut menjadi artikel-artikel knowledge base:\n\n${rawText.slice(0, 40_000)}` },
+        ],
+        temperature: 0.2,
+        max_tokens: 8000,
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      console.error("[bulk-parse] AI error:", errText);
+      return res.status(500).json({ error: "AI gagal memproses teks" });
+    }
+
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content ?? "";
+
+    // Extract JSON array from response (handle markdown code blocks)
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return res.status(422).json({ error: "AI tidak menghasilkan JSON yang valid. Coba lagi." });
+
+    let articles;
+    try {
+      articles = JSON.parse(jsonMatch[0]);
+    } catch {
+      return res.status(422).json({ error: "JSON tidak bisa diparsing. Coba lagi." });
+    }
+
+    if (!Array.isArray(articles) || articles.length === 0) {
+      return res.status(422).json({ error: "Tidak ada artikel yang berhasil diekstrak dari teks ini." });
+    }
+
+    const VALID_CATS = new Set(["administrasi","kehidupan_mesir","akademik","keuangan","transportasi","kesehatan","lainnya"]);
+    const cleaned = articles
+      .filter(a => a.title?.trim() && a.content?.trim())
+      .slice(0, 20)
+      .map(a => ({
+        title: String(a.title).slice(0, 120).trim(),
+        content: String(a.content).trim(),
+        category: VALID_CATS.has(a.category) ? a.category : "lainnya",
+        keywords: String(a.keywords || "").slice(0, 300).trim(),
+      }));
+
+    if (cleaned.length === 0) return res.status(422).json({ error: "Tidak ada artikel valid yang diekstrak." });
+
+    res.json({ articles: cleaned, total: cleaned.length });
+  } catch (e) {
+    console.error("[bulk-parse]", e.message);
+    res.status(500).json({ error: "Terjadi kesalahan saat memproses teks" });
+  }
+});
+
+/* POST /api/admin/articles/bulk-import — insert parsed articles into KB */
+app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { articles } = req.body;
+  if (!Array.isArray(articles) || articles.length === 0) return res.status(400).json({ error: "articles array diperlukan" });
+  if (articles.length > 20) return res.status(400).json({ error: "Maksimal 20 artikel per import" });
+
+  const VALID_CATS = new Set(["administrasi","kehidupan_mesir","akademik","keuangan","transportasi","kesehatan","lainnya"]);
+  const supabase = getAdminClient();
+
+  let imported = 0;
+  const errors = [];
+
+  for (const art of articles) {
+    if (!art.title?.trim() || !art.content?.trim()) { errors.push(`Skip: judul/konten kosong`); continue; }
+    const category = VALID_CATS.has(art.category) ? art.category : "lainnya";
+
+    const { error } = await supabase.from("knowledge_base").insert({
+      author_id: admin.id,
+      title: String(art.title).slice(0, 120).trim(),
+      content: String(art.content).trim(),
+      category,
+      keywords: String(art.keywords || "").slice(0, 300).trim(),
+      maps_url: art.maps_url?.trim() || null,
+      contact_number: art.contact_number?.trim() || null,
+      article_type: "approved",
+      status: "approved",
+      hidden: false,
+    });
+
+    if (error) {
+      errors.push(`Gagal: ${art.title?.slice(0, 40)} — ${error.message}`);
+    } else {
+      imported++;
+    }
+  }
+
+  res.json({ imported, total: articles.length, errors });
+});
+
 app.post("/api/admin/articles/bulk-review", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
