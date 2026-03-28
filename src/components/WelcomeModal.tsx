@@ -54,7 +54,7 @@ const WelcomeModal = ({ onGoContributor }: WelcomeModalProps) => {
           </button>
 
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 shadow-lg shadow-purple-900/40 sm:mb-3 sm:h-16 sm:w-16">
-            <img src="/aina-icon.png" alt="AINA" className="h-7 w-7 object-contain sm:h-10 sm:w-10" />
+            <img src="/aina-icon.png" alt="AINA" className="h-5 w-5 object-contain sm:h-7 sm:w-7" />
           </div>
 
           <h2 className="font-display text-lg font-bold text-foreground sm:text-xl">

@@ -715,7 +715,7 @@ const DashboardSidebar = ({
       <div className={`safe-top flex shrink-0 items-center border-b border-sidebar-border px-3 min-h-14 ${collapsed ? "justify-center" : "justify-between"}`}>
         {!collapsed && (
           <div className="flex items-center gap-2 pl-1">
-            <img src="/aina-icon.png" alt="AINA" className="h-7 w-7 object-contain" />
+            <img src="/aina-icon.png" alt="AINA" className="h-5 w-5 object-contain" />
             <span className="font-display text-lg font-bold text-sidebar-foreground">AINA</span>
           </div>
         )}
