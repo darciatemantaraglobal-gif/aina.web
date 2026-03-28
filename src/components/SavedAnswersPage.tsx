@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { Bookmark, Trash2, BookOpen, ChevronDown, ChevronUp, ExternalLink, Search, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { Bookmark, Trash2, BookOpen, ChevronDown, ChevronUp, Search, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
