@@ -219,6 +219,61 @@ async function initStorage() {
 }
 initStorage();
 
+/* ── Procedures Init (seed default + create table) ───── */
+const DEFAULT_PROCEDURES = [
+  { id: "iqama", title: "Perpanjang Iqama", subtitle: "Izin tinggal tahunan", icon_name: "CreditCard", color: "text-violet-400", display_order: 0, steps: [{ label: "Siapkan paspor asli + fotokopi halaman foto & visa", detail: "Minimal 6 bulan sebelum paspor kadaluarsa" }, { label: "Siapkan Shahada Qaid (surat keterangan mahasiswa aktif) dari Al-Azhar", detail: "Bisa diambil di bagian qaid dengan membawa kartu mahasiswa" }, { label: "Foto terbaru ukuran 4×6 berlatar putih (2 lembar)" }, { label: "Pergi ke kantor Imigrasi (Jawazat) di area domisili" }, { label: "Ambil nomor antrean dan isi formulir perpanjangan iqama" }, { label: "Serahkan berkas ke loket, bayar biaya perpanjangan" }, { label: "Tunggu proses 1–3 hari kerja, ambil iqama baru" }] },
+  { id: "pendaftaran-azhar", title: "Pendaftaran Ulang Al-Azhar", subtitle: "Setiap awal semester", icon_name: "GraduationCap", color: "text-amber-400", display_order: 1, steps: [{ label: "Cek jadwal pendaftaran ulang di portal Al-Azhar atau pengumuman resmi" }, { label: "Lunasi biaya kuliah (rasm) semester berjalan", detail: "Bisa via bank atau loket kampus" }, { label: "Bawa bukti pembayaran, kartu mahasiswa, dan pas foto ke bagian Qaid" }, { label: "Serahkan berkas dan minta Shahada Qaid (surat aktif mahasiswa)" }, { label: "Simpan Shahada Qaid — diperlukan untuk urusan iqama, KBRI, dll" }, { label: "Update data di SIMAK (Sistem Informasi Mahasiswa) jika tersedia" }] },
+  { id: "visa-belajar", title: "Perpanjang Visa Belajar", subtitle: "Visa pelajar tahunan", icon_name: "Stamp", color: "text-blue-400", display_order: 2, steps: [{ label: "Siapkan paspor asli + fotokopi (semua halaman)" }, { label: "Surat penerimaan/aktif dari Al-Azhar (Shahada Qaid terbaru)" }, { label: "Foto terbaru ukuran 4×6 berlatar putih (4 lembar)" }, { label: "Iqama yang masih berlaku atau sedang dalam proses perpanjangan" }, { label: "Datang ke kantor Imigrasi Mesir (Mohadreen el-Kharigiyeen)" }, { label: "Isi formulir permohonan perpanjangan visa belajar" }, { label: "Bayar biaya visa, simpan kwitansi", detail: "Nominal bisa berubah, cek ke senior atau KBRI" }, { label: "Tunggu proses dan ambil paspor dengan visa baru" }] },
+  { id: "paspor-kbri", title: "Perpanjang Paspor di KBRI", subtitle: "Paspor RI di luar negeri", icon_name: "FileText", color: "text-rose-400", display_order: 3, steps: [{ label: "Cek jadwal layanan paspor KBRI Kairo (walk-in atau booking)" }, { label: "Siapkan paspor lama asli + fotokopi halaman foto" }, { label: "Siapkan fotokopi KTP dan Kartu Keluarga terbaru" }, { label: "Pas foto terbaru ukuran 4×6 berlatar putih (4 lembar)" }, { label: "Bukti mahasiswa aktif (Shahada Qaid dari Al-Azhar)" }, { label: "Datang ke KBRI sesuai jadwal, ambil nomor antrean paspor" }, { label: "Serahkan berkas dan bayar biaya paspor (sesuai kebijakan KBRI)" }, { label: "Tunggu proses (biasanya 3–7 hari kerja), ambil paspor baru" }] },
+  { id: "legalisir-kbri", title: "Legalisir Dokumen di KBRI", subtitle: "Ijazah, transkrip, dll", icon_name: "Stamp", color: "text-green-400", display_order: 4, steps: [{ label: "Hubungi atau kunjungi KBRI Kairo untuk cek jadwal layanan legalisir" }, { label: "Siapkan dokumen asli yang ingin dilegalisir (ijazah, transkrip, akta, dll)" }, { label: "Siapkan fotokopi dokumen (biasanya 2 rangkap)" }, { label: "Siapkan paspor asli + fotokopi sebagai identitas" }, { label: "Datang ke KBRI sesuai jadwal dan serahkan berkas ke loket konsuler" }, { label: "Bayar biaya legalisir dan ambil tanda terima" }, { label: "Ambil dokumen yang sudah dilegalisir sesuai waktu yang ditentukan" }] },
+  { id: "buka-rekening", title: "Buka Rekening Bank", subtitle: "Bank lokal Mesir", icon_name: "Building2", color: "text-cyan-400", display_order: 5, steps: [{ label: "Pilih bank yang banyak digunakan Masisir (Banque Misr, CIB, Bank of Alexandria)" }, { label: "Siapkan paspor asli + fotokopi" }, { label: "Siapkan iqama yang masih berlaku + fotokopi" }, { label: "Siapkan pas foto terbaru (1–2 lembar)" }, { label: "Datang ke cabang bank, minta formulir pembukaan rekening tabungan" }, { label: "Isi formulir, serahkan berkas ke teller, setorkan saldo awal minimum", detail: "Cek minimal setoran ke masing-masing bank" }] },
+];
+
+async function initProcedures() {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) { console.warn("Procedures init skipped: no DATABASE_URL"); return; }
+  let client;
+  try {
+    const { Client } = await import("pg");
+    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    // Create table if not exists
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS masisir_procedures (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        icon_name TEXT NOT NULL DEFAULT 'FileText',
+        color TEXT NOT NULL DEFAULT 'text-violet-400',
+        steps JSONB NOT NULL DEFAULT '[]',
+        display_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    // Check if empty and seed
+    const { rows } = await client.query("SELECT COUNT(*) as cnt FROM masisir_procedures");
+    if (parseInt(rows[0].cnt) === 0) {
+      for (const p of DEFAULT_PROCEDURES) {
+        await client.query(
+          `INSERT INTO masisir_procedures (id,title,subtitle,icon_name,color,steps,display_order,is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,true) ON CONFLICT (id) DO NOTHING`,
+          [p.id, p.title, p.subtitle||null, p.icon_name, p.color, JSON.stringify(p.steps), p.display_order]
+        );
+      }
+      console.log(`Procedures: table created & seeded ${DEFAULT_PROCEDURES.length} defaults`);
+    } else {
+      console.log(`Procedures: table ready`);
+    }
+  } catch (e) {
+    console.warn("Procedures init warning:", e.message);
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+}
+initProcedures();
+
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
@@ -4898,9 +4953,7 @@ app.get("/api/_seed-news", async (req, res) => {
 
 /* POST /api/admin/news — create news item (admin only) */
 app.post("/api/admin/news", strictLimiter, async (req, res) => {
-  const user = await verifyUser(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Tidak diizinkan" });
-  const admin = await verifyAdmin(user.id);
+  const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { title, content, category, image_url, source_url, source_name, is_pinned = false, published_at } = req.body;
@@ -4918,7 +4971,7 @@ app.post("/api/admin/news", strictLimiter, async (req, res) => {
       source_url: source_url?.trim() || null,
       source_name: source_name?.trim() || null,
       is_pinned: !!is_pinned,
-      author_id: user.id,
+      author_id: admin.id,
       published_at: published_at || new Date().toISOString(),
     })
     .select()
@@ -4930,9 +4983,7 @@ app.post("/api/admin/news", strictLimiter, async (req, res) => {
 
 /* PUT /api/admin/news/:id — update news item (admin only) */
 app.put("/api/admin/news/:id", strictLimiter, async (req, res) => {
-  const user = await verifyUser(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Tidak diizinkan" });
-  const admin = await verifyAdmin(user.id);
+  const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { title, content, category, image_url, source_url, source_name, is_pinned, is_active, published_at } = req.body;
@@ -4963,14 +5014,101 @@ app.put("/api/admin/news/:id", strictLimiter, async (req, res) => {
 
 /* DELETE /api/admin/news/:id — delete news item (admin only) */
 app.delete("/api/admin/news/:id", strictLimiter, async (req, res) => {
-  const user = await verifyUser(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Tidak diizinkan" });
-  const admin = await verifyAdmin(user.id);
+  const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
-
   const supabase = getAdminClient();
   const { error } = await supabase.from("masisir_news").delete().eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ success: true });
+});
+
+/* DELETE /api/admin/news/bulk — hapus berita secara bulk (admin only) */
+app.delete("/api/admin/news/bulk", strictLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+  const ids = req.body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "IDs wajib diisi" });
+  const supabase = getAdminClient();
+  const { error, count } = await supabase.from("masisir_news").delete({ count: "exact" }).in("id", ids);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ deleted: count ?? ids.length });
+});
+
+// ─── PROCEDURES (MASISIR) ─────────────────────────────────────────────────
+
+/* GET /api/procedures — public, returns all active procedures */
+app.get("/api/procedures", async (req, res) => {
+  const supabase = getAdminClient();
+  if (!supabase) return res.json({ procedures: DEFAULT_PROCEDURES.map(p => ({ ...p, is_active: true })) });
+  const { data, error } = await supabase
+    .from("masisir_procedures")
+    .select("*")
+    .eq("is_active", true)
+    .order("display_order", { ascending: true });
+  if (error) {
+    // Table may not exist yet — fallback to hardcoded defaults
+    if (error.code === "42P01") return res.json({ procedures: DEFAULT_PROCEDURES.map(p => ({ ...p, is_active: true })), fallback: true });
+    return res.status(500).json({ error: sanitizeErr(error) });
+  }
+  res.json({ procedures: data });
+});
+
+/* POST /api/admin/procedures — create procedure (master admin only) */
+app.post("/api/admin/procedures", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
+  const { title, subtitle, icon_name = "FileText", color = "text-violet-400", steps = [], display_order = 0 } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: "Judul wajib diisi" });
+  const id = `proc_${Date.now()}`;
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("masisir_procedures").insert({
+    id, title: title.trim(), subtitle: subtitle?.trim() || null,
+    icon_name, color, steps, display_order, is_active: true,
+  }).select().single();
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.status(201).json({ procedure: data });
+});
+
+/* PUT /api/admin/procedures/:id — update procedure (master admin only) */
+app.put("/api/admin/procedures/:id", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
+  const { title, subtitle, icon_name, color, steps, display_order, is_active } = req.body;
+  const updates = {};
+  if (title !== undefined)         updates.title         = title?.trim();
+  if (subtitle !== undefined)      updates.subtitle      = subtitle?.trim() || null;
+  if (icon_name !== undefined)     updates.icon_name     = icon_name;
+  if (color !== undefined)         updates.color         = color;
+  if (steps !== undefined)         updates.steps         = steps;
+  if (display_order !== undefined) updates.display_order = display_order;
+  if (is_active !== undefined)     updates.is_active     = !!is_active;
+  updates.updated_at = new Date().toISOString();
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("masisir_procedures").update(updates).eq("id", req.params.id).select().single();
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ procedure: data });
+});
+
+/* DELETE /api/admin/procedures/:id — delete procedure (master admin only) */
+app.delete("/api/admin/procedures/:id", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("masisir_procedures").delete().eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ success: true });
+});
+
+/* POST /api/admin/procedures/reorder — save new display_order (master admin only) */
+app.post("/api/admin/procedures/reorder", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
+  const { order } = req.body; // [{ id, display_order }]
+  if (!Array.isArray(order)) return res.status(400).json({ error: "Format tidak valid" });
+  const supabase = getAdminClient();
+  await Promise.all(order.map(({ id, display_order }) =>
+    supabase.from("masisir_procedures").update({ display_order, updated_at: new Date().toISOString() }).eq("id", id)
+  ));
   res.json({ success: true });
 });
 

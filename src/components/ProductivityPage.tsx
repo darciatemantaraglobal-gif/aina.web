@@ -38,8 +38,12 @@ interface TrackerItem {
 interface ProcedureStep { label: string; detail?: string; }
 interface Procedure {
   id: string; title: string; subtitle: string;
-  icon: React.ElementType; color: string; steps: ProcedureStep[];
+  icon?: React.ElementType; icon_name?: string; color: string; steps: ProcedureStep[];
 }
+
+const PROC_ICON_MAP: Record<string, React.ElementType> = {
+  CreditCard, GraduationCap, Stamp, FileText, Building2, BookOpen,
+};
 
 /* ════════════════════════════════════════════════════════
    API HELPER
@@ -140,7 +144,7 @@ function FocusTab() {
 
   const addManual = async () => {
     if (!manualTitle.trim()) { toast.error("Tulis judul fokus dulu"); return; }
-    if (activeCount >= 3) { toast.error("Maksimal 3 fokus aktif per hari"); return; }
+    if (activeCount >= 5) { toast.error("Maksimal 5 fokus aktif per hari"); return; }
     setSaving(true);
     try {
       const { item } = await apiCall("POST", "/productivity/focus", {
@@ -174,8 +178,8 @@ function FocusTab() {
 
   const saveAiSuggestions = async () => {
     if (!aiSuggestions.length) return;
-    const canAdd = 3 - activeCount;
-    if (canAdd <= 0) { toast.error("Sudah 3 fokus aktif hari ini"); return; }
+    const canAdd = 5 - activeCount;
+    if (canAdd <= 0) { toast.error("Sudah 5 fokus aktif hari ini"); return; }
     setSaving(true);
     const toSave = aiSuggestions.slice(0, canAdd);
     let added = 0;
@@ -374,7 +378,7 @@ function FocusTab() {
       )}
 
       {/* Add mode buttons */}
-      {mode === "none" && activeCount < 3 && (
+      {mode === "none" && activeCount < 5 && (
         <div className="grid grid-cols-3 gap-2">
           <button
             onClick={() => setMode("manual")}
@@ -494,9 +498,9 @@ function FocusTab() {
         </div>
       )}
 
-      {activeCount >= 3 && mode === "none" && (
+      {activeCount >= 5 && mode === "none" && (
         <p className="text-center text-xs text-muted-foreground py-2">
-          Sudah 3 fokus aktif — selesaikan dulu sebelum menambah yang baru.
+          Sudah 5 fokus aktif — selesaikan dulu sebelum menambah yang baru.
         </p>
       )}
     </div>
@@ -886,9 +890,15 @@ function TrackerTab() {
 }
 
 /* ════════════════════════════════════════════════════════
-   TAB 3: PROCEDURE GUIDE (existing, preserved)
+   TAB 3: PROCEDURE GUIDE (dynamic, loaded from API)
    ════════════════════════════════════════════════════════ */
-const PROCEDURES: Procedure[] = [
+function getProcIcon(proc: Procedure): React.ElementType {
+  if (proc.icon) return proc.icon;
+  return PROC_ICON_MAP[proc.icon_name ?? "FileText"] ?? FileText;
+}
+
+/* Legacy fallback: shown only if API fails */
+const FALLBACK_PROCEDURES: Procedure[] = [
   {
     id: "iqama", title: "Perpanjang Iqama", subtitle: "Izin tinggal tahunan",
     icon: CreditCard, color: "text-violet-400",
@@ -978,8 +988,18 @@ function saveProcProgress(userId: string, procId: string, done: Set<number>) {
 }
 
 function ProcedureTab({ userId }: { userId: string }) {
+  const [procedures, setProcedures] = useState<Procedure[]>(FALLBACK_PROCEDURES);
+  const [loadingProcs, setLoadingProcs] = useState(true);
   const [selected, setSelected] = useState<Procedure | null>(null);
   const [progress, setProgress] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    fetch("/api/procedures")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.procedures?.length) setProcedures(d.procedures); })
+      .catch(() => {})
+      .finally(() => setLoadingProcs(false));
+  }, []);
 
   const openProcedure = (proc: Procedure) => {
     setSelected(proc);
@@ -998,7 +1018,7 @@ function ProcedureTab({ userId }: { userId: string }) {
     const done = progress.size;
     const total = selected.steps.length;
     const pct = Math.round((done / total) * 100);
-    const Icon = selected.icon;
+    const Icon = getProcIcon(selected);
     return (
       <div className="space-y-4">
         <button onClick={() => setSelected(null)} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
@@ -1049,39 +1069,44 @@ function ProcedureTab({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Panel description */}
       <div className="flex items-start gap-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5 px-3.5 py-3">
         <BookOpen className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
         <p className="text-xs text-muted-foreground leading-relaxed">
           Panduan <span className="text-foreground font-medium">langkah demi langkah</span> untuk prosedur umum Masisir. Centang tiap langkah saat selesai — progressmu tersimpan otomatis.
         </p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {PROCEDURES.map(proc => {
-          const done = getProcProgress(userId, proc.id).size;
-          const total = proc.steps.length;
-          const pct = Math.round((done / total) * 100);
-          const Icon = proc.icon;
-          return (
-            <button key={proc.id} onClick={() => openProcedure(proc)} className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left hover:bg-secondary/40 hover:border-primary/20 transition-all">
-              <div className="shrink-0 rounded-xl bg-secondary p-2.5"><Icon className={`h-4.5 w-4.5 ${proc.color}`} /></div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground leading-snug">{proc.title}</p>
-                <p className="text-[11px] text-muted-foreground">{proc.subtitle}</p>
-                {done > 0 && (
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <div className="flex-1 h-1 rounded-full bg-secondary overflow-hidden">
-                      <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-primary" style={{ width: `${pct}%` }} />
+      {loadingProcs ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {procedures.map(proc => {
+            const done = getProcProgress(userId, proc.id).size;
+            const total = proc.steps.length;
+            const pct = Math.round((done / total) * 100);
+            const Icon = getProcIcon(proc);
+            return (
+              <button key={proc.id} onClick={() => openProcedure(proc)} className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left hover:bg-secondary/40 hover:border-primary/20 transition-all">
+                <div className="shrink-0 rounded-xl bg-secondary p-2.5"><Icon className={`h-4.5 w-4.5 ${proc.color}`} /></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground leading-snug">{proc.title}</p>
+                  <p className="text-[11px] text-muted-foreground">{proc.subtitle}</p>
+                  {done > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <div className="flex-1 h-1 rounded-full bg-secondary overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-primary" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{done}/{total}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{done}/{total}</span>
-                  </div>
-                )}
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-            </button>
-          );
-        })}
-      </div>
+                  )}
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -204,13 +204,14 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
 - **Message Reports** — Users flag inaccurate AI responses; admin reviews in dashboard
 - **RBAC** — user / contributor / senior_contributor / admin; rate limit 3 msgs/day for free users
 - **Badges** — Achievement system stored in `user_badges`
-- **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Laporan tabs
+- **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Berita, Prosedur (master admin), Laporan, Waitlist, Security, Performa AI, Pengumuman, Sinyal User tabs. Drag-and-drop reorder on desktop (saved to localStorage `aina_admin_tab_order`).
+- **Berita (News)** — Admin CRUD with bulk-delete (checkboxes + "Hapus N" button → `DELETE /api/admin/news/bulk`). News seeded via `GET /api/_seed-news?token=aina_seed_2026`. `BeritaSection.tsx` on landing page fetches live from `/api/news` and renders collapsible cards; falls back to empty state if no news yet.
 - **Leaderboard** — Top contributors ranked by article count + top voted KB articles with live upvote toggle
 - **Upvote System** — Toggle upvotes on threads (list + detail view) and approved KB articles; counts maintained via DB triggers
 - **Productivity v2** — 4-tab system in `ProductivityPage.tsx`. Backend is layered architecture in `server/`:
   - **Fokus Harian** — Daily focus (max 3 active/day), 3 input modes: Manual, AI Bantu (AI processes free text → 1–3 clean focus items), AI Sarankan (AI reads pending focus, urgent admin items, 7-day history → proactive suggestions). Status: pending → in_progress → done (click to cycle).
   - **Dokumen & Admin** — Full CRUD tracker for iqomah/paspor/visa/kampus/safar/lainnya, status cycling (not_started → preparing → submitted → completed), urgent flag toggle, due date with urgency badges, filter tabs.
-  - **Prosedur** — Step-by-step guides for iqama/visa/paspor/KBRI/kampus/bank. localStorage progress tracking.
+  - **Prosedur** — Dynamic step-by-step guides. Data loaded from `masisir_procedures` table (auto-created + seeded 6 defaults on server start). Falls back to hardcoded `FALLBACK_PROCEDURES` if API unavailable. Master admin can add/edit/delete/toggle procedures from AdminPage "Prosedur" tab.
   - **Pengingat** — Live reminder summary (focus progress + urgent admin items) + manual email trigger buttons (daily, admin, weekly recap) with per-button status tracking (idle/loading/sent/skipped). Anti-spam via `reminder_logs` — daily: 1x/day, weekly: 1x/7 days.
   - **Backend architecture** (layered): `server/db/focusQueries.js` + `server/db/trackerQueries.js` → `server/services/focusService.js` + `server/services/trackerService.js` + `server/services/focusAiService.js` + `server/services/reminderService.js` → `server/routes/productivity.js` + `server/routes/productivityAI.js`
   - **AI Focus** (`focusAiService.js`): `buildPrompt({ mode, ... })` → `parseResponse(raw)` → `generateFocus({ mode, ...context })` — model: `google/gemini-2.0-flash-001`, max 3 items per call

@@ -10,7 +10,7 @@
  */
 
 const MODEL       = "google/gemini-2.0-flash-001";
-const MAX_TOKENS  = 600;
+const MAX_TOKENS  = 1000;
 const TEMPERATURE = 0.5;
 const REFERER     = process.env.CLIENT_URL || "https://ainalabs.pro";
 
@@ -33,7 +33,7 @@ export function buildPrompt({ mode, userInput = "", pendingFocus = [], urgentAdm
   { "title": "...", "description": "...", "priority": 2 }
 ]`;
 
-  const RULES_COMMON = `- Maksimal 3 fokus
+  const RULES_COMMON = `- Maksimal 5 fokus
 - Gunakan bahasa singkat, jelas, dan actionable — seperti teman, bukan sistem
 - Jangan buat fokus yang terlalu besar atau abstrak
 - Format respons HARUS berupa JSON array, tidak ada teks lain di luar JSON`;
@@ -45,7 +45,7 @@ Hari ini: ${today}.
 Input dari mahasiswa:
 "${userInput}"
 
-Tugasmu: ubah input di atas menjadi TEPAT 1–3 fokus harian yang rapi, realistis, dan actionable.
+Tugasmu: ubah input di atas menjadi TEPAT 1–5 fokus harian yang rapi, realistis, dan actionable.
 
 Aturan:
 ${RULES_COMMON}
@@ -84,12 +84,12 @@ ${urgentList}
 Riwayat fokus terakhir:
 ${historyList}
 
-Tugasmu: buat TEPAT 1–3 rekomendasi fokus harian yang realistis untuk hari ini.
+Tugasmu: buat TEPAT 1–5 rekomendasi fokus harian yang realistis untuk hari ini.
 
 Aturan:
 ${RULES_COMMON}
-- Prioritaskan: 1 tugas utama + 1 tugas administratif jika ada + 1 tugas ringan jika realistis
-- Hindari memberikan terlalu banyak beban
+- Prioritaskan: 1–2 tugas utama + tugas administratif jika ada + tugas ringan sebagai pelengkap
+- Hindari memberikan beban yang tidak realistis untuk satu hari
 
 Format respons:
 ${FORMAT}`;
@@ -110,7 +110,7 @@ export function parseResponse(raw) {
 
     return parsed
       .filter(item => item && typeof item.title === "string" && item.title.trim())
-      .slice(0, 3)
+      .slice(0, 5)
       .map((item, i) => ({
         title:       item.title.trim(),
         description: item.description?.trim() || null,

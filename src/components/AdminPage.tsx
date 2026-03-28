@@ -3541,6 +3541,8 @@ function NewsManagementTab() {
   const [editing, setEditing] = useState<NewsItem | null>(null);
   const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false });
   const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const fetchNews = useCallback(async () => {
     setLoading(true);
@@ -3589,9 +3591,28 @@ function NewsManagementTab() {
     if (!confirm("Hapus berita ini?")) return;
     const token = await getToken();
     const res = await fetch(`/api/admin/news/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) { toast.success("Berita dihapus"); fetchNews(); }
+    if (res.ok) { toast.success("Berita dihapus"); setSelected(s => { const n = new Set(s); n.delete(id); return n; }); fetchNews(); }
     else toast.error("Gagal menghapus");
   }
+
+  async function handleBulkDelete() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!confirm(`Hapus ${ids.length} berita yang dipilih?`)) return;
+    setBulkDeleting(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/admin/news/bulk", { method: "DELETE", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ ids }) });
+      if (res.ok) { toast.success(`${ids.length} berita dihapus`); setSelected(new Set()); fetchNews(); }
+      else { const d = await res.json(); toast.error(d.error ?? "Gagal menghapus"); }
+    } catch { toast.error("Gagal menghapus"); } finally { setBulkDeleting(false); }
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function selectAll() { setSelected(new Set(news.map(n => n.id))); }
+  function clearAll()  { setSelected(new Set()); }
 
   async function togglePin(item: NewsItem) {
     const token = await getToken();
@@ -3606,10 +3627,27 @@ function NewsManagementTab() {
           <h2 className="text-base font-bold text-foreground">Berita Masisir</h2>
           <p className="text-xs text-muted-foreground">{news.length} berita aktif</p>
         </div>
-        <Button size="sm" onClick={openCreate} className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" /> Tambah Berita
-        </Button>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting} className="gap-1.5">
+              <Trash2 className="h-3.5 w-3.5" /> {bulkDeleting ? "Menghapus..." : `Hapus ${selected.size}`}
+            </Button>
+          )}
+          <Button size="sm" onClick={openCreate} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" /> Tambah Berita
+          </Button>
+        </div>
       </div>
+
+      {/* Bulk select bar */}
+      {!loading && news.length > 0 && (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <button onClick={selected.size === news.length ? clearAll : selectAll} className="hover:text-foreground transition-colors">
+            {selected.size === news.length ? "Batalkan semua" : `Pilih semua (${news.length})`}
+          </button>
+          {selected.size > 0 && <span className="text-primary font-medium">{selected.size} dipilih</span>}
+        </div>
+      )}
 
       {/* Form dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -3676,8 +3714,10 @@ function NewsManagementTab() {
           {news.map(item => {
             const cat = NEWS_CATS.find(c => c.id === item.category);
             const Icon = cat?.icon ?? Newspaper;
+            const isSel = selected.has(item.id);
             return (
-              <div key={item.id} className={`flex items-start gap-3 rounded-xl border p-3 ${item.is_pinned ? "border-primary/30 bg-primary/5" : "border-border bg-card"}`}>
+              <div key={item.id} className={`flex items-start gap-3 rounded-xl border p-3 transition-colors ${isSel ? "border-primary/40 bg-primary/5" : item.is_pinned ? "border-primary/20 bg-primary/5" : "border-border bg-card"}`}>
+                <input type="checkbox" checked={isSel} onChange={() => toggleSelect(item.id)} className="mt-1 shrink-0 rounded cursor-pointer accent-primary" />
                 <div className={`mt-0.5 shrink-0 ${cat?.color ?? "text-muted-foreground"}`}>
                   <Icon className="h-4 w-4" />
                 </div>
@@ -3709,8 +3749,189 @@ function NewsManagementTab() {
   );
 }
 
+/* ─── Procedure Management Tab (master admin only) ───── */
+const PROC_ICON_OPTIONS = ["CreditCard","GraduationCap","Stamp","FileText","Building2","BookOpen","Shield","Star","Bell","Target"];
+const PROC_COLOR_OPTIONS = [
+  { value: "text-violet-400", label: "Ungu" }, { value: "text-amber-400", label: "Kuning" },
+  { value: "text-blue-400",   label: "Biru"  }, { value: "text-rose-400",  label: "Merah" },
+  { value: "text-green-400",  label: "Hijau" }, { value: "text-cyan-400",  label: "Cyan"  },
+  { value: "text-orange-400", label: "Oranye"}, { value: "text-pink-400",  label: "Pink"  },
+];
+
+interface ProcedureAdmin { id: string; title: string; subtitle?: string; icon_name: string; color: string; steps: Array<{ label: string; detail?: string }>; display_order: number; is_active: boolean; }
+
+async function adminFetchProc(method: string, path: string, body?: object) {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token ?? "";
+  const r = await fetch(`/api${path}`, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? "Gagal"); }
+  return r.json();
+}
+
+function ProcedureManagementTab() {
+  const [procs, setProcs] = useState<ProcedureAdmin[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editProc, setEditProc] = useState<ProcedureAdmin | null>(null);
+  const [form, setForm] = useState({ title: "", subtitle: "", icon_name: "FileText", color: "text-violet-400", steps: [{ label: "", detail: "" }] });
+  const [saving, setSaving] = useState(false);
+
+  const loadProcs = useCallback(async () => {
+    setLoading(true);
+    try { const d = await adminFetchProc("GET", "/procedures"); setProcs(d.procedures ?? []); }
+    catch { /* fallback */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadProcs(); }, [loadProcs]);
+
+  function openCreate() {
+    setEditProc(null);
+    setForm({ title: "", subtitle: "", icon_name: "FileText", color: "text-violet-400", steps: [{ label: "", detail: "" }] });
+    setShowForm(true);
+  }
+
+  function openEdit(p: ProcedureAdmin) {
+    setEditProc(p);
+    setForm({ title: p.title, subtitle: p.subtitle ?? "", icon_name: p.icon_name, color: p.color, steps: p.steps.map(s => ({ label: s.label, detail: s.detail ?? "" })) });
+    setShowForm(true);
+  }
+
+  async function handleSave() {
+    if (!form.title.trim()) return toast.error("Judul wajib diisi");
+    const steps = form.steps.filter(s => s.label.trim()).map(s => ({ label: s.label.trim(), ...(s.detail?.trim() ? { detail: s.detail.trim() } : {}) }));
+    if (steps.length === 0) return toast.error("Minimal 1 langkah");
+    setSaving(true);
+    try {
+      if (editProc) {
+        await adminFetchProc("PUT", `/admin/procedures/${editProc.id}`, { title: form.title.trim(), subtitle: form.subtitle.trim() || null, icon_name: form.icon_name, color: form.color, steps });
+        toast.success("Prosedur diperbarui");
+      } else {
+        await adminFetchProc("POST", "/admin/procedures", { title: form.title.trim(), subtitle: form.subtitle.trim() || null, icon_name: form.icon_name, color: form.color, steps, display_order: procs.length });
+        toast.success("Prosedur ditambahkan");
+      }
+      setShowForm(false); loadProcs();
+    } catch (e: any) { toast.error(e.message); } finally { setSaving(false); }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Hapus prosedur ini?")) return;
+    await adminFetchProc("DELETE", `/admin/procedures/${id}`).then(() => { toast.success("Prosedur dihapus"); loadProcs(); }).catch(e => toast.error(e.message));
+  }
+
+  async function toggleActive(p: ProcedureAdmin) {
+    await adminFetchProc("PUT", `/admin/procedures/${p.id}`, { is_active: !p.is_active }).then(() => loadProcs()).catch(e => toast.error(e.message));
+  }
+
+  function addStep() { setForm(f => ({ ...f, steps: [...f.steps, { label: "", detail: "" }] })); }
+  function removeStep(i: number) { setForm(f => ({ ...f, steps: f.steps.filter((_, j) => j !== i) })); }
+  function updateStep(i: number, field: "label" | "detail", val: string) { setForm(f => ({ ...f, steps: f.steps.map((s, j) => j === i ? { ...s, [field]: val } : s) })); }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold text-foreground">Panduan Prosedur</h2>
+          <p className="text-xs text-muted-foreground">{procs.length} prosedur • Hanya master admin yang dapat mengedit</p>
+        </div>
+        <Button size="sm" onClick={openCreate} className="gap-1.5"><Plus className="h-3.5 w-3.5" /> Tambah Prosedur</Button>
+      </div>
+
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editProc ? "Edit Prosedur" : "Tambah Prosedur"}</DialogTitle></DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Judul *</label>
+              <Input placeholder="mis: Perpanjang Iqama" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Subtitle</label>
+              <Input placeholder="mis: Izin tinggal tahunan" value={form.subtitle} onChange={e => setForm(f => ({ ...f, subtitle: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Ikon</label>
+                <Select value={form.icon_name} onValueChange={v => setForm(f => ({ ...f, icon_name: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{PROC_ICON_OPTIONS.map(ic => <SelectItem key={ic} value={ic}>{ic}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Warna</label>
+                <Select value={form.color} onValueChange={v => setForm(f => ({ ...f, color: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{PROC_COLOR_OPTIONS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Langkah-langkah *</label>
+                <button onClick={addStep} className="text-xs text-primary hover:text-primary/80 transition-colors">+ Tambah langkah</button>
+              </div>
+              <div className="space-y-2">
+                {form.steps.map((s, i) => (
+                  <div key={i} className="space-y-1.5 rounded-lg border border-border bg-secondary/30 p-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground w-4 shrink-0">{i + 1}.</span>
+                      <Input size={undefined} className="flex-1 h-7 text-xs" placeholder="Label langkah *" value={s.label} onChange={e => updateStep(i, "label", e.target.value)} />
+                      {form.steps.length > 1 && (
+                        <button onClick={() => removeStep(i)} className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                      )}
+                    </div>
+                    <Input size={undefined} className="h-7 text-xs text-muted-foreground" placeholder="Detail (opsional)" value={s.detail} onChange={e => updateStep(i, "detail", e.target.value)} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Batal</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Menyimpan..." : (editProc ? "Simpan" : "Tambah")}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {loading ? (
+        <div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : procs.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border py-12 text-center">
+          <FileText className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground">Belum ada prosedur. Klik "Tambah Prosedur" untuk memulai.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {procs.map(p => (
+            <div key={p.id} className={`flex items-start gap-3 rounded-xl border p-3 ${p.is_active ? "border-border bg-card" : "border-border/40 bg-secondary/20 opacity-60"}`}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-foreground">{p.title}</span>
+                  {p.subtitle && <span className="text-[10px] text-muted-foreground">{p.subtitle}</span>}
+                  {!p.is_active && <span className="text-[10px] rounded-full bg-secondary px-1.5 py-0.5 text-muted-foreground">Non-aktif</span>}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{p.steps.length} langkah • ikon: {p.icon_name}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button onClick={() => toggleActive(p)} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title={p.is_active ? "Nonaktifkan" : "Aktifkan"}>
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => openEdit(p)} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => handleDelete(p.id)} className="rounded-lg p-1.5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures";
 
 const TAB_ORDER_KEY = "aina_admin_tab_order";
 
@@ -3777,6 +3998,7 @@ const AdminPage = () => {
     { id: "performance",   label: "Performa AI",     icon: TrendingUp,  masterOnly: true },
     { id: "announcements", label: "Pengumuman",      icon: Megaphone,   masterOnly: true },
     { id: "signals",       label: "Sinyal User",     icon: ThumbsUp,    masterOnly: true },
+    { id: "procedures",    label: "Prosedur",         icon: BookOpen,    masterOnly: true },
   ];
 
   // Visible tabs for this admin level
@@ -3923,6 +4145,7 @@ const AdminPage = () => {
         {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
         {activeTab === "signals"       && isMasterAdmin && <FeedbackSignalsTab />}
         {activeTab === "news"          && <NewsManagementTab />}
+        {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
       </div>
     </div>
   );
