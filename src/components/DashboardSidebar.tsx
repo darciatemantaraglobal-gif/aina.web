@@ -29,6 +29,7 @@ import {
   FileText,
   Settings2,
   Bookmark,
+  History,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -658,6 +659,122 @@ function ProfileDropdown({
   );
 }
 
+/* ─── Chat History Popup ─────────────────────────────────────── */
+function ChatHistoryPopup({
+  open, onClose, chats, activeChatId, fadingChatIds, onSelectChat, onDeleteChat,
+}: {
+  open: boolean;
+  onClose: () => void;
+  chats: Chat[];
+  activeChatId?: string | null;
+  fadingChatIds?: Set<string>;
+  onSelectChat?: (id: string) => void;
+  onDeleteChat?: (id: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = chats.filter(c =>
+    !search || c.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+      {/* Panel */}
+      <div
+        className="relative z-10 w-full max-w-sm rounded-t-2xl sm:rounded-2xl bg-card border border-border shadow-2xl flex flex-col"
+        style={{ maxHeight: "80vh" }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3.5 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" />
+            <span className="font-semibold text-sm text-foreground">Riwayat Chat</span>
+            <span className="text-[11px] text-muted-foreground bg-secondary rounded-full px-2 py-0.5">{chats.length}</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-2.5 shrink-0 border-b border-border">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Cari riwayat..."
+              className="w-full rounded-lg border border-border bg-secondary py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="overflow-y-auto flex-1 py-2">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center opacity-40">
+              <MessageCircle className="h-6 w-6 mb-2 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">
+                {search ? "Tidak ditemukan" : "Belum ada riwayat chat"}
+              </p>
+            </div>
+          ) : (
+            filtered.map(chat => (
+              <div
+                key={chat.id}
+                className={`group flex items-center gap-2 px-3 py-2 mx-2 rounded-xl transition-all duration-300 ${
+                  fadingChatIds?.has(chat.id)
+                    ? "opacity-0 scale-95 pointer-events-none"
+                    : activeChatId === chat.id
+                      ? "bg-primary/15 text-primary"
+                      : "text-foreground hover:bg-secondary"
+                }`}
+                style={fadingChatIds?.has(chat.id) ? { transition: "opacity 0.4s ease, transform 0.4s ease" } : undefined}
+              >
+                <button
+                  onClick={() => { onSelectChat?.(chat.id); onClose(); }}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                  <span className="truncate text-sm">{chat.title}</span>
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); onDeleteChat?.(chat.id); }}
+                  className="shrink-0 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                  title="Hapus chat"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ─── Main Sidebar ───────────────────────────────────────────── */
 const DashboardSidebar = ({
   activeTab,
@@ -680,7 +797,7 @@ const DashboardSidebar = ({
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [chatSearch, setChatSearch] = useState("");
+  const [showHistoryPopup, setShowHistoryPopup] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -753,6 +870,26 @@ const DashboardSidebar = ({
           {!collapsed && "Chat Baru"}
         </button>
 
+        <button
+          onClick={() => setShowHistoryPopup(true)}
+          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent ${
+            collapsed ? "justify-center" : ""
+          }`}
+          title="Riwayat Chat"
+        >
+          <History className="h-4 w-4 shrink-0" />
+          {!collapsed && (
+            <span className="flex flex-1 items-center justify-between">
+              Riwayat Chat
+              {chats.length > 0 && (
+                <span className="text-[10px] bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5 leading-none">
+                  {chats.length}
+                </span>
+              )}
+            </span>
+          )}
+        </button>
+
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -771,79 +908,8 @@ const DashboardSidebar = ({
         ))}
       </div>
 
-      {/* ── Middle: Scrollable chat history ─────────────── */}
-      {!collapsed ? (
-        <div className="mx-3 mt-3 min-h-0 flex-1 overflow-y-auto">
-          {chats.length > 0 ? (
-            <>
-              <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
-                Riwayat Chat
-              </p>
-              {/* Search input */}
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-sidebar-foreground/30 pointer-events-none" />
-                <input
-                  type="text"
-                  value={chatSearch}
-                  onChange={e => setChatSearch(e.target.value)}
-                  placeholder="Cari riwayat..."
-                  className="w-full rounded-lg border border-sidebar-border bg-sidebar-accent py-1.5 pl-7 pr-3 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40"
-                />
-                {chatSearch && (
-                  <button
-                    onClick={() => setChatSearch("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-sidebar-foreground/40 hover:text-sidebar-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-              <div className="space-y-0.5 pb-3">
-                {chats
-                  .filter(c => !chatSearch || c.title.toLowerCase().includes(chatSearch.toLowerCase()))
-                  .map((chat) => (
-                  <div
-                    key={chat.id}
-                    className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition-all duration-400 ${
-                      fadingChatIds?.has(chat.id)
-                        ? "opacity-0 scale-95 pointer-events-none"
-                        : activeChatId === chat.id
-                          ? "bg-primary/15 text-primary"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
-                    }`}
-                    style={fadingChatIds?.has(chat.id) ? { transition: "opacity 0.4s ease, transform 0.4s ease" } : undefined}
-                  >
-                    <button
-                      onClick={() => onSelectChat?.(chat.id)}
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                      <span className="truncate">{chat.title}</span>
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDeleteChat?.(chat.id); }}
-                      className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                      title="Hapus chat"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-                {chatSearch && chats.filter(c => c.title.toLowerCase().includes(chatSearch.toLowerCase())).length === 0 && (
-                  <p className="py-3 text-center text-xs text-sidebar-foreground/40">Tidak ditemukan</p>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-6 text-center opacity-40">
-              <MessageCircle className="h-6 w-6 mb-2 text-sidebar-foreground" />
-              <p className="text-xs text-sidebar-foreground">Belum ada riwayat chat</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex-1" />
-      )}
+      {/* ── Middle: flex spacer ──────────────────────────── */}
+      <div className="flex-1" />
 
       {/* ── Bottom: Notifications + Home + Profile ───────── */}
       <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-3 space-y-0.5">
@@ -919,6 +985,17 @@ const DashboardSidebar = ({
           </button>
         )}
       </div>
+
+      {/* ── Chat History Popup ────────────────────────────── */}
+      <ChatHistoryPopup
+        open={showHistoryPopup}
+        onClose={() => setShowHistoryPopup(false)}
+        chats={chats}
+        activeChatId={activeChatId}
+        fadingChatIds={fadingChatIds}
+        onSelectChat={onSelectChat}
+        onDeleteChat={onDeleteChat}
+      />
     </aside>
   );
 };
