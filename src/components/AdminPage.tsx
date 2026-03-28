@@ -2796,15 +2796,31 @@ interface IntelSummary {
   top_edge_cases: { pattern_type: string; topic_hint: string; frequency: number }[];
   overall_satisfaction_rate: number | null;
   total_ratings: number;
-  source_breakdown: { kb_usage_pct: number | null; wiki_usage_pct: number | null; ddg_usage_pct: number | null; pinned_usage_pct: number | null; total_turns: number };
+  source_breakdown: {
+    kb_usage_pct: number | null;
+    pinned_usage_pct: number | null;
+    perplexity_usage_pct: number | null;
+    wiki_usage_pct: number | null;
+    ddg_usage_pct: number | null;
+    total_turns: number;
+  };
   needs_verification_rate: number | null;
 }
 interface RatingRow  { intent: string; confidence: string; positive: number; negative: number; total: number; satisfaction_rate: number | null; }
-interface RetrievalRow { intent: string; kb_strength: string; confidence_level: string; had_kb: number; had_wiki: number; had_ddg: number; had_pinned: number; total: number; }
+interface RetrievalRow { intent: string; kb_strength: string; confidence_level: string; had_kb: number; had_wiki: number; had_ddg: number; had_pinned: number; had_perplexity: number; total: number; }
 interface EdgeCaseRow  { id: string; pattern_type: string; topic_hint: string; frequency: number; last_seen_at: string; }
 interface FaqRow       { id: string; topic_cluster: string; sample_query: string | null; frequency: number; last_seen_at: string; }
 interface EvalSummaryRow { version_tag: string; avg_total: number; count: number; }
 interface BenchmarkRow { id: string; category: string; question: string; is_active: boolean; }
+
+interface ModelTier { label: string; description: string; primary: string; fallback: string; emergency: string; routes_for: string[]; }
+interface SourcePipelineItem { name: string; trust: number; always_checked?: boolean; condition?: string; active?: boolean; }
+interface ModelConfig {
+  tiers: { lightweight: ModelTier; standard: ModelTier };
+  vision_model: string;
+  source_pipeline: SourcePipelineItem[];
+  perplexity_configured: boolean;
+}
 
 function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
@@ -2869,6 +2885,7 @@ function PerformanceTab() {
   const [view, setView]         = useState<PerfView>("summary");
   const [loading, setLoading]   = useState(false);
   const [summary, setSummary]   = useState<IntelSummary | null>(null);
+  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
   const [ratings, setRatings]   = useState<RatingRow[]>([]);
   const [retrieval, setRetrieval] = useState<RetrievalRow[]>([]);
   const [edgeCases, setEdgeCases] = useState<EdgeCaseRow[]>([]);
@@ -2880,8 +2897,12 @@ function PerformanceTab() {
     setLoading(true);
     try {
       if (v === "summary") {
-        const d = await adminFetch("/api/admin/intel/summary");
+        const [d, mc] = await Promise.all([
+          adminFetch("/api/admin/intel/summary"),
+          adminFetch("/api/admin/intel/model-config"),
+        ]);
         setSummary(d);
+        setModelConfig(mc);
       } else if (v === "ratings") {
         const d = await adminFetch("/api/admin/intel/ratings");
         setRatings(d);
@@ -2961,11 +2982,12 @@ function PerformanceTab() {
             <div className="space-y-5">
               <PerfGuide items={[
                 { term: "Satisfaction Rate", desc: "Persentase user yang memberi rating 👍. Target ≥70% (hijau), 40–69% perlu perhatian (kuning), <40% kritis (merah).", color: "text-green-400" },
-                { term: "KB Usage", desc: "Seberapa sering AINA menjawab dari Knowledge Base — sumber paling terpercaya. Semakin tinggi semakin baik." },
-                { term: "Wikipedia / DuckDuckGo", desc: "Sumber fallback eksternal. Wikipedia lebih terpercaya dari DDG. Idealnya rendah jika KB sudah lengkap.", color: "text-yellow-400" },
-                { term: "Needs Verification", desc: "Persentase jawaban tanpa sumber kuat. Jika >30% (merah), berarti KB perlu banyak artikel baru.", color: "text-red-400" },
-                { term: "Top FAQ Topics", desc: "Pertanyaan yang paling sering ditanyakan — jadikan panduan topik artikel KB berikutnya." },
-                { term: "Top Edge Cases", desc: "Pola kegagalan yang terdeteksi. Semakin kosong semakin baik.", color: "text-red-400" },
+                { term: "KB Usage", desc: "Seberapa sering AINA menjawab dari Knowledge Base (trust score: 90) — sumber paling terpercaya. Semakin tinggi semakin baik." },
+                { term: "Perplexity Usage", desc: "Sumber pencarian web real-time (trust: 78). Aktif jika PERPLEXITY_API_KEY dikonfigurasi. Dipakai saat KB lemah/tidak ada.", color: "text-blue-400" },
+                { term: "Wikipedia / DuckDuckGo", desc: "Fallback terakhir (trust: 60 / 35) — hanya dipakai jika Perplexity tidak dikonfigurasi. Jika Perplexity aktif, Wiki & DDG tidak pernah dipanggil.", color: "text-yellow-400" },
+                { term: "Needs Verification", desc: "Persentase jawaban tanpa sumber kuat (model menjawab dari memori sendiri). Jika >30% (merah), KB perlu diperkaya.", color: "text-red-400" },
+                { term: "Top FAQ Topics", desc: "Pertanyaan paling sering ditanyakan — jadikan panduan topik artikel KB berikutnya." },
+                { term: "Top Edge Cases", desc: "Pola kegagalan yang terdeteksi otomatis. Semakin kosong semakin baik.", color: "text-red-400" },
               ]} />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <StatCard
@@ -2974,12 +2996,78 @@ function PerformanceTab() {
                   sub={`dari ${summary.total_ratings} rating`}
                   color={summary.overall_satisfaction_rate !== null && summary.overall_satisfaction_rate >= 70 ? "text-green-400" : "text-yellow-400"}
                 />
-                <StatCard label="KB Usage" value={summary.source_breakdown.kb_usage_pct !== null ? `${summary.source_breakdown.kb_usage_pct}%` : "—"} sub="dari total turn" />
-                <StatCard label="Wikipedia Usage" value={summary.source_breakdown.wiki_usage_pct !== null ? `${summary.source_breakdown.wiki_usage_pct}%` : "—"} sub="external (tier sedang)" />
-                <StatCard label="DuckDuckGo Usage" value={summary.source_breakdown.ddg_usage_pct !== null ? `${summary.source_breakdown.ddg_usage_pct}%` : "—"} sub="external (tier rendah)" />
+                <StatCard label="KB Usage" value={summary.source_breakdown.kb_usage_pct !== null ? `${summary.source_breakdown.kb_usage_pct}%` : "—"} sub="trust 90 — sumber utama" />
+                <StatCard label="Perplexity Usage" value={summary.source_breakdown.perplexity_usage_pct !== null ? `${summary.source_breakdown.perplexity_usage_pct}%` : "—"} sub={modelConfig?.perplexity_configured ? "trust 78 — web real-time ✓" : "tidak dikonfigurasi"} color={modelConfig?.perplexity_configured ? "text-blue-400" : "text-muted-foreground"} />
+                <StatCard label="Wikipedia Usage" value={summary.source_breakdown.wiki_usage_pct !== null ? `${summary.source_breakdown.wiki_usage_pct}%` : "—"} sub={modelConfig?.perplexity_configured ? "tidak aktif (Perplexity dipakai)" : "trust 60 — fallback aktif"} />
+                <StatCard label="DuckDuckGo Usage" value={summary.source_breakdown.ddg_usage_pct !== null ? `${summary.source_breakdown.ddg_usage_pct}%` : "—"} sub={modelConfig?.perplexity_configured ? "tidak aktif (Perplexity dipakai)" : "trust 35 — fallback aktif"} />
                 <StatCard label="Needs Verification" value={summary.needs_verification_rate !== null ? `${summary.needs_verification_rate}%` : "—"} sub="turn tanpa sumber kuat" color={summary.needs_verification_rate !== null && summary.needs_verification_rate > 30 ? "text-red-400" : "text-foreground"} />
                 <StatCard label="Total Turn Dianalisis" value={summary.source_breakdown.total_turns} />
               </div>
+
+              {/* ── Model Config ── */}
+              {modelConfig && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">Otak AINA — Konfigurasi Model Aktif</h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(["lightweight", "standard"] as const).map(tier => {
+                      const t = modelConfig.tiers[tier];
+                      return (
+                        <div key={tier} className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${tier === "lightweight" ? "bg-blue-500/10 text-blue-400" : "bg-purple-500/10 text-purple-400"}`}>{t.label}</span>
+                            <span className="text-[11px] text-muted-foreground">{t.description}</span>
+                          </div>
+                          <div className="space-y-1.5 text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="shrink-0 w-16 text-muted-foreground">Primary</span>
+                              <span className="font-mono text-foreground truncate">{t.primary}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="shrink-0 w-16 text-muted-foreground">Fallback</span>
+                              <span className="font-mono text-foreground/70 truncate">{t.fallback}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="shrink-0 w-16 text-muted-foreground">Emergency</span>
+                              <span className="font-mono text-muted-foreground truncate">{t.emergency}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 pt-1 border-t border-border/50">
+                            {t.routes_for.map(r => (
+                              <span key={r} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{r}</span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold text-foreground">Pipeline Sumber (urutan prioritas)</h4>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${modelConfig.perplexity_configured ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                        Perplexity {modelConfig.perplexity_configured ? "✓ Aktif" : "✗ Tidak dikonfigurasi"}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {modelConfig.source_pipeline.map((s, i) => (
+                        <div key={i} className={`flex items-center gap-2 text-xs ${s.active === false ? "opacity-40" : ""}`}>
+                          <span className="shrink-0 w-5 text-center text-[10px] font-bold text-muted-foreground">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-foreground">{s.name}</span>
+                            {s.condition && <span className="text-muted-foreground"> — {s.condition}</span>}
+                          </div>
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${s.trust >= 90 ? "bg-green-500/15 text-green-400" : s.trust >= 75 ? "bg-blue-500/15 text-blue-400" : s.trust >= 50 ? "bg-yellow-500/15 text-yellow-400" : "bg-muted text-muted-foreground"}`}>
+                            {s.trust}
+                          </span>
+                          {s.active === false && <span className="shrink-0 text-[10px] text-muted-foreground/60">tidak aktif</span>}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground pt-1 border-t border-border/50">
+                      Vision model: <span className="font-mono text-foreground">{modelConfig.vision_model}</span>
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
@@ -3046,17 +3134,19 @@ function PerformanceTab() {
           {/* ── RETRIEVAL ── */}
           {view === "retrieval" && (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Agregat per kombinasi intent × kb_strength × confidence. Menunjukkan seberapa sering tiap sumber digunakan.</p>
+              <p className="text-xs text-muted-foreground">Agregat per kombinasi intent × kb_strength × confidence. Menunjukkan seberapa sering tiap sumber digunakan per turn.</p>
               <PerfGuide items={[
-                { term: "Intent", desc: "Kategori topik pertanyaan yang dideteksi AINA." },
-                { term: "KB Strength", desc: "Kualitas artikel KB yang ditemukan: strong (relevan & lengkap), weak (ada tapi kurang), none (tidak ada).", color: "text-yellow-400" },
-                { term: "Confidence", desc: "Tingkat keyakinan AINA: high / medium / low." },
-                { term: "KB% / Wiki% / DDG%", desc: "Persentase turn yang menggunakan masing-masing sumber dalam kombinasi ini. KB% tinggi = bagus.", color: "text-green-400" },
-                { term: "Pinned%", desc: "Persentase turn yang menggunakan artikel yang sengaja di-pin oleh admin." },
-                { term: "Cara pakai", desc: "Kombinasi intent + KB Strength = 'none' dengan banyak turn → tandanya perlu artikel KB baru untuk topik itu.", color: "text-muted-foreground" },
+                { term: "Intent", desc: "Kategori topik pertanyaan yang dideteksi AINA (factual, procedural, casual, fiqh, dll)." },
+                { term: "KB Strength", desc: "Kualitas artikel KB yang ditemukan: strong (relevan & lengkap → Tier A), weak (ada tapi kurang → Tier B), none (tidak ada → Tier B).", color: "text-yellow-400" },
+                { term: "Confidence", desc: "Tingkat keyakinan AINA saat menjawab: high / medium / low / needs_verification." },
+                { term: "KB%", desc: "Persentase turn yang memakai Knowledge Base. KB% tinggi = semakin sedikit ketergantungan ke sumber eksternal.", color: "text-green-400" },
+                { term: "Perplexity%", desc: "Persentase turn yang memakai Perplexity (web real-time, trust 78). Aktif hanya jika PERPLEXITY_API_KEY dikonfigurasi.", color: "text-blue-400" },
+                { term: "Wiki% / DDG%", desc: "Fallback terakhir — hanya dipakai jika Perplexity tidak dikonfigurasi. Jika Perplexity aktif, kolom ini selalu 0%.", color: "text-yellow-400" },
+                { term: "Pinned%", desc: "Persentase turn yang menggunakan artikel yang di-pin oleh admin (trust 100)." },
+                { term: "Cara pakai", desc: "Baris dengan KB Strength = 'none' & banyak turn → prioritaskan artikel KB baru untuk intent tersebut.", color: "text-muted-foreground" },
               ]} />
               <PerfTable
-                cols={["Intent", "KB Strength", "Confidence", "Turn", "KB%", "Wiki%", "DDG%", "Pinned%"]}
+                cols={["Intent", "KB Strength", "Confidence", "Turn", "KB%", "Perplexity%", "Wiki%", "DDG%", "Pinned%"]}
                 empty="Belum ada data retrieval. Pastikan SQL Phase 12 sudah dijalankan."
                 rows={retrieval.map(r => {
                   const pct = (n: number) => r.total > 0 ? `${Math.round(n / r.total * 100)}%` : "—";
@@ -3066,6 +3156,7 @@ function PerformanceTab() {
                     <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{r.confidence_level ?? "—"}</span>,
                     <span className="font-semibold">{r.total}</span>,
                     pct(r.had_kb),
+                    <span className="text-blue-400">{pct(r.had_perplexity)}</span>,
                     pct(r.had_wiki),
                     pct(r.had_ddg),
                     pct(r.had_pinned),

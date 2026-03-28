@@ -6787,7 +6787,7 @@ app.get("/api/admin/intel/retrieval-stats", async (req, res) => {
   const supabase = getAdminClient();
   const { data, error } = await supabase
     .from("intel_retrieval_stats")
-    .select("intent, kb_strength, had_kb, had_pinned, had_wiki, had_ddg, confidence_level, external_tier, created_at")
+    .select("intent, kb_strength, had_kb, had_pinned, had_wiki, had_ddg, had_perplexity, confidence_level, external_tier, created_at")
     .order("created_at", { ascending: false })
     .limit(500);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
@@ -6795,12 +6795,13 @@ app.get("/api/admin/intel/retrieval-stats", async (req, res) => {
   const agg = {};
   for (const row of data ?? []) {
     const key = `${row.intent}__${row.kb_strength}__${row.confidence_level}`;
-    if (!agg[key]) agg[key] = { intent: row.intent, kb_strength: row.kb_strength, confidence_level: row.confidence_level, had_kb: 0, had_wiki: 0, had_ddg: 0, had_pinned: 0, total: 0 };
+    if (!agg[key]) agg[key] = { intent: row.intent, kb_strength: row.kb_strength, confidence_level: row.confidence_level, had_kb: 0, had_wiki: 0, had_ddg: 0, had_pinned: 0, had_perplexity: 0, total: 0 };
     agg[key].total++;
-    if (row.had_kb)     agg[key].had_kb++;
-    if (row.had_wiki)   agg[key].had_wiki++;
-    if (row.had_ddg)    agg[key].had_ddg++;
-    if (row.had_pinned) agg[key].had_pinned++;
+    if (row.had_kb)          agg[key].had_kb++;
+    if (row.had_wiki)        agg[key].had_wiki++;
+    if (row.had_ddg)         agg[key].had_ddg++;
+    if (row.had_pinned)      agg[key].had_pinned++;
+    if (row.had_perplexity)  agg[key].had_perplexity++;
   }
   res.json(Object.values(agg).sort((a, b) => b.total - a.total));
 });
@@ -6855,7 +6856,7 @@ app.get("/api/admin/intel/summary", async (req, res) => {
     supabase.from("intel_query_patterns").select("topic_cluster, sample_query, frequency").order("frequency", { ascending: false }).limit(5),
     supabase.from("intel_edge_cases").select("pattern_type, topic_hint, frequency").order("frequency", { ascending: false }).limit(5),
     supabase.from("intel_message_ratings").select("rating, intent"),
-    supabase.from("intel_retrieval_stats").select("had_kb, had_wiki, had_ddg, had_pinned, confidence_level").limit(500),
+    supabase.from("intel_retrieval_stats").select("had_kb, had_wiki, had_ddg, had_pinned, had_perplexity, confidence_level").limit(500),
   ]);
 
   // Overall satisfaction rate
@@ -6866,11 +6867,12 @@ app.get("/api/admin/intel/summary", async (req, res) => {
   // Source usage breakdown
   const rt = retrievalRaw ?? [];
   const sourceBreakdown = {
-    kb_usage_pct:     rt.length > 0 ? +(rt.filter(r => r.had_kb).length     / rt.length * 100).toFixed(1) : null,
-    wiki_usage_pct:   rt.length > 0 ? +(rt.filter(r => r.had_wiki).length   / rt.length * 100).toFixed(1) : null,
-    ddg_usage_pct:    rt.length > 0 ? +(rt.filter(r => r.had_ddg).length    / rt.length * 100).toFixed(1) : null,
-    pinned_usage_pct: rt.length > 0 ? +(rt.filter(r => r.had_pinned).length / rt.length * 100).toFixed(1) : null,
-    total_turns:      rt.length,
+    kb_usage_pct:         rt.length > 0 ? +(rt.filter(r => r.had_kb).length         / rt.length * 100).toFixed(1) : null,
+    pinned_usage_pct:     rt.length > 0 ? +(rt.filter(r => r.had_pinned).length     / rt.length * 100).toFixed(1) : null,
+    perplexity_usage_pct: rt.length > 0 ? +(rt.filter(r => r.had_perplexity).length / rt.length * 100).toFixed(1) : null,
+    wiki_usage_pct:       rt.length > 0 ? +(rt.filter(r => r.had_wiki).length       / rt.length * 100).toFixed(1) : null,
+    ddg_usage_pct:        rt.length > 0 ? +(rt.filter(r => r.had_ddg).length        / rt.length * 100).toFixed(1) : null,
+    total_turns:          rt.length,
   };
   const needsVerif = rt.filter(r => r.confidence_level === "needs_verification").length;
   const verifRate = rt.length > 0 ? +(needsVerif / rt.length * 100).toFixed(1) : null;
@@ -6882,6 +6884,44 @@ app.get("/api/admin/intel/summary", async (req, res) => {
     total_ratings:     totalRatings,
     source_breakdown:  sourceBreakdown,
     needs_verification_rate: verifRate,
+  });
+});
+
+// Returns the active model routing config — reflects exactly what server.js does
+app.get("/api/admin/intel/model-config", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  res.json({
+    tiers: {
+      lightweight: {
+        label: "Tier A — Ringan",
+        description: "Pertanyaan kasual, KB kuat + intent sederhana",
+        primary:   "google/gemini-2.0-flash-lite-001",
+        fallback:  "google/gemini-2.0-flash-001",
+        emergency: "meta-llama/llama-3.3-70b-instruct:free",
+        routes_for: ["casual", "KB kuat + factual/procedural/confused"],
+      },
+      standard: {
+        label: "Tier B — Standar",
+        description: "Pertanyaan kompleks, time-sensitive, fiqh, Arabic, atau KB lemah/tidak ada",
+        primary:   "google/gemini-2.0-flash-001",
+        fallback:  "openai/gpt-4o-mini",
+        emergency: "meta-llama/llama-3.3-70b-instruct:free",
+        routes_for: ["procedural", "fiqh", "arabic_writing", "dynamic", "time-sensitive", "currency", "KB lemah/tidak ada"],
+      },
+    },
+    vision_model: "google/gemini-2.0-flash-001",
+    source_pipeline: [
+      { name: "Admin Pinned Updates",  trust: 100, always_checked: true },
+      { name: "Knowledge Base (KB)",   trust: 90,  always_checked: true },
+      { name: "Exchange Rate API",     trust: 85,  condition: "query kurs/currency" },
+      { name: "Dorar.net (Hadith)",    trust: 82,  condition: "intent = fiqh" },
+      { name: "Perplexity Web Search", trust: 78,  condition: "PERPLEXITY_API_KEY dikonfigurasi", active: !!process.env.PERPLEXITY_API_KEY },
+      { name: "Wikipedia",             trust: 60,  condition: "fallback jika Perplexity tidak dikonfigurasi", active: !process.env.PERPLEXITY_API_KEY },
+      { name: "DuckDuckGo",            trust: 35,  condition: "fallback jika Perplexity tidak dikonfigurasi", active: !process.env.PERPLEXITY_API_KEY },
+      { name: "Model Knowledge",       trust: 20,  condition: "tidak ada sumber eksternal yang berhasil" },
+    ],
+    perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
   });
 });
 
