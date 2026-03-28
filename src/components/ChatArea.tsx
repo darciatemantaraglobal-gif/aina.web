@@ -327,17 +327,43 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [currentStyle, setCurrentStyle] = useState<ResponseStyleKey>(() => getPersonalization().responseStyle ?? "step_by_step");
   const [suggestionCat, setSuggestionCat] = useState("semua");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChatIdRef = useRef<string | null>(chatId);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((force = false) => {
+    if (!force && !isAtBottomRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  const handleScrollContainer = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distFromBottom < 80;
+    isAtBottomRef.current = atBottom;
+    setShowScrollBtn(!atBottom);
+  }, []);
+
+  const forceScrollToBottom = useCallback(() => {
+    isAtBottomRef.current = true;
+    setShowScrollBtn(false);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  // Smart auto-scroll during streaming — only if user is already at bottom
   useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, streamingMsg?.displayed, scrollToBottom]);
+    scrollToBottom(false);
+  }, [streamingMsg?.displayed, scrollToBottom]);
+
+  // When chat resets or history loads, always scroll to bottom
+  useEffect(() => {
+    forceScrollToBottom();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   // Load saved answer IDs so bookmark buttons can show the right state
   useEffect(() => {
@@ -491,6 +517,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       setError("Gagal memuat riwayat chat. Coba refresh halaman.");
     } finally {
       setLoadingHistory(false);
+      requestAnimationFrame(() => forceScrollToBottom());
     }
   };
 
@@ -719,6 +746,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     };
 
     setMessages((prev) => [...prev, userMsg]);
+    forceScrollToBottom();
     setIsLoading(true);
 
     let currentChatId = activeChatIdRef.current;
@@ -832,7 +860,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="relative flex h-full flex-col bg-background">
       {/* Mobile top header */}
       <header className="safe-top flex items-center justify-between border-b border-border px-4 md:hidden shrink-0 min-h-14">
         <button
@@ -856,7 +884,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       </header>
 
       {/* Messages area or empty state */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScrollContainer}
+        className="relative flex-1 overflow-y-auto overflow-x-hidden"
+      >
         {loadingHistory ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
@@ -1206,6 +1238,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         )}
       </div>
+
+      {/* Scroll-to-bottom button */}
+      {showScrollBtn && (
+        <div className="pointer-events-none absolute bottom-[80px] left-0 right-0 flex justify-center z-10">
+          <button
+            onClick={forceScrollToBottom}
+            className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-secondary animate-in fade-in slide-in-from-bottom-2 duration-200"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+            Lompat ke bawah
+          </button>
+        </div>
+      )}
 
       {/* Limit Reached Modal */}
       {limitReached && (
