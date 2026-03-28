@@ -1,11 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck } from "lucide-react";
+import { RESPONSE_STYLES, RESPONSE_STYLE_ORDER, type ResponseStyleKey } from "@/lib/responseStyles";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getPersonalization } from "@/components/DashboardSidebar";
+
+interface SourceMetadata {
+  confidence: "verified" | "community_based" | "web_result" | "fallback";
+  primary_source: string;
+  may_be_outdated: boolean;
+  source_summary: string;
+}
 
 interface Message {
   id: string;
@@ -17,6 +25,7 @@ interface Message {
   intent?: string;
   confidence?: string;
   sources?: string[];
+  sourceMetadata?: SourceMetadata;
 }
 
 interface AttachedFile {
@@ -135,6 +144,23 @@ function getSourceConfig(src: string): SourceConfig {
   return { icon: BookMarked,     label: src, className: "border-primary/20 bg-primary/5 text-primary/70" };
 }
 
+/* ── Confidence badge config ─────────────────────────────────────────────── */
+
+function getConfidenceBadgeConfig(confidence: string | undefined) {
+  switch (confidence) {
+    case "verified":
+      return { label: "Terverifikasi", icon: ShieldCheck, className: "text-green-600 dark:text-green-500" };
+    case "web_result":
+      return { label: "Dari Web", icon: Globe, className: "text-blue-500 dark:text-blue-400" };
+    case "community_based":
+      return { label: "Komunitas", icon: BookOpen, className: "text-primary" };
+    case "fallback":
+      return { label: "Perlu Verifikasi", icon: AlertCircle, className: "text-amber-500" };
+    default:
+      return null;
+  }
+}
+
 const FEEDBACK_STORE_KEY = "aina_msg_feedback";
 function loadStoredFeedback(): Record<string, "up" | "down"> {
   try { return JSON.parse(localStorage.getItem(FEEDBACK_STORE_KEY) ?? "{}"); } catch { return {}; }
@@ -233,6 +259,7 @@ interface StreamingMsg {
   intent?: string;
   confidence?: string;
   sources?: string[];
+  sourceMetadata?: SourceMetadata;
 }
 
 const STREAM_CHARS_PER_TICK = 6;
@@ -262,6 +289,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState<Record<string, "up" | "down">>(loadStoredFeedback);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [currentStyle, setCurrentStyle] = useState<ResponseStyleKey>(() => getPersonalization().responseStyle ?? "step_by_step");
   const [suggestionCat, setSuggestionCat] = useState("semua");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -276,6 +305,47 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     scrollToBottom();
   }, [messages.length, streamingMsg?.displayed, scrollToBottom]);
 
+  // Load saved answer IDs so bookmark buttons can show the right state
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.access_token) return;
+      fetch("/api/saved-answers", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+        .then(r => r.ok ? r.json() : [])
+        .then((data: any[]) => {
+          if (Array.isArray(data)) setSavedIds(new Set(data.map(s => s.message_id)));
+        })
+        .catch(() => {});
+    });
+  }, []);
+
+  const toggleSave = async (msgId: string, content: string, sources?: string[], meta?: SourceMetadata) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+
+    const isSaved = savedIds.has(msgId);
+    setSavedIds(prev => { const n = new Set(prev); isSaved ? n.delete(msgId) : n.add(msgId); return n; });
+
+    if (isSaved) {
+      fetch(`/api/saved-answers/${msgId}`, {
+        method: "DELETE", headers: { Authorization: `Bearer ${session.access_token}` },
+      }).catch(() => {});
+    } else {
+      fetch("/api/saved-answers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ message_id: msgId, content, sources, source_summary: meta?.source_summary ?? null }),
+      }).catch(() => {});
+      // Also log as "saved" in answer_feedback for admin analytics
+      fetch(`/api/messages/${msgId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ feedback_type: "saved", sources }),
+      }).catch(() => {});
+    }
+  };
+
   /* ── Typewriter animation ── */
   useEffect(() => {
     if (!streamingMsg) return;
@@ -285,9 +355,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         role: "assistant",
         content: streamingMsg.full,
         timestamp: new Date(),
-        intent:     streamingMsg.intent,
-        confidence: streamingMsg.confidence,
-        sources:    streamingMsg.sources,
+        intent:         streamingMsg.intent,
+        confidence:     streamingMsg.confidence,
+        sources:        streamingMsg.sources,
+        sourceMetadata: streamingMsg.sourceMetadata,
       }]);
       setStreamingMsg(null);
       return;
@@ -691,8 +762,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         content: data.reply,
       });
 
-      // Start typewriter animation (carry intent, confidence, and sources for badge rendering)
-      setStreamingMsg({ id: msgId, full: fullContent, displayed: "", intent: data.intent, confidence: data.confidence, sources: data.sources ?? [] });
+      // Start typewriter animation (carry intent, confidence, sources, and sourceMetadata for badge rendering)
+      setStreamingMsg({ id: msgId, full: fullContent, displayed: "", intent: data.intent, confidence: data.confidence, sources: data.sources ?? [], sourceMetadata: data.sourceMetadata ?? undefined });
 
       await supabase
         .from("chats")
@@ -833,26 +904,41 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </ReactMarkdown>
                     </div>
 
-                    {/* Source badges — shows WHERE the info came from, not article titles.
-                        Prefer server-provided sources; fall back to text parsing for older DB messages. */}
+                    {/* Source badges + confidence badge + freshness warning */}
                     {(() => {
                       if (msg.intent === "casual") return null;
                       const sources = msg.sources?.length ? msg.sources : extractSources(msg.content);
-                      return sources.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {sources.map((src, i) => {
-                            const cfg = getSourceConfig(src);
-                            const Icon = cfg.icon;
-                            return (
-                              <span
-                                key={i}
-                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cfg.className}`}
-                              >
-                                <Icon className="h-2.5 w-2.5 shrink-0" />
-                                <span>{cfg.label}</span>
+                      const confCfg = getConfidenceBadgeConfig(msg.sourceMetadata?.confidence);
+                      const ConfIcon = confCfg?.icon;
+                      return (sources.length > 0 || confCfg) ? (
+                        <div className="mt-2 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {sources.map((src, i) => {
+                              const cfg = getSourceConfig(src);
+                              const Icon = cfg.icon;
+                              return (
+                                <span
+                                  key={i}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cfg.className}`}
+                                >
+                                  <Icon className="h-2.5 w-2.5 shrink-0" />
+                                  <span>{cfg.label}</span>
+                                </span>
+                              );
+                            })}
+                            {confCfg && ConfIcon && (
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${confCfg.className}`}>
+                                <span className="text-muted-foreground/30">·</span>
+                                <ConfIcon className="h-2.5 w-2.5 shrink-0" />
+                                {confCfg.label}
                               </span>
-                            );
-                          })}
+                            )}
+                          </div>
+                          {msg.sourceMetadata?.may_be_outdated && (
+                            <p className="text-[10px] text-amber-500/70 italic">
+                              ⚠️ Info ini mungkin sudah berubah — cek ke sumber terbaru.
+                            </p>
+                          )}
                         </div>
                       ) : null;
                     })()}
@@ -899,6 +985,21 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       >
                         <ThumbsDown className="h-3 w-3" />
                       </button>
+                      {/* Bookmark / Save */}
+                      <button
+                        onClick={() => toggleSave(msg.id, msg.content, msg.sources, msg.sourceMetadata)}
+                        className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] transition-colors hover:bg-secondary ${
+                          savedIds.has(msg.id)
+                            ? "text-amber-500"
+                            : "text-muted-foreground/50 hover:text-muted-foreground"
+                        }`}
+                        title={savedIds.has(msg.id) ? "Hapus dari tersimpan" : "Simpan jawaban ini"}
+                      >
+                        {savedIds.has(msg.id)
+                          ? <BookmarkCheck className="h-3 w-3" />
+                          : <Bookmark className="h-3 w-3" />
+                        }
+                      </button>
                       </div>
 
                       {/* Report */}
@@ -911,7 +1012,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                         <div className="w-full rounded-xl border border-border bg-card p-3 space-y-2.5">
                           <p className="text-xs font-medium text-foreground">Pilih alasan laporan:</p>
                           <div className="flex flex-wrap gap-1.5">
-                            {["Informasi tidak akurat", "Sumber tidak sesuai", "Jawaban tidak relevan", "Lainnya"].map(r => (
+                            {["Informasi tidak akurat", "Info sudah berubah", "Sumber tidak sesuai", "Jawaban tidak relevan", "Lainnya"].map(r => (
                               <button
                                 key={r}
                                 onClick={() => setReportReason(r)}
@@ -1158,6 +1259,34 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : (
           <form onSubmit={handleFormSubmit} className="mx-auto max-w-3xl">
+            {/* Response style pills */}
+            <div className="mb-2 flex items-center gap-1 flex-wrap">
+              {RESPONSE_STYLE_ORDER.map((key) => {
+                const s = RESPONSE_STYLES[key];
+                const SIcon = s.icon;
+                const isActive = key === currentStyle;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    title={s.desc}
+                    onClick={() => {
+                      const prefs = getPersonalization();
+                      localStorage.setItem("aina_personalization", JSON.stringify({ ...prefs, responseStyle: key }));
+                      setCurrentStyle(key);
+                    }}
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] transition-all ${
+                      isActive
+                        ? "bg-primary/15 text-primary border border-primary/30 font-medium"
+                        : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-secondary border border-transparent"
+                    }`}
+                  >
+                    <SIcon className="h-2.5 w-2.5 shrink-0" />
+                    {s.shortLabel}
+                  </button>
+                );
+              })}
+            </div>
             {/* File preview above textarea */}
             {(attachedFile || isUploadingFile) && (
               <div className="mb-2 flex items-center gap-2 rounded-2xl border border-border bg-secondary/60 px-3 py-2">

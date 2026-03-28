@@ -4495,6 +4495,146 @@ app.get("/api/admin/feedback", async (req, res) => {
   res.json(data ?? []);
 });
 
+// ─── ANSWER FEEDBACK (answer-level: helpful / not_accurate / outdated) ──────
+
+app.post("/api/messages/:id/feedback", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+
+  const messageId = req.params.id;
+  const { feedback_type, note, intent, confidence, sources } = req.body;
+
+  const validTypes = ["helpful", "not_accurate", "outdated", "saved"];
+  if (!validTypes.includes(feedback_type)) return res.status(400).json({ error: "Invalid feedback_type" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+  if (!user) return res.status(401).json({ error: "Token tidak valid" });
+
+  const { error } = await supabase.from("answer_feedback").insert({
+    user_id:       user.id,
+    message_id:    messageId,
+    feedback_type,
+    note:          note?.slice(0, 500) ?? null,
+    intent:        intent ?? null,
+    confidence:    confidence ?? null,
+    sources:       Array.isArray(sources) ? sources : null,
+  });
+
+  if (error) {
+    console.error("[AnswerFeedback] insert error:", error.message);
+    return res.status(500).json({ error: "Gagal menyimpan feedback" });
+  }
+
+  console.log(`[AnswerFeedback] ${feedback_type} on msg ${messageId} from ${user.email}`);
+  res.json({ success: true });
+});
+
+app.get("/api/admin/answer-feedback", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { type } = req.query;
+  let query = supabase
+    .from("answer_feedback")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (type && ["helpful", "not_accurate", "outdated", "saved"].includes(type)) {
+    query = query.eq("feedback_type", type);
+  }
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json(data ?? []);
+});
+
+// ─── SAVED ANSWERS (bookmarks) ───────────────────────────────────────────────
+
+app.get("/api/saved-answers", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+  if (!user) return res.status(401).json({ error: "Token tidak valid" });
+
+  const { data, error } = await supabase
+    .from("saved_answers")
+    .select("id, message_id, content, sources, source_summary, intent, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json(data ?? []);
+});
+
+app.post("/api/saved-answers", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+
+  const { message_id, content, sources, source_summary, intent } = req.body;
+  if (!message_id || !content?.trim()) return res.status(400).json({ error: "message_id and content required" });
+  if (content.length > 20000) return res.status(400).json({ error: "Jawaban terlalu panjang" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+  if (!user) return res.status(401).json({ error: "Token tidak valid" });
+
+  const { data, error } = await supabase
+    .from("saved_answers")
+    .upsert({
+      user_id:        user.id,
+      message_id,
+      content:        content.trim(),
+      sources:        Array.isArray(sources) ? sources : null,
+      source_summary: source_summary ?? null,
+      intent:         intent ?? null,
+    }, { onConflict: "user_id,message_id" })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("[SavedAnswers] upsert error:", error.message);
+    return res.status(500).json({ error: "Gagal menyimpan jawaban" });
+  }
+
+  console.log(`[SavedAnswers] saved msg ${message_id} for ${user.email}`);
+  res.json({ success: true, id: data?.id });
+});
+
+app.delete("/api/saved-answers/:id", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+  if (!user) return res.status(401).json({ error: "Token tidak valid" });
+
+  // Delete by message_id (the app uses message_id as the save identifier)
+  const { error } = await supabase
+    .from("saved_answers")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("message_id", req.params.id);
+
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ success: true });
+});
+
 // ─── BADGE SYSTEM ──────────────────────────────────────────────────────────
 
 const BADGE_DEFS = {
@@ -6173,6 +6313,30 @@ async function runColumnMigrations() {
       seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       dismissed_at TIMESTAMPTZ,
       UNIQUE(user_id, announcement_id)
+    );`,
+    // Answer-level feedback (helpful / not_accurate / outdated / saved)
+    `CREATE TABLE IF NOT EXISTS public.answer_feedback (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+      message_id TEXT NOT NULL,
+      feedback_type TEXT NOT NULL CHECK (feedback_type IN ('helpful','not_accurate','outdated','saved')),
+      note TEXT,
+      intent TEXT,
+      confidence TEXT,
+      sources JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    // Saved answers / bookmarks
+    `CREATE TABLE IF NOT EXISTS public.saved_answers (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+      message_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sources JSONB,
+      source_summary TEXT,
+      intent TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE(user_id, message_id)
     );`,
   ];
   let succeeded = 0;

@@ -1,0 +1,59 @@
+Now implement the third major upgrade for AINA: USER-FACING TRUST UX and FEEDBACK LOOP.
+
+Context:
+AINA is an AI assistant for Indonesian students in Egypt. The backend is being improved with structured prompts, source priority, source orchestration, and confidence metadata. Now I want the frontend experience to clearly show that AINA is trustworthy, practical, and continuously improving.
+
+Goal:
+Build the frontend and feedback system for answer quality, trust display, and learning loop.
+
+Requirements:
+1. Update the chat UI so each answer can show:
+   - source label
+   - confidence label
+   - source list / source summary
+   - optional freshness warning
+2. Add user actions on each answer:
+   - Helpful
+   - Not accurate
+   - Info changed
+   - Save answer
+3. Add a simple saved answers feature or bookmark mechanism.
+4. Add a response style selector in the UI if not already implemented.
+5. Make sure the selected response style is visible and used in each chat request.
+6. Add a feedback submission flow so feedback is sent to backend with:
+   - answer_id or message_id
+   - feedback_type
+   - optional note
+   - user_id if available
+7. Create an admin-friendly structure for collecting:
+   - most downvoted answers
+   - most saved answers
+   - most reported outdated answers
+   - common failed queries
+8. Add clean empty states and fallback UI if source metadata is unavailable.
+
+Frontend UX goals:
+- Answers should feel clearer and more trustworthy
+- Source display should be simple, not cluttered
+- Feedback buttons should be easy to tap/click
+- The UI should remain clean and modern
+
+Please generate:
+1. updated chat message component
+2. source badge / trust badge component
+3. response style selector component
+4. save/bookmark logic
+5. feedback submission flow
+6. backend endpoint examples for feedback and saved answers
+7. recommended database schema for:
+   - answer feedback
+   - saved answers
+   - source metadata logs
+8. folder/file structure suggestion
+9. clean production-friendly code
+
+Important:
+- Keep the UI simple and readable
+- Do not overload the user with technical details
+- Focus on clarity, trust, and practical usefulness
+- Make sure the system is easy to expand later
