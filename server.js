@@ -1424,38 +1424,48 @@ function detectResponseStyle(userProfile) {
 }
 
 const RESPONSE_STYLE_HINTS = {
-  short_direct: `\n\n**[Gaya Respons: SINGKAT & LANGSUNG]**
-Jawab inti pertanyaan dalam 1–3 kalimat. Tanpa pendahuluan atau elaborasi yang tidak diminta.
-Jika ada langkah-langkah, batas maksimal 3 poin, masing-masing satu kalimat.
-Prioritaskan kepadatan informasi: setiap kata harus punya nilai. Berhenti begitu inti sudah tersampaikan.`,
+  short_direct: `
 
-  step_by_step: `\n\n**[Gaya Respons: LANGKAH DEMI LANGKAH]**
-Wajib gunakan format bernomor (1. 2. 3.) untuk setiap langkah atau poin utama.
-Setiap nomor = satu aksi atau satu ide yang spesifik. Maksimal 2 kalimat per langkah — aksi dulu, detail menyusul.
-Tambahkan ⚠️ atau 💡 hanya jika ada hal kritis yang sering terlewat.
-Urutan harus logis dan mudah diikuti dari awal sampai akhir.
-Jika pertanyaan tidak cocok format langkah (misalnya faktual singkat), tetap jawab dengan ringkas dan jelas.`,
+⚡ **[MODE JAWABAN USER: SINGKAT & LANGSUNG — WAJIB DIIKUTI]**
+User secara eksplisit memilih mode ini. Jawab inti pertanyaan dalam 1–3 kalimat saja.
+Tanpa pendahuluan, tanpa elaborasi yang tidak diminta. Jika ada langkah-langkah: maksimal 3 poin, masing-masing satu kalimat.
+Prioritaskan kepadatan informasi — berhenti begitu inti sudah tersampaikan.`,
 
-  detailed_complete: `\n\n**[Gaya Respons: DETAIL & LENGKAP]**
-Berikan jawaban yang komprehensif — latar belakang, alasan, langkah-langkah, tips, dan hal yang perlu diwaspadai.
-Gunakan heading ## untuk membagi bagian utama. Gunakan bullet atau nomor sesuai konten.
-Panjang tidak masalah asalkan setiap kalimat bernilai — tidak ada padding atau pengulangan.
-Targetkan pemahaman mendalam: user harus bisa bertindak AND mengerti mengapa, setelah membaca.`,
+  step_by_step: `
 
-  practical_ready_to_use: `\n\n**[Gaya Respons: PRAKTIS & SIAP PAKAI]**
-Prioritaskan output yang LANGSUNG bisa dipakai tanpa perlu diadaptasi:
+📋 **[MODE JAWABAN USER: LANGKAH DEMI LANGKAH — WAJIB DIIKUTI]**
+User secara eksplisit memilih mode ini. WAJIB gunakan format bernomor (1. 2. 3.) untuk setiap langkah atau poin utama.
+Setiap nomor = satu aksi atau satu ide spesifik. Maksimal 2 kalimat per langkah — aksi dulu, detail menyusul.
+Tambahkan ⚠️ atau 💡 hanya jika ada hal kritis yang sering terlewat. Urutan harus logis dari awal sampai akhir.
+Jika pertanyaan faktual pendek yang tidak cocok format langkah, jawab ringkas tapi tetap terstruktur.`,
+
+  detailed_complete: `
+
+📖 **[MODE JAWABAN USER: DETAIL & LENGKAP — WAJIB DIIKUTI]**
+User secara eksplisit memilih mode ini. WAJIB berikan jawaban yang komprehensif dan mendalam — ini MENGGANTIKAN semua aturan brevity lainnya.
+Bahkan untuk pertanyaan yang terasa sederhana, GALI lebih dalam: latar belakang topik, konteks penting, detail relevan, hal yang perlu diwaspadai, tips tambahan, atau perspektif yang berguna.
+Gunakan heading ## untuk membagi bagian utama jika ada lebih dari satu aspek. Gunakan bullet atau nomor sesuai konten.
+Target minimal 3–5 paragraf atau bagian yang substantif. Setiap kalimat harus bernilai — tidak ada padding, tidak ada pengulangan.
+Tujuan: user harus bisa MEMAHAMI SEPENUHNYA topik ini setelah membaca, bukan sekadar tahu jawabannya.`,
+
+  practical_ready_to_use: `
+
+✅ **[MODE JAWABAN USER: PRAKTIS & SIAP PAKAI — WAJIB DIIKUTI]**
+User secara eksplisit memilih mode ini. WAJIB prioritaskan output yang langsung bisa dipakai tanpa adaptasi:
 - 📋 **Checklist** → gunakan format "- [ ] Langkah..." untuk daftar yang bisa dicentang
 - 📝 **Template pesan/surat** → tulis dalam blockquote siap copy-paste
 - ⚡ **Aksi langsung** → daftar tindakan konkret berurutan dari yang paling segera
 Tandai jenis output dengan label yang sesuai di awal. Minimalis di penjelasan — maksimal di konten siap pakai.
 Jika pertanyaan tidak cocok format ini, jawab dengan langkah-langkah konkret yang bisa langsung dieksekusi.`,
 
-  casual_easy_to_understand: `\n\n**[Gaya Respons: SANTAI & MUDAH DIPAHAMI]**
-Tulis seperti menjelaskan ke teman — bukan laporan, bukan dokumen resmi.
+  casual_easy_to_understand: `
+
+💬 **[MODE JAWABAN USER: SANTAI & MUDAH DIPAHAMI — WAJIB DIIKUTI]**
+User secara eksplisit memilih mode ini. Tulis seperti menjelaskan ke teman — bukan laporan, bukan dokumen resmi.
 Gunakan kalimat pendek, bahasa sehari-hari, dan analogi sederhana jika membantu.
 Kalau terpaksa pakai istilah teknis, langsung jelaskan artinya dalam kurung atau kalimat berikutnya.
 Boleh pakai emoji sesekali (max 1-2) kalau terasa pas dan natural.
-Tujuannya: siapapun — termasuk yang baru pertama kali di Mesir — harus bisa langsung ngerti.`,
+Tujuannya: siapapun — termasuk yang baru pertama kali di Mesir — harus langsung ngerti tanpa perlu googling ulang.`,
 };
 
 /**
