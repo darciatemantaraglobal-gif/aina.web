@@ -4027,7 +4027,7 @@ app.post("/api/parse-articles", writeLimiter, async (req, res) => {
   // Strip OCR prefix marker and trim
   const cleanText = text.replace(/^\[OCR\]\s*/i, "").trim();
   const isOcr = /^\[OCR\]/i.test(text);
-  const truncated = cleanText.slice(0, 14000);
+  const truncated = cleanText.slice(0, 24000);
   const fileNote = filename ? ` dari file "${filename}"` : "";
   const ocrNote = isOcr ? "\nCatatan: Teks ini berasal dari OCR (scan dokumen), mungkin ada noise/karakter aneh — abaikan noise, fokus pada informasi yang bermakna." : "";
 
@@ -4045,7 +4045,10 @@ Aturan penting:
 - Setiap artikel fokus pada SATU topik
 - Tulis konten dalam bahasa Indonesia yang jelas dan informatif (minimal 80 kata per artikel)
 - Jika teks mengandung langkah-langkah/prosedur, gunakan article_type "step_by_step", selainnya "narrative"
-- Jika hanya ada satu topik dalam teks, buat satu artikel saja
+- JUMLAH ARTIKEL TIDAK DIBATASI — sesuaikan dengan isi dokumen:
+  • Jika dokumen membahas BANYAK topik berbeda (misal: catatan kuliah dengan banyak bab, dokumen prosedur dengan banyak langkah, panduan dengan banyak sub-topik), buat SEBANYAK MUNGKIN artikel yang diperlukan — bisa 8, 10, 15, bahkan lebih.
+  • Jika dokumen hanya membahas satu atau sedikit topik, cukup buat 1–3 artikel saja.
+  • JANGAN batasi diri pada angka tertentu — ikuti konten dokumen apa adanya.
 - Jangan biarkan array articles kosong — selama ada informasi apapun yang berguna, buat artikelnya
 
 PENANGANAN TEKS ARAB (SANGAT PENTING):
@@ -4092,7 +4095,7 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan
       body: JSON.stringify({
         model: "google/gemini-2.0-flash-001",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 12000,
+        max_tokens: 16000,
       }),
     });
 
