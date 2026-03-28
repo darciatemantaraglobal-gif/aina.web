@@ -214,6 +214,14 @@ function FocusTab() {
 
   return (
     <div className="space-y-4">
+      {/* Panel description */}
+      <div className="flex items-start gap-2.5 rounded-xl border border-violet-500/20 bg-violet-500/5 px-3.5 py-3">
+        <Target className="h-4 w-4 text-violet-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Tentukan <span className="text-foreground font-medium">maksimal 3 hal terpenting</span> yang ingin kamu selesaikan hari ini. Bisa dibuat manual atau dibantu AI dari kegiatanmu.
+        </p>
+      </div>
+
       {/* Date header + progress */}
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-center justify-between">
@@ -504,6 +512,14 @@ function TrackerTab() {
 
   return (
     <div className="space-y-4">
+      {/* Panel description */}
+      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-3">
+        <ClipboardList className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Lacak urusan administratif kamu — iqomah, visa, paspor, kampus, dan lainnya. <span className="text-foreground font-medium">Tandai yang mendesak</span> agar tidak ada yang terlewat.
+        </p>
+      </div>
+
       {/* Summary */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -860,7 +876,13 @@ function ProcedureTab({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">Panduan langkah demi langkah untuk prosedur umum Masisir.</p>
+      {/* Panel description */}
+      <div className="flex items-start gap-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5 px-3.5 py-3">
+        <BookOpen className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Panduan <span className="text-foreground font-medium">langkah demi langkah</span> untuk prosedur umum Masisir. Centang tiap langkah saat selesai — progressmu tersimpan otomatis.
+        </p>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {PROCEDURES.map(proc => {
           const done = getProcProgress(userId, proc.id).size;
