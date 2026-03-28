@@ -19,6 +19,31 @@ AI-powered assistant platform for Indonesian students in Egypt (Masisir). Featur
 - Backend uses Supabase service role key for admin operations (user management, role verification)
 - AI chat is handled server-side via `/api/chat` endpoint using OpenRouter
 
+### Response Engine (api/engine/)
+
+Modular architecture for AI response generation. Each module is a pure-function layer:
+
+| File | Responsibility |
+|------|---------------|
+| `api/engine/utils.js` | Shared utilities: `trimToSentence`, `WIKI_SKIP_PATTERNS`, `normalizeQuery`, `hashText` |
+| `api/engine/sourcePriority.js` | Source routing rules: KB strength, Perplexity/Wiki/DDG decision, trust scores, confidence classification |
+| `api/engine/intentDetector.js` | Intent detection (`detectIntent`), fiqh detection, Arabic writing detection, intent→format hint builder |
+| `api/engine/responseStyles.js` | 5 response styles: `short_direct`, `step_by_step`, `detailed_complete`, `practical_ready_to_use`, `casual_easy_to_understand` |
+| `api/engine/promptBuilder.js` | Context block builders (KB, pinned, personalization, memory, exchange, wiki, ddg, perplexity, dorar) + `buildSystemPrompt()` assembler |
+| `api/engine/responseFormatter.js` | Output validation (`validateResponse`), post-processing (`postProcessResponse`), source badge builder (`buildSourceBadges`) |
+
+**Source priority order** (highest → lowest trust):
+1. Pinned/Admin Updates (trust: 100)
+2. Knowledge Base articles (trust: 90)
+3. Exchange Rate API (trust: 85)
+4. Dorar.net hadith encyclopedia (trust: 82)
+5. Perplexity real-time web search (trust: 78)
+6. Wikipedia (trust: 60)
+7. DuckDuckGo instant answers (trust: 35)
+8. Model knowledge fallback (trust: 20)
+
+**Response style default**: `step_by_step` (user-selectable via profile settings)
+
 ## Required Environment Secrets
 
 | Secret | Purpose |

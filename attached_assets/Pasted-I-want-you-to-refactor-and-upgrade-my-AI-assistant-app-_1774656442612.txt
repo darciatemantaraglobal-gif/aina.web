@@ -1,0 +1,59 @@
+I want you to refactor and upgrade my AI assistant app called AINA into a more reliable, structured, and production-ready system.
+
+Context:
+AINA is an AI assistant for Indonesian students in Egypt (Masisir). It helps with academic, administrative, and daily-life questions. Right now, the main problem is not missing features, but inconsistent answer quality, unclear source priority, and output that sometimes feels messy or unreliable.
+
+Your goal in this first step:
+Build the CORE RESPONSE ENGINE for AINA.
+
+Main requirements:
+1. Create a clean system for response generation with clear source priority rules:
+   - Priority 1: Internal AINA Knowledge Base
+   - Priority 2: Web search provider (Perplexity or equivalent)
+   - Priority 3: Wikipedia fallback
+2. Create a dynamic system prompt builder for AINA.
+3. Add support for response style preferences:
+   - short_direct
+   - step_by_step
+   - detailed_complete
+   - practical_ready_to_use
+   - casual_easy_to_understand
+4. Default response style must be "step_by_step".
+5. Build a reusable answer formatter so all responses follow a consistent structure.
+
+The response format rules:
+- For general questions:
+  1. Short answer
+  2. Main explanation
+  3. Important note (if needed)
+  4. Source section
+- For “how to” or procedural questions:
+  1. Short answer
+  2. Step-by-step instructions
+  3. Important note
+  4. Practical tip
+  5. Source section
+- If information is uncertain, the answer must clearly say so instead of sounding fully confident.
+- Avoid overly robotic language.
+- Responses should feel helpful, practical, and easy to understand.
+
+What I need you to build:
+1. A modular prompt builder function
+2. A response style config/constants file
+3. A response formatter utility
+4. A source priority rules module
+5. Example integration into my existing chat request flow
+6. Suggested folder structure for these modules
+7. Clean production-ready code, not pseudo-code
+
+Important behavior:
+- If internal knowledge exists, prefer it.
+- If internal knowledge is weak or missing, enrich with web search.
+- If still not enough, use Wikipedia as a fallback.
+- The system should be easy to extend later.
+
+Please generate:
+- architecture plan
+- implementation code
+- folder/file suggestions
+- explanation of where each part should connect in my app
