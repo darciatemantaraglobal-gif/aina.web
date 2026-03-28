@@ -4459,6 +4459,87 @@ app.get("/api/leaderboard", async (req, res) => {
   });
 });
 
+/* GET /api/articles/search — full-text search through KB articles */
+app.get("/api/articles/search", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const q = (req.query.q || "").toString().trim();
+  const category = (req.query.category || "").toString().trim();
+  const limit = Math.min(parseInt(req.query.limit) || 40, 60);
+
+  if (q.length < 2) return res.json({ articles: [], query: q });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const VALID_CATEGORIES = ["Administrasi","Akademik","Kehidupan Mesir","Transport","Tempat Tinggal","Kuliner"];
+
+  let query = supabase
+    .from("knowledge_base")
+    .select("id, title, category, article_type, vote_count, created_at, author_id, content")
+    .eq("status", "approved")
+    .neq("hidden", true)
+    .or(`title.ilike.%${q}%,content.ilike.%${q}%`)
+    .limit(limit);
+
+  if (category && VALID_CATEGORIES.includes(category)) {
+    query = query.eq("category", category);
+  }
+
+  const { data: rawArticles, error } = await query;
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const articles = rawArticles ?? [];
+
+  const [authorMap, userVotedSet] = await Promise.all([
+    (async () => {
+      const ids = [...new Set(articles.map(a => a.author_id).filter(Boolean))];
+      if (!ids.length) return {};
+      const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", ids);
+      const m = {};
+      (data ?? []).forEach(a => { m[a.user_id] = a.full_name; });
+      return m;
+    })(),
+    (async () => {
+      const ids = articles.map(a => a.id);
+      if (!ids.length) return new Set();
+      const { data } = await supabase.from("article_votes").select("article_id").eq("user_id", user.id).in("article_id", ids);
+      return new Set((data ?? []).map(v => v.article_id));
+    })(),
+  ]);
+
+  const ql = q.toLowerCase();
+  const result = articles
+    .map(a => {
+      const titleMatch = a.title.toLowerCase().includes(ql);
+      let snippet = null;
+      if (!titleMatch && a.content) {
+        const idx = a.content.toLowerCase().indexOf(ql);
+        if (idx !== -1) {
+          const start = Math.max(0, idx - 55);
+          const end = Math.min(a.content.length, idx + q.length + 95);
+          snippet = (start > 0 ? "…" : "") +
+            a.content.slice(start, end).replace(/\n+/g, " ").replace(/#{1,6}\s/g, "") +
+            (end < a.content.length ? "…" : "");
+        }
+      }
+      return {
+        id: a.id, title: a.title, category: a.category,
+        article_type: a.article_type, vote_count: a.vote_count,
+        created_at: a.created_at, author_name: authorMap[a.author_id] ?? null,
+        user_voted: userVotedSet.has(a.id), snippet, title_match: titleMatch,
+      };
+    })
+    .sort((a, b) => {
+      if (a.title_match && !b.title_match) return -1;
+      if (!a.title_match && b.title_match) return 1;
+      return b.vote_count - a.vote_count;
+    });
+
+  res.json({ articles: result, query: q });
+});
+
 /* ── Beta Feedback (stored in Supabase, not local files) ─ */
 app.post("/api/feedback", feedbackLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
