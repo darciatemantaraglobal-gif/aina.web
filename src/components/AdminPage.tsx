@@ -15,6 +15,7 @@ import {
   Pencil, Trash2, Eye, EyeOff, AlertCircle, Zap, Flag, Bell, ToggleLeft, ToggleRight,
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
+  ThumbsUp, Bookmark, Star,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -3256,8 +3257,237 @@ function AnnouncementsTab() {
   );
 }
 
+/* ─── Feedback Signals Tab (Master Admin only) ───────── */
+interface FeedbackRow {
+  id: string; user_id: string; message_id: string; feedback_type: string;
+  note: string | null; intent: string | null; confidence: string | null;
+  sources: string[] | null; created_at: string;
+  user: { full_name: string | null; email: string | null } | null;
+}
+interface SavedAnswerAdmin {
+  id: string; user_id: string; message_id: string; content: string;
+  sources: string[] | null; source_summary: string | null; intent: string | null;
+  promoted_to_kb: boolean; created_at: string;
+  user: { full_name: string | null; email: string | null } | null;
+}
+
+function FeedbackSignalsTab() {
+  const [subTab, setSubTab] = useState<"helpful" | "bookmarks">("helpful");
+  const [helpful, setHelpful] = useState<FeedbackRow[]>([]);
+  const [saved, setSaved] = useState<SavedAnswerAdmin[]>([]);
+  const [loadingH, setLoadingH] = useState(true);
+  const [loadingS, setLoadingS] = useState(true);
+  const [promoting, setPromoting] = useState<string | null>(null);
+  const [promoteDialog, setPromoteDialog] = useState<SavedAnswerAdmin | null>(null);
+  const [promoteTitle, setPromoteTitle] = useState("");
+  const [promoteCategory, setPromoteCategory] = useState("Umum");
+
+  useEffect(() => {
+    adminFetch("/api/admin/answer-feedback?type=helpful").then(d => { setHelpful(d); setLoadingH(false); }).catch(() => setLoadingH(false));
+    adminFetch("/api/admin/all-saved-answers").then(d => { setSaved(d); setLoadingS(false); }).catch(() => setLoadingS(false));
+  }, []);
+
+  const handlePromote = async () => {
+    if (!promoteDialog || !promoteTitle.trim()) return;
+    setPromoting(promoteDialog.id);
+    try {
+      await adminFetch(`/api/admin/saved-answers/${promoteDialog.id}/promote-to-kb`, {
+        method: "POST",
+        body: JSON.stringify({ title: promoteTitle.trim(), category: promoteCategory }),
+      });
+      toast.success(`"${promoteTitle}" berhasil ditambahkan ke Knowledge Base!`);
+      setSaved(prev => prev.map(s => s.id === promoteDialog.id ? { ...s, promoted_to_kb: true } : s));
+      setPromoteDialog(null);
+      setPromoteTitle("");
+    } catch (e: any) {
+      toast.error(e.message ?? "Gagal mempatenkan ke KB");
+    }
+    setPromoting(null);
+  };
+
+  const KB_CATEGORIES = ["Umum", "Administrasi", "Kehidupan", "Al-Azhar", "Akademik", "Keuangan", "Kesehatan", "Transportasi", "Komunitas"];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-display text-lg font-bold text-foreground">Sinyal User</h2>
+          <p className="text-sm text-muted-foreground">Feedback dan bookmark dari pengguna AINA</p>
+        </div>
+      </div>
+
+      {/* Sub tabs */}
+      <div className="flex gap-1 rounded-xl bg-secondary/50 p-1">
+        {([["helpful", "👍 Thumbs Up", helpful.length], ["bookmarks", "🔖 Jawaban Disimpan", saved.length]] as const).map(([id, label, count]) => (
+          <button key={id} onClick={() => setSubTab(id)}
+            className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${subTab === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            {label} {count > 0 && <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-primary">{count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "helpful" && (
+        <div className="space-y-2">
+          {loadingH ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-card" />)}</div>
+          ) : helpful.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              <ThumbsUp className="h-8 w-8 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Belum ada sinyal thumbs up</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-card">
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">User</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Intent</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Confidence</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Sumber</th>
+                    <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Waktu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {helpful.map(row => (
+                    <tr key={row.id} className="border-b border-border/50 last:border-0 hover:bg-card/60">
+                      <td className="px-3 py-2.5">
+                        <div className="font-medium text-foreground">{row.user?.full_name ?? "—"}</div>
+                        <div className="text-muted-foreground/60">{row.user?.email ?? row.user_id.slice(0, 8)}</div>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground capitalize">{row.intent ?? "—"}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${row.confidence === "high" ? "bg-green-500/15 text-green-400" : row.confidence === "medium" ? "bg-amber-500/15 text-amber-400" : "bg-zinc-500/15 text-zinc-400"}`}>
+                          {row.confidence ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground/70 max-w-[140px] truncate">
+                        {(row.sources ?? []).slice(0, 2).join(", ") || "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground/60">{fmtDate(row.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === "bookmarks" && (
+        <div className="space-y-3">
+          {loadingS ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-card" />)}</div>
+          ) : saved.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              <Bookmark className="h-8 w-8 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Belum ada jawaban yang di-bookmark user</p>
+            </div>
+          ) : (
+            saved.map(item => (
+              <div key={item.id} className="rounded-2xl border border-border bg-card p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium text-foreground">{item.user?.full_name ?? "—"}</div>
+                    <div className="text-[10px] text-muted-foreground/60">{item.user?.email ?? item.user_id.slice(0, 8)}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-muted-foreground/40">{fmtDate(item.created_at)}</span>
+                    {item.promoted_to_kb ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2 py-0.5 text-[10px] text-emerald-400">
+                        <Check className="h-2.5 w-2.5" /> Di KB
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => { setPromoteDialog(item); setPromoteTitle(""); }}
+                        className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <Star className="h-2.5 w-2.5" /> Patenkan ke KB
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-foreground/80 leading-relaxed line-clamp-3">
+                  {item.content.replace(/[#*`>\-]/g, "").trim()}
+                </p>
+                {(item.sources ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {(item.sources ?? []).slice(0, 3).map((s, i) => (
+                      <span key={i} className="rounded-full bg-secondary/80 px-2 py-0.5 text-[10px] text-muted-foreground">{s}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Promote to KB dialog */}
+      {promoteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-background p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15">
+                <Star className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground">Patenkan ke Knowledge Base</h3>
+                <p className="text-xs text-muted-foreground">Jawaban ini akan jadi artikel KB yang disetujui</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-secondary/30 p-3 max-h-32 overflow-y-auto">
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-5">
+                {promoteDialog.content.slice(0, 300).replace(/[#*`>\-]/g, "").trim()}…
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-foreground mb-1 block">Judul Artikel *</label>
+                <input
+                  value={promoteTitle}
+                  onChange={e => setPromoteTitle(e.target.value)}
+                  placeholder="Masukkan judul artikel KB…"
+                  className="w-full rounded-xl border border-border bg-secondary/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-foreground mb-1 block">Kategori</label>
+                <select
+                  value={promoteCategory}
+                  onChange={e => setPromoteCategory(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-secondary/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {KB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setPromoteDialog(null)}
+                className="flex-1 rounded-xl border border-border py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handlePromote}
+                disabled={!promoteTitle.trim() || !!promoting}
+                className="flex-1 rounded-xl bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {promoting ? "Menyimpan…" : "Tambahkan ke KB"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals";
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -3313,6 +3543,7 @@ const AdminPage = () => {
     ...(isMasterAdmin ? [{ id: "security" as Tab, label: "Security", icon: ShieldAlert }] : []),
     ...(isMasterAdmin ? [{ id: "performance" as Tab, label: "Performa AI", icon: TrendingUp }] : []),
     ...(isMasterAdmin ? [{ id: "announcements" as Tab, label: "Pengumuman", icon: Megaphone }] : []),
+    ...(isMasterAdmin ? [{ id: "signals" as Tab, label: "Sinyal User", icon: ThumbsUp }] : []),
   ];
 
   return (
@@ -3361,6 +3592,7 @@ const AdminPage = () => {
         {activeTab === "security" && isMasterAdmin && <SecurityLogsTab />}
         {activeTab === "performance" && isMasterAdmin && <PerformanceTab />}
         {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
+        {activeTab === "signals" && isMasterAdmin && <FeedbackSignalsTab />}
       </div>
     </div>
   );

@@ -4562,7 +4562,81 @@ app.get("/api/admin/answer-feedback", async (req, res) => {
 
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.json(data ?? []);
+
+  // Enrich with profile info
+  const rows = data ?? [];
+  const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+  let profileMap = {};
+  if (userIds.length) {
+    const { data: profs } = await supabase.from("profiles").select("user_id, full_name, email").in("user_id", userIds);
+    (profs ?? []).forEach(p => { profileMap[p.user_id] = p; });
+  }
+  res.json(rows.map(r => ({ ...r, user: profileMap[r.user_id] ?? null })));
+});
+
+// Admin: all users' saved answers (master admin only)
+app.get("/api/admin/all-saved-answers", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { data, error } = await supabase
+    .from("saved_answers")
+    .select("id, user_id, message_id, content, sources, source_summary, intent, created_at, promoted_to_kb")
+    .order("created_at", { ascending: false })
+    .limit(300);
+
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const rows = data ?? [];
+  const userIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+  let profileMap = {};
+  if (userIds.length) {
+    const { data: profs } = await supabase.from("profiles").select("user_id, full_name, email").in("user_id", userIds);
+    (profs ?? []).forEach(p => { profileMap[p.user_id] = p; });
+  }
+  res.json(rows.map(r => ({ ...r, user: profileMap[r.user_id] ?? null })));
+});
+
+// Admin: promote a saved answer to KB (master admin only)
+app.post("/api/admin/saved-answers/:id/promote-to-kb", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+
+  const { id } = req.params;
+  const { title, category } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: "title diperlukan" });
+
+  // Fetch the saved answer
+  const { data: saved, error: fetchErr } = await supabase
+    .from("saved_answers")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (fetchErr || !saved) return res.status(404).json({ error: "Tidak ditemukan" });
+
+  // Insert into knowledge_base as approved article
+  const { error: kbErr } = await supabase.from("knowledge_base").insert({
+    author_id: admin.id,
+    title:     title.trim(),
+    content:   saved.content,
+    category:  category?.trim() || "Umum",
+    status:    "approved",
+  });
+
+  if (kbErr) return res.status(500).json({ error: sanitizeErr(kbErr) });
+
+  // Mark the saved answer as promoted (add column if not exists)
+  await supabase.from("saved_answers").update({ promoted_to_kb: true }).eq("id", id).catch(() => {});
+
+  console.log(`[Admin] saved_answer ${id} promoted to KB by ${admin.email}`);
+  res.json({ success: true });
 });
 
 // ─── SAVED ANSWERS (bookmarks) ───────────────────────────────────────────────
@@ -6345,9 +6419,11 @@ async function runColumnMigrations() {
       sources JSONB,
       source_summary TEXT,
       intent TEXT,
+      promoted_to_kb BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE(user_id, message_id)
     );`,
+    `ALTER TABLE public.saved_answers ADD COLUMN IF NOT EXISTS promoted_to_kb BOOLEAN NOT NULL DEFAULT false;`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

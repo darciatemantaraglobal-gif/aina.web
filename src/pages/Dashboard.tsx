@@ -58,6 +58,7 @@ const ProfilePage = lazy(() => import("@/components/ProfilePage"));
 const AdminPage = lazy(() => import("@/components/AdminPage"));
 const ThreadsPage = lazy(() => import("@/components/ThreadsPage"));
 const LeaderboardPage = lazy(() => import("@/components/LeaderboardPage"));
+const SavedAnswersPage = lazy(() => import("@/components/SavedAnswersPage"));
 
 interface Chat {
   id: string;
@@ -74,6 +75,7 @@ const tabTitles: Record<string, string> = {
   contributor: "Contributor",
   profile: "Profile",
   admin: "Admin",
+  saved: "Jawaban Tersimpan",
 };
 
 const BeritaPlaceholder = () => (
@@ -92,7 +94,7 @@ const TabLoader = () => (
   </div>
 );
 
-const VALID_TABS = ["chat", "berita", "productivity", "threads", "leaderboard", "contributor", "profile", "admin"];
+const VALID_TABS = ["chat", "berita", "productivity", "threads", "leaderboard", "contributor", "profile", "admin", "saved"];
 
 const Dashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -515,6 +517,14 @@ const Dashboard = () => {
                 <TabErrorBoundary tabName="Admin">
                   <Suspense fallback={<TabLoader />}>
                     <AdminPage />
+                  </Suspense>
+                </TabErrorBoundary>
+              )}
+
+              {activeTab === "saved" && (
+                <TabErrorBoundary tabName="Jawaban Tersimpan">
+                  <Suspense fallback={<TabLoader />}>
+                    <SavedAnswersPage />
                   </Suspense>
                 </TabErrorBoundary>
               )}

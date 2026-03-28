@@ -553,15 +553,16 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       }
       localStorage.setItem(FEEDBACK_STORE_KEY, JSON.stringify(next));
 
-      // Fire-and-forget: send anonymized rating signal to backend (Phase 12)
-      // Only when adding a vote (not toggling off). No personal data sent.
+      // Fire-and-forget: send rating signals to backend
       if (!isToggleOff) {
         const msg = messages.find(m => m.id === msgId);
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (!session?.access_token) return;
+          const token = session.access_token;
+          // 1. Anonymized intel aggregate (for AI improvement analytics)
           fetch("/api/chat/rate", {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({
               rating:     vote === "up" ? 1 : -1,
               intent:     msg?.intent     ?? null,
@@ -569,6 +570,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               messageTs:  msg?.timestamp?.getTime() ?? Date.now(),
             }),
           }).catch(() => {});
+          // 2. Identified signal — thumbs up only (admin can see who found it helpful)
+          if (vote === "up") {
+            fetch(`/api/messages/${msgId}/feedback`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                feedback_type: "helpful",
+                intent:        msg?.intent     ?? null,
+                confidence:    msg?.confidence ?? null,
+                sources:       msg?.sources    ?? null,
+              }),
+            }).catch(() => {});
+          }
         });
       }
 
