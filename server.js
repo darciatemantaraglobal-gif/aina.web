@@ -7139,8 +7139,230 @@ async function runColumnMigrations() {
    ══════════════════════════════════════════════════════ */
 
 /* ══════════════════════════════════════════════════════════
-   TELEGRAM IMPORT — fetch messages from channel/group via Bot API
+   TELEGRAM — Bot API channel import + MTProto userbot scraper
    ══════════════════════════════════════════════════════════ */
+
+/* ── MTProto Userbot: login as user, auto-chat with bot ── */
+
+// In-memory session store: adminUserId -> { client, phone, phoneCodeHash, verified, createdAt }
+const ubSessions = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of ubSessions.entries()) {
+    if (now - v.createdAt > 30 * 60 * 1000) {
+      v.client?.disconnect().catch(() => {});
+      ubSessions.delete(k);
+    }
+  }
+}, 5 * 60 * 1000);
+
+/** Verify caller is an admin — returns user or throws */
+async function requireAdmin(authHeader) {
+  const user = await verifyAuth(authHeader);
+  if (!user) throw Object.assign(new Error("Login diperlukan"), { status: 401 });
+  const sb = getAdminClient();
+  const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", user.id);
+  if (!roles?.some(r => r.role === "admin")) throw Object.assign(new Error("Hanya admin"), { status: 403 });
+  return user;
+}
+
+/**
+ * POST /api/admin/telegram/userbot/start
+ * Body: { apiId, apiHash, phone }
+ * Sends OTP to phone via Telegram.
+ */
+app.post("/api/admin/telegram/userbot/start", writeLimiter, async (req, res) => {
+  try {
+    const user = await requireAdmin(req.headers.authorization);
+    const { apiId, apiHash, phone } = req.body;
+    if (!apiId || !apiHash || !phone) return res.status(400).json({ error: "apiId, apiHash, dan nomor HP diperlukan" });
+
+    const { TelegramClient } = await import("telegram");
+    const { StringSession } = await import("telegram/sessions/StringSession.js");
+    const { Api } = await import("telegram");
+
+    // Disconnect any old session
+    const old = ubSessions.get(user.id);
+    if (old) { await old.client?.disconnect().catch(() => {}); ubSessions.delete(user.id); }
+
+    const session = new StringSession("");
+    const client = new TelegramClient(session, parseInt(apiId), apiHash, { connectionRetries: 3, baseLogger: null });
+    await client.connect();
+
+    const result = await client.invoke(new Api.auth.SendCode({
+      phoneNumber: phone,
+      apiId: parseInt(apiId),
+      apiHash,
+      settings: new Api.CodeSettings({}),
+    }));
+
+    ubSessions.set(user.id, { client, phone, apiId: parseInt(apiId), apiHash, phoneCodeHash: result.phoneCodeHash, verified: false, createdAt: Date.now() });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[userbot/start]", e.message);
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    return res.status(500).json({ error: "Gagal mengirim kode: " + e.message });
+  }
+});
+
+/**
+ * POST /api/admin/telegram/userbot/verify
+ * Body: { code, password? }
+ * Verifies OTP (and 2FA password if needed).
+ */
+app.post("/api/admin/telegram/userbot/verify", writeLimiter, async (req, res) => {
+  try {
+    const user = await requireAdmin(req.headers.authorization);
+    const sess = ubSessions.get(user.id);
+    if (!sess) return res.status(400).json({ error: "Session tidak ada, mulai ulang login" });
+
+    const { code, password } = req.body;
+    if (!code) return res.status(400).json({ error: "Kode OTP diperlukan" });
+
+    const { Api } = await import("telegram");
+
+    try {
+      await sess.client.invoke(new Api.auth.SignIn({
+        phoneNumber: sess.phone,
+        phoneCodeHash: sess.phoneCodeHash,
+        phoneCode: code.toString().trim(),
+      }));
+    } catch (e) {
+      if (e.errorMessage === "SESSION_PASSWORD_NEEDED" || e.message?.includes("SESSION_PASSWORD_NEEDED")) {
+        if (!password) return res.status(200).json({ needsPassword: true });
+        // Handle 2FA
+        const pwd = await sess.client.invoke(new Api.account.GetPassword());
+        const { computeCheck } = await import("telegram/Password.js");
+        const check = await computeCheck(pwd, password);
+        await sess.client.invoke(new Api.auth.CheckPassword({ password: check }));
+      } else {
+        throw e;
+      }
+    }
+
+    sess.verified = true;
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[userbot/verify]", e.message);
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    if (e.errorMessage === "PHONE_CODE_INVALID" || e.message?.includes("PHONE_CODE_INVALID")) return res.status(400).json({ error: "Kode OTP salah" });
+    if (e.errorMessage === "PHONE_CODE_EXPIRED" || e.message?.includes("PHONE_CODE_EXPIRED")) return res.status(400).json({ error: "Kode OTP expired, mulai ulang" });
+    return res.status(500).json({ error: "Gagal verifikasi: " + e.message });
+  }
+});
+
+/**
+ * POST /api/admin/telegram/userbot/scrape
+ * Body: { targetBot, maxDepth? }
+ * Auto-chats with bot and collects all text content via BFS of inline menus.
+ */
+app.post("/api/admin/telegram/userbot/scrape", writeLimiter, async (req, res) => {
+  try {
+    const user = await requireAdmin(req.headers.authorization);
+    const sess = ubSessions.get(user.id);
+    if (!sess?.verified) return res.status(400).json({ error: "Belum login, mulai ulang" });
+
+    const { targetBot = "@PPMIMesir_bot", maxDepth = 3 } = req.body;
+    const { Api } = await import("telegram");
+    const client = sess.client;
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    // Resolve bot entity
+    const botEntity = await client.getEntity(targetBot);
+    const botId = botEntity.id.toString();
+
+    const collected = [];
+    const seenData = new Set();
+    const queue = []; // { level, msgId, data (Buffer), label, parent }
+
+    // Get recent messages from bot in this conversation (after a given timestamp)
+    const getBotMsgs = async (since) => {
+      const msgs = await client.getMessages(botEntity, { limit: 10 });
+      return msgs.filter(m => !m.out && m.date >= since - 2);
+    };
+
+    // --- Step 1: /start ---
+    const t0 = Math.floor(Date.now() / 1000);
+    await client.sendMessage(botEntity, { message: "/start" });
+    await sleep(3500);
+
+    const startMsgs = await getBotMsgs(t0);
+    for (const msg of startMsgs) {
+      const text = (msg.text || msg.message || "").trim();
+      if (text.length > 5) collected.push({ text, source: "/start" });
+      for (const row of (msg.replyMarkup?.rows || [])) {
+        for (const btn of (row.buttons || [])) {
+          if (btn.data) queue.push({ level: 1, msgId: msg.id, data: btn.data, label: btn.text, parent: "/start" });
+        }
+      }
+    }
+
+    // --- Step 2: BFS through inline buttons ---
+    while (queue.length > 0 && collected.length < 80) {
+      const item = queue.shift();
+      if (item.level > maxDepth) continue;
+
+      const dataHex = item.data.toString("hex");
+      if (seenData.has(dataHex)) continue;
+      seenData.add(dataHex);
+
+      await sleep(1800);
+      const tClick = Math.floor(Date.now() / 1000);
+
+      try {
+        await client.invoke(new Api.messages.GetBotCallbackAnswer({
+          peer: botEntity,
+          msgId: item.msgId,
+          data: item.data,
+        }));
+      } catch { /* button click errors are common, skip */ }
+
+      await sleep(2500);
+      const newMsgs = await getBotMsgs(tClick);
+
+      for (const msg of newMsgs) {
+        const text = (msg.text || msg.message || "").trim();
+        if (text.length > 10) collected.push({ text, source: item.label });
+        for (const row of (msg.replyMarkup?.rows || [])) {
+          for (const btn of (row.buttons || [])) {
+            if (btn.data) {
+              const hex = btn.data.toString("hex");
+              if (!seenData.has(hex)) queue.push({ level: item.level + 1, msgId: msg.id, data: btn.data, label: btn.text, parent: item.label });
+            }
+          }
+        }
+      }
+    }
+
+    // Deduplicate by text
+    const unique = [];
+    const seenText = new Set();
+    for (const c of collected) {
+      const key = c.text.slice(0, 80);
+      if (!seenText.has(key)) { seenText.add(key); unique.push(c); }
+    }
+
+    console.log(`[userbot/scrape] ${unique.length} unique messages collected from ${targetBot}`);
+    return res.json({ messages: unique });
+  } catch (e) {
+    console.error("[userbot/scrape]", e.message);
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    return res.status(500).json({ error: "Gagal scraping: " + e.message });
+  }
+});
+
+/**
+ * POST /api/admin/telegram/userbot/disconnect
+ * Cleans up the MTProto session.
+ */
+app.post("/api/admin/telegram/userbot/disconnect", async (req, res) => {
+  try {
+    const user = await requireAdmin(req.headers.authorization);
+    const sess = ubSessions.get(user.id);
+    if (sess) { await sess.client?.disconnect().catch(() => {}); ubSessions.delete(user.id); }
+    return res.json({ ok: true });
+  } catch { return res.json({ ok: true }); }
+});
 
 /**
  * POST /api/admin/telegram/fetch

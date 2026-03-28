@@ -997,6 +997,343 @@ type ParsedArticle = {
 };
 type BulkStep = "paste" | "parsing" | "preview" | "importing" | "done";
 
+/* ─── Telegram Bot Scraper Dialog (MTProto userbot) ─────── */
+type TgScrapeStep = "creds" | "sending" | "otp" | "password" | "verifying" | "scraping" | "results" | "parsing" | "preview" | "importing" | "done";
+
+function TelegramScraperDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [step, setStep]         = useState<TgScrapeStep>("creds");
+  const [apiId, setApiId]       = useState("");
+  const [apiHash, setApiHash]   = useState("");
+  const [phone, setPhone]       = useState("");
+  const [code, setCode]         = useState("");
+  const [password, setPassword] = useState("");
+  const [targetBot, setTargetBot] = useState("@PPMIMesir_bot");
+  const [scraped, setScraped]   = useState<{ text: string; source: string }[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState<Set<number>>(new Set());
+  const [articles, setArticles] = useState<ParsedArticle[]>([]);
+  const [importResult, setImportResult] = useState<{ imported: number; total: number } | null>(null);
+  const [error, setError]       = useState("");
+  const [showGuide, setShowGuide] = useState(false);
+
+  const reset = () => {
+    setStep("creds"); setApiId(""); setApiHash(""); setPhone(""); setCode(""); setPassword("");
+    setScraped([]); setSelectedIdx(new Set()); setArticles([]); setImportResult(null); setError(""); setShowGuide(false);
+    adminFetch("/api/admin/telegram/userbot/disconnect", { method: "POST" }).catch(() => {});
+  };
+  const handleClose = () => { reset(); onClose(); };
+
+  const handleSendCode = async () => {
+    if (!apiId.trim() || !apiHash.trim() || !phone.trim()) { setError("Semua field wajib diisi"); return; }
+    setStep("sending"); setError("");
+    try {
+      await adminFetch("/api/admin/telegram/userbot/start", {
+        method: "POST",
+        body: JSON.stringify({ apiId: parseInt(apiId), apiHash: apiHash.trim(), phone: phone.trim() }),
+      });
+      setStep("otp");
+    } catch (e: any) { setError(e.message); setStep("creds"); }
+  };
+
+  const handleVerify = async () => {
+    if (!code.trim()) { setError("Masukkan kode OTP"); return; }
+    setStep("verifying"); setError("");
+    try {
+      const data = await adminFetch("/api/admin/telegram/userbot/verify", {
+        method: "POST",
+        body: JSON.stringify({ code: code.trim(), password: password.trim() || undefined }),
+      });
+      if (data.needsPassword) { setStep("password"); return; }
+      setStep("scraping");
+      await doScrape();
+    } catch (e: any) { setError(e.message); setStep(password ? "password" : "otp"); }
+  };
+
+  const handleVerifyPassword = async () => {
+    if (!password.trim()) { setError("Masukkan password Telegram"); return; }
+    setStep("verifying"); setError("");
+    try {
+      await adminFetch("/api/admin/telegram/userbot/verify", {
+        method: "POST",
+        body: JSON.stringify({ code: code.trim(), password: password.trim() }),
+      });
+      setStep("scraping");
+      await doScrape();
+    } catch (e: any) { setError(e.message); setStep("password"); }
+  };
+
+  const doScrape = async () => {
+    try {
+      const data = await adminFetch("/api/admin/telegram/userbot/scrape", {
+        method: "POST",
+        body: JSON.stringify({ targetBot: targetBot.trim() }),
+      });
+      setScraped(data.messages || []);
+      setSelectedIdx(new Set((data.messages || []).map((_: any, i: number) => i)));
+      setStep("results");
+    } catch (e: any) { setError(e.message); setStep("creds"); }
+  };
+
+  const handleParse = async () => {
+    const chosen = scraped.filter((_, i) => selectedIdx.has(i));
+    if (chosen.length === 0) { toast.error("Pilih minimal satu pesan"); return; }
+    setStep("parsing");
+    const combined = chosen.map(m => `[${m.source}]\n${m.text}`).join("\n\n---\n\n");
+    try {
+      const data = await adminFetch("/api/admin/articles/bulk-parse", {
+        method: "POST", body: JSON.stringify({ rawText: combined }),
+      });
+      setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, maps_url: "", contact_number: "" })));
+      setStep("preview");
+    } catch (e: any) { toast.error(e.message); setStep("results"); }
+  };
+
+  const handleImport = async () => {
+    if (articles.length === 0) return;
+    setStep("importing");
+    try {
+      const data = await adminFetch("/api/admin/articles/bulk-import", {
+        method: "POST", body: JSON.stringify({ articles }),
+      });
+      setImportResult({ imported: data.imported, total: data.total });
+      setStep("done"); onDone();
+    } catch (e: any) { toast.error(e.message); setStep("preview"); }
+  };
+
+  const toggleMsg = (i: number) =>
+    setSelectedIdx(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
+  const toggleAllMsgs = () =>
+    setSelectedIdx(prev => prev.size === scraped.length ? new Set() : new Set(scraped.map((_, i) => i)));
+  const removeArticle = (i: number) => setArticles(prev => prev.filter((_, j) => j !== i));
+  const updateArticle = (i: number, field: keyof ParsedArticle, val: string) =>
+    setArticles(prev => prev.map((a, j) => j === i ? { ...a, [field]: val } : a));
+
+  const isLoading = ["sending", "verifying", "scraping", "parsing", "importing"].includes(step);
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && !isLoading && handleClose()}>
+      <DialogContent className="bg-card border-border max-w-xl max-h-[92vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="font-display flex items-center gap-2 text-base">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-sky-400 shrink-0" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/></svg>
+            Ambil Otomatis dari Bot Telegram
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
+
+          {/* STEP: Credentials */}
+          {(step === "creds" || step === "sending") && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-sky-500/8 border border-sky-500/20 p-3 space-y-1.5">
+                <p className="text-xs font-semibold text-sky-400">Cara kerja fitur ini</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Sistem login ke Telegram pakai akun kamu, lalu otomatis klik semua menu di bot target dan kumpulkan semua teksnya. Hasilnya langsung bisa diparse jadi artikel KB.
+                </p>
+              </div>
+
+              {error && <div className="flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2.5 text-xs text-red-400"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />{error}</div>}
+
+              {/* API credentials guide */}
+              <div className="space-y-1">
+                <button onClick={() => setShowGuide(v => !v)} className="text-xs text-primary/80 hover:text-primary flex items-center gap-1">
+                  <ChevronRight className={`h-3 w-3 transition-transform ${showGuide ? "rotate-90" : ""}`} />
+                  Cara dapat API ID &amp; API Hash
+                </button>
+                {showGuide && (
+                  <div className="rounded-xl border border-border bg-secondary/50 p-3 text-xs text-muted-foreground space-y-1 leading-relaxed">
+                    <p>1. Buka <strong className="text-foreground">my.telegram.org</strong> di browser</p>
+                    <p>2. Login dengan nomor Telegram kamu</p>
+                    <p>3. Klik <strong className="text-foreground">"API development tools"</strong></p>
+                    <p>4. Isi form (App title &amp; Short name bebas), klik Create</p>
+                    <p>5. Copy <strong className="text-foreground">App api_id</strong> dan <strong className="text-foreground">App api_hash</strong></p>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">API ID</label>
+                  <Input value={apiId} onChange={e => setApiId(e.target.value)} placeholder="12345678" className="bg-secondary text-sm font-mono" disabled={step === "sending"} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">API Hash</label>
+                  <Input value={apiHash} onChange={e => setApiHash(e.target.value)} placeholder="abc123..." className="bg-secondary text-sm font-mono" disabled={step === "sending"} />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Nomor HP Telegram (format internasional)</label>
+                <Input value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSendCode()} placeholder="+628123456789" className="bg-secondary text-sm" disabled={step === "sending"} />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Username Bot Target</label>
+                <Input value={targetBot} onChange={e => setTargetBot(e.target.value)} placeholder="@PPMIMesir_bot" className="bg-secondary text-sm font-mono" disabled={step === "sending"} />
+              </div>
+            </div>
+          )}
+
+          {/* STEP: OTP */}
+          {step === "otp" && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-green-500/8 border border-green-500/20 p-3">
+                <p className="text-xs font-semibold text-green-400 mb-1">Kode OTP Terkirim!</p>
+                <p className="text-xs text-muted-foreground">Cek aplikasi Telegram kamu — Telegram mengirim kode konfirmasi. Masukkan kodenya di bawah.</p>
+              </div>
+              {error && <div className="flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2.5 text-xs text-red-400"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />{error}</div>}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Kode OTP (dari Telegram)</label>
+                <Input value={code} onChange={e => setCode(e.target.value)} onKeyDown={e => e.key === "Enter" && handleVerify()} placeholder="12345" className="bg-secondary text-sm font-mono text-center text-lg tracking-widest" autoFocus maxLength={10} />
+              </div>
+            </div>
+          )}
+
+          {/* STEP: 2FA Password */}
+          {step === "password" && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-yellow-500/8 border border-yellow-500/20 p-3">
+                <p className="text-xs font-semibold text-yellow-400 mb-1">Verifikasi 2 Langkah Aktif</p>
+                <p className="text-xs text-muted-foreground">Akun Telegrammu memiliki password 2FA. Masukkan password Telegrammu.</p>
+              </div>
+              {error && <div className="flex items-start gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2.5 text-xs text-red-400"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />{error}</div>}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Password Telegram (2FA)</label>
+                <Input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleVerifyPassword()} placeholder="Password..." className="bg-secondary text-sm" autoFocus />
+              </div>
+            </div>
+          )}
+
+          {/* STEP: Loading states */}
+          {(step === "sending" || step === "verifying" || step === "scraping" || step === "parsing" || step === "importing") && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+              <div className="text-center">
+                <p className="text-sm font-medium text-foreground">
+                  {step === "sending" && "Mengirim kode ke Telegram..."}
+                  {step === "verifying" && "Memverifikasi kode..."}
+                  {step === "scraping" && "Membaca semua menu bot..."}
+                  {step === "parsing" && "AI menganalisis konten..."}
+                  {step === "importing" && "Mengimport ke Knowledge Base..."}
+                </p>
+                {step === "scraping" && (
+                  <p className="text-xs text-muted-foreground mt-1">Proses ini butuh 1-3 menit. Sistem sedang klik satu per satu semua menu bot.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP: Results — select messages */}
+          {step === "results" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground"><strong className="text-foreground">{scraped.length}</strong> konten berhasil dikumpulkan dari bot</p>
+                <button onClick={toggleAllMsgs} className="text-xs text-primary hover:opacity-80">
+                  {selectedIdx.size === scraped.length ? "Batal Pilih Semua" : "Pilih Semua"}
+                </button>
+              </div>
+              {scraped.length === 0 ? (
+                <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+                  Tidak ada teks yang berhasil dikumpulkan. Bot mungkin tidak memiliki konten teks atau semua menu pakai gambar.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {scraped.map((msg, i) => (
+                    <div key={i} onClick={() => toggleMsg(i)}
+                      className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-all ${selectedIdx.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:bg-card/80"}`}
+                    >
+                      <div className={`mt-0.5 h-4 w-4 rounded border flex items-center justify-center shrink-0 ${selectedIdx.has(i) ? "border-primary bg-primary" : "border-border"}`}>
+                        {selectedIdx.has(i) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] text-primary/70 font-medium mb-0.5">{msg.source}</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{msg.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground/60 text-center">{selectedIdx.size} dari {scraped.length} dipilih untuk diimport</p>
+            </div>
+          )}
+
+          {/* STEP: Preview articles */}
+          {step === "preview" && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">AI menghasilkan <strong>{articles.length} artikel</strong>. Edit jika perlu.</p>
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {articles.map((art, i) => (
+                  <div key={i} className="rounded-xl border border-border bg-card p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input value={art.title} onChange={e => updateArticle(i, "title", e.target.value)}
+                        className="flex-1 bg-transparent text-sm font-semibold text-foreground outline-none border-b border-border focus:border-primary/50 pb-0.5" />
+                      <button onClick={() => removeArticle(i)} className="shrink-0 text-muted-foreground/40 hover:text-red-400 transition-colors"><X className="h-4 w-4" /></button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select value={art.category} onChange={e => updateArticle(i, "category", e.target.value)}
+                        className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none">
+                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{art.content.slice(0, 200)}…</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STEP: Done */}
+          {step === "done" && importResult && (
+            <div className="flex flex-col items-center gap-4 py-10 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-500/15">
+                <CheckCircle2 className="h-7 w-7 text-green-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Selesai!</p>
+                <p className="text-sm text-muted-foreground mt-1">{importResult.imported} dari {importResult.total} artikel berhasil masuk ke Knowledge Base.</p>
+              </div>
+              <Button size="sm" onClick={handleClose}>Tutup</Button>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!isLoading && step !== "done" && (
+          <div className="shrink-0 flex items-center justify-between gap-2 border-t border-border pt-4">
+            <Button variant="ghost" size="sm" onClick={handleClose}>Batal</Button>
+            <div>
+              {step === "creds" && (
+                <Button size="sm" onClick={handleSendCode} disabled={!apiId || !apiHash || !phone} className="bg-sky-500 hover:bg-sky-600 text-white gap-1.5">
+                  Kirim Kode OTP
+                </Button>
+              )}
+              {step === "otp" && (
+                <Button size="sm" onClick={handleVerify} disabled={!code} className="bg-sky-500 hover:bg-sky-600 text-white">
+                  Verifikasi &amp; Mulai Scan
+                </Button>
+              )}
+              {step === "password" && (
+                <Button size="sm" onClick={handleVerifyPassword} disabled={!password} className="bg-sky-500 hover:bg-sky-600 text-white">
+                  Konfirmasi Password
+                </Button>
+              )}
+              {step === "results" && scraped.length > 0 && (
+                <Button size="sm" onClick={handleParse} disabled={selectedIdx.size === 0} className="bg-gradient-purple text-primary-foreground gap-1.5">
+                  <Wand2 className="h-3.5 w-3.5" /> Parse {selectedIdx.size} Konten dengan AI
+                </Button>
+              )}
+              {step === "preview" && (
+                <Button size="sm" onClick={handleImport} disabled={articles.length === 0} className="bg-gradient-purple text-primary-foreground gap-1.5">
+                  <FileUp className="h-3.5 w-3.5" /> Import {articles.length} Artikel ke KB
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ─── Telegram Import Dialog ──────────────────────────── */
 interface TelegramMessage { id: number; date: string; text: string; type: string; from: string; }
 interface TelegramChatInfo { id: number; title: string; type: string; username?: string; }
@@ -1672,6 +2009,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [reformattingId, setReformattingId] = useState<string | null>(null);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [telegramImportOpen, setTelegramImportOpen] = useState(false);
+  const [scraperOpen, setScraperOpen] = useState(false);
 
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
@@ -1867,9 +2205,13 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
               </Button>
             </>
           )}
+          <Button onClick={() => setScraperOpen(true)} size="sm" variant="outline" className="gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/></svg>
+            Ambil dari Bot
+          </Button>
           <Button onClick={() => setTelegramImportOpen(true)} size="sm" variant="outline" className="gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/></svg>
-            Telegram
+            Telegram Channel
           </Button>
           <Button onClick={() => setBulkImportOpen(true)} size="sm" variant="outline" className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
             <Wand2 className="h-3.5 w-3.5" /> Import Massal
@@ -2110,6 +2452,11 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         open={telegramImportOpen}
         onClose={() => setTelegramImportOpen(false)}
         onDone={() => { load(); toast.success("Artikel dari Telegram berhasil diimport ke Knowledge Base!"); }}
+      />
+      <TelegramScraperDialog
+        open={scraperOpen}
+        onClose={() => setScraperOpen(false)}
+        onDone={() => { load(); toast.success("Konten bot berhasil diimport ke Knowledge Base!"); }}
       />
     </div>
   );
