@@ -2030,14 +2030,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       console.warn(`[ResponseQuality] ${qualityIssues.length} issue(s):`, qualityIssues.map(i => `${i.type}(${i.severity})`).join(", "));
     }
 
-    // Build structured source list for frontend badges — derived from what was actually used,
-    // not from model text (model is told not to write "Sumber: ..." anymore).
+    // Build source badge list — labels show WHERE info came from, not article titles.
+    // Do NOT push article titles here — frontend renders source type, not article name.
     const responseSources = [];
     if (pinnedUpdates.length > 0)                        responseSources.push("Breaking Update");
-    if (articles.length > 0)                             articles.filter(a => !a.hidden).slice(0, 2).forEach(a => responseSources.push(a.title));
-    if (perplexityResult)                                responseSources.push("Pencarian Web");
+    if (articles.length > 0)                             responseSources.push("Knowledge Base AINA");
     if (queryType === "currency" && exchangeRates)       responseSources.push("Kurs Real-time");
     if (dorarResult && dorarResult.hadiths.length > 0)  responseSources.push("Dorar.net");
+    if (perplexityResult)                                responseSources.push("Pencarian Web");
     if (wikiResult)                                      responseSources.push("Wikipedia");
     if (ddgResult)                                       responseSources.push("DuckDuckGo");
     if (responseSources.length === 0)                    responseSources.push("Pengetahuan Umum");

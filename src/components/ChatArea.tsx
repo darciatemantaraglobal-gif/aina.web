@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -104,6 +104,35 @@ function extractSources(content: string): string[] {
     }
   }
   return results;
+}
+
+/* ── Source badge config map ─────────────────────────────────────────────── */
+
+type SourceConfig = {
+  icon: React.ElementType;
+  label: string;
+  className: string;
+};
+
+function getSourceConfig(src: string): SourceConfig {
+  const s = src.toLowerCase();
+  if (s.includes("breaking") || s.includes("update resmi"))
+    return { icon: Zap,          label: src, className: "border-amber-500/30 bg-amber-500/10 text-amber-500 dark:text-amber-400" };
+  if (s.includes("knowledge base"))
+    return { icon: BookOpen,     label: src, className: "border-primary/30 bg-primary/10 text-primary" };
+  if (s.includes("kurs") || s.includes("real-time") || s.includes("exchange"))
+    return { icon: TrendingUp,   label: src, className: "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400" };
+  if (s.includes("dorar"))
+    return { icon: BookMarked,   label: src, className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" };
+  if (s.includes("pencarian web") || s.includes("perplexity"))
+    return { icon: Globe,        label: src, className: "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400" };
+  if (s.includes("wikipedia"))
+    return { icon: Globe,        label: src, className: "border-slate-400/30 bg-slate-400/10 text-slate-500 dark:text-slate-400" };
+  if (s.includes("duckduckgo"))
+    return { icon: Globe,        label: src, className: "border-orange-500/30 bg-orange-500/10 text-orange-500 dark:text-orange-400" };
+  if (s.includes("pengetahuan umum") || s.includes("model"))
+    return { icon: AlertCircle,  label: src, className: "border-zinc-400/30 bg-zinc-400/10 text-zinc-500 dark:text-zinc-400" };
+  return { icon: BookMarked,     label: src, className: "border-primary/20 bg-primary/5 text-primary/70" };
 }
 
 const FEEDBACK_STORE_KEY = "aina_msg_feedback";
@@ -804,7 +833,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </ReactMarkdown>
                     </div>
 
-                    {/* Source badges — only for informational intent (not casual).
+                    {/* Source badges — shows WHERE the info came from, not article titles.
                         Prefer server-provided sources; fall back to text parsing for older DB messages. */}
                     {(() => {
                       if (msg.intent === "casual") return null;
@@ -812,18 +841,15 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       return sources.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {sources.map((src, i) => {
-                            const isDorar = src === "Dorar.net";
+                            const cfg = getSourceConfig(src);
+                            const Icon = cfg.icon;
                             return (
                               <span
                                 key={i}
-                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${
-                                  isDorar
-                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                    : "border-primary/20 bg-primary/5 text-primary/70"
-                                }`}
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cfg.className}`}
                               >
-                                <BookMarked className="h-2.5 w-2.5 shrink-0" />
-                                <span className="truncate max-w-[180px]">{src}</span>
+                                <Icon className="h-2.5 w-2.5 shrink-0" />
+                                <span>{cfg.label}</span>
                               </span>
                             );
                           })}
