@@ -7,7 +7,8 @@ import {
   Plus, Trash2, Calendar, ChevronRight, CheckCircle2, Circle,
   ArrowLeft, Clock, FileText, CreditCard, Building2, Stamp,
   GraduationCap, Sparkles, Brain, Pencil, AlertTriangle, Loader2,
-  Target, ClipboardList, BookOpen, RefreshCw,
+  Target, ClipboardList, BookOpen, RefreshCw, Bell, Mail, Send,
+  CheckCheck, SkipForward,
 } from "lucide-react";
 
 /* ════════════════════════════════════════════════════════
@@ -914,11 +915,240 @@ function ProcedureTab({ userId }: { userId: string }) {
 }
 
 /* ════════════════════════════════════════════════════════
+   TAB 4: REMINDER — summary + email triggers
+   ════════════════════════════════════════════════════════ */
+
+type ReminderStatus = "idle" | "loading" | "sent" | "skipped";
+
+interface ReminderSummary {
+  focus: { total: number; done: number; pending: Array<{ id: string; title: string }> };
+  urgentAdmin: Array<{ id: string; title: string; due_date: string | null; is_urgent: boolean; category: string }>;
+}
+
+function ReminderTab() {
+  const [summary, setSummary]   = useState<ReminderSummary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [dailyStatus,  setDailyStatus]  = useState<ReminderStatus>("idle");
+  const [adminStatus,  setAdminStatus]  = useState<ReminderStatus>("idle");
+  const [weeklyStatus, setWeeklyStatus] = useState<ReminderStatus>("idle");
+
+  const loadSummary = useCallback(async () => {
+    setLoadingSummary(true);
+    try {
+      const data = await apiCall("GET", "/productivity/reminders/summary");
+      setSummary(data);
+    } catch { /* silent */ }
+    setLoadingSummary(false);
+  }, []);
+
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+
+  const sendReminder = async (
+    type: "daily" | "admin" | "weekly-recap",
+    setStatus: (s: ReminderStatus) => void,
+  ) => {
+    setStatus("loading");
+    try {
+      const res = await apiCall("POST", `/productivity/reminders/${type}`);
+      if (res.skipped) {
+        setStatus("skipped");
+        toast.info(res.reason || "Tidak perlu dikirim sekarang");
+      } else {
+        setStatus("sent");
+        toast.success("Pengingat berhasil dikirim ke emailmu!");
+      }
+    } catch (e: any) {
+      setStatus("idle");
+      toast.error(e.message);
+    }
+  };
+
+  const ReminderButton = ({
+    label, sublabel, icon: Icon, status, colorClass, onSend,
+  }: {
+    label: string; sublabel: string; icon: React.ElementType;
+    status: ReminderStatus; colorClass: string; onSend: () => void;
+  }) => (
+    <div className="flex items-start gap-3 rounded-xl border border-border bg-card px-3.5 py-3">
+      <div className={`shrink-0 mt-0.5 rounded-lg p-2 ${colorClass}`}>
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-foreground">{label}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{sublabel}</p>
+      </div>
+      <button
+        onClick={onSend}
+        disabled={status === "loading" || status === "sent" || status === "skipped"}
+        className={`shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all ${
+          status === "sent"
+            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+            : status === "skipped"
+            ? "bg-secondary text-muted-foreground border border-border"
+            : status === "loading"
+            ? "bg-secondary text-muted-foreground border border-border"
+            : "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+        }`}
+      >
+        {status === "loading" && <Loader2 className="h-3 w-3 animate-spin" />}
+        {status === "sent"    && <CheckCheck className="h-3 w-3" />}
+        {status === "skipped" && <SkipForward className="h-3 w-3" />}
+        {status === "idle"    && <Send className="h-3 w-3" />}
+        <span>
+          {status === "loading" ? "Mengirim..." :
+           status === "sent"    ? "Terkirim" :
+           status === "skipped" ? "Tidak perlu" : "Kirim"}
+        </span>
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Panel description */}
+      <div className="flex items-start gap-2.5 rounded-xl border border-violet-500/20 bg-violet-500/5 px-3.5 py-3">
+        <Bell className="h-4 w-4 text-violet-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Kirim pengingat ke emailmu untuk fokus yang belum selesai atau urusan yang mendesak.
+          <span className="text-foreground font-medium"> Anti-spam aktif</span> — tidak akan terkirim 2x di hari yang sama.
+        </p>
+      </div>
+
+      {/* Today's summary */}
+      <div>
+        <div className="flex items-center justify-between mb-2.5">
+          <p className="text-xs font-semibold text-foreground">Ringkasan Hari Ini</p>
+          <button
+            onClick={loadSummary}
+            disabled={loadingSummary}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loadingSummary ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+
+        {loadingSummary ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => <div key={i} className="h-16 rounded-xl bg-secondary/40 animate-pulse" />)}
+          </div>
+        ) : summary ? (
+          <div className="space-y-2">
+            {/* Focus progress */}
+            <div className="rounded-xl border border-border bg-card px-3.5 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <Target className="h-3.5 w-3.5 text-violet-400" /> Fokus Harian
+                </p>
+                <span className={`text-xs font-bold ${
+                  summary.focus.done >= summary.focus.total && summary.focus.total > 0
+                    ? "text-emerald-400" : "text-foreground"
+                }`}>
+                  {summary.focus.done}/{summary.focus.total}
+                </span>
+              </div>
+              {summary.focus.total > 0 ? (
+                <>
+                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden mb-2">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-primary transition-all"
+                      style={{ width: `${summary.focus.total > 0 ? Math.round((summary.focus.done / summary.focus.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                  {summary.focus.pending.length > 0 && (
+                    <div className="space-y-1">
+                      {summary.focus.pending.slice(0, 3).map(f => (
+                        <p key={f.id} className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          <Circle className="h-2.5 w-2.5 shrink-0" /> {f.title}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">Belum ada fokus hari ini — tambahkan di tab Fokus Harian.</p>
+              )}
+            </div>
+
+            {/* Urgent admin */}
+            <div className="rounded-xl border border-border bg-card px-3.5 py-3">
+              <p className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-orange-400" /> Urusan Mendesak
+              </p>
+              {summary.urgentAdmin.length > 0 ? (
+                <div className="space-y-1.5">
+                  {summary.urgentAdmin.map(a => {
+                    const db = dueBadge(a.due_date);
+                    return (
+                      <div key={a.id} className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-foreground truncate">{a.title}</p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[10px] border rounded-full px-1.5 py-0.5 ${getCatStyle(a.category)}`}>
+                            {getCatLabel(a.category)}
+                          </span>
+                          {db && (
+                            <span className={`text-[10px] ${db.cls}`}>{db.label}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">Tidak ada urusan mendesak saat ini.</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Gagal memuat ringkasan.</p>
+        )}
+      </div>
+
+      {/* Email reminder triggers */}
+      <div>
+        <p className="text-xs font-semibold text-foreground mb-2.5 flex items-center gap-1.5">
+          <Mail className="h-3.5 w-3.5 text-muted-foreground" /> Kirim Email Pengingat
+        </p>
+        <div className="space-y-2">
+          <ReminderButton
+            label="Pengingat Fokus Harian"
+            sublabel="Kirim daftar fokus yang belum selesai hari ini ke emailmu (1x/hari)"
+            icon={Target}
+            status={dailyStatus}
+            colorClass="bg-violet-500/10 text-violet-400"
+            onSend={() => sendReminder("daily", setDailyStatus)}
+          />
+          <ReminderButton
+            label="Pengingat Urusan Admin"
+            sublabel="Kirim list urusan urgent atau yang hampir jatuh tempo (1x/hari)"
+            icon={AlertTriangle}
+            status={adminStatus}
+            colorClass="bg-orange-500/10 text-orange-400"
+            onSend={() => sendReminder("admin", setAdminStatus)}
+          />
+          <ReminderButton
+            label="Recap Mingguan"
+            sublabel="Kirim rekap fokus dan urusan admin selama 7 hari terakhir (1x/minggu)"
+            icon={ClipboardList}
+            status={weeklyStatus}
+            colorClass="bg-blue-500/10 text-blue-400"
+            onSend={() => sendReminder("weekly-recap", setWeeklyStatus)}
+          />
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground/50 text-center pb-2">
+        Email dikirim via Resend · Jadwal otomatis aktif setiap hari
+      </p>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════
    MAIN COMPONENT
    ════════════════════════════════════════════════════════ */
 const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [userId, setUserId] = useState(userIdProp ?? "");
-  const [tab, setTab] = useState<"fokus" | "dokumen" | "prosedur">("fokus");
+  const [tab, setTab] = useState<"fokus" | "dokumen" | "prosedur" | "pengingat">("fokus");
 
   useEffect(() => {
     if (userIdProp) { setUserId(userIdProp); return; }
@@ -928,9 +1158,10 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   }, [userIdProp]);
 
   const tabs = [
-    { id: "fokus" as const, label: "Fokus Harian", icon: Target },
-    { id: "dokumen" as const, label: "Dokumen & Admin", icon: ClipboardList },
-    { id: "prosedur" as const, label: "Prosedur", icon: BookOpen },
+    { id: "fokus"     as const, label: "Fokus Harian",    icon: Target },
+    { id: "dokumen"   as const, label: "Dokumen & Admin", icon: ClipboardList },
+    { id: "prosedur"  as const, label: "Prosedur",        icon: BookOpen },
+    { id: "pengingat" as const, label: "Pengingat",       icon: Bell },
   ];
 
   return (
@@ -964,9 +1195,10 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        {tab === "fokus" && <FocusTab />}
-        {tab === "dokumen" && <TrackerTab />}
-        {tab === "prosedur" && userId && <ProcedureTab userId={userId} />}
+        {tab === "fokus"     && <FocusTab />}
+        {tab === "dokumen"   && <TrackerTab />}
+        {tab === "prosedur"  && userId && <ProcedureTab userId={userId} />}
+        {tab === "pengingat" && <ReminderTab />}
       </div>
     </div>
   );

@@ -207,12 +207,18 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
 - **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Laporan tabs
 - **Leaderboard** — Top contributors ranked by article count + top voted KB articles with live upvote toggle
 - **Upvote System** — Toggle upvotes on threads (list + detail view) and approved KB articles; counts maintained via DB triggers
-- **Productivity v2** — 3-tab system in `ProductivityPage.tsx`:
-  - **Fokus Harian** — Daily focus (max 3 active/day), 3 input modes: Manual, AI Bantu (AI processes free text → 1–3 clean focus items), AI Sarankan (AI reads pending focus, urgent admin items, 7-day history → proactive suggestions). Status: pending → in_progress → done (click to cycle). Backend: `GET /api/productivity/focus/today`, `POST /api/productivity/focus`, `PATCH /api/productivity/focus/:id`, `DELETE /api/productivity/focus/:id`, `POST /api/productivity/focus/ai-assist`, `POST /api/productivity/focus/ai-suggest`
-  - **Dokumen & Admin** — Full CRUD tracker for iqomah/paspor/visa/kampus/safar/lainnya, status cycling (not_started → preparing → submitted → completed), urgent flag toggle, due date with urgency badges, filter tabs. Backend: `GET /api/productivity/tracker`, `POST /api/productivity/tracker`, `PATCH /api/productivity/tracker/:id`, `DELETE /api/productivity/tracker/:id`
-  - **Prosedur** — Existing step-by-step guides (preserved, localStorage progress)
-  - **Reminder API** — Email via Resend (requires `RESEND_API_KEY`): `POST /api/productivity/reminders/daily` (daily focus reminder, idempotent — skips if sent today), `POST /api/productivity/reminders/admin` (admin tracker urgent reminder), `POST /api/productivity/reminders/weekly-recap` (weekly summary, idempotent — skips if sent this week). In-app: `GET /api/productivity/reminders/summary`
+- **Productivity v2** — 4-tab system in `ProductivityPage.tsx`. Backend is layered architecture in `server/`:
+  - **Fokus Harian** — Daily focus (max 3 active/day), 3 input modes: Manual, AI Bantu (AI processes free text → 1–3 clean focus items), AI Sarankan (AI reads pending focus, urgent admin items, 7-day history → proactive suggestions). Status: pending → in_progress → done (click to cycle).
+  - **Dokumen & Admin** — Full CRUD tracker for iqomah/paspor/visa/kampus/safar/lainnya, status cycling (not_started → preparing → submitted → completed), urgent flag toggle, due date with urgency badges, filter tabs.
+  - **Prosedur** — Step-by-step guides for iqama/visa/paspor/KBRI/kampus/bank. localStorage progress tracking.
+  - **Pengingat** — Live reminder summary (focus progress + urgent admin items) + manual email trigger buttons (daily, admin, weekly recap) with per-button status tracking (idle/loading/sent/skipped). Anti-spam via `reminder_logs` — daily: 1x/day, weekly: 1x/7 days.
+  - **Backend architecture** (layered): `server/db/focusQueries.js` + `server/db/trackerQueries.js` → `server/services/focusService.js` + `server/services/trackerService.js` + `server/services/focusAiService.js` + `server/services/reminderService.js` → `server/routes/productivity.js` + `server/routes/productivityAI.js`
+  - **AI Focus** (`focusAiService.js`): `buildPrompt({ mode, ... })` → `parseResponse(raw)` → `generateFocus({ mode, ...context })` — model: `google/gemini-2.0-flash-001`, max 3 items per call
+  - **Reminder scheduler** (`reminderService.js`): `getPendingFocusToday()`, `getUrgentAdminItems()`, `shouldSendReminder(windowDays)`, `sendDailyReminder()`, `sendAdminReminder()`, `sendWeeklyRecap()`, `runDailyReminder()` (all users), `runWeeklyRecap()` (all users)
+  - **Vercel Cron** (`vercel.json`): daily at `0 17 * * *` (00:00 WIB) → `GET /api/cron/daily`; weekly at `0 18 * * 0` (Senin 01:00 WIB) → `GET /api/cron/weekly`. Protected by `CRON_SECRET` header.
+  - **All API endpoints**: Focus CRUD + AI (`/api/productivity/focus/*`), Tracker CRUD (`/api/productivity/tracker/*`), Reminders (`/api/productivity/reminders/*`), Cron (`/api/cron/daily`, `/api/cron/weekly`)
   - **Migration**: Run `supabase/migrations/20260328_productivity_v2.sql` in Supabase dashboard
+  - **Email**: `RESEND_API_KEY` required (silently skipped if not set). `CRON_SECRET` optional but recommended for cron protection.
 - **Guided Tour** — Custom 8-step onboarding tour (`GuidedTour.tsx`) auto-shown to first-time users; spotlight + tooltip overlay via React portal; skippable and restartable via "Panduan Fitur" button in sidebar; state persisted in `localStorage` under `aina_tour_seen_v1`
 
 ## Key Files

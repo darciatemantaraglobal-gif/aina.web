@@ -15,6 +15,7 @@ import { validateResponse, postProcessResponse, buildSourceBadges } from './api/
 import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
+import { runDailyReminder, runWeeklyRecap } from "./server/services/reminderService.js";
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
@@ -6719,6 +6720,43 @@ app.use("/api/productivity", createProductivityRouter({ verifyAuth, getAdminClie
 
 // ── AI Focus + Reminder routes (moved to server/routes/productivityAI.js) ────
 app.use("/api/productivity", createProductivityAIRouter({ verifyAuth, getAdminClient, sendEmail, emailTemplate, getUserEmail }));
+
+/* ── Vercel Cron endpoints ────────────────────────────
+   Called by Vercel scheduler (vercel.json "crons").
+   Protected by CRON_SECRET header — set it in Vercel env vars.
+   ─────────────────────────────────────────────────── */
+function verifyCron(req, res) {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers["x-cron-secret"] !== secret) {
+    res.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
+// GET /api/cron/daily — runs every day at 17:00 UTC (00:00 WIB)
+app.get("/api/cron/daily", async (req, res) => {
+  if (!verifyCron(req, res)) return;
+  try {
+    const result = await runDailyReminder({ getAdminClient, sendEmail, emailTemplate, getUserEmail });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error("[Cron/daily]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/cron/weekly — runs every Sunday at 18:00 UTC (01:00 WIB Senin)
+app.get("/api/cron/weekly", async (req, res) => {
+  if (!verifyCron(req, res)) return;
+  try {
+    const result = await runWeeklyRecap({ getAdminClient, sendEmail, emailTemplate, getUserEmail });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error("[Cron/weekly]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 /* ── Global error handler (must be last middleware) ─── */
 // Catches any unhandled errors — never exposes stack traces or tech info.
