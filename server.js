@@ -5012,17 +5012,8 @@ app.put("/api/admin/news/:id", strictLimiter, async (req, res) => {
   res.json({ news: data });
 });
 
-/* DELETE /api/admin/news/:id — delete news item (admin only) */
-app.delete("/api/admin/news/:id", strictLimiter, async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
-  const supabase = getAdminClient();
-  const { error } = await supabase.from("masisir_news").delete().eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.json({ success: true });
-});
-
 /* DELETE /api/admin/news/bulk — hapus berita secara bulk (admin only) */
+/* MUST be registered BEFORE /:id to avoid Express matching "bulk" as an id */
 app.delete("/api/admin/news/bulk", strictLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
@@ -5032,6 +5023,16 @@ app.delete("/api/admin/news/bulk", strictLimiter, async (req, res) => {
   const { error, count } = await supabase.from("masisir_news").delete({ count: "exact" }).in("id", ids);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ deleted: count ?? ids.length });
+});
+
+/* DELETE /api/admin/news/:id — delete news item (admin only) */
+app.delete("/api/admin/news/:id", strictLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("masisir_news").delete().eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ success: true });
 });
 
 // ─── PROCEDURES (MASISIR) ─────────────────────────────────────────────────
