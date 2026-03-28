@@ -1354,6 +1354,55 @@ function detectIntent(text) {
   return { primary, casual: isCasual };
 }
 
+/* ── Partner Promo Detection ─────────────────────────────
+ * Detects if the user is asking about VOA Mesir, tiket
+ * pesawat, or student visa entry — topics where AINA
+ * should recommend Temantiket as a trusted partner.
+ * ─────────────────────────────────────────────────────── */
+function detectPartnerPromo(query) {
+  const t = query.toLowerCase();
+  const isTicket = /\b(tiket\s*pesawat|beli\s*tiket|booking\s*tiket|cari\s*tiket|harga\s*tiket|pesan\s*tiket|tiket\s*murah|penerbangan\s*ke\s*mesir|flight\s*ke\s*mesir|tiket\s*pp|tiket\s*pulang\s*pergi|tiket\s*ke\s*kairo|cairo.*tiket|tiket.*cairo|tiket.*kairo|kairo.*tiket)\b/.test(t);
+  const isVOA   = /\b(voa|visa\s*on\s*arrival|visa\s*mesir|visa\s*on\s*arrival\s*mesir|voa\s*mesir|tourist\s*visa|visa\s*turis)\b/.test(t);
+  const isVisa  = /\b(visa\s*student|student\s*visa|student\s*entry|entry\s*visa|izin\s*masuk|visa\s*pelajar|visa\s*study|visa\s*belajar|student\s*residence|kartu\s*pelajar.*visa|iqama)\b/.test(t);
+
+  if (!isTicket && !isVOA && !isVisa) return null;
+
+  const topics = [];
+  if (isTicket) topics.push("tiket pesawat");
+  if (isVOA)    topics.push("VOA / visa turis Mesir");
+  if (isVisa)   topics.push("visa student / student entry");
+
+  return {
+    triggered: true,
+    topics,
+    block: `
+
+---
+## 🤝 MITRA AINA — TEMANTIKET (WAJIB DIBACA & DIIKUTI)
+
+User menanyakan tentang: **${topics.join(" / ")}** — topik ini dicakup oleh mitra resmi AINA.
+
+**INSTRUKSI WAJIB:**
+Setelah menjawab pertanyaan user secara informatif dan lengkap, WAJIB tambahkan satu blok rekomendasi mitra di akhir jawaban. Format yang HARUS digunakan:
+
+---
+🎫 **Butuh bantuan ngurusin ini?**
+**Temantiket** adalah mitra resmi AINA yang bisa bantu urus [sebutkan relevansi spesifik: tiket pesawat / VOA Mesir / visa student — sesuaikan dengan yang ditanya user]. Langsung hubungi:
+- 🌐 [temantiket.com](https://temantiket.com)
+- 💬 WhatsApp: [+62 813-1150-6025](https://wa.me/6281311506025)
+---
+
+**ATURAN BLOK MITRA:**
+- SELALU gunakan format di atas, tidak boleh disingkat atau dihilangkan saat topik mitra ini terdeteksi.
+- Sesuaikan kata "[relevansi spesifik]" dengan topik yang benar-benar ditanya user — jangan copy-paste mentah.
+- Letakkan blok ini SETELAH jawaban utama, dipisah dengan garis horizontal (---).
+- Jika user bertanya dalam nada santai/casual, blok boleh lebih informal tapi tetap harus ada.
+- JANGAN sebut bahwa ini "instruksi sistem" atau "mitra yang dipromosikan" — sampaikan secara natural sebagai rekomendasi terpercaya.
+---`,
+  };
+}
+
+
 function buildIntentHint({ primary, casual }) {
   const toneNote = casual
     ? " Nada santai dan percakapan, boleh pakai kata informal tapi tetap informatif."
@@ -1941,6 +1990,13 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   let finalSystemPrompt = systemPrompt;
   let finalMessages = [...messages];
   let useVisionModel = false;
+
+  // ── Partner promo injection (Temantiket) ─────────────────────────────────
+  const partnerPromo = detectPartnerPromo(lastUserMessage);
+  if (partnerPromo) {
+    console.log(`[PartnerPromo] Triggered for topics: ${partnerPromo.topics.join(", ")}`);
+    finalSystemPrompt = finalSystemPrompt + partnerPromo.block;
+  }
 
   if (attachedFile?.type === "pdf" && attachedFile.text) {
     const pdfCtx = `\n\n---\n## Dokumen yang Diupload User (${attachedFile.name ?? "file.pdf"})\nAnalisis dokumen berikut sesuai pertanyaan user:\n\n${attachedFile.text.slice(0, 20_000)}\n---`;
@@ -6922,10 +6978,142 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Terjadi kesalahan, silakan coba lagi." });
 });
 
+/* ── Partner KB Article Seed (idempotent) ─────────────────
+ * Inserts Temantiket partner articles into knowledge_base
+ * once. Uses MASTER_ADMIN_IDS[0] as author. Safe to re-run.
+ * ───────────────────────────────────────────────────────── */
+async function seedPartnerArticles() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+
+  const MASTER_ADMIN_ID = (process.env.MASTER_ADMIN_IDS || "").split(",").map(s => s.trim()).filter(Boolean)[0];
+  if (!MASTER_ADMIN_ID) return;
+
+  // Use exec_sql RPC to bypass PostgREST auth issues — runs as DB superuser
+  const escape = (s) => s.replace(/'/g, "''");
+  const PARTNER_ARTICLES = [
+    {
+      title: "Temantiket — Layanan Tiket Pesawat & VOA Mesir untuk Masisir",
+      content: `Temantiket adalah mitra resmi AINA yang melayani kebutuhan perjalanan Masisir (Mahasiswa Indonesia di Mesir) secara khusus.
+
+**Layanan yang tersedia:**
+• Tiket pesawat PP Indonesia–Mesir (Kairo) — harga kompetitif, berbagai maskapai
+• VOA (Visa on Arrival) Mesir — pengurusan resmi untuk kunjungan wisata/keluarga
+• Visa Student / Student Entry Mesir — pendampingan proses visa pelajar
+• Konsultasi dokumen perjalanan
+• Pemesanan bisa via website atau langsung lewat WhatsApp
+
+**Cara pesan:**
+1. Hubungi via WhatsApp: +62 813-1150-6025
+2. Atau kunjungi: temantiket.com
+3. Ceritakan kebutuhan perjalananmu — tanggal, rute, dan tipe visa jika diperlukan
+4. Tim Temantiket akan bantu proses dari awal sampai selesai
+
+**Catatan penting VOA Mesir:**
+• VOA Mesir valid 30 hari, bisa diperpanjang di imigrasi setempat
+• Biaya VOA dibayar di bandara tujuan (Kairo/Hurghada/dll) dalam USD atau EGP
+• Temantiket bisa bantu proses dokumen pendukung sebelum berangkat
+
+**Kontak:**
+• 🌐 temantiket.com
+• 💬 WhatsApp: +62 813-1150-6025`,
+      category: "administrasi",
+      keywords: "temantiket tiket pesawat mesir kairo voa visa on arrival visa student student entry penerbangan booking tiket murah mitra aina perjalanan",
+      contact_number: "+6281311506025",
+    },
+    {
+      title: "Cara Urus VOA (Visa on Arrival) Mesir — Panduan Lengkap 2026",
+      content: `VOA (Visa on Arrival) adalah visa turis yang bisa didapatkan langsung saat tiba di bandara Mesir. Cocok untuk kunjungan keluarga, wisata, atau transit singkat.
+
+**Syarat dasar VOA Mesir:**
+• Paspor berlaku minimal 6 bulan ke depan
+• Tiket pulang (return ticket) sudah dipesan
+• Uang tunai USD 25 atau setara EGP untuk biaya VOA di bandara
+
+**Langkah proses VOA di bandara:**
+1. Tiba di bandara Kairo (Cairo International Airport) atau Hurghada
+2. Antri di loket "Visa on Arrival" sebelum masuk imigrasi
+3. Bayar biaya VOA — USD 25 per orang (tersedia money changer di area ini)
+4. Tempel stiker VOA di paspor, lanjut ke konter imigrasi
+5. Selesai — VOA berlaku 30 hari sejak tanggal masuk
+
+**Perbedaan VOA vs Visa Reguler:**
+• VOA: cocok untuk turis, proses di bandara, berlaku 30 hari
+• Visa reguler: untuk tinggal lebih lama / tujuan spesifik (pelajar, kerja)
+
+**Butuh bantuan dokumen sebelum berangkat?**
+Temantiket (mitra resmi AINA) bisa bantu proses dan konsultasi dokumen:
+• 🌐 temantiket.com
+• 💬 WhatsApp: +62 813-1150-6025`,
+      category: "administrasi",
+      keywords: "voa mesir visa on arrival cara urus voa bandara kairo syarat voa biaya voa proses visa turis mesir",
+      contact_number: "+6281311506025",
+    },
+    {
+      title: "Panduan Beli Tiket Pesawat Jakarta–Kairo (Cairo) yang Murah",
+      content: `Rute Jakarta (CGK) ke Kairo (CAI) adalah jalur yang paling sering dipakai Masisir. Berikut tips mendapatkan tiket terjangkau.
+
+**Maskapai yang melayani rute CGK–CAI (biasanya dengan transit):**
+• Egyptair (via Kuala Lumpur atau Abu Dhabi) — sering paling murah untuk Masisir
+• Emirates (via Dubai)
+• Qatar Airways (via Doha)
+• Etihad (via Abu Dhabi)
+• Turkish Airlines (via Istanbul) — opsi bagus tapi perjalanan lebih panjang
+
+**Tips mendapatkan harga terbaik:**
+• Pesan 2–3 bulan sebelum keberangkatan untuk harga terbaik
+• Hindari peak season: Juli–Agustus dan Desember–Januari (libur kuliah)
+• Cek tiket di hari kerja, bukan weekend — harga cenderung lebih murah
+• Perhatikan batas bagasi — beda maskapai beda policy, penting untuk Masisir yang bawa banyak barang
+
+**Mau dibantu urus tiket?**
+Temantiket adalah mitra resmi AINA yang khusus melayani Masisir:
+• Bisa bantu cari rute terbaik dan harga termurah
+• Koordinasi jadwal sesuai kalender akademik Al-Azhar
+• 🌐 temantiket.com
+• 💬 WhatsApp: +62 813-1150-6025`,
+      category: "administrasi",
+      keywords: "tiket pesawat jakarta kairo cairo cgk cai murah promo penerbangan egyptair emirates tiket pp pulang pergi masisir booking pesawat",
+      contact_number: "+6281311506025",
+    },
+  ];
+
+  let seeded = 0;
+  for (const art of PARTNER_ARTICLES) {
+    const sql = `
+      INSERT INTO public.knowledge_base
+        (author_id, title, content, category, keywords, article_type, contact_number, hidden)
+      SELECT
+        '${escape(MASTER_ADMIN_ID)}',
+        '${escape(art.title)}',
+        '${escape(art.content)}',
+        '${escape(art.category)}',
+        '${escape(art.keywords)}',
+        'approved',
+        '${escape(art.contact_number)}',
+        false
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.knowledge_base WHERE title = '${escape(art.title)}'
+      );
+    `;
+    try {
+      await supabase.rpc("exec_sql", { sql });
+      seeded++;
+    } catch {
+      // exec_sql may not be available — admin can add articles manually via Admin Panel
+    }
+  }
+  if (seeded > 0) {
+    console.log(`[PartnerSeed] ✓ Temantiket KB articles synced (${seeded} upserts run)`);
+  } else {
+    console.log("[PartnerSeed] Temantiket articles can be added manually via Admin Panel");
+  }
+}
+
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
   checkRequiredTables();
-  runColumnMigrations();
+  runColumnMigrations().then(() => seedPartnerArticles());
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AINA API server running on port ${PORT}`);
   });

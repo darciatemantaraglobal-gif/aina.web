@@ -221,6 +221,7 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
   - **Migration**: Run `supabase/migrations/20260328_productivity_v2.sql` in Supabase dashboard
   - **Email**: `RESEND_API_KEY` required (silently skipped if not set). `CRON_SECRET` optional but recommended for cron protection.
 - **Guided Tour** — Custom 8-step onboarding tour (`GuidedTour.tsx`) auto-shown to first-time users; spotlight + tooltip overlay via React portal; skippable and restartable via "Panduan Fitur" button in sidebar; state persisted in `localStorage` under `aina_tour_seen_v1`
+- **Partner Promo (Temantiket)** — Keyword-triggered partner recommendation system in AI chat. `detectPartnerPromo(query)` in `server.js` detects queries about tiket pesawat / VOA Mesir / visa student, then injects a structured rule block into `finalSystemPrompt` instructing AI to append Temantiket recommendation (temantiket.com, WA +6281311506025) naturally at end of answer. 3 KB articles seeded via `seedPartnerArticles()` at startup (idempotent via `INSERT...WHERE NOT EXISTS` + `exec_sql` RPC). Keywords: tiket pesawat, booking tiket, VOA Mesir, visa on arrival, visa student, student entry, entry visa, penerbangan ke mesir.
 
 ## Key Files
 
