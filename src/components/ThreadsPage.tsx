@@ -8,8 +8,87 @@ import { toast } from "sonner";
 import {
   MessageSquare, Plus, Search, Send, Trash2, RefreshCw,
   BookMarked, CheckCircle, Clock, MessageCircle, ThumbsUp, X,
-  ImagePlus, Loader2,
+  ImagePlus, Loader2, Smile,
 } from "lucide-react";
+
+/* ─── Emoji Picker ───────────────────────────────────── */
+const EMOJI_CATS = [
+  { label: "😊", name: "Ekspresi", emojis: ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😋","😛","😜","🤪","🤨","🧐","🤓","😎","🥳","😏","😒","😞","😔","😟","😕","🙁","☹️","😣","😫","😩","🥺","😢","😭","😤","😠","😡","🤬","🤯","😳","🥵","🥶","😱","😨","😰","😓","🤗","🤔","🤭","🤫","🤥","😶","😐","😑","😬","🙄","😯","😮","😲","🥱","😴","🤤","🤢","🤮","🤧","😷","🤒","🤕","😵","🤐","🥴"] },
+  { label: "👍", name: "Gestur", emojis: ["👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","🤲","🤝","🙏","✍️","💅","💪","🦾","🦵","🦶","👂","🦻","👃","👀","💋","🫂","🫶","❤️‍🔥"] },
+  { label: "🌿", name: "Alam", emojis: ["🐶","🐱","🐭","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🦅","🦉","🦋","🐌","🐞","🐜","🌸","🌺","🌻","🌹","🌷","🌿","☘️","🍀","🍃","🍂","🍁","🌲","🌳","🌴","🌾","🌵","🌊","🌈","⭐","🌟","💫","✨","☀️","🌙","❄️","🔥","💧","🌍","🌏","⛅","⛈️","🌀"] },
+  { label: "🍕", name: "Makanan", emojis: ["🍎","🍊","🍋","🍇","🍓","🍒","🍑","🥭","🍍","🥝","🍅","🌽","🥦","🧅","🧄","🥔","🍆","🥑","🍞","🥐","🧀","🍖","🍗","🥚","🍳","🥞","🍔","🍟","🌭","🍕","🌮","🌯","🥙","🍜","🍝","🍱","🍣","🍦","🎂","🍰","🧁","🍩","🍪","🍫","🍭","☕","🧃","🥤","🧋","🍺","🥂","🍷","🍹","🫖","🧆","🥘","🍲","🫕"] },
+  { label: "⚽", name: "Aktivitas", emojis: ["⚽","🏀","🏈","⚾","🎾","🏐","🏉","🎱","🏓","🏸","🥊","🎯","🎳","🎮","🎲","🧩","🎭","🎨","🎶","🎸","🎹","🎺","🎻","🥁","📷","📸","🎥","📱","💻","📚","📖","✏️","📝","📌","📎","🔑","🚀","✈️","🚂","🚗","⛵","🏠","🏙️","🕌","🕍","⛪","🗺️","🧭","🏕️","🌄","🏖️"] },
+  { label: "❤️", name: "Simbol", emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","✅","✔️","☑️","❌","⚠️","🚫","💯","🎉","🎊","🎈","🎁","🏆","🥇","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","💢","💥","💫","💦","💤","💨","🆗","🆙","🆕","🆒","🆓","🔔","🔕","📣","🔊","🔇"] },
+];
+
+function EmojiPicker({ onSelect, onClose }: { onSelect: (e: string) => void; onClose: () => void }) {
+  const [cat, setCat] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const keyHandler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", keyHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", keyHandler);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full mb-2 left-0 z-[200] w-72 rounded-2xl border border-border bg-background shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150"
+    >
+      {/* Category tabs */}
+      <div className="flex border-b border-border bg-card/60 px-1 pt-1">
+        {EMOJI_CATS.map((c, i) => (
+          <button
+            key={i}
+            onClick={() => setCat(i)}
+            title={c.name}
+            className={`flex-1 rounded-t-lg py-1.5 text-sm transition-colors ${cat === i ? "bg-background text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      {/* Emoji grid */}
+      <div className="grid grid-cols-8 gap-0 max-h-48 overflow-y-auto p-2 scrollbar-none [scrollbar-width:none]">
+        {EMOJI_CATS[cat].emojis.map((emoji, i) => (
+          <button
+            key={i}
+            onClick={() => onSelect(emoji)}
+            className="flex items-center justify-center rounded-lg p-1.5 text-lg leading-none hover:bg-secondary transition-colors"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function insertAtCursor(
+  textareaRef: React.RefObject<HTMLTextAreaElement>,
+  emoji: string,
+  value: string,
+  setValue: (v: string) => void,
+) {
+  const el = textareaRef.current;
+  if (!el) { setValue(value + emoji); return; }
+  const start = el.selectionStart ?? value.length;
+  const end = el.selectionEnd ?? value.length;
+  const next = value.slice(0, start) + emoji + value.slice(end);
+  setValue(next);
+  requestAnimationFrame(() => {
+    el.focus();
+    el.setSelectionRange(start + emoji.length, start + emoji.length);
+  });
+}
 
 /* ─── Types ──────────────────────────────────────────── */
 interface Thread {
@@ -188,7 +267,9 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -281,8 +362,27 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Isi Thread</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">Isi Thread</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker(p => !p)}
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                >
+                  <Smile className="h-3.5 w-3.5" />
+                  <span>Emoji</span>
+                </button>
+                {showEmojiPicker && (
+                  <EmojiPicker
+                    onSelect={emoji => insertAtCursor(contentRef, emoji, content, setContent)}
+                    onClose={() => setShowEmojiPicker(false)}
+                  />
+                )}
+              </div>
+            </div>
             <Textarea
+              ref={contentRef}
               placeholder="Bagikan informasi, pengalaman, atau pertanyaanmu..."
               value={content}
               onChange={e => setContent(e.target.value)}
@@ -369,6 +469,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
   const [voting, setVoting] = useState(false);
   const [localVoted, setLocalVoted] = useState(false);
   const [localVoteCount, setLocalVoteCount] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const repliesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const replyFileInputRef = useRef<HTMLInputElement>(null);
@@ -689,7 +790,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                 </div>
               )}
 
-              <div className="flex gap-2 items-end">
+              <div className="relative flex gap-2 items-end">
                 {/* Image attach button */}
                 <button
                   type="button"
@@ -707,6 +808,24 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                   className="hidden"
                   onChange={handleReplyImageSelect}
                 />
+
+                {/* Emoji button */}
+                <div className="relative self-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmojiPicker(p => !p)}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors ${showEmojiPicker ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"}`}
+                    title="Emoji"
+                  >
+                    <Smile className="h-4 w-4" />
+                  </button>
+                  {showEmojiPicker && (
+                    <EmojiPicker
+                      onSelect={emoji => insertAtCursor(textareaRef, emoji, replyContent, setReplyContent)}
+                      onClose={() => setShowEmojiPicker(false)}
+                    />
+                  )}
+                </div>
 
                 <Textarea
                   ref={textareaRef}
