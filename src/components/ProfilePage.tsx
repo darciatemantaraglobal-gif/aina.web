@@ -389,8 +389,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
     );
   }
 
-  const topRole = isMasterAdmin ? "Master Admin"
-    : roles.includes("admin") ? "Admin"
+  const topRole = (isMasterAdmin || roles.includes("admin")) ? "Admin"
     : roles.includes("senior_contributor") ? "Senior Contributor"
     : roles.includes("contributor") ? "Contributor"
     : "User";
@@ -450,9 +449,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
               {/* Role badge + equipped badge */}
               <div className="relative z-10 mt-3 flex items-center gap-2">
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  topRole === "Master Admin"
-                    ? "bg-gradient-to-r from-yellow-500/20 to-amber-500/20 text-yellow-300 border border-yellow-500/30"
-                    : topRole === "Admin"
+                  topRole === "Admin"
                     ? "bg-red-500/15 text-red-400 border border-red-500/20"
                     : topRole === "Senior Contributor"
                     ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"

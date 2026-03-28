@@ -1201,12 +1201,9 @@ app.get("/api/me", async (req, res) => {
 
   // Debug line removed — was leaking user email in every request log
 
-  res.json({
-    id: user.id,
-    email: user.email,
-    roles: roleList,
-    isMasterAdmin,
-  });
+  const payload = { id: user.id, email: user.email, roles: roleList };
+  if (isMasterAdmin) payload.isMasterAdmin = true;
+  res.json(payload);
 });
 
 /* ── Whoami (UUID + email for the authenticated user) ─── */
@@ -2980,7 +2977,7 @@ app.post("/api/announcements/:id/dismiss", async (req, res) => {
 /* ── Master Admin: Announcement CRUD ────────────────── */
 app.get("/api/master/announcements", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const supabase = getAdminClient();
   const { data, error } = await supabase
@@ -2993,7 +2990,7 @@ app.get("/api/master/announcements", async (req, res) => {
 
 app.post("/api/master/announcements", writeLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url } = req.body;
   if (!title?.trim() || !message?.trim()) return res.status(400).json({ error: "title and message required" });
@@ -3023,7 +3020,7 @@ app.post("/api/master/announcements", writeLimiter, async (req, res) => {
 
 app.patch("/api/master/announcements/:id", writeLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { id } = req.params;
   const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url } = req.body;
@@ -3049,7 +3046,7 @@ app.patch("/api/master/announcements/:id", writeLimiter, async (req, res) => {
 
 app.delete("/api/master/announcements/:id", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { id } = req.params;
   const supabase = getAdminClient();
@@ -3060,7 +3057,7 @@ app.delete("/api/master/announcements/:id", async (req, res) => {
 // Reset all user views for an announcement so it re-appears for everyone
 app.delete("/api/master/announcements/:id/views", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Master admin only" });
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { id } = req.params;
   const supabase = getAdminClient();
@@ -3115,7 +3112,7 @@ app.get("/api/admin/articles", async (req, res) => {
 
 app.patch("/api/admin/articles/:id/visibility", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mengubah visibilitas artikel" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { id } = req.params;
   const { hidden } = req.body;
@@ -3322,7 +3319,7 @@ app.delete("/api/admin/articles/:id", async (req, res) => {
   const supabase = getAdminClient();
   const { data: art } = await supabase.from("knowledge_base").select("status").eq("id", req.params.id).single();
   if (art?.status === "approved" && !isMasterAdminId(admin.id)) {
-    return res.status(403).json({ error: "Hanya master admin yang bisa menghapus artikel yang sudah disetujui" });
+    return res.status(403).json({ error: "Tidak diizinkan" });
   }
 
   await supabase.from("knowledge_base").delete().eq("id", req.params.id);
@@ -3345,7 +3342,7 @@ app.post("/api/admin/articles/bulk-delete", async (req, res) => {
     const { data: arts } = await supabase.from("knowledge_base").select("id, status").in("id", ids);
     const approved = (arts ?? []).filter(a => a.status === "approved").map(a => a.id);
     if (approved.length > 0) {
-      return res.status(403).json({ error: "Hanya master admin yang bisa menghapus artikel yang sudah disetujui" });
+      return res.status(403).json({ error: "Tidak diizinkan" });
     }
     allowedIds = ids;
   }
@@ -3373,7 +3370,7 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
 /* ── Master Admin: Reformat Single Article ──────────── */
 app.post("/api/admin/articles/:id/reformat", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
@@ -3444,7 +3441,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan).
 /* ── Master Admin: Reformat All Articles ────────────── */
 app.post("/api/admin/articles/reformat-all", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa melakukan reformat massal" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
@@ -3529,7 +3526,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan a
 /* ── Master Admin: Waitlist Pro ──────────────────────── */
 app.get("/api/admin/waitlist", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa melihat waitlist" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const supabase = getAdminClient();
   const { data, error } = await supabase
@@ -3553,7 +3550,7 @@ app.get("/api/admin/waitlist", async (req, res) => {
 /* ── Master Admin: Grant / Revoke Pro ────────────────── */
 app.post("/api/admin/users/:userId/grant-pro", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa memberikan akses Pro" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { userId } = req.params;
   const { plan = "pro_monthly", days = 30 } = req.body;
@@ -3584,7 +3581,7 @@ app.post("/api/admin/users/:userId/grant-pro", async (req, res) => {
 
 app.delete("/api/admin/users/:userId/grant-pro", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mencabut akses Pro" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { userId } = req.params;
   const supabase = getAdminClient();
@@ -3616,7 +3613,7 @@ function toCSV(rows, columns) {
 
 app.get("/api/admin/export/users", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mengekspor data" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const supabase = getAdminClient();
   const { data: profiles } = await supabase
@@ -3645,7 +3642,7 @@ app.get("/api/admin/export/users", async (req, res) => {
 
 app.get("/api/admin/export/articles", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Hanya master admin yang bisa mengekspor data" });
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const supabase = getAdminClient();
   const { data: articles } = await supabase

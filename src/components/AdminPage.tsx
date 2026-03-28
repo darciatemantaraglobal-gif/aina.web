@@ -3555,11 +3555,6 @@ const AdminPage = () => {
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h1 className="font-display text-lg font-bold text-foreground">Admin Panel</h1>
-            {isMasterAdmin && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wide text-amber-400">
-                MASTER ADMIN
-              </span>
-            )}
           </div>
           <p className="text-xs text-muted-foreground">Kelola platform AINA</p>
         </div>
