@@ -4061,62 +4061,50 @@ const AdminPage = () => {
     setDragOverId(null);
   };
 
+  const tabContent = (
+    <>
+      {activeTab === "overview"      && <OverviewTab stats={stats} loading={statsLoading} />}
+      {activeTab === "users"         && isMasterAdmin && <UsersTab />}
+      {activeTab === "monitor"       && isMasterAdmin && <ChatMonitorTab />}
+      {activeTab === "requests"      && <RequestsTab />}
+      {activeTab === "knowledge"     && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
+      {activeTab === "updates"       && <PinnedUpdatesTab />}
+      {activeTab === "reports"       && <ReportsTab />}
+      {activeTab === "waitlist"      && isMasterAdmin && <WaitlistTab />}
+      {activeTab === "security"      && isMasterAdmin && <SecurityLogsTab />}
+      {activeTab === "performance"   && isMasterAdmin && <PerformanceTab />}
+      {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
+      {activeTab === "signals"       && isMasterAdmin && <FeedbackSignalsTab />}
+      {activeTab === "news"          && <NewsManagementTab />}
+      {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
+    </>
+  );
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-purple">
-          <Shield className="h-4 w-4 text-white" />
-        </div>
-        <div className="flex-1">
-          <h1 className="font-display text-lg font-bold text-foreground">Admin Panel</h1>
-          <p className="text-xs text-muted-foreground">Kelola platform AINA</p>
-        </div>
-        {/* Desktop drag hint */}
-        <p className="hidden md:flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
-          <GripVertical className="h-3 w-3" /> drag to reorder
-        </p>
-      </div>
 
-      {/* Tab bar */}
-      <div className="flex overflow-x-auto border-b border-border px-5 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
-        {navItems.map((item, idx) => {
-          const isActive   = activeTab === item.id;
-          const isDragging = draggingId === item.id;
-          const isOver     = dragOverId === item.id && dragOverId !== draggingId;
-
-          return (
-            <div
-              key={item.id}
-              /* Drag — desktop only via draggable attribute */
-              draggable
-              onDragStart={() => onDragStart(idx, item.id)}
-              onDragOver={e => onDragOver(e, idx, item.id)}
-              onDrop={onDrop}
-              onDragEnd={cleanup}
-              className={`
-                relative flex shrink-0 select-none
-                transition-all duration-150
-                ${isDragging ? "opacity-40 scale-95" : "opacity-100"}
-                ${isOver ? "border-l-2 border-l-primary/60" : "border-l-2 border-l-transparent"}
-              `}
-            >
+      {/* ── MOBILE: horizontal scrollable tab bar ─────────── */}
+      <div className="md:hidden flex flex-col h-full overflow-hidden">
+        {/* Mobile header */}
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3 shrink-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-purple">
+            <Shield className="h-4 w-4 text-white" />
+          </div>
+          <div>
+            <h1 className="font-display text-base font-bold text-foreground">Admin Panel</h1>
+          </div>
+        </div>
+        {/* Mobile tab bar */}
+        <div className="flex overflow-x-auto border-b border-border px-4 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] shrink-0">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
               <button
+                key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`
-                  group relative flex shrink-0 items-center gap-1.5 whitespace-nowrap
-                  border-b-2 px-3 py-3 text-xs font-medium transition-colors
-                  ${isActive
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"}
-                `}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-medium transition-colors
+                  ${isActive ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
               >
-                {/* Grip handle — desktop only */}
-                <GripVertical className="
-                  hidden md:block h-3 w-3 shrink-0
-                  text-muted-foreground/20 group-hover:text-muted-foreground/50
-                  cursor-grab active:cursor-grabbing transition-colors
-                " />
                 <item.icon className="h-3.5 w-3.5 shrink-0" />
                 {item.label}
                 {item.badge !== undefined && item.badge > 0 && (
@@ -4125,28 +4113,83 @@ const AdminPage = () => {
                   </span>
                 )}
               </button>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+        {/* Mobile content */}
+        <div className="flex-1 overflow-y-auto p-4">{tabContent}</div>
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-5">
-        {activeTab === "overview"      && <OverviewTab stats={stats} loading={statsLoading} />}
-        {activeTab === "users"         && isMasterAdmin && <UsersTab />}
-        {activeTab === "monitor"       && isMasterAdmin && <ChatMonitorTab />}
-        {activeTab === "requests"      && <RequestsTab />}
-        {activeTab === "knowledge"     && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
-        {activeTab === "updates"       && <PinnedUpdatesTab />}
-        {activeTab === "reports"       && <ReportsTab />}
-        {activeTab === "waitlist"      && isMasterAdmin && <WaitlistTab />}
-        {activeTab === "security"      && isMasterAdmin && <SecurityLogsTab />}
-        {activeTab === "performance"   && isMasterAdmin && <PerformanceTab />}
-        {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
-        {activeTab === "signals"       && isMasterAdmin && <FeedbackSignalsTab />}
-        {activeTab === "news"          && <NewsManagementTab />}
-        {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
+      {/* ── DESKTOP: left sidebar + content ───────────────── */}
+      <div className="hidden md:flex h-full overflow-hidden">
+
+        {/* Sidebar */}
+        <div className="flex w-52 shrink-0 flex-col border-r border-border overflow-hidden">
+          {/* Sidebar header */}
+          <div className="flex items-center gap-2.5 border-b border-border px-4 py-4 shrink-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-purple">
+              <Shield className="h-4 w-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="font-display text-sm font-bold text-foreground leading-tight">Admin Panel</h1>
+              <p className="text-[10px] text-muted-foreground truncate">Kelola platform AINA</p>
+            </div>
+          </div>
+
+          {/* Nav items */}
+          <div className="flex-1 overflow-y-auto py-2 scrollbar-none [scrollbar-width:none]">
+            {navItems.map((item, idx) => {
+              const isActive   = activeTab === item.id;
+              const isDragging = draggingId === item.id;
+              const isOver     = dragOverId === item.id && dragOverId !== draggingId;
+
+              return (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={() => onDragStart(idx, item.id)}
+                  onDragOver={e => onDragOver(e, idx, item.id)}
+                  onDrop={onDrop}
+                  onDragEnd={cleanup}
+                  className={`mx-2 my-0.5 rounded-lg transition-all duration-150 select-none
+                    ${isDragging ? "opacity-40 scale-95" : "opacity-100"}
+                    ${isOver ? "border-t-2 border-t-primary/60" : "border-t-2 border-t-transparent"}
+                  `}
+                >
+                  <button
+                    onClick={() => setActiveTab(item.id)}
+                    className={`group w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors text-left
+                      ${isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"}
+                    `}
+                  >
+                    <GripVertical className="shrink-0 h-3 w-3 text-muted-foreground/20 group-hover:text-muted-foreground/50 cursor-grab active:cursor-grabbing transition-colors" />
+                    <item.icon className={`shrink-0 h-3.5 w-3.5 ${isActive ? "text-primary" : ""}`} />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="shrink-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Sidebar footer — drag hint */}
+          <div className="border-t border-border px-4 py-2.5 shrink-0">
+            <p className="flex items-center gap-1 text-[10px] text-muted-foreground/40 select-none">
+              <GripVertical className="h-3 w-3" /> drag to reorder
+            </p>
+          </div>
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-y-auto p-5">{tabContent}</div>
       </div>
+
     </div>
   );
 };
