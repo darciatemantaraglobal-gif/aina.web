@@ -8,7 +8,7 @@ import {
   ArrowLeft, Clock, FileText, CreditCard, Building2, Stamp,
   GraduationCap, Sparkles, Brain, Pencil, AlertTriangle, Loader2,
   Target, ClipboardList, BookOpen, RefreshCw, Bell, Mail, Send,
-  CheckCheck, SkipForward, X, Save,
+  CheckCheck, SkipForward, X, Save, StickyNote, ListTodo, ListChecks,
 } from "lucide-react";
 
 /* ════════════════════════════════════════════════════════
@@ -1341,11 +1341,389 @@ function ReminderTab() {
 }
 
 /* ════════════════════════════════════════════════════════
+   NOTES TAB
+   ════════════════════════════════════════════════════════ */
+type NoteFormat = "note" | "todo" | "checklist";
+interface NoteItem { id: string; text: string; checked: boolean; }
+interface Note {
+  id: string;
+  title: string;
+  format: NoteFormat;
+  content: string | null;
+  items: NoteItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+const NOTE_FORMATS: { value: NoteFormat; label: string; icon: React.ElementType; desc: string; color: string }[] = [
+  { value: "note",      label: "Catatan",   icon: StickyNote,  desc: "Teks bebas",          color: "text-amber-400  bg-amber-500/10  border-amber-500/20" },
+  { value: "todo",      label: "To-Do",     icon: ListTodo,    desc: "Daftar tugas",         color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+  { value: "checklist", label: "Checklist", icon: ListChecks,  desc: "Langkah berurutan",   color: "text-blue-400   bg-blue-500/10   border-blue-500/20" },
+];
+
+function fmtRelTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "baru saja";
+  if (m < 60) return `${m} menit lalu`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} jam lalu`;
+  const d = Math.floor(h / 24);
+  return `${d} hari lalu`;
+}
+
+function makeItemId() { return Math.random().toString(36).slice(2, 10); }
+
+function NoteEditor({ note, onBack, onSaved, onDeleted }: {
+  note: Note;
+  onBack: () => void;
+  onSaved: (n: Note) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [title, setTitle]     = useState(note.title);
+  const [content, setContent] = useState(note.content ?? "");
+  const [items, setItems]     = useState<NoteItem[]>(note.items ?? []);
+  const [newItemText, setNewItemText] = useState("");
+  const [saving, setSaving]   = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const dirty = title !== note.title || content !== (note.content ?? "") || JSON.stringify(items) !== JSON.stringify(note.items ?? []);
+
+  const fmt = NOTE_FORMATS.find(f => f.value === note.format)!;
+  const FmtIcon = fmt.icon;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const body: Record<string, unknown> = { title };
+      if (note.format === "note") body.content = content || null;
+      else body.items = items;
+      const { note: updated } = await apiCall("PATCH", `/productivity/notes/${note.id}`, body);
+      onSaved(updated);
+      toast.success("Disimpan");
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(false);
+  };
+
+  const del = async () => {
+    if (!confirm("Hapus catatan ini?")) return;
+    setDeleting(true);
+    try {
+      await apiCall("DELETE", `/productivity/notes/${note.id}`);
+      onDeleted(note.id);
+      toast.success("Catatan dihapus");
+    } catch (e: any) { toast.error(e.message); }
+    setDeleting(false);
+  };
+
+  const addItem = () => {
+    if (!newItemText.trim()) return;
+    setItems(prev => [...prev, { id: makeItemId(), text: newItemText.trim(), checked: false }]);
+    setNewItemText("");
+  };
+
+  const toggleItem = (id: string) =>
+    setItems(prev => prev.map(it => it.id === id ? { ...it, checked: !it.checked } : it));
+
+  const removeItem = (id: string) =>
+    setItems(prev => prev.filter(it => it.id !== id));
+
+  const updateItemText = (id: string, text: string) =>
+    setItems(prev => prev.map(it => it.id === id ? { ...it, text } : it));
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Topbar */}
+      <div className="flex items-center gap-2 mb-4 shrink-0">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="h-3.5 w-3.5" /> Kembali
+        </button>
+        <span className="ml-auto flex items-center gap-1.5">
+          <span className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${fmt.color}`}>
+            <FmtIcon className="h-3 w-3" /> {fmt.label}
+          </span>
+        </span>
+      </div>
+
+      {/* Title */}
+      <input
+        className="w-full bg-transparent text-lg font-bold text-foreground outline-none placeholder:text-muted-foreground/40 mb-4 shrink-0"
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        placeholder="Judul catatan..."
+        maxLength={200}
+      />
+
+      {/* Content area */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {note.format === "note" && (
+          <textarea
+            className="w-full h-full min-h-[200px] resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40 leading-relaxed"
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            placeholder="Tulis catatanmu di sini..."
+          />
+        )}
+
+        {(note.format === "todo" || note.format === "checklist") && (
+          <div className="space-y-1.5">
+            {items.map((it, idx) => (
+              <div key={it.id} className="group flex items-start gap-2">
+                {note.format === "checklist" && (
+                  <span className="shrink-0 mt-0.5 w-5 text-center text-[11px] font-bold text-muted-foreground/50">{idx + 1}.</span>
+                )}
+                <button
+                  onClick={() => toggleItem(it.id)}
+                  className={`shrink-0 mt-0.5 transition-colors ${it.checked ? "text-primary" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
+                >
+                  {it.checked ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                </button>
+                <input
+                  className={`flex-1 bg-transparent text-sm outline-none transition-colors ${it.checked ? "line-through text-muted-foreground/40" : "text-foreground"}`}
+                  value={it.text}
+                  onChange={e => updateItemText(it.id, e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); addItem(); }
+                  }}
+                />
+                <button
+                  onClick={() => removeItem(it.id)}
+                  className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-red-400 transition-all"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+            {/* Add item input */}
+            <div className="flex items-center gap-2 pt-1 border-t border-border/40 mt-2">
+              {note.format === "checklist" && (
+                <span className="shrink-0 w-5 text-center text-[11px] text-muted-foreground/30">{items.length + 1}.</span>
+              )}
+              <Plus className="shrink-0 h-3.5 w-3.5 text-muted-foreground/40" />
+              <input
+                className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/30"
+                value={newItemText}
+                onChange={e => setNewItemText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
+                placeholder={note.format === "todo" ? "Tambah tugas..." : "Tambah langkah..."}
+              />
+              {newItemText.trim() && (
+                <button onClick={addItem} className="shrink-0 text-xs text-primary hover:opacity-80">
+                  + Tambah
+                </button>
+              )}
+            </div>
+            {/* Progress for todo */}
+            {note.format === "todo" && items.length > 0 && (
+              <div className="flex items-center gap-2 pt-3 border-t border-border/30 mt-3">
+                <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${Math.round(items.filter(i => i.checked).length / items.length * 100)}%` }}
+                  />
+                </div>
+                <span className="text-[11px] text-muted-foreground shrink-0">
+                  {items.filter(i => i.checked).length}/{items.length}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer actions */}
+      <div className="shrink-0 flex items-center gap-2 pt-4 border-t border-border mt-4">
+        <button
+          onClick={del}
+          disabled={deleting}
+          className="text-xs text-red-400/70 hover:text-red-400 transition-colors flex items-center gap-1"
+        >
+          <Trash2 className="h-3.5 w-3.5" /> Hapus
+        </button>
+        <Button
+          onClick={save}
+          disabled={saving || !dirty}
+          size="sm"
+          className="ml-auto text-xs bg-primary text-primary-foreground"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {saving ? "Menyimpan..." : "Simpan"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function NotesTab() {
+  const [notes, setNotes]       = useState<Note[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [openNote, setOpenNote] = useState<Note | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newFormat, setNewFormat] = useState<NoteFormat>("note");
+  const [newTitle, setNewTitle]  = useState("");
+  const [saving, setSaving]      = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { notes: data } = await apiCall("GET", "/productivity/notes");
+      setNotes(data);
+    } catch { /* silent */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const createNote = async () => {
+    setSaving(true);
+    try {
+      const { note } = await apiCall("POST", "/productivity/notes", {
+        title: newTitle.trim() || "Catatan Baru",
+        format: newFormat,
+        content: null,
+        items: [],
+      });
+      setNotes(prev => [note, ...prev]);
+      setNewTitle("");
+      setCreating(false);
+      setOpenNote(note);
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(false);
+  };
+
+  const handleSaved = (updated: Note) => {
+    setNotes(prev => prev.map(n => n.id === updated.id ? updated : n));
+    setOpenNote(updated);
+  };
+
+  const handleDeleted = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    setOpenNote(null);
+  };
+
+  if (openNote) {
+    return (
+      <NoteEditor
+        note={openNote}
+        onBack={() => setOpenNote(null)}
+        onSaved={handleSaved}
+        onDeleted={handleDeleted}
+      />
+    );
+  }
+
+  const previewNote = (n: Note) => {
+    if (n.format === "note") return n.content?.slice(0, 80) || "";
+    const items = (n.items ?? []) as NoteItem[];
+    const done = items.filter(i => i.checked).length;
+    if (items.length === 0) return "Belum ada item";
+    return `${done}/${items.length} selesai`;
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground">
+            {notes.length === 0 ? "Belum ada catatan" : `${notes.length} catatan`}
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setCreating(true)} className="text-xs gap-1.5 bg-primary text-primary-foreground">
+          <Plus className="h-3.5 w-3.5" /> Buat Catatan
+        </Button>
+      </div>
+
+      {/* Create new note panel */}
+      {creating && (
+        <div className="rounded-2xl border border-primary/30 bg-card p-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground">Buat Catatan Baru</p>
+          {/* Format picker */}
+          <div className="grid grid-cols-3 gap-2">
+            {NOTE_FORMATS.map(f => {
+              const FIcon = f.icon;
+              return (
+                <button
+                  key={f.value}
+                  onClick={() => setNewFormat(f.value)}
+                  className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 text-xs font-medium transition-all ${
+                    newFormat === f.value
+                      ? `${f.color} ring-1 ring-current/30`
+                      : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  <FIcon className="h-4 w-4" />
+                  <span>{f.label}</span>
+                  <span className="text-[10px] font-normal opacity-70">{f.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Title input */}
+          <Input
+            placeholder="Judul catatan (opsional)..."
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") createNote(); }}
+            className="bg-secondary text-sm"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="flex-1 text-xs" onClick={() => { setCreating(false); setNewTitle(""); }}>
+              Batal
+            </Button>
+            <Button size="sm" className="flex-1 text-xs bg-primary text-primary-foreground" onClick={createNote} disabled={saving}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Buat & Edit"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Notes list */}
+      {loading ? (
+        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}</div>
+      ) : notes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+          <StickyNote className="h-10 w-10 text-muted-foreground/20" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Belum ada catatan</p>
+            <p className="text-xs text-muted-foreground mt-1">Buat catatan pertamamu — bisa to-do, checklist, atau teks bebas</p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {notes.map(n => {
+            const fmt = NOTE_FORMATS.find(f => f.value === n.format)!;
+            const FmtIcon = fmt.icon;
+            const prev = previewNote(n);
+            return (
+              <button
+                key={n.id}
+                onClick={() => setOpenNote(n)}
+                className="w-full text-left rounded-2xl border border-border bg-card px-4 py-3.5 hover:border-primary/40 hover:bg-card/80 transition-all space-y-1.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm text-foreground truncate">{n.title}</span>
+                  <span className={`shrink-0 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${fmt.color}`}>
+                    <FmtIcon className="h-2.5 w-2.5" /> {fmt.label}
+                  </span>
+                </div>
+                {prev && <p className="text-xs text-muted-foreground truncate">{prev}</p>}
+                <p className="text-[11px] text-muted-foreground/50">{fmtRelTime(n.updated_at)}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════
    MAIN COMPONENT
    ════════════════════════════════════════════════════════ */
 const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [userId, setUserId] = useState(userIdProp ?? "");
-  const [tab, setTab] = useState<"fokus" | "dokumen" | "prosedur" | "pengingat">("fokus");
+  const [tab, setTab] = useState<"fokus" | "dokumen" | "prosedur" | "catatan" | "pengingat">("fokus");
 
   useEffect(() => {
     if (userIdProp) { setUserId(userIdProp); return; }
@@ -1358,6 +1736,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
     { id: "fokus"     as const, label: "Fokus Harian",    icon: Target },
     { id: "dokumen"   as const, label: "Dokumen & Admin", icon: ClipboardList },
     { id: "prosedur"  as const, label: "Prosedur",        icon: BookOpen },
+    { id: "catatan"   as const, label: "Catatan",         icon: StickyNote },
     { id: "pengingat" as const, label: "Pengingat",       icon: Bell },
   ];
 
@@ -1395,6 +1774,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
         {tab === "fokus"     && <FocusTab />}
         {tab === "dokumen"   && <TrackerTab />}
         {tab === "prosedur"  && userId && <ProcedureTab userId={userId} />}
+        {tab === "catatan"   && <NotesTab />}
         {tab === "pengingat" && <ReminderTab />}
       </div>
     </div>

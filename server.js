@@ -274,6 +274,36 @@ async function initProcedures() {
 }
 initProcedures();
 
+async function initUserNotes() {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return;
+  let client;
+  try {
+    const { Client } = await import("pg");
+    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_notes (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     UUID NOT NULL,
+        title       TEXT NOT NULL DEFAULT 'Catatan Baru',
+        format      TEXT NOT NULL DEFAULT 'note' CHECK (format IN ('todo', 'checklist', 'note')),
+        content     TEXT,
+        items       JSONB DEFAULT '[]'::jsonb,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_notes_user ON user_notes(user_id, created_at DESC);
+    `);
+    console.log("User notes: table ready");
+  } catch (e) {
+    console.warn("User notes init warning:", e.message);
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+}
+initUserNotes();
+
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
