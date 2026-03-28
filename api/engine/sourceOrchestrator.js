@@ -292,6 +292,7 @@ export function buildSourceResult({
   const confidence = classifyConfidenceLabel({
     hasPinned:      pinnedUpdates.length > 0,
     hasKB:          articles.length > 0,
+    kbStrength,
     hasPerplexity:  !!perplexityResult,
     hasWiki:        !!wikiResult,
     hasDDG:         !!ddgResult,
@@ -339,22 +340,23 @@ export function buildSourceResult({
 /**
  * Map source usage to one of the 4 transparency confidence labels.
  *
- * "verified"        → pinned admin update OR KB article (internal, reviewed source)
- * "community_based" → KB article contributed by community (no peer review guarantee)
+ * "verified"        → pinned admin update OR KB article with STRONG match
+ * "community_based" → KB article fetched but only WEAK match (vaguely relevant)
  * "web_result"      → Perplexity / Wikipedia / DDG / Exchange API / Dorar
  * "fallback"        → no context; model knowledge only
  *
- * Note: We treat ALL KB articles as "verified" because they go through contributor
- * review before publication. Adjust to "community_based" if you add unreviewed
- * article types in future.
+ * kbStrength matters: a "weak" KB match means the model mostly answered from
+ * its own knowledge — labelling that as "verified" is misleading.
  */
 function classifyConfidenceLabel({
-  hasPinned, hasKB, hasPerplexity, hasWiki, hasDDG, hasExchange, hasDorar, primarySource,
+  hasPinned, hasKB, kbStrength, hasPerplexity, hasWiki, hasDDG, hasExchange, hasDorar, primarySource,
 }) {
-  if (hasPinned || hasKB)            return "verified";
-  if (hasPerplexity || hasExchange)  return "web_result";
-  if (hasDorar)                      return "web_result";
-  if (hasWiki || hasDDG)             return "web_result";
+  if (hasPinned)                          return "verified";
+  if (hasKB && kbStrength === "strong")   return "verified";
+  if (hasKB && kbStrength === "weak")     return "community_based";
+  if (hasPerplexity || hasExchange)       return "web_result";
+  if (hasDorar)                           return "web_result";
+  if (hasWiki || hasDDG)                  return "web_result";
   return "fallback";
 }
 
