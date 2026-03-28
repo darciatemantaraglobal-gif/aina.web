@@ -177,8 +177,8 @@ const AnnouncementPopup = () => {
               <img
                 src={current.image_url}
                 alt={current.title}
-                className="w-full object-cover"
-                style={{ maxHeight: "65vw", minHeight: "180px" }}
+                className="w-full block"
+                style={{ maxHeight: "80vh", objectFit: "contain", background: "transparent" }}
               />
             ) : (
               <div className="flex items-center justify-center bg-gradient-to-br from-primary/20 to-violet-500/10 py-10">

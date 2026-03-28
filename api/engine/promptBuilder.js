@@ -41,7 +41,9 @@ export function buildKnowledgeContext(articles) {
       ? `Referensi Internal [${a.category}]`
       : `${a.title} [${a.category}]`;
 
-    return `### Artikel ${i + 1}: ${displayTitle}${typeHint}\n${cleanedContent}`;
+    const mapsLine = a.maps_url ? `\n📍 Lokasi: ${a.maps_url}` : "";
+
+    return `### Artikel ${i + 1}: ${displayTitle}${typeHint}\n${cleanedContent}${mapsLine}`;
   }).join("\n\n");
 
   // Detect potentially conflicting articles (2+ from same category)

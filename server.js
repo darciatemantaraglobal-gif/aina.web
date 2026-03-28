@@ -338,6 +338,7 @@ async function verifyMasterAdmin(authHeader) {
 /* ── Article type column detection (cached) ──────────── */
 let _hasArticleTypeCol = null; // null=unknown, true/false=detected
 let _hasKeywordsCol = null;
+let _hasMapsUrlCol = null;
 
 async function detectArticleTypeCol(supabase) {
   if (_hasArticleTypeCol !== null) return _hasArticleTypeCol;
@@ -362,19 +363,34 @@ async function detectKeywordsCol(supabase) {
   return _hasKeywordsCol;
 }
 
+async function detectMapsUrlCol(supabase) {
+  if (_hasMapsUrlCol !== null) return _hasMapsUrlCol;
+  const { error } = await supabase
+    .from("knowledge_base")
+    .select("maps_url")
+    .limit(1);
+  _hasMapsUrlCol = !error;
+  if (!_hasMapsUrlCol) {
+    console.warn("[schema] 'maps_url' column not found — run: ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS maps_url TEXT;");
+  }
+  return _hasMapsUrlCol;
+}
+
 /* ── Fetch relevant knowledge base articles ──────────── */
 async function fetchRelevantArticles(userQuestion) {
   const supabase = getAdminClient();
   if (!supabase) return [];
 
-  const [hasTypeCol, hasKwCol] = await Promise.all([
+  const [hasTypeCol, hasKwCol, hasMapsUrlCol] = await Promise.all([
     detectArticleTypeCol(supabase),
     detectKeywordsCol(supabase),
+    detectMapsUrlCol(supabase),
   ]);
   const selectCols = [
     "title, content, category, hidden",
-    hasTypeCol ? ", article_type" : "",
-    hasKwCol   ? ", keywords"     : "",
+    hasTypeCol    ? ", article_type" : "",
+    hasKwCol      ? ", keywords"     : "",
+    hasMapsUrlCol ? ", maps_url"     : "",
   ].join("");
 
   const keywords = userQuestion
@@ -3305,16 +3321,21 @@ app.post("/api/admin/articles", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category } = req.body;
+  const { title, content, category, maps_url } = req.body;
   if (!title || !content || !category) return res.status(400).json({ error: "title, content, category required" });
 
-  const { error } = await supabase.from("knowledge_base").insert({
+  const insertPayload = {
     author_id: admin.id,
     title,
     content,
     category,
     status: "approved",
-  });
+  };
+  if (typeof maps_url === "string" && maps_url.trim()) {
+    insertPayload.maps_url = maps_url.trim().slice(0, 1000);
+  }
+
+  const { error } = await supabase.from("knowledge_base").insert(insertPayload);
 
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });
@@ -3367,9 +3388,10 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category, keywords } = req.body;
+  const { title, content, category, keywords, maps_url } = req.body;
   const updatePayload = { title, content, category };
   if (typeof keywords === "string") updatePayload.keywords = keywords.trim().slice(0, 500);
+  if (typeof maps_url === "string") updatePayload.maps_url = maps_url.trim().slice(0, 1000) || null;
   const { error } = await supabase.from("knowledge_base").update(updatePayload).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });

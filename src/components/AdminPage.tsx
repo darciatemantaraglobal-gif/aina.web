@@ -38,7 +38,7 @@ interface Article {
   id: string; author_id: string; title: string; content: string;
   category: string; status: string; created_at: string;
   author_name: string | null; author_email: string | null;
-  hidden: boolean;
+  hidden: boolean; maps_url?: string | null;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -994,22 +994,28 @@ function ArticleFormDialog({
   open, onClose, onSave, initial,
 }: {
   open: boolean; onClose: () => void;
-  onSave: (data: { title: string; content: string; category: string }) => Promise<void>;
-  initial?: { title: string; content: string; category: string };
+  onSave: (data: { title: string; content: string; category: string; maps_url?: string }) => Promise<void>;
+  initial?: { title: string; content: string; category: string; maps_url?: string };
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [content, setContent] = useState(initial?.content ?? "");
   const [category, setCategory] = useState(initial?.category ?? "");
+  const [mapsUrl, setMapsUrl] = useState(initial?.maps_url ?? "");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) { setTitle(initial?.title ?? ""); setContent(initial?.content ?? ""); setCategory(initial?.category ?? ""); }
+    if (open) {
+      setTitle(initial?.title ?? "");
+      setContent(initial?.content ?? "");
+      setCategory(initial?.category ?? "");
+      setMapsUrl(initial?.maps_url ?? "");
+    }
   }, [open, initial]);
 
   const handleSave = async () => {
     if (!title.trim() || !content.trim() || !category) { toast.error("Semua field harus diisi"); return; }
     setSaving(true);
-    await onSave({ title: title.trim(), content: content.trim(), category });
+    await onSave({ title: title.trim(), content: content.trim(), category, maps_url: mapsUrl.trim() || undefined });
     setSaving(false);
   };
 
@@ -1036,6 +1042,20 @@ function ArticleFormDialog({
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Konten</label>
             <Textarea placeholder="Tulis isi artikel..." value={content} onChange={e => setContent(e.target.value)} className="min-h-[180px] bg-secondary resize-none" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              🗺️ Link Google Maps <span className="text-[11px] font-normal text-muted-foreground/60">(opsional)</span>
+            </label>
+            <Input
+              placeholder="https://maps.google.com/?q=..."
+              value={mapsUrl}
+              onChange={e => setMapsUrl(e.target.value)}
+              className="bg-secondary text-xs"
+            />
+            <p className="text-[11px] text-muted-foreground/60">
+              Tambahkan link lokasi jika artikel ini terkait tempat tertentu (KBRI, kampus, masjid, dll). AINA akan otomatis menyertakan peta saat menjawab pertanyaan berbasis artikel ini.
+            </p>
           </div>
           <div className="flex gap-2 pt-1">
             <Button variant="outline" onClick={onClose} className="flex-1">Batal</Button>
@@ -1139,7 +1159,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     setBulkLoading(false);
   };
 
-  const handleAdd = async (data: { title: string; content: string; category: string }) => {
+  const handleAdd = async (data: { title: string; content: string; category: string; maps_url?: string }) => {
     try {
       await adminFetch("/api/admin/articles", { method: "POST", body: JSON.stringify(data) });
       toast.success("Artikel ditambahkan!");
@@ -1148,7 +1168,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const handleEdit = async (data: { title: string; content: string; category: string }) => {
+  const handleEdit = async (data: { title: string; content: string; category: string; maps_url?: string }) => {
     if (!editArticle) return;
     try {
       await adminFetch(`/api/admin/articles/${editArticle.id}`, { method: "PATCH", body: JSON.stringify(data) });
@@ -1483,7 +1503,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       <ArticleFormDialog open={addOpen} onClose={() => setAddOpen(false)} onSave={handleAdd} />
       <ArticleFormDialog
         open={!!editArticle} onClose={() => setEditArticle(null)} onSave={handleEdit}
-        initial={editArticle ? { title: editArticle.title, content: editArticle.content, category: editArticle.category } : undefined}
+        initial={editArticle ? { title: editArticle.title, content: editArticle.content, category: editArticle.category, maps_url: editArticle.maps_url ?? "" } : undefined}
       />
     </div>
   );
