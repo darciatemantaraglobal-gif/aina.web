@@ -6559,6 +6559,7 @@ async function checkRequiredTables() {
     "eval_benchmarks", "eval_results", "eval_edge_cases",
     "system_announcements", "user_announcement_views",
     "masisir_news",
+    "daily_focus_items", "admin_tracker_items", "reminder_logs",
   ];
 
   const missing = [];
