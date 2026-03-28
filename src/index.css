@@ -80,7 +80,8 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-foreground antialiased;
+    font-family: "Sk-Modernist", Inter, sans-serif;
   }
 
   /* Prevent iOS Safari auto-zoom on input focus.
