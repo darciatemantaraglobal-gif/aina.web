@@ -16,6 +16,7 @@ import {
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
+  GripVertical,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -3711,13 +3712,22 @@ function NewsManagementTab() {
 /* ─── Main AdminPage ─────────────────────────────────── */
 type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news";
 
+const TAB_ORDER_KEY = "aina_admin_tab_order";
+
 const AdminPage = () => {
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin]           = useState(false);
   const [isMasterAdmin, setIsMasterAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [loading, setLoading]           = useState(true);
+  const [activeTab, setActiveTab]       = useState<Tab>("overview");
   const [stats, setStats] = useState<Stats>({ totalUsers: 0, totalChats: 0, pendingRequests: 0, pendingArticles: 0, approvedArticles: 0, totalArticles: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
+
+  // ── Drag-and-drop state (desktop only) ────────────────
+  const [tabOrder, setTabOrder]   = useState<Tab[]>([]);
+  const dragIdx = useRef<number | null>(null);
+  const overIdx = useRef<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<Tab | null>(null);
+  const [draggingId, setDraggingId] = useState<Tab | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -3731,7 +3741,6 @@ const AdminPage = () => {
       if (admin) {
         try {
           const me = await adminFetch("/api/me");
-          console.log("[AdminPage] /api/me response:", me);
           setIsMasterAdmin(me.isMasterAdmin ?? false);
           const data = await adminFetch("/api/admin/stats");
           setStats(data);
@@ -3753,65 +3762,167 @@ const AdminPage = () => {
     return <NoAdminScreen onClaimed={() => window.location.reload()} />;
   }
 
-  const navItems: Array<{ id: Tab; label: string; icon: React.ElementType; badge?: number }> = [
-    { id: "overview", label: "Overview", icon: LayoutDashboard },
-    ...(isMasterAdmin ? [{ id: "users" as Tab, label: "Users", icon: Users, badge: stats.totalUsers || undefined }] : []),
-    ...(isMasterAdmin ? [{ id: "monitor" as Tab, label: "Monitor", icon: Eye }] : []),
-    { id: "requests", label: "Requests", icon: UserCheck, badge: stats.pendingRequests || undefined },
-    { id: "knowledge", label: "Knowledge Base", icon: FileText, badge: stats.pendingArticles || undefined },
-    { id: "updates", label: "Breaking Updates", icon: Zap },
-    { id: "news", label: "Berita", icon: Newspaper },
-    { id: "reports", label: "Laporan", icon: Flag },
-    ...(isMasterAdmin ? [{ id: "waitlist" as Tab, label: "Waitlist Pro", icon: Crown }] : []),
-    ...(isMasterAdmin ? [{ id: "security" as Tab, label: "Security", icon: ShieldAlert }] : []),
-    ...(isMasterAdmin ? [{ id: "performance" as Tab, label: "Performa AI", icon: TrendingUp }] : []),
-    ...(isMasterAdmin ? [{ id: "announcements" as Tab, label: "Pengumuman", icon: Megaphone }] : []),
-    ...(isMasterAdmin ? [{ id: "signals" as Tab, label: "Sinyal User", icon: ThumbsUp }] : []),
+  // Full ordered list (all possible tabs in default order)
+  const allNavItems: Array<{ id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }> = [
+    { id: "overview",      label: "Overview",        icon: LayoutDashboard },
+    { id: "users",         label: "Users",           icon: Users,       masterOnly: true, badge: stats.totalUsers || undefined },
+    { id: "monitor",       label: "Monitor",         icon: Eye,         masterOnly: true },
+    { id: "requests",      label: "Requests",        icon: UserCheck,   badge: stats.pendingRequests || undefined },
+    { id: "knowledge",     label: "Knowledge Base",  icon: FileText,    badge: stats.pendingArticles || undefined },
+    { id: "updates",       label: "Breaking Updates",icon: Zap },
+    { id: "news",          label: "Berita",          icon: Newspaper },
+    { id: "reports",       label: "Laporan",         icon: Flag },
+    { id: "waitlist",      label: "Waitlist Pro",    icon: Crown,       masterOnly: true },
+    { id: "security",      label: "Security",        icon: ShieldAlert, masterOnly: true },
+    { id: "performance",   label: "Performa AI",     icon: TrendingUp,  masterOnly: true },
+    { id: "announcements", label: "Pengumuman",      icon: Megaphone,   masterOnly: true },
+    { id: "signals",       label: "Sinyal User",     icon: ThumbsUp,    masterOnly: true },
   ];
+
+  // Visible tabs for this admin level
+  const visibleItems = allNavItems.filter(t => !t.masterOnly || isMasterAdmin);
+  const visibleIds   = visibleItems.map(t => t.id);
+
+  // Resolve order: saved order (filtered to visible) + any new tabs appended
+  const resolveOrder = (): Tab[] => {
+    try {
+      const saved: Tab[] = JSON.parse(localStorage.getItem(TAB_ORDER_KEY) || "[]");
+      const valid = saved.filter(id => visibleIds.includes(id));
+      const missing = visibleIds.filter(id => !valid.includes(id));
+      return [...valid, ...missing];
+    } catch {
+      return visibleIds;
+    }
+  };
+
+  // Initialize order once (after isMasterAdmin is known)
+  const orderedIds = tabOrder.length > 0 ? tabOrder : resolveOrder();
+
+  // Map id → nav item (for badge/label/icon access)
+  const navMap = Object.fromEntries(allNavItems.map(t => [t.id, t]));
+
+  // Ordered visible nav items (with live badge values)
+  const navItems = orderedIds
+    .filter(id => visibleIds.includes(id))
+    .map(id => ({ ...navMap[id], badge: navMap[id]?.badge }));
+
+  // ── Drag handlers ─────────────────────────────────────
+  const onDragStart = (idx: number, id: Tab) => {
+    dragIdx.current = idx;
+    setDraggingId(id);
+  };
+
+  const onDragOver = (e: React.DragEvent, idx: number, id: Tab) => {
+    e.preventDefault();
+    overIdx.current = idx;
+    setDragOverId(id);
+  };
+
+  const onDrop = () => {
+    const from = dragIdx.current;
+    const to   = overIdx.current;
+    if (from === null || to === null || from === to) {
+      cleanup(); return;
+    }
+    const next = [...orderedIds];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setTabOrder(next);
+    try { localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(next)); } catch {}
+    cleanup();
+  };
+
+  const cleanup = () => {
+    dragIdx.current = null;
+    overIdx.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Header */}
       <div className="flex items-center gap-3 border-b border-border px-5 py-4">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-purple">
           <Shield className="h-4 w-4 text-white" />
         </div>
         <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h1 className="font-display text-lg font-bold text-foreground">Admin Panel</h1>
-          </div>
+          <h1 className="font-display text-lg font-bold text-foreground">Admin Panel</h1>
           <p className="text-xs text-muted-foreground">Kelola platform AINA</p>
         </div>
+        {/* Desktop drag hint */}
+        <p className="hidden md:flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
+          <GripVertical className="h-3 w-3" /> drag to reorder
+        </p>
       </div>
 
+      {/* Tab bar */}
       <div className="flex overflow-x-auto border-b border-border px-5 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
-        {navItems.map(item => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)}
-            className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-medium transition-colors ${activeTab === item.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            <item.icon className="h-3.5 w-3.5" />
-            {item.label}
-            {item.badge !== undefined && item.badge > 0 && (
-              <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {item.badge}
-              </span>
-            )}
-          </button>
-        ))}
+        {navItems.map((item, idx) => {
+          const isActive   = activeTab === item.id;
+          const isDragging = draggingId === item.id;
+          const isOver     = dragOverId === item.id && dragOverId !== draggingId;
+
+          return (
+            <div
+              key={item.id}
+              /* Drag — desktop only via draggable attribute */
+              draggable
+              onDragStart={() => onDragStart(idx, item.id)}
+              onDragOver={e => onDragOver(e, idx, item.id)}
+              onDrop={onDrop}
+              onDragEnd={cleanup}
+              className={`
+                relative flex shrink-0 select-none
+                transition-all duration-150
+                ${isDragging ? "opacity-40 scale-95" : "opacity-100"}
+                ${isOver ? "border-l-2 border-l-primary/60" : "border-l-2 border-l-transparent"}
+              `}
+            >
+              <button
+                onClick={() => setActiveTab(item.id)}
+                className={`
+                  group relative flex shrink-0 items-center gap-1.5 whitespace-nowrap
+                  border-b-2 px-3 py-3 text-xs font-medium transition-colors
+                  ${isActive
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"}
+                `}
+              >
+                {/* Grip handle — desktop only */}
+                <GripVertical className="
+                  hidden md:block h-3 w-3 shrink-0
+                  text-muted-foreground/20 group-hover:text-muted-foreground/50
+                  cursor-grab active:cursor-grabbing transition-colors
+                " />
+                <item.icon className="h-3.5 w-3.5 shrink-0" />
+                {item.label}
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            </div>
+          );
+        })}
       </div>
 
+      {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-5">
-        {activeTab === "overview" && <OverviewTab stats={stats} loading={statsLoading} />}
-        {activeTab === "users" && isMasterAdmin && <UsersTab />}
-        {activeTab === "monitor" && isMasterAdmin && <ChatMonitorTab />}
-        {activeTab === "requests" && <RequestsTab />}
-        {activeTab === "knowledge" && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
-        {activeTab === "updates" && <PinnedUpdatesTab />}
-        {activeTab === "reports" && <ReportsTab />}
-        {activeTab === "waitlist" && isMasterAdmin && <WaitlistTab />}
-        {activeTab === "security" && isMasterAdmin && <SecurityLogsTab />}
-        {activeTab === "performance" && isMasterAdmin && <PerformanceTab />}
+        {activeTab === "overview"      && <OverviewTab stats={stats} loading={statsLoading} />}
+        {activeTab === "users"         && isMasterAdmin && <UsersTab />}
+        {activeTab === "monitor"       && isMasterAdmin && <ChatMonitorTab />}
+        {activeTab === "requests"      && <RequestsTab />}
+        {activeTab === "knowledge"     && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
+        {activeTab === "updates"       && <PinnedUpdatesTab />}
+        {activeTab === "reports"       && <ReportsTab />}
+        {activeTab === "waitlist"      && isMasterAdmin && <WaitlistTab />}
+        {activeTab === "security"      && isMasterAdmin && <SecurityLogsTab />}
+        {activeTab === "performance"   && isMasterAdmin && <PerformanceTab />}
         {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
-        {activeTab === "signals" && isMasterAdmin && <FeedbackSignalsTab />}
-        {activeTab === "news" && <NewsManagementTab />}
+        {activeTab === "signals"       && isMasterAdmin && <FeedbackSignalsTab />}
+        {activeTab === "news"          && <NewsManagementTab />}
       </div>
     </div>
   );
