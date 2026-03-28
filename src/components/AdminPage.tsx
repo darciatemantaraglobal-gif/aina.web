@@ -39,7 +39,7 @@ interface Article {
   id: string; author_id: string; title: string; content: string;
   category: string; status: string; created_at: string;
   author_name: string | null; author_email: string | null;
-  hidden: boolean; maps_url?: string | null;
+  hidden: boolean; maps_url?: string | null; contact_number?: string | null;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -995,13 +995,14 @@ function ArticleFormDialog({
   open, onClose, onSave, initial,
 }: {
   open: boolean; onClose: () => void;
-  onSave: (data: { title: string; content: string; category: string; maps_url?: string }) => Promise<void>;
-  initial?: { title: string; content: string; category: string; maps_url?: string };
+  onSave: (data: { title: string; content: string; category: string; maps_url?: string; contact_number?: string }) => Promise<void>;
+  initial?: { title: string; content: string; category: string; maps_url?: string; contact_number?: string };
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [content, setContent] = useState(initial?.content ?? "");
   const [category, setCategory] = useState(initial?.category ?? "");
   const [mapsUrl, setMapsUrl] = useState(initial?.maps_url ?? "");
+  const [contactNumber, setContactNumber] = useState(initial?.contact_number ?? "");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1010,13 +1011,14 @@ function ArticleFormDialog({
       setContent(initial?.content ?? "");
       setCategory(initial?.category ?? "");
       setMapsUrl(initial?.maps_url ?? "");
+      setContactNumber(initial?.contact_number ?? "");
     }
   }, [open, initial]);
 
   const handleSave = async () => {
     if (!title.trim() || !content.trim() || !category) { toast.error("Semua field harus diisi"); return; }
     setSaving(true);
-    await onSave({ title: title.trim(), content: content.trim(), category, maps_url: mapsUrl.trim() || undefined });
+    await onSave({ title: title.trim(), content: content.trim(), category, maps_url: mapsUrl.trim() || undefined, contact_number: contactNumber.trim() || undefined });
     setSaving(false);
   };
 
@@ -1056,6 +1058,22 @@ function ArticleFormDialog({
             />
             <p className="text-[11px] text-muted-foreground/60">
               Tambahkan link lokasi jika artikel ini terkait tempat tertentu (KBRI, kampus, masjid, dll). AINA akan otomatis menyertakan peta saat menjawab pertanyaan berbasis artikel ini.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              📞 Nomor Telepon / WhatsApp <span className="text-[11px] font-normal text-muted-foreground/60">(opsional)</span>
+            </label>
+            <Input
+              type="tel"
+              placeholder="+62 812-3456-7890 atau +20 100-123-4567"
+              value={contactNumber}
+              onChange={e => setContactNumber(e.target.value)}
+              maxLength={50}
+              className="bg-secondary text-xs"
+            />
+            <p className="text-[11px] text-muted-foreground/60">
+              Nomor kontak terkait artikel (KBRI, imigrasi, dll). AINA akan menyebutkan nomor ini saat menjawab pertanyaan soal kontak.
             </p>
           </div>
           <div className="flex gap-2 pt-1">
@@ -1160,7 +1178,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     setBulkLoading(false);
   };
 
-  const handleAdd = async (data: { title: string; content: string; category: string; maps_url?: string }) => {
+  const handleAdd = async (data: { title: string; content: string; category: string; maps_url?: string; contact_number?: string }) => {
     try {
       await adminFetch("/api/admin/articles", { method: "POST", body: JSON.stringify(data) });
       toast.success("Artikel ditambahkan!");
@@ -1169,7 +1187,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const handleEdit = async (data: { title: string; content: string; category: string; maps_url?: string }) => {
+  const handleEdit = async (data: { title: string; content: string; category: string; maps_url?: string; contact_number?: string }) => {
     if (!editArticle) return;
     try {
       await adminFetch(`/api/admin/articles/${editArticle.id}`, { method: "PATCH", body: JSON.stringify(data) });
@@ -1504,7 +1522,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       <ArticleFormDialog open={addOpen} onClose={() => setAddOpen(false)} onSave={handleAdd} />
       <ArticleFormDialog
         open={!!editArticle} onClose={() => setEditArticle(null)} onSave={handleEdit}
-        initial={editArticle ? { title: editArticle.title, content: editArticle.content, category: editArticle.category, maps_url: editArticle.maps_url ?? "" } : undefined}
+        initial={editArticle ? { title: editArticle.title, content: editArticle.content, category: editArticle.category, maps_url: editArticle.maps_url ?? "", contact_number: editArticle.contact_number ?? "" } : undefined}
       />
     </div>
   );

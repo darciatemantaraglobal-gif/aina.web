@@ -3379,7 +3379,7 @@ app.post("/api/admin/articles", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category, maps_url } = req.body;
+  const { title, content, category, maps_url, contact_number: rawAdminContact } = req.body;
   if (!title || !content || !category) return res.status(400).json({ error: "title, content, category required" });
 
   const insertPayload = {
@@ -3391,6 +3391,9 @@ app.post("/api/admin/articles", async (req, res) => {
   };
   if (typeof maps_url === "string" && maps_url.trim()) {
     insertPayload.maps_url = maps_url.trim().slice(0, 1000);
+  }
+  if (typeof rawAdminContact === "string" && rawAdminContact.trim()) {
+    insertPayload.contact_number = rawAdminContact.trim().slice(0, 50);
   }
 
   const { error } = await supabase.from("knowledge_base").insert(insertPayload);
@@ -3446,10 +3449,11 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category, keywords, maps_url } = req.body;
+  const { title, content, category, keywords, maps_url, contact_number } = req.body;
   const updatePayload = { title, content, category };
   if (typeof keywords === "string") updatePayload.keywords = keywords.trim().slice(0, 500);
   if (typeof maps_url === "string") updatePayload.maps_url = maps_url.trim().slice(0, 1000) || null;
+  if (typeof contact_number === "string") updatePayload.contact_number = contact_number.trim().slice(0, 50) || null;
   const { error } = await supabase.from("knowledge_base").update(updatePayload).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });
@@ -4126,7 +4130,7 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
   if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa mengirim artikel" });
 
-  const { title, content, category, article_type, keywords: rawKeywords } = req.body;
+  const { title, content, category, article_type, keywords: rawKeywords, contact_number: rawContact } = req.body;
   if (!title?.trim() || !content?.trim() || !category) return res.status(400).json({ error: "title, content, category required" });
   if (title.trim().length > 200) return res.status(400).json({ error: "Judul terlalu panjang (maks 200 karakter)" });
   if (content.trim().length > 50000) return res.status(400).json({ error: "Konten terlalu panjang (maks 50.000 karakter)" });
@@ -4135,8 +4139,10 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   const validTypes = ["narrative", "step_by_step"];
   const safeType = validTypes.includes(article_type) ? article_type : "narrative";
   const safeKeywords = typeof rawKeywords === "string" ? rawKeywords.trim().slice(0, 500) : "";
+  const safeContact = typeof rawContact === "string" && rawContact.trim() ? rawContact.trim().slice(0, 50) : null;
 
   const payload = { author_id: user.id, title: title.trim(), content: content.trim(), category, article_type: safeType, keywords: safeKeywords };
+  if (safeContact) payload.contact_number = safeContact;
   const { data, error } = await supabase.from("knowledge_base").insert(payload).select().single();
   if (error) {
     if (error.message?.includes("article_type") || error.message?.includes("keywords")) {
@@ -6750,6 +6756,7 @@ async function runColumnMigrations() {
     "ALTER TABLE public.thread_replies ADD COLUMN IF NOT EXISTS image_url TEXT;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS keywords TEXT NOT NULL DEFAULT '';",
+    "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS contact_number TEXT;",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE public.intel_retrieval_stats ADD COLUMN IF NOT EXISTS had_perplexity BOOLEAN NOT NULL DEFAULT false;",

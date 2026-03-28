@@ -173,6 +173,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [artCategory, setArtCategory] = useState("");
   const [artType, setArtType] = useState("narrative");
   const [artKeywords, setArtKeywords] = useState("");
+  const [artContactNumber, setArtContactNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // URL import dialog
@@ -401,12 +402,12 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       const res = await fetch("/api/articles", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType, keywords: artKeywords.trim() }),
+        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType, keywords: artKeywords.trim(), contact_number: artContactNumber.trim() || undefined }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(`Gagal mengirim artikel: ${json.error || res.statusText}`); return; }
       setArticles((prev) => [json, ...prev]);
-      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords("");
+      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber("");
       setDialogOpen(false);
       toast.success("Artikel dikirim! Menunggu persetujuan admin.");
     } catch {
@@ -1195,7 +1196,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             </Dialog>
 
             {/* Manual write dialog */}
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtFromUrl(false); } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtFromUrl(false); } }}>
               <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-display">
@@ -1263,6 +1264,18 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       className="w-full rounded-md border border-input bg-secondary px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                     />
                     <p className="text-[10px] text-muted-foreground leading-relaxed">Tulis frasa atau pertanyaan yang kemungkinan ditanya pengguna, pisahkan dengan koma. AINA akan otomatis menarik artikel ini saat query cocok.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Nomor Telepon / WhatsApp <span className="font-normal opacity-60">(opsional)</span></p>
+                    <input
+                      type="tel"
+                      placeholder="Contoh: +62 812-3456-7890 atau +20 100-123-4567"
+                      value={artContactNumber}
+                      onChange={(e) => setArtContactNumber(e.target.value)}
+                      maxLength={50}
+                      className="w-full rounded-md border border-input bg-secondary px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Jika artikel menyebut kontak tertentu (KBRI, kantor imigrasi, dll.), isi nomor terbaru di sini agar akurat saat AINA menjawab pertanyaan soal nomor telepon.</p>
                   </div>
                   <Button variant="hero" onClick={submitArticle} disabled={submitting} className="w-full gap-1.5">
                     {submitting ? (
