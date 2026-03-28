@@ -9,7 +9,7 @@ import SetupProfileModal from "@/components/SetupProfileModal";
 import AnnouncementPopup from "@/components/AnnouncementPopup";
 import GuidedTour, { type TourStep } from "@/components/GuidedTour";
 import { supabase } from "@/integrations/supabase/client";
-import { Menu, Newspaper, RefreshCw } from "lucide-react";
+import { Menu, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const TOUR_KEY = "aina_tour_seen_v1";
@@ -79,15 +79,6 @@ const tabTitles: Record<string, string> = {
   saved: "Jawaban Tersimpan",
 };
 
-const BeritaPlaceholder = () => (
-  <div className="flex h-full flex-col items-center justify-center text-center">
-    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-      <Newspaper className="h-8 w-8 text-primary" />
-    </div>
-    <h2 className="font-display text-xl font-bold text-foreground">Berita Masisir</h2>
-    <p className="mt-2 max-w-sm text-sm text-muted-foreground">Berita terkini seputar mahasiswa Indonesia di Mesir. Segera hadir!</p>
-  </div>
-);
 
 const TabLoader = () => (
   <div className="flex h-full items-center justify-center">
@@ -472,8 +463,6 @@ const Dashboard = () => {
             </header>
 
             <div className="flex-1 overflow-hidden" key={activeTab}>
-              {activeTab === "berita" && <BeritaPlaceholder />}
-
               {activeTab === "productivity" && (
                 <TabErrorBoundary tabName="Productivity">
                   <Suspense fallback={<TabLoader />}>

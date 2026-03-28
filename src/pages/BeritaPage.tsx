@@ -1,14 +1,16 @@
 import Navbar from "@/components/Navbar";
-import BeritaSection from "@/components/BeritaSection";
+import NewsPage from "@/components/NewsPage";
 import Footer from "@/components/Footer";
 
 const BeritaPage = () => (
-  <div className="min-h-screen bg-background">
+  <div className="flex min-h-screen flex-col bg-background">
     <Navbar />
-    <div className="pt-16">
-      <BeritaSection />
-      <Footer />
-    </div>
+    <main className="flex flex-1 flex-col pt-16">
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <NewsPage />
+      </div>
+    </main>
+    <Footer />
   </div>
 );
 
