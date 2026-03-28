@@ -259,15 +259,6 @@ const NewsPage = () => {
         </button>
       </div>
 
-      {/* Info banner */}
-      <div className="mx-5 mt-3 mb-1 shrink-0 rounded-xl border border-border bg-card/60 px-4 py-3">
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          <span className="font-semibold text-foreground">Apa ini?</span>{" "}
-          Berita Masisir adalah ruang informasi terkurasi khusus mahasiswa Indonesia di Mesir — mulai dari info KBRI, pengumuman penting, rekomendasi kuliner halal, transportasi, sampai berita komunitas AIGYPT.
-          Konten dikurasi dan diposting langsung oleh tim admin AINA.
-        </p>
-      </div>
-
       {/* Category filter pills */}
       <div className="flex gap-2 overflow-x-auto px-5 py-3 shrink-0 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
         {CATEGORIES.map(cat => {
