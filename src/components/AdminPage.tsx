@@ -1079,12 +1079,21 @@ function TelegramScraperDialog({ open, onClose, onDone }: { open: boolean; onClo
     setStep("parsing");
     const combined = chosen.map(m => `[${m.source}]\n${m.text}`).join("\n\n---\n\n");
     try {
-      const data = await adminFetch("/api/admin/articles/bulk-parse", {
-        method: "POST", body: JSON.stringify({ rawText: combined }),
+      const auth = await getAuthHeader();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000);
+      const res = await fetch("/api/admin/articles/bulk-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify({ rawText: combined }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: "Gagal" })); throw new Error(err.error); }
+      const data = await res.json();
       setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, maps_url: "", contact_number: "" })));
       setStep("preview");
-    } catch (e: any) { toast.error(e.message); setStep("results"); }
+    } catch (e: any) { toast.error(e.name === "AbortError" ? "Timeout — coba kurangi jumlah konten" : e.message); setStep("results"); }
   };
 
   const handleImport = async () => {
@@ -1412,13 +1421,29 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
     if (!rawText.trim()) { toast.error("Paste teks dulu!"); return; }
     setStep("parsing"); setParseError("");
     try {
-      const data = await adminFetch("/api/admin/articles/bulk-parse", {
-        method: "POST", body: JSON.stringify({ rawText }),
+      const auth = await getAuthHeader();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000); // 90s — AI needs time for large text
+      const res = await fetch("/api/admin/articles/bulk-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify({ rawText }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Gagal" }));
+        throw new Error(err.error || "Gagal memproses teks");
+      }
+      const data = await res.json();
       setArticles(data.articles.map((a: ParsedArticle) => ({ ...a, maps_url: "", contact_number: "" })));
       setStep("preview");
     } catch (e: any) {
-      setParseError(e.message || "Gagal memproses teks");
+      if (e.name === "AbortError") {
+        setParseError("Teks terlalu panjang dan AI membutuhkan waktu lebih. Coba kurangi jumlah gambar dan parse per batch.");
+      } else {
+        setParseError(e.message || "Gagal memproses teks");
+      }
       setStep("paste");
     }
   };
