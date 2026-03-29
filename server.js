@@ -485,8 +485,8 @@ async function fetchRelevantArticles(userQuestion) {
     .toLowerCase()
     .replace(/[^\w\s]/g, " ")
     .split(/\s+/)
-    .filter(w => w.length > 3)
-    .slice(0, 5);
+    .filter(w => w.length >= 3)   // min 3 chars (was >3) — catches short org names like "ppi", "kmm"
+    .slice(0, 8);                 // up to 8 keywords (was 5)
 
   // No meaningful keywords → no KB match possible
   if (keywords.length === 0) return [];
@@ -1348,6 +1348,33 @@ app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
   res.json({ success: true, message: `${user.email} sekarang jadi admin!`, uuid: user.id });
 });
 
+/* ── Local Masisir query detector ────────────────────────
+ * Detects questions about hyper-local Indonesian community
+ * topics in Egypt that ONLY the KB can answer correctly.
+ * When detected + KB absent/weak → block all external sources
+ * to prevent hallucination from Perplexity/Wikipedia/DDG.
+ * ─────────────────────────────────────────────────────── */
+function isLocalMasisirQuery(text) {
+  const t = text.toLowerCase();
+  return (
+    // Kekeluargaan / paguyuban / komunitas daerah
+    /kekeluargaan|paguyuban|perhimpunan|komunitas\s*(daerah|mahasiswa|indonesia)|perkumpulan/.test(t) ||
+    // Named Indonesian orgs in Egypt
+    /\b(ppmi|ppi\s*mesir|imaba|isma|imabi|ikaluin|forkis|kmm|ismafar|ikpm|forsada|gamasi|kpmjb|kpmjt|himdamesi|himalaya|himsatesi|fosimaba|pknm)\b/.test(t) ||
+    // KBRI / Indonesian embassy
+    /kbri|kedutaan\s*besar\s*indonesia|atase|konsulat/.test(t) ||
+    // Indonesian-run places in Egypt
+    /warung\s*indonesia|kantin\s*indonesia|masakan\s*indonesia|resto(ran)?\s*indonesia|catering\s*indonesia|jajan\s*indonesia/.test(t) ||
+    // Masisir-specific housing/area
+    /\b(hay\s*asher|hay\s*(asyir|10|sepuluh)|nasr\s*city|madinah\s*nasr|darrasah|basatin|zaytoun|hadaiq|ain\s*shams|shubra|dokki|mohandessin|maadi|heliopolis)\b.{0,60}(flat|sewa|kost|kamar|rumah|tinggal|apartemen)/.test(t) ||
+    // Direct ask about community location
+    /di\s*mana\s*(kantor|sekretariat|lokasi|alamat)\s*(kekeluargaan|ppmi|ppi|komunitas|paguyuban)/.test(t) ||
+    // Masisir social spots
+    /(kedai|kafe|cafe|tempat\s*nongkrong|tempat\s*kumpul).{0,40}(masisir|indonesia|mahasiswa)/.test(t) ||
+    (/(tempat|lokasi|alamat|di\s*mana)\b.{0,60}\b(masisir|mahasiswa\s*indonesia\s*di\s*mesir|mahasiswa\s*mesir)/.test(t))
+  );
+}
+
 /* ── Intent detection (rule-based, no LLM call) ─────── */
 function detectIntent(text) {
   const t = text.toLowerCase().trim();
@@ -1866,8 +1893,13 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // Assess KB coverage strength before deciding whether to hit external sources
   const kbStrength = assessKBStrength(articles);
-  const needsExternal = shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
-  const perplexityNeeded = needsPerplexity(intent.primary, kbStrength, lastUserMessage);
+
+  // Hyper-local Masisir topics (kekeluargaan, orgs, Indonesian spots) — external sources
+  // have no reliable data on these. Block external entirely to prevent hallucination.
+  const isLocalMasisir = isLocalMasisirQuery(lastUserMessage);
+  const needsExternal = isLocalMasisir ? false : shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
+  const perplexityNeeded = isLocalMasisir ? false : needsPerplexity(intent.primary, kbStrength, lastUserMessage);
+  if (isLocalMasisir) console.log(`[Source] local-masisir query detected → blocking all external sources`);
 
   // ── Classify query type for strict 3-layer routing ──────────────────────────
   // "currency"  → exchange API only (already fetched); NEVER Wikipedia/DDG/Perplexity
@@ -2020,6 +2052,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   let finalSystemPrompt = systemPrompt;
   let finalMessages = [...messages];
   let useVisionModel = false;
+
+  // ── Local Masisir KB-only enforcement ────────────────────────────────────
+  // When query is about hyper-local Indonesian community topics and KB has no
+  // strong coverage, inject a hard instruction to prevent hallucination.
+  if (isLocalMasisir && kbStrength !== "strong") {
+    finalSystemPrompt += `\n\n---\n## ⚠️ INSTRUKSI WAJIB — TOPIK LOKAL KOMUNITAS INDONESIA DI MESIR\n\nPertanyaan ini menyangkut topik yang bersifat SANGAT LOKAL — kekeluargaan daerah, organisasi mahasiswa Indonesia di Mesir, tempat/spot khusus komunitas Masisir, dll.\n\nSumber eksternal (web, Wikipedia, dll.) TIDAK memiliki data akurat tentang topik ini. Knowledge Base AINA adalah satu-satunya sumber yang bisa dipercaya.\n\n**JIKA informasi yang ditanya TIDAK ADA dalam Knowledge Base di atas:**\n- JANGAN mengarang, menduga, atau "kira-kira" menjawab\n- JANGAN menggunakan pengetahuan training model untuk topik hyper-lokal ini\n- Sampaikan dengan jujur dan hangat, misalnya: "Info tentang ini belum tersedia di Knowledge Base AINA saat ini. Kamu bisa tanya langsung ke senior atau grup komunitas Masisir yang relevan ya."\n- Boleh sarankan user bertanya di grup WhatsApp komunitas, senior angkatan, atau langsung ke pengurus kekeluargaan yang bersangkutan\n---`;
+    console.log(`[LocalMasisir] KB ${kbStrength} → injected no-hallucination instruction`);
+  }
 
   // ── Partner promo injection (Temantiket) ─────────────────────────────────
   const partnerPromo = detectPartnerPromo(lastUserMessage);
