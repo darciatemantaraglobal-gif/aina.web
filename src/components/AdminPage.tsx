@@ -4846,8 +4846,93 @@ function ProcedureManagementTab() {
   );
 }
 
+/* ─── Coverage Tab (KB Gap Analysis) ────────────────── */
+function CoverageTab() {
+  const [data, setData] = useState<{ total: number; topics: Array<{ query: string; count: number; intent_type: string | null; created_at: string }> } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await adminFetch("/api/admin/missing-topics?limit=200");
+        setData(res);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <div className="flex justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
+  if (error) return <div className="rounded-xl bg-destructive/10 p-4 text-sm text-destructive">{error}</div>;
+
+  const topics = data?.topics ?? [];
+
+  return (
+    <div className="space-y-4 p-4 md:p-6">
+      <div>
+        <h2 className="font-display text-xl font-bold text-foreground">KB Coverage Gaps</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Pertanyaan user yang tidak menemukan artikel KB — {data?.total ?? 0} total query tercatat.
+          Gunakan ini untuk menentukan artikel apa yang perlu ditambahkan ke Knowledge Base.
+        </p>
+      </div>
+
+      {topics.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          Belum ada missing topic tercatat. KB sudah cukup lengkap, atau fitur baru saja diaktifkan.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-secondary/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-3 font-medium">#</th>
+                <th className="px-4 py-3 font-medium">Query yang Tidak Terjawab KB</th>
+                <th className="px-4 py-3 font-medium">Frekuensi</th>
+                <th className="px-4 py-3 font-medium">Intent</th>
+                <th className="px-4 py-3 font-medium">Terakhir Ditanya</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topics.map((t, i) => (
+                <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                  <td className="px-4 py-2.5 text-muted-foreground">{i + 1}</td>
+                  <td className="px-4 py-2.5 text-foreground font-medium max-w-xs">
+                    <span className="line-clamp-2">{t.query}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      t.count >= 5 ? "bg-destructive/20 text-destructive" :
+                      t.count >= 3 ? "bg-amber-500/20 text-amber-500" :
+                      "bg-secondary text-muted-foreground"
+                    }`}>
+                      {t.count}×
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-muted-foreground capitalize">{t.intent_type ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                    {new Date(t.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-[10px] text-muted-foreground">
+        💡 Query dengan frekuensi tinggi (merah) adalah prioritas tertinggi untuk ditambahkan ke KB.
+        Buat artikel baru di tab Knowledge Base menggunakan topik-topik di atas.
+      </p>
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage";
 
 const TAB_ORDER_KEY = "aina_admin_tab_order";
 
@@ -4915,6 +5000,7 @@ const AdminPage = () => {
     { id: "announcements", label: "Pengumuman",      icon: Megaphone,   masterOnly: true },
     { id: "signals",       label: "Sinyal User",     icon: ThumbsUp,    masterOnly: true },
     { id: "procedures",    label: "Prosedur",         icon: BookOpen,    masterOnly: true },
+    { id: "coverage",      label: "Coverage KB",      icon: Search,      masterOnly: true },
   ];
 
   // Visible tabs for this admin level
@@ -4993,6 +5079,7 @@ const AdminPage = () => {
       {activeTab === "signals"       && isMasterAdmin && <FeedbackSignalsTab />}
       {activeTab === "news"          && <NewsManagementTab />}
       {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
+      {activeTab === "coverage"      && isMasterAdmin && <CoverageTab />}
     </>
   );
 

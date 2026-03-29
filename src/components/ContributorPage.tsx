@@ -169,11 +169,13 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   // Manual article write dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [artTitle, setArtTitle] = useState("");
+  const [artSummary, setArtSummary] = useState("");
   const [artContent, setArtContent] = useState("");
   const [artCategory, setArtCategory] = useState("");
   const [artType, setArtType] = useState("narrative");
   const [artKeywords, setArtKeywords] = useState("");
   const [artContactNumber, setArtContactNumber] = useState("");
+  const [artImportantNotes, setArtImportantNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // URL import dialog
@@ -392,7 +394,15 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   // Manual article submit
   const submitArticle = async () => {
     if (!artTitle.trim() || !artContent.trim() || !artCategory) {
-      toast.error("Semua field harus diisi");
+      toast.error("Judul, konten, dan kategori harus diisi");
+      return;
+    }
+    if (artTitle.trim().length < 10) {
+      toast.error("Judul terlalu pendek — minimal 10 karakter agar lebih spesifik");
+      return;
+    }
+    if (artContent.trim().length < 100) {
+      toast.error("Konten terlalu pendek — minimal 100 karakter agar informatif");
       return;
     }
     setSubmitting(true);
@@ -402,12 +412,22 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       const res = await fetch("/api/articles", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ title: artTitle.trim(), content: artContent.trim(), category: artCategory, article_type: artType, keywords: artKeywords.trim(), contact_number: artContactNumber.trim() || undefined }),
+        body: JSON.stringify({
+          title:           artTitle.trim(),
+          content:         artContent.trim(),
+          category:        artCategory,
+          article_type:    artType,
+          keywords:        artKeywords.trim(),
+          summary:         artSummary.trim() || undefined,
+          important_notes: artImportantNotes.trim() || undefined,
+          contact_number:  artContactNumber.trim() || undefined,
+        }),
       });
       const json = await res.json();
       if (!res.ok) { toast.error(`Gagal mengirim artikel: ${json.error || res.statusText}`); return; }
       setArticles((prev) => [json, ...prev]);
-      setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber("");
+      setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory("");
+      setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes("");
       setDialogOpen(false);
       toast.success("Artikel dikirim! Menunggu persetujuan admin.");
     } catch {
@@ -1196,7 +1216,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             </Dialog>
 
             {/* Manual write dialog */}
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtFromUrl(false); } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes(""); setArtFromUrl(false); } }}>
               <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-display">
@@ -1210,12 +1230,18 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       <span>Draft ini dibuat otomatis oleh AINA dari URL yang kamu berikan. Mohon <strong>review dan edit</strong> konten sebelum submit — pastikan informasi akurat dan sesuai.</span>
                     </div>
                   )}
-                  <Input
-                    placeholder="Judul artikel"
-                    value={artTitle}
-                    onChange={(e) => setArtTitle(e.target.value)}
-                    className="bg-secondary"
-                  />
+                  <div className="space-y-1">
+                    <Input
+                      placeholder="Judul artikel (spesifik — contoh: Cara Perpanjang Iqomah 2025)"
+                      value={artTitle}
+                      onChange={(e) => setArtTitle(e.target.value)}
+                      className="bg-secondary"
+                      maxLength={200}
+                    />
+                    {artTitle.trim().length > 0 && artTitle.trim().length < 10 && (
+                      <p className="text-[10px] text-amber-500">Judul terlalu pendek — buat lebih spesifik (min 10 karakter)</p>
+                    )}
+                  </div>
                   <Select value={artCategory} onValueChange={setArtCategory}>
                     <SelectTrigger className="bg-secondary">
                       <SelectValue placeholder="Pilih kategori" />
@@ -1246,6 +1272,20 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       ))}
                     </div>
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Ringkasan <span className="font-normal opacity-60">(opsional, 2–3 kalimat)</span>
+                    </p>
+                    <textarea
+                      value={artSummary}
+                      onChange={e => setArtSummary(e.target.value)}
+                      placeholder="Tulis 2–3 kalimat yang merangkum isi artikel ini. Contoh: 'Artikel ini menjelaskan cara perpanjang iqomah di Kairo, mulai dari dokumen yang dibutuhkan hingga proses pengajuan di kantor imigrasi.'"
+                      rows={2}
+                      maxLength={600}
+                      className="w-full resize-none rounded-xl border border-input bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Ringkasan membantu AINA menemukan artikel ini lebih cepat dan akurat.</p>
+                  </div>
                   <Textarea
                     placeholder={artType === "step_by_step"
                       ? "Tulis langkah-langkah secara urut...\nContoh:\n1. Siapkan dokumen X\n2. Kunjungi kantor Y\n3. Isi formulir Z"
@@ -1254,6 +1294,19 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     onChange={(e) => setArtContent(e.target.value)}
                     className="min-h-[150px] bg-secondary"
                   />
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Catatan Penting <span className="font-normal opacity-60">(opsional)</span>
+                    </p>
+                    <textarea
+                      value={artImportantNotes}
+                      onChange={e => setArtImportantNotes(e.target.value)}
+                      placeholder="Kesalahan umum, peringatan, atau hal yang sering terlewat. Contoh: 'Pastikan iqomah lama tidak sudah habis masa berlaku saat mengajukan perpanjangan.'"
+                      rows={2}
+                      maxLength={1000}
+                      className="w-full resize-none rounded-xl border border-input bg-secondary px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-muted-foreground">Kata Kunci / Query <span className="font-normal opacity-60">(opsional)</span></p>
                     <input

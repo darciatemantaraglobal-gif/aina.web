@@ -287,8 +287,83 @@ async function initKBKeywordsCol() {
   } else {
     console.log("[KB] ✓ keywords column ready");
   }
+  // Check optional enrichment columns — warn with SQL if missing, don't block startup
+  const checks = [
+    { col: "summary",         sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS summary TEXT;" },
+    { col: "important_notes", sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS important_notes TEXT;" },
+    { col: "last_updated",    sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ;" },
+  ];
+  for (const { col, sql } of checks) {
+    const { error: ce } = await supabase.from("knowledge_base").select(col).limit(1);
+    if (ce?.message?.includes("does not exist") || ce?.code === "42703") {
+      console.warn(`[KB] ⚠ '${col}' column missing. Add with:\n  ${sql}`);
+    } else {
+      console.log(`[KB] ✓ ${col} column ready`);
+    }
+  }
 }
 initKBKeywordsCol();
+
+/* ── Missing topic logging ───────────────────────────────────────────────────
+ * When KB returns zero results for a query, log it as a "missing topic" so
+ * admins can see what users are asking that has no KB coverage yet.
+ * Fire-and-forget — never blocks the main request.
+ * ─────────────────────────────────────────────────────────────────────────── */
+let _missingTopicsTableReady = false;
+
+async function ensureMissingTopicsTable() {
+  if (_missingTopicsTableReady) return true;
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return false;
+  let client;
+  try {
+    const { Client } = await import("pg");
+    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS missing_topics (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        query       TEXT NOT NULL,
+        intent_type TEXT,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_missing_topics_created ON missing_topics(created_at DESC);
+    `);
+    _missingTopicsTableReady = true;
+    console.log("[MissingTopics] ✓ table ready");
+    return true;
+  } catch (e) {
+    console.warn("[MissingTopics] init warning:", e.message);
+    return false;
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+}
+ensureMissingTopicsTable();
+
+/**
+ * Fire-and-forget log of a query that returned no KB results.
+ * @param {string} query - The user's question
+ * @param {string} [intentType] - Intent classification (factual/procedural/etc.)
+ */
+function logMissingTopic(query, intentType) {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl || !query?.trim()) return;
+  (async () => {
+    let client;
+    try {
+      const { Client } = await import("pg");
+      client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+      await client.connect();
+      await client.query(
+        "INSERT INTO missing_topics (query, intent_type) VALUES ($1, $2)",
+        [query.trim().slice(0, 500), intentType ?? null]
+      );
+    } catch { /* silent — never crash the main request */ } finally {
+      if (client) await client.end().catch(() => {});
+    }
+  })();
+}
 
 async function initUserNotes() {
   const dbUrl = process.env.DATABASE_URL;
@@ -440,9 +515,11 @@ async function verifyMasterAdmin(authHeader) {
 }
 
 /* ── Article type column detection (cached) ──────────── */
-let _hasArticleTypeCol = null; // null=unknown, true/false=detected
-let _hasKeywordsCol = null;
-let _hasMapsUrlCol = null;
+let _hasArticleTypeCol  = null; // null=unknown, true/false=detected
+let _hasKeywordsCol     = null;
+let _hasMapsUrlCol      = null;
+let _hasSummaryCol      = null;
+let _hasImportantNotes  = null;
 
 async function detectArticleTypeCol(supabase) {
   if (_hasArticleTypeCol !== null) return _hasArticleTypeCol;
@@ -478,6 +555,20 @@ async function detectMapsUrlCol(supabase) {
     console.warn("[schema] 'maps_url' column not found — run: ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS maps_url TEXT;");
   }
   return _hasMapsUrlCol;
+}
+
+async function detectSummaryCol(supabase) {
+  if (_hasSummaryCol !== null) return _hasSummaryCol;
+  const { error } = await supabase.from("knowledge_base").select("summary").limit(1);
+  _hasSummaryCol = !error;
+  return _hasSummaryCol;
+}
+
+async function detectImportantNotesCol(supabase) {
+  if (_hasImportantNotes !== null) return _hasImportantNotes;
+  const { error } = await supabase.from("knowledge_base").select("important_notes").limit(1);
+  _hasImportantNotes = !error;
+  return _hasImportantNotes;
 }
 
 /* ── AI keyword generation for KB articles ───────────── */
@@ -554,39 +645,48 @@ async function triggerKeywordGen(articleId) {
 }
 
 /* ── Fetch relevant knowledge base articles ──────────── */
-async function fetchRelevantArticles(userQuestion) {
+async function fetchRelevantArticles(userQuestion, intentType) {
   const supabase = getAdminClient();
   if (!supabase) return [];
 
-  const [hasTypeCol, hasKwCol, hasMapsUrlCol] = await Promise.all([
+  const [hasTypeCol, hasKwCol, hasMapsUrlCol, hasSummaryCol, hasNotesCol] = await Promise.all([
     detectArticleTypeCol(supabase),
     detectKeywordsCol(supabase),
     detectMapsUrlCol(supabase),
+    detectSummaryCol(supabase),
+    detectImportantNotesCol(supabase),
   ]);
+
   const selectCols = [
     "title, content, category, hidden",
-    hasTypeCol    ? ", article_type" : "",
-    hasKwCol      ? ", keywords"     : "",
-    hasMapsUrlCol ? ", maps_url"     : "",
+    hasTypeCol    ? ", article_type"     : "",
+    hasKwCol      ? ", keywords"         : "",
+    hasMapsUrlCol ? ", maps_url"         : "",
+    hasSummaryCol ? ", summary"          : "",
+    hasNotesCol   ? ", important_notes"  : "",
   ].join("");
 
+  // Extract keywords from the user question (≥3 chars, max 10 terms)
   const keywords = userQuestion
     .toLowerCase()
     .replace(/[^\w\s]/g, " ")
     .split(/\s+/)
-    .filter(w => w.length >= 3)   // min 3 chars (was >3) — catches short org names like "ppi", "kmm"
-    .slice(0, 8);                 // up to 8 keywords (was 5)
+    .filter(w => w.length >= 3)
+    .slice(0, 10);
 
-  // No meaningful keywords → no KB match possible
-  if (keywords.length === 0) return [];
+  // No meaningful keywords → no KB match possible → log as missing topic
+  if (keywords.length === 0) {
+    logMissingTopic(userQuestion, intentType);
+    return [];
+  }
 
-  // Use server-side OR filter across keywords — avoids loading all articles in memory
-  // Also matches against contributor-defined `keywords` column for precise query targeting
+  // Server-side OR filter across keywords — also matches contributor-defined keywords column
   const orFilter = keywords
     .flatMap(kw => [
       `title.ilike.%${kw}%`,
       `content.ilike.%${kw}%`,
       ...(hasKwCol ? [`keywords.ilike.%${kw}%`] : []),
+      ...(hasSummaryCol ? [`summary.ilike.%${kw}%`] : []),
     ])
     .join(",");
 
@@ -595,11 +695,47 @@ async function fetchRelevantArticles(userQuestion) {
     .select(selectCols)
     .eq("status", "approved")
     .or(orFilter)
-    .limit(8);
+    .limit(12);   // fetch more candidates for client-side ranking
 
-  // Only return articles that genuinely matched — no fallback to recent articles
-  // (returning unrelated recent articles inflates kbStrength and causes wrong confidence labels)
-  return matched ?? [];
+  if (!matched || matched.length === 0) {
+    // Log this query as a missing topic so admins can identify coverage gaps
+    logMissingTopic(userQuestion, intentType);
+    return [];
+  }
+
+  // ── Client-side relevance scoring ─────────────────────────────────────────
+  // Rank articles by how many user keywords they match and WHERE they match.
+  // Weight: keywords column (3) > title match (2) > summary match (1.5) > content match (1)
+  const scored = matched.map(article => {
+    let score = 0;
+    const titleL   = (article.title          ?? "").toLowerCase();
+    const kwL      = (article.keywords       ?? "").toLowerCase();
+    const summaryL = (article.summary        ?? "").toLowerCase();
+    const contentL = (article.content        ?? "").toLowerCase();
+
+    for (const kw of keywords) {
+      if (kwL.includes(kw))      score += 3;   // contributor-defined keywords = highest signal
+      if (titleL.includes(kw))   score += 2;   // title match = strong signal
+      if (summaryL.includes(kw)) score += 1.5; // summary match = moderate signal
+      if (contentL.includes(kw)) score += 1;   // content match = base signal
+    }
+
+    // Bonus: title starts with or exactly matches a keyword → exact topic match
+    if (keywords.some(kw => titleL.startsWith(kw) || titleL === kw)) score += 2;
+
+    return { ...article, _relevanceScore: score };
+  });
+
+  // Sort by score descending, return top 5 (reduced from 12 to keep context tight)
+  scored.sort((a, b) => b._relevanceScore - a._relevanceScore);
+  const top = scored.slice(0, 5).map(({ _relevanceScore, ...a }) => a);
+
+  console.log(`[KB] query="${userQuestion.slice(0, 60)}" → ${matched.length} candidates → top ${top.length} after scoring`);
+  if (top.length > 0) {
+    console.log(`[KB] top article: "${top[0].title}" (score=${scored[0]._relevanceScore})`);
+  }
+
+  return top;
 }
 
 const DAILY_FREE_LIMIT = 3;
@@ -2167,7 +2303,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // Wave 1 — fast internal fetches (always run in parallel)
   const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
-    fetchRelevantArticles(lastUserMessage),
+    fetchRelevantArticles(lastUserMessage, intent.primary),
     fetchPinnedUpdates(),
     isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(lastUserMessage) : Promise.resolve(null),
@@ -4917,27 +5053,52 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   const hasAccess = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
   if (!hasAccess) return res.status(403).json({ error: "Hanya kontributor yang bisa mengirim artikel" });
 
-  const { title, content, category, article_type, keywords: rawKeywords, contact_number: rawContact } = req.body;
-  if (!title?.trim() || !content?.trim() || !category) return res.status(400).json({ error: "title, content, category required" });
-  if (title.trim().length > 200) return res.status(400).json({ error: "Judul terlalu panjang (maks 200 karakter)" });
-  if (content.trim().length > 50000) return res.status(400).json({ error: "Konten terlalu panjang (maks 50.000 karakter)" });
+  const {
+    title, content, category, article_type,
+    keywords: rawKeywords, contact_number: rawContact,
+    summary: rawSummary, important_notes: rawNotes,
+  } = req.body;
+
+  if (!title?.trim() || !content?.trim() || !category)
+    return res.status(400).json({ error: "title, content, category required" });
+  if (title.trim().length < 10)
+    return res.status(400).json({ error: "Judul terlalu pendek — minimal 10 karakter agar spesifik" });
+  if (title.trim().length > 200)
+    return res.status(400).json({ error: "Judul terlalu panjang (maks 200 karakter)" });
+  if (content.trim().length < 100)
+    return res.status(400).json({ error: "Konten terlalu pendek — minimal 100 karakter agar informatif" });
+  if (content.trim().length > 50000)
+    return res.status(400).json({ error: "Konten terlalu panjang (maks 50.000 karakter)" });
+
   const validCategories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
   if (!validCategories.includes(category)) return res.status(400).json({ error: "Kategori tidak valid" });
   const validTypes = ["narrative", "step_by_step"];
-  const safeType = validTypes.includes(article_type) ? article_type : "narrative";
-  const safeKeywords = typeof rawKeywords === "string" ? rawKeywords.trim().slice(0, 500) : "";
-  const safeContact = typeof rawContact === "string" && rawContact.trim() ? rawContact.trim().slice(0, 50) : null;
+  const safeType    = validTypes.includes(article_type) ? article_type : "narrative";
+  const safeKeywords = typeof rawKeywords    === "string" ? rawKeywords.trim().slice(0, 500)  : "";
+  const safeContact  = typeof rawContact     === "string" && rawContact.trim() ? rawContact.trim().slice(0, 50)   : null;
+  const safeSummary  = typeof rawSummary     === "string" ? rawSummary.trim().slice(0, 600)   : null;
+  const safeNotes    = typeof rawNotes       === "string" ? rawNotes.trim().slice(0, 1000)    : null;
 
-  const payload = { author_id: user.id, title: title.trim(), content: content.trim(), category, article_type: safeType, keywords: safeKeywords };
-  if (safeContact) payload.contact_number = safeContact;
+  const payload = {
+    author_id:   user.id,
+    title:       title.trim(),
+    content:     content.trim(),
+    category,
+    article_type: safeType,
+    keywords:    safeKeywords,
+    last_updated: new Date().toISOString(),
+  };
+  if (safeContact)  payload.contact_number  = safeContact;
+  if (safeSummary)  payload.summary         = safeSummary;
+  if (safeNotes)    payload.important_notes = safeNotes;
+
   const { data, error } = await supabase.from("knowledge_base").insert(payload).select().single();
   if (error) {
-    if (error.message?.includes("article_type") || error.message?.includes("keywords")) {
-      const { data: d2, error: e2 } = await supabase.from("knowledge_base").insert({ author_id: user.id, title: title.trim(), content: content.trim(), category }).select().single();
-      if (e2) return res.status(500).json({ error: e2.message });
-      return res.json(d2);
-    }
-    return res.status(500).json({ error: sanitizeErr(error) });
+    // Graceful fallback: strip optional columns if they don't exist yet
+    const fallback = { author_id: user.id, title: title.trim(), content: content.trim(), category };
+    const { data: d2, error: e2 } = await supabase.from("knowledge_base").insert(fallback).select().single();
+    if (e2) return res.status(500).json({ error: e2.message });
+    return res.json(d2);
   }
   res.json(data);
 });
@@ -5471,6 +5632,54 @@ app.get("/api/admin/feedback", async (req, res) => {
 
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json(data ?? []);
+});
+
+/* ── Admin: KB coverage gaps (missing topics log) ───────────────────────── */
+app.get("/api/admin/missing-topics", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return res.status(503).json({ error: "DATABASE_URL not configured" });
+
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const since = req.query.since; // ISO date string filter
+
+  let client;
+  try {
+    const { Client } = await import("pg");
+    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+
+    let whereClause = since ? `WHERE created_at >= $2` : "";
+    const params = since ? [limit, since] : [limit];
+
+    const result = await client.query(
+      `SELECT id, query, intent_type, created_at
+       FROM missing_topics
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      params
+    );
+
+    // Group queries by similarity — count duplicates to surface most-asked gaps
+    const rows = result.rows;
+    const countMap = {};
+    for (const row of rows) {
+      const key = row.query.toLowerCase().trim().slice(0, 80);
+      if (!countMap[key]) countMap[key] = { ...row, count: 0 };
+      countMap[key].count++;
+    }
+    const grouped = Object.values(countMap)
+      .sort((a, b) => b.count - a.count);
+
+    res.json({ total: rows.length, topics: grouped });
+  } catch (e) {
+    res.status(500).json({ error: "Tabel missing_topics belum tersedia: " + e.message });
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
 });
 
 // ─── ANSWER FEEDBACK (answer-level: helpful / not_accurate / outdated) ──────

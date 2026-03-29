@@ -41,9 +41,13 @@ export function buildKnowledgeContext(articles) {
       ? `Referensi Internal [${a.category}]`
       : `${a.title} [${a.category}]`;
 
-    const mapsLine = a.maps_url ? `\n📍 Lokasi: ${a.maps_url}` : "";
+    const mapsLine     = a.maps_url        ? `\n📍 Lokasi: ${a.maps_url}`             : "";
+    const summaryLine  = a.summary?.trim() ? `\n**Ringkasan:** ${a.summary.trim()}\n`  : "";
+    const notesLine    = a.important_notes?.trim()
+      ? `\n\n⚠️ **Catatan Penting:** ${a.important_notes.trim()}`
+      : "";
 
-    return `### Artikel ${i + 1}: ${displayTitle}${typeHint}\n${cleanedContent}${mapsLine}`;
+    return `### Artikel ${i + 1}: ${displayTitle}${typeHint}${summaryLine}\n${cleanedContent}${mapsLine}${notesLine}`;
   }).join("\n\n");
 
   // Detect potentially conflicting articles (2+ from same category)

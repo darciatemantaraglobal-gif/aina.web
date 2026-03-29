@@ -204,7 +204,8 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
 - **Message Reports** — Users flag inaccurate AI responses; admin reviews in dashboard
 - **RBAC** — user / contributor / senior_contributor / admin; rate limit 3 msgs/day for free users
 - **Badges** — Achievement system stored in `user_badges`
-- **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Berita, Prosedur (master admin), Laporan, Waitlist, Security, Performa AI, Pengumuman, Sinyal User tabs. Drag-and-drop reorder on desktop (saved to localStorage `aina_admin_tab_order`).
+- **Admin Dashboard** — Overview, Users (master admin), Monitor, Requests, Knowledge Base, Breaking Updates, Berita, Prosedur (master admin), Laporan, Waitlist, Security, Performa AI, Pengumuman, Sinyal User, Coverage KB (master admin) tabs. Drag-and-drop reorder on desktop (saved to localStorage `aina_admin_tab_order`).
+- **Coverage KB Tab** — Reads `GET /api/admin/missing-topics` (local Replit DB `missing_topics` table) and displays queries that had zero KB matches, sorted by frequency. Color-coded: red ≥5× high-priority, amber ≥3× medium, grey ≤2×. Master admin only.
 - **Berita (News)** — Admin CRUD with bulk-delete (checkboxes + "Hapus N" button → `DELETE /api/admin/news/bulk`). News seeded via `GET /api/_seed-news?token=aina_seed_2026`. `BeritaSection.tsx` on landing page fetches live from `/api/news` and renders collapsible cards; falls back to empty state if no news yet.
 - **Leaderboard** — Top contributors ranked by article count + top voted KB articles with live upvote toggle
 - **Upvote System** — Toggle upvotes on threads (list + detail view) and approved KB articles; counts maintained via DB triggers
