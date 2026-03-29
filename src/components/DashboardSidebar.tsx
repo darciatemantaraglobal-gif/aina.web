@@ -829,7 +829,7 @@ const DashboardSidebar = ({
     navigate("/login");
   };
 
-  const handleGoHome = () => navigate("/");
+  const handleGoHome = () => navigate("/", { state: { fromDashboard: true } });
 
   return (
     <aside

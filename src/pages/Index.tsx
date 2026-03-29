@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Navbar from "@/components/Navbar";
 import HeroChat from "@/components/HeroChat";
 
 const Index = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    const fromDashboard = (location.state as any)?.fromDashboard === true;
+    if (fromDashboard) {
+      setChecking(false);
+      return;
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         navigate("/dashboard?tab=chat", { replace: true });
@@ -16,7 +22,7 @@ const Index = () => {
         setChecking(false);
       }
     });
-  }, [navigate]);
+  }, [navigate, location.state]);
 
   if (checking) return null;
 
