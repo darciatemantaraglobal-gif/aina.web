@@ -624,10 +624,15 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({
-              rating:     vote === "up" ? 1 : -1,
-              intent:     msg?.intent     ?? null,
-              confidence: msg?.confidence ?? null,
-              messageTs:  msg?.timestamp?.getTime() ?? Date.now(),
+              rating:      vote === "up" ? 1 : -1,
+              intent:      msg?.intent     ?? null,
+              confidence:  msg?.confidence ?? null,
+              messageTs:   msg?.timestamp?.getTime() ?? Date.now(),
+              // Self-improvement: send query text + source on thumbs-down so server can log bad responses
+              ...(vote === "down" ? {
+                query_text:  msg?.content   ?? null,
+                source_used: msg?.sourceMetadata?.source_used ?? null,
+              } : {}),
             }),
           }).catch(() => {});
           // 2. Identified signal — thumbs up only (admin can see who found it helpful)

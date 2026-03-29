@@ -4846,6 +4846,307 @@ function ProcedureManagementTab() {
   );
 }
 
+/* ─── Insights Tab (Self-Improvement Dashboard) ─────── */
+type InsightsData = {
+  top_queries: Array<{ sample_query: string; count: number; intent_type: string | null; source_used: string | null; last_seen: string }>;
+  bad_responses: Array<{ query_text: string; intent_type: string | null; source_used: string | null; confidence: string | null; created_at: string }>;
+  missing_topics: Array<{ sample_query: string; count: number; intent_type: string | null; last_seen: string }>;
+  weekly_summary: {
+    total_queries: number; bad_responses: number; kb_hits: number; transport_queries: number;
+    source_kb: number; source_perplexity: number; source_wiki: number; source_model: number;
+    conf_high: number; conf_medium: number; conf_low: number;
+  };
+  daily_trend: Array<{ day: string; count: number }>;
+  intent_breakdown: Array<{ intent: string; count: number }>;
+  generated_at: string;
+};
+
+function InsightsTab() {
+  const [data, setData] = useState<InsightsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [section, setSection] = useState<"summary" | "top" | "bad" | "missing">("summary");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await adminFetch("/api/admin/insights");
+        setData(res);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <div className="flex justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
+  if (error) return <div className="rounded-xl bg-destructive/10 p-4 text-sm text-destructive">{error}</div>;
+  if (!data) return null;
+
+  const { weekly_summary: ws } = data;
+  const kbRate  = ws.total_queries > 0 ? Math.round((ws.kb_hits / ws.total_queries) * 100) : 0;
+  const badRate = ws.total_queries > 0 ? Math.round((ws.bad_responses / ws.total_queries) * 100) : 0;
+
+  const sectionTabs: Array<{ id: typeof section; label: string }> = [
+    { id: "summary", label: "Ringkasan 7 Hari" },
+    { id: "top",     label: `Top Queries (${data.top_queries.length})` },
+    { id: "bad",     label: `Respons Buruk (${data.bad_responses.length})` },
+    { id: "missing", label: `KB Gaps (${data.missing_topics.length})` },
+  ];
+
+  return (
+    <div className="space-y-4 p-4 md:p-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-display text-xl font-bold text-foreground">Self-Improvement Insights</h2>
+        <p className="text-sm text-muted-foreground">
+          Analisis pola pertanyaan user untuk meningkatkan AINA secara otomatis.
+          Data diperbarui real-time setiap kali user chat.
+        </p>
+        <p className="text-[10px] text-muted-foreground/60">
+          Generated: {new Date(data.generated_at).toLocaleString("id-ID")}
+        </p>
+      </div>
+
+      {/* Section tabs */}
+      <div className="flex flex-wrap gap-2">
+        {sectionTabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSection(t.id)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              section === t.id
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Summary ── */}
+      {section === "summary" && (
+        <div className="space-y-4">
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Total Query (7hr)",    value: ws.total_queries ?? 0,    color: "text-foreground" },
+              { label: "KB Hit Rate",           value: `${kbRate}%`,             color: kbRate >= 60 ? "text-green-500" : kbRate >= 30 ? "text-amber-500" : "text-destructive" },
+              { label: "Respons Buruk",         value: ws.bad_responses ?? 0,    color: ws.bad_responses > 0 ? "text-destructive" : "text-green-500" },
+              { label: "Tingkat Keluhan",       value: `${badRate}%`,            color: badRate > 10 ? "text-destructive" : badRate > 5 ? "text-amber-500" : "text-green-500" },
+            ].map(card => (
+              <div key={card.label} className="rounded-xl border border-border bg-card p-4">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{card.label}</p>
+                <p className={`text-2xl font-bold mt-1 ${card.color}`}>{card.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Source breakdown */}
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Sumber Jawaban (7 hari)</p>
+            <div className="space-y-2">
+              {[
+                { label: "Knowledge Base",   count: ws.source_kb,          color: "bg-green-500" },
+                { label: "Model AI",         count: ws.source_model,        color: "bg-blue-500" },
+                { label: "Wikipedia",        count: ws.source_wiki,         color: "bg-purple-500" },
+                { label: "Perplexity",       count: ws.source_perplexity,   color: "bg-amber-500" },
+              ].map(s => {
+                const pct = ws.total_queries > 0 ? Math.round((s.count / ws.total_queries) * 100) : 0;
+                return (
+                  <div key={s.label} className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground w-28 shrink-0">{s.label}</span>
+                    <div className="flex-1 bg-secondary rounded-full h-2">
+                      <div className={`h-2 rounded-full ${s.color}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-xs font-medium text-foreground w-10 text-right">{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Confidence + Intent */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Tingkat Kepercayaan</p>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between"><span className="text-green-500">High</span><span className="font-medium">{ws.conf_high ?? 0}</span></div>
+                <div className="flex justify-between"><span className="text-amber-500">Medium</span><span className="font-medium">{ws.conf_medium ?? 0}</span></div>
+                <div className="flex justify-between"><span className="text-destructive">Needs Verification</span><span className="font-medium">{ws.conf_low ?? 0}</span></div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Intent Breakdown</p>
+              <div className="space-y-1 text-xs">
+                {data.intent_breakdown.slice(0, 6).map(ib => (
+                  <div key={ib.intent} className="flex justify-between">
+                    <span className="text-muted-foreground capitalize">{ib.intent}</span>
+                    <span className="font-medium">{ib.count}</span>
+                  </div>
+                ))}
+                {data.intent_breakdown.length === 0 && <p className="text-muted-foreground">Belum ada data</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Daily trend */}
+          {data.daily_trend.length > 0 && (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Tren Query Harian (14 hari)</p>
+              <div className="flex items-end gap-1 h-16">
+                {data.daily_trend.map(d => {
+                  const max = Math.max(...data.daily_trend.map(x => x.count), 1);
+                  const pct = Math.round((d.count / max) * 100);
+                  return (
+                    <div key={d.day} className="flex flex-col items-center flex-1 gap-1" title={`${d.day}: ${d.count} queries`}>
+                      <div className="w-full bg-primary/80 rounded-t" style={{ height: `${Math.max(pct, 4)}%` }} />
+                      <span className="text-[8px] text-muted-foreground/60 rotate-45 origin-left hidden sm:block">
+                        {new Date(d.day).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Top Queries ── */}
+      {section === "top" && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Top 20 pertanyaan paling sering ditanya user (30 hari terakhir).</p>
+          {data.top_queries.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              Belum ada query tercatat. Data akan muncul setelah user mulai chat.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-3 font-medium">#</th>
+                    <th className="px-4 py-3 font-medium">Query</th>
+                    <th className="px-4 py-3 font-medium">Freq</th>
+                    <th className="px-4 py-3 font-medium">Intent</th>
+                    <th className="px-4 py-3 font-medium">Sumber</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.top_queries.map((q, i) => (
+                    <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                      <td className="px-4 py-2.5 text-muted-foreground">{i + 1}</td>
+                      <td className="px-4 py-2.5 text-foreground font-medium max-w-xs"><span className="line-clamp-2">{q.sample_query}</span></td>
+                      <td className="px-4 py-2.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${q.count >= 10 ? "bg-destructive/20 text-destructive" : q.count >= 5 ? "bg-amber-500/20 text-amber-500" : "bg-secondary text-muted-foreground"}`}>
+                          {q.count}×
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground capitalize">{q.intent_type ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{q.source_used ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Bad Responses ── */}
+      {section === "bad" && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Query yang mendapat thumbs-down dari user — tinjau dan perbaiki KB atau model untuk topik ini.</p>
+          {data.bad_responses.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              Tidak ada respons buruk tercatat. Bagus!
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-3 font-medium">#</th>
+                    <th className="px-4 py-3 font-medium">Query (mendapat 👎)</th>
+                    <th className="px-4 py-3 font-medium">Intent</th>
+                    <th className="px-4 py-3 font-medium">Sumber</th>
+                    <th className="px-4 py-3 font-medium">Konfidensi</th>
+                    <th className="px-4 py-3 font-medium">Waktu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.bad_responses.map((b, i) => (
+                    <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                      <td className="px-4 py-2.5 text-muted-foreground">{i + 1}</td>
+                      <td className="px-4 py-2.5 text-foreground font-medium max-w-xs"><span className="line-clamp-2">{b.query_text}</span></td>
+                      <td className="px-4 py-2.5 text-muted-foreground capitalize">{b.intent_type ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{b.source_used ?? "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] ${b.confidence === "high" ? "bg-green-500/20 text-green-500" : b.confidence === "medium" ? "bg-amber-500/20 text-amber-500" : "bg-destructive/20 text-destructive"}`}>
+                          {b.confidence ?? "?"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                        {new Date(b.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Missing KB Topics ── */}
+      {section === "missing" && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Pertanyaan user yang tidak menemukan jawaban di Knowledge Base (30 hari terakhir). Tambah artikel KB untuk topik ini.</p>
+          {data.missing_topics.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              Tidak ada KB gap tercatat. KB sudah cukup lengkap!
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-3 font-medium">#</th>
+                    <th className="px-4 py-3 font-medium">Topik yang Tidak Ada di KB</th>
+                    <th className="px-4 py-3 font-medium">Frekuensi</th>
+                    <th className="px-4 py-3 font-medium">Intent</th>
+                    <th className="px-4 py-3 font-medium">Terakhir Ditanya</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.missing_topics.map((t, i) => (
+                    <tr key={i} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                      <td className="px-4 py-2.5 text-muted-foreground">{i + 1}</td>
+                      <td className="px-4 py-2.5 text-foreground font-medium max-w-xs"><span className="line-clamp-2">{t.sample_query}</span></td>
+                      <td className="px-4 py-2.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.count >= 5 ? "bg-destructive/20 text-destructive" : t.count >= 3 ? "bg-amber-500/20 text-amber-500" : "bg-secondary text-muted-foreground"}`}>
+                          {t.count}×
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground capitalize">{t.intent_type ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                        {new Date(t.last_seen).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground">💡 Merah ≥5× = prioritas tinggi. Buat artikel KB baru dari tab Knowledge Base.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Coverage Tab (KB Gap Analysis) ────────────────── */
 function CoverageTab() {
   const [data, setData] = useState<{ total: number; topics: Array<{ query: string; count: number; intent_type: string | null; created_at: string }> } | null>(null);
@@ -4932,7 +5233,7 @@ function CoverageTab() {
 }
 
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights";
 
 const TAB_ORDER_KEY = "aina_admin_tab_order";
 
@@ -5001,6 +5302,7 @@ const AdminPage = () => {
     { id: "signals",       label: "Sinyal User",     icon: ThumbsUp,    masterOnly: true },
     { id: "procedures",    label: "Prosedur",         icon: BookOpen,    masterOnly: true },
     { id: "coverage",      label: "Coverage KB",      icon: Search,      masterOnly: true },
+    { id: "insights",      label: "Insights",          icon: Sparkles,    masterOnly: true },
   ];
 
   // Visible tabs for this admin level
@@ -5080,6 +5382,7 @@ const AdminPage = () => {
       {activeTab === "news"          && <NewsManagementTab />}
       {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
       {activeTab === "coverage"      && isMasterAdmin && <CoverageTab />}
+      {activeTab === "insights"      && isMasterAdmin && <InsightsTab />}
     </>
   );
 

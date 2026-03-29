@@ -310,6 +310,86 @@ initKBKeywordsCol();
  * Fire-and-forget — never blocks the main request.
  * ─────────────────────────────────────────────────────────────────────────── */
 let _missingTopicsTableReady = false;
+let _queryLogTableReady      = false;
+
+/* ── Self-Improvement: query_log ────────────────────────
+   Logs every AI chat query with intent, confidence, source,
+   and user rating. Drives the /api/admin/insights endpoint.
+   ─────────────────────────────────────────────────────── */
+async function ensureQueryLogTable() {
+  if (_queryLogTableReady) return true;
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return false;
+  let client;
+  try {
+    const { Client } = await import("pg");
+    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS query_log (
+        id            SERIAL PRIMARY KEY,
+        query_text    TEXT NOT NULL,
+        intent_type   TEXT,
+        source_used   TEXT,
+        confidence    TEXT,
+        user_id       TEXT,
+        has_kb_result BOOLEAN DEFAULT false,
+        is_transport  BOOLEAN DEFAULT false,
+        rating        SMALLINT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_query_log_created  ON query_log(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_query_log_intent   ON query_log(intent_type);
+      CREATE INDEX IF NOT EXISTS idx_query_log_rating   ON query_log(rating) WHERE rating IS NOT NULL;
+    `);
+    _queryLogTableReady = true;
+    console.log("[QueryLog] ✓ table ready");
+    return true;
+  } catch (e) {
+    console.warn("[QueryLog] init warning:", e.message);
+    return false;
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+}
+ensureQueryLogTable();
+
+/**
+ * Fire-and-forget: log a user query to query_log.
+ * Returns the new row id (or null on failure) via a Promise — used to embed
+ * log_id in the API response so clients can send back a rating.
+ */
+async function logQuery({ queryText, intentType, sourceUsed, confidence, userId, hasKbResult, isTransport, rating }) {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl || !queryText?.trim()) return null;
+  let client;
+  try {
+    const { Client } = await import("pg");
+    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+    const result = await client.query(
+      `INSERT INTO query_log (query_text, intent_type, source_used, confidence, user_id, has_kb_result, is_transport, rating)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [
+        queryText.trim().slice(0, 500),
+        intentType   ?? null,
+        sourceUsed   ?? null,
+        confidence   ?? null,
+        userId       ?? null,
+        hasKbResult  ?? false,
+        isTransport  ?? false,
+        rating       ?? null,
+      ]
+    );
+    return result.rows[0]?.id ?? null;
+  } catch (e) {
+    console.warn("[QueryLog] insert failed (non-critical):", e.message);
+    return null;
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+}
 
 async function ensureMissingTopicsTable() {
   if (_missingTopicsTableReady) return true;
@@ -2727,7 +2807,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
         intent_type:     intent.primary,
       },
     });
-    // Fire-and-forget: extract memories + record intel signals (Phase 6 + Phase 12)
+    // Fire-and-forget: extract memories + record intel signals + log query (Phase 6 + Phase 12 + Self-Improvement)
     setImmediate(() => {
       extractAndSaveMemories(user.id, [...messages, { role: "assistant", content: reply }], apiKey);
       recordIntelSignal({
@@ -2742,6 +2822,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
         confidenceHint:  confidence.hint,
         externalTier:    externalTrust?.tier ?? null,
         query:           lastUserMessage,
+      });
+      // Self-improvement: log every query for pattern analysis
+      logQuery({
+        queryText:   lastUserMessage,
+        intentType:  intent.primary ?? null,
+        sourceUsed,
+        confidence:  normalizedConfidence,
+        userId:      user.id,
+        hasKbResult: articles.length > 0,
+        isTransport: isTransportQuery(lastUserMessage),
       });
     });
   } catch {
@@ -5751,6 +5841,134 @@ app.get("/api/admin/answer-feedback", async (req, res) => {
   res.json(rows.map(r => ({ ...r, user: profileMap[r.user_id] ?? null })));
 });
 
+/* ── GET /api/admin/insights ─────────────────────────────
+   Self-improvement dashboard: top queries, bad responses,
+   missing KB topics, weekly usage summary.
+   Master-admin only.
+   ─────────────────────────────────────────────────────── */
+app.get("/api/admin/insights", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return res.status(503).json({ error: "DATABASE_URL not configured" });
+
+  let client;
+  try {
+    const { Client } = await import("pg");
+    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    await client.connect();
+
+    // ── 1. Top queries (last 30 days) ──────────────────────────────────────
+    const topQueriesResult = await client.query(`
+      SELECT
+        lower(trim(query_text)) AS normalized,
+        MIN(query_text)         AS sample_query,
+        COUNT(*)::int           AS count,
+        MAX(intent_type)        AS intent_type,
+        MAX(source_used)        AS source_used,
+        MAX(created_at)         AS last_seen
+      FROM query_log
+      WHERE created_at >= now() - INTERVAL '30 days'
+        AND rating IS NULL
+      GROUP BY lower(trim(query_text))
+      ORDER BY count DESC
+      LIMIT 20
+    `);
+
+    // ── 2. Bad responses (thumbs down, last 30 days) ───────────────────────
+    const badResponsesResult = await client.query(`
+      SELECT
+        query_text,
+        intent_type,
+        source_used,
+        confidence,
+        created_at
+      FROM query_log
+      WHERE rating = -1
+        AND created_at >= now() - INTERVAL '30 days'
+      ORDER BY created_at DESC
+      LIMIT 30
+    `);
+
+    // ── 3. Missing topics (from missing_topics table) ─────────────────────
+    let missingTopics = [];
+    try {
+      const mtResult = await client.query(`
+        SELECT
+          lower(trim(query)) AS normalized,
+          MIN(query)         AS sample_query,
+          COUNT(*)::int      AS count,
+          MAX(intent_type)   AS intent_type,
+          MAX(created_at)    AS last_seen
+        FROM missing_topics
+        WHERE created_at >= now() - INTERVAL '30 days'
+        GROUP BY lower(trim(query))
+        ORDER BY count DESC
+        LIMIT 20
+      `);
+      missingTopics = mtResult.rows;
+    } catch { /* table might not exist yet */ }
+
+    // ── 4. Weekly summary (last 7 days) ───────────────────────────────────
+    const weeklyResult = await client.query(`
+      SELECT
+        COUNT(*)::int                                          AS total_queries,
+        COUNT(*) FILTER (WHERE rating = -1)::int              AS bad_responses,
+        COUNT(*) FILTER (WHERE has_kb_result = true)::int     AS kb_hits,
+        COUNT(*) FILTER (WHERE is_transport = true)::int      AS transport_queries,
+        COUNT(*) FILTER (WHERE source_used = 'KB')::int       AS source_kb,
+        COUNT(*) FILTER (WHERE source_used = 'Perplexity')::int AS source_perplexity,
+        COUNT(*) FILTER (WHERE source_used = 'Wikipedia')::int  AS source_wiki,
+        COUNT(*) FILTER (WHERE source_used = 'Model')::int      AS source_model,
+        COUNT(*) FILTER (WHERE confidence = 'high')::int        AS conf_high,
+        COUNT(*) FILTER (WHERE confidence = 'medium')::int      AS conf_medium,
+        COUNT(*) FILTER (WHERE confidence = 'needs_verification')::int AS conf_low
+      FROM query_log
+      WHERE created_at >= now() - INTERVAL '7 days'
+    `);
+
+    // ── 5. Trend: daily query count (last 14 days) ────────────────────────
+    const trendResult = await client.query(`
+      SELECT
+        date_trunc('day', created_at AT TIME ZONE 'Africa/Cairo')::date AS day,
+        COUNT(*)::int AS count
+      FROM query_log
+      WHERE created_at >= now() - INTERVAL '14 days'
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `);
+
+    // ── 6. Intent breakdown (last 7 days) ─────────────────────────────────
+    const intentResult = await client.query(`
+      SELECT
+        COALESCE(intent_type, 'unknown') AS intent,
+        COUNT(*)::int AS count
+      FROM query_log
+      WHERE created_at >= now() - INTERVAL '7 days'
+        AND rating IS NULL
+      GROUP BY 1
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      top_queries:    topQueriesResult.rows,
+      bad_responses:  badResponsesResult.rows,
+      missing_topics: missingTopics,
+      weekly_summary: weeklyResult.rows[0] ?? {},
+      daily_trend:    trendResult.rows,
+      intent_breakdown: intentResult.rows,
+      generated_at:   new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("[Insights] error:", e.message);
+    res.status(500).json({ error: "Gagal memuat insights: " + e.message });
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+});
+
 // Admin: all users' saved answers (master admin only)
 app.get("/api/admin/all-saved-answers", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
@@ -7537,7 +7755,7 @@ app.post("/api/chat/rate", writeLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
 
-  const { rating, intent, confidence, messageTs } = req.body;
+  const { rating, intent, confidence, messageTs, query_text, source_used } = req.body;
   if (![1, -1].includes(rating)) return res.status(400).json({ error: "rating must be 1 or -1" });
 
   const supabase = getAdminClient();
@@ -7562,6 +7780,21 @@ app.post("/api/chat/rate", writeLimiter, async (req, res) => {
     console.warn("[Intel/Rating] insert error:", error.message);
     return res.status(500).json({ error: "Gagal menyimpan rating" });
   }
+
+  // Self-improvement: on negative rating, also log to query_log for bad-response analysis
+  if (rating === -1 && query_text?.trim()) {
+    logQuery({
+      queryText:  query_text,
+      intentType: intent  ?? null,
+      sourceUsed: source_used ?? null,
+      confidence: confidence ?? null,
+      userId:     user.id,
+      hasKbResult: false,
+      isTransport: false,
+      rating:     -1,
+    }).catch(() => {});
+  }
+
   console.log(`[Intel/Rating] rating=${rating > 0 ? "+1" : "-1"} intent=${intent} conf=${confidence}`);
   res.json({ success: true });
 });
@@ -8169,6 +8402,33 @@ app.get("/api/cron/weekly", async (req, res) => {
   if (!verifyCron(req, res)) return;
   try {
     const result = await runWeeklyRecap({ getAdminClient, sendEmail, emailTemplate, getUserEmail });
+
+    // Self-improvement: log weekly insight snapshot to console for monitoring
+    const dbUrl = process.env.DATABASE_URL;
+    if (dbUrl) {
+      const { Client } = await import("pg");
+      const client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+      try {
+        await client.connect();
+        const stats = await client.query(`
+          SELECT
+            COUNT(*)::int                                     AS total_queries,
+            COUNT(*) FILTER (WHERE rating = -1)::int          AS bad_responses,
+            COUNT(*) FILTER (WHERE has_kb_result = true)::int AS kb_hits
+          FROM query_log
+          WHERE created_at >= now() - INTERVAL '7 days'
+        `);
+        const { total_queries, bad_responses, kb_hits } = stats.rows[0] ?? {};
+        const kbRate = total_queries > 0 ? Math.round((kb_hits / total_queries) * 100) : 0;
+        const badRate = total_queries > 0 ? Math.round((bad_responses / total_queries) * 100) : 0;
+        console.log(`[Cron/weekly] Insight snapshot — queries:${total_queries} bad:${bad_responses}(${badRate}%) kb_rate:${kbRate}%`);
+      } catch (e) {
+        console.warn("[Cron/weekly] insight snapshot failed:", e.message);
+      } finally {
+        await client.end().catch(() => {});
+      }
+    }
+
     res.json({ ok: true, ...result });
   } catch (e) {
     console.error("[Cron/weekly]", e.message);
