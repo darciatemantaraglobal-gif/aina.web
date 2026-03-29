@@ -1465,6 +1465,198 @@ function isLocalMasisirQuery(text) {
   );
 }
 
+/* ── Cairo Transport System ─────────────────────────────────────────────────
+ * Detects transport follow-up queries, extracts destination from chat history,
+ * and builds a Cairo-specific transportation guide as a system-prompt context block.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Returns true if the query is asking HOW TO GET SOMEWHERE in Cairo.
+ * Covers: "gimana ke sana", "naik apa", "rute ke", "cara kesana", "transportasi ke", etc.
+ */
+function isTransportQuery(text) {
+  const t = text.toLowerCase();
+  return (
+    // Direct "how to get there" follow-up
+    /\b(ke\s*sana|kesana|ke\s*situ|ke\s*sini|ke\s*sana\s*nya|ke\s*sana\s*gimana|ke\s*sana\s*caranya)\b/.test(t) ||
+    // Route/transport question with destination
+    /\b(naik\s*apa|rute\s*(ke|menuju)|gimana\s*(ke|ke\s*sana|transportasi)|cara\s*(ke|menuju|kesana)|transportasi\s*(ke|menuju)|transport\s*(ke|menuju))\b/.test(t) ||
+    // Bus/microbus specific
+    /\b(bis\s*(ke|nomor|jurusan)|bus\s*(ke|nomor)|microbus\s*(ke|jurusan)|minibus\s*ke|angkutan\s*ke)\b/.test(t) ||
+    // Metro specific
+    /\b(metro\s*(ke|sampai|stasiun)|kereta\s*(ke|ke\s*sana)|subway\s*ke)\b/.test(t) ||
+    // Directions question
+    /\b(dari\s*mana\s*(naik|berangkat)|berangkat\s*dari|start\s*dari|titik\s*awal)\b/.test(t) ||
+    // Duration question for transport
+    /\b(berapa\s*lama\s*(ke|menuju|sampai)|jarak\s*(ke|dari))\b/.test(t) && /\b(ke|dari|menuju)\b/.test(t)
+  );
+}
+
+/**
+ * Extracts the last-mentioned place name from conversation history.
+ * Scans the last few assistant messages for:
+ *  - 📍 location marker (from AINA's auto-maps instruction)
+ *  - Maps URL patterns
+ *  - Common location name patterns
+ * Returns { name, area } or null.
+ */
+function extractLocationFromHistory(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+
+  // Scan last 6 messages (3 exchanges) from the end, preferring assistant messages
+  const recent = messages.slice(-8).reverse();
+
+  for (const msg of recent) {
+    if (msg.role !== "assistant") continue;
+    const content = typeof msg.content === "string" ? msg.content : "";
+
+    // Pattern 1: 📍 PLACE NAME from AINA's location instruction
+    const mapsIconMatch = content.match(/📍\s*([^\](\n]+?)(?:\]|\(|$)/m);
+    if (mapsIconMatch) {
+      const rawName = mapsIconMatch[1].trim();
+      const area = extractCairoArea(rawName, content);
+      return { name: rawName, area };
+    }
+
+    // Pattern 2: markdown link [📍 PLACE](maps-url)
+    const mdLinkMatch = content.match(/\[📍\s*([^\]]+)\]\(https?:\/\/[^)]+\)/);
+    if (mdLinkMatch) {
+      const rawName = mdLinkMatch[1].trim();
+      const area = extractCairoArea(rawName, content);
+      return { name: rawName, area };
+    }
+
+    // Pattern 3: Google Maps search URL with query param
+    const mapsSearchMatch = content.match(/maps\.search\/\?api=1&query=([^)"\s]+)/);
+    if (mapsSearchMatch) {
+      const rawName = decodeURIComponent(mapsSearchMatch[1].replace(/\+/g, " "))
+        .replace(/\s*Cairo\s*Egypt\s*/gi, "").trim();
+      const area = extractCairoArea(rawName, content);
+      return { name: rawName, area };
+    }
+
+    // Pattern 4: google.com/maps with place reference
+    const gmapsMatch = content.match(/google\.com\/maps\/place\/([^/"]+)/);
+    if (gmapsMatch) {
+      const rawName = decodeURIComponent(gmapsMatch[1].replace(/\+/g, " ")).trim();
+      const area = extractCairoArea(rawName, content);
+      return { name: rawName, area };
+    }
+  }
+
+  // Pattern 5: look in recent USER messages for a place already mentioned
+  for (const msg of recent) {
+    if (msg.role !== "user") continue;
+    const content = typeof msg.content === "string" ? msg.content : "";
+    // Try to extract a proper noun that looks like a place name (capitalized words after "ke"/"di"/"menuju")
+    const placeMatch = content.match(/(?:ke|di|menuju|lokasi|tempat|kantor|sekretariat)\s+([A-Z][A-Za-z\s]{2,40})/);
+    if (placeMatch) {
+      return { name: placeMatch[1].trim(), area: null };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Try to determine the Cairo area/district from a place name or surrounding text.
+ * Returns a string like "Darrasah", "Dokki", etc. or null.
+ */
+function extractCairoArea(name, surroundingText) {
+  const combined = (name + " " + surroundingText).toLowerCase();
+  const AREA_MAP = [
+    { area: "Darrasah / Al-Azhar", keywords: ["darrasah", "al-azhar", "azhar", "bawwabat", "bab al-futuh", "hussein", "azhar park"] },
+    { area: "Abbasiyya", keywords: ["abbasiyya", "abbassia", "abbasyia", "abbasiyah"] },
+    { area: "Dokki", keywords: ["dokki", "doqqi", "duqqi"] },
+    { area: "Zamalek", keywords: ["zamalek", "zamaalik"] },
+    { area: "Nasr City / Madinah Nasr", keywords: ["nasr city", "madinah nasr", "nasr", "hay nasr", "نصر"] },
+    { area: "Faisal / Giza", keywords: ["faisal", "hay faysal", "giza", "gizah", "al-giza"] },
+    { area: "Mohandessin", keywords: ["mohandessin", "muhandiseen", "muhandissin"] },
+    { area: "Agouza", keywords: ["agouza", "aguza", "ag'uza"] },
+    { area: "Maadi", keywords: ["maadi", "ma'adi", "ma'adi"] },
+    { area: "Heliopolis / Masr al-Jadida", keywords: ["heliopolis", "masr el gedida", "masr al-jadida", "nuzha"] },
+    { area: "Shubra", keywords: ["shubra", "shubrâ"] },
+    { area: "Hadaiq al-Qubba", keywords: ["hadaiq", "hadayiq", "hadaiq al-qubba"] },
+    { area: "Ramsis / Downtown Cairo", keywords: ["ramsis", "ramses", "downtown", "wust al-balad", "tahrir", "mubarak"] },
+    { area: "Ain Shams", keywords: ["ain shams", "ayn shams"] },
+    { area: "Hay al-Tasi' / Kesembilan", keywords: ["hay al-tasi", "hay tasi", "hay kesembilan", "ninth district", "تاسع"] },
+    { area: "Haram / Giza Pyramids", keywords: ["haram", "pyramids", "pyramid", "piramida", "piramid"] },
+    { area: "Boulaq", keywords: ["boulaq", "bulaq"] },
+    { area: "KBRI Kairo", keywords: ["kbri", "kedutaan indonesia", "kedutaan besar"] },
+  ];
+  for (const { area, keywords } of AREA_MAP) {
+    if (keywords.some(k => combined.includes(k))) return area;
+  }
+  return null;
+}
+
+/**
+ * Build a Cairo transportation guide context block.
+ * Injected when a transport follow-up query is detected.
+ */
+function buildCairoTransportContext(locationHint) {
+  const locationSection = locationHint
+    ? `\n\n**Destinasi yang disebutkan dalam percakapan ini:** ${locationHint.name}${locationHint.area ? ` (area: ${locationHint.area})` : ""}\nGunakan info area di atas untuk mencocokkan rute transportasi yang paling relevan dari panduan di bawah.`
+    : "\n\n**Catatan:** Destinasi tidak terdeteksi otomatis — coba gunakan konteks percakapan sebelumnya untuk mengidentifikasi tujuan user.";
+
+  return `\n\n---\n## 🚇 Panduan Transportasi Kairo untuk Masisir\n${locationSection}
+
+**INSTRUKSI:** Berikan rute spesifik berdasarkan area destinasi. Selalu sebutkan minimal 2 opsi: (1) Metro jika tersedia, (2) Mikrobus/taksi. Selalu rekomendasikan Uber/Careem sebagai opsi termudah dan terpercaya.
+
+### Metro Kairo (3 Jalur Utama)
+| Jalur | Warna | Rute | Stasiun Penting Masisir |
+|-------|-------|------|------------------------|
+| **Line 1** | Merah | Helwan ↔ New El-Marg | Ramsis/Mubarak, Abbasiyya, Ain Shams |
+| **Line 2** | Kuning | Shubra El-Kheima ↔ El-Mounib | Shubra, Attaba, Sadat/Tahrir, Opera, Dokki, Cairo University |
+| **Line 3** | Biru | Adly Mansour ↔ Kit Kat | Airport, Stadium, Maspero, Imbaba, Kit Kat |
+- **Transfer utama:** Stasiun Sadat (Tahrir) = transfer Line 1 ↔ Line 2. Stasiun Attaba = transfer Line 2 ↔ Line 3.
+- Harga tiket: 8–15 EGP per perjalanan (2025). Jam operasional: 05.00–24.00.
+
+### Rute per Area
+**Darrasah / Al-Azhar / Bawwabat:**
+- Metro: Line 1 → Stasiun Abbasiyya → jalan kaki 10-15 menit atau naik tok-tok/tuktuk ke Darrasah
+- Dari Tahrir/Ramsis: Mikrobus langsung ke Darrasah atau arah "Husein / Bab al-Futuh"
+- Patokan: Masjid Al-Husein atau Bab al-Futuh
+
+**Dokki (KBRI Kairo area):**
+- Metro: Line 2 → Stasiun Dokki (antara Opera dan El-Bohoos)
+- Dari Tahrir: 2 stasiun saja dari Sadat
+
+**Nasr City / Madinah Nasr:**
+- Metro: Line 1 → Abbasiyya → lanjut mikrobus ke arah "Nasr City" atau Alf Maskan
+- Alternatif: Taksi/Uber lebih praktis (30-60 EGP dari Darrasah, tergantung titik)
+- Patokan: City Stars Mall, Carrefour
+
+**Mohandessin / Agouza:**
+- Metro: Line 2 → El-Bohoos → jalan kaki atau tuktuk
+- Atau dari Tahrir: Mikrobus ke arah Agouza/Mohandessin melalui 6th October Bridge
+
+**Faisal / Haram / Giza:**
+- Metro: Line 2 → Cairo University atau Giza → mikrobus ke Faisal
+- Atau: Line 2 → El-Mounib (ujung) → angkot/mikrobus ke Haram
+
+**Heliopolis / Masr al-Jadida:**
+- Metro: Line 3 → Stasiun Heliopolis (Al-Ahram / Nadi el-Shams area)
+- Dari Abbasiyya: Mikrobus langsung
+
+**Ain Shams:**
+- Metro: Line 1 → Ain Shams Station
+- Dari Abbasiyya: beberapa stasiun ke timur
+
+**Ramsis / Downtown / Tahrir:**
+- Metro: hampir semua jalur lewat sini (Mubarak = Ramsis, Sadat = Tahrir)
+- Hub sentral Kairo
+
+### Tips Praktis Masisir
+1. **Uber/Careem** — paling mudah & aman, tarif transparan. Instal di HP.
+2. **Tokotok / Tuktuk** — jarak pendek dalam satu area, biasanya 5-15 EGP.
+3. **Mikrobus** — paling murah (2-5 EGP), tapi rute tidak ada petunjuknya. Tanya ke pengemudi: sebutkan nama daerah tujuan.
+4. **Taksi putih (al-Urjun)** — tawar harga SEBELUM naik, atau minta pakai argometer.
+5. **Google Maps / Maps.me** — aktifkan mode offline untuk navigasi di Kairo.
+6. **Tanya senior Masisir** — untuk rute mikrobus spesifik ke lokasi komunitas, senior paling tahu jalur exaknya.
+---`;
+}
+
 /* ── Intent detection (rule-based, no LLM call) ─────── */
 function detectIntent(text) {
   const t = text.toLowerCase().trim();
@@ -2156,6 +2348,17 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   if (partnerPromo) {
     console.log(`[PartnerPromo] Triggered for topics: ${partnerPromo.topics.join(", ")}`);
     finalSystemPrompt = finalSystemPrompt + partnerPromo.block;
+  }
+
+  // ── Cairo transport context injection ────────────────────────────────────
+  // Triggered when user asks about transportation / directions.
+  // Extracts destination from conversation history and injects a comprehensive
+  // Cairo transport guide so AINA can give accurate, area-specific routes.
+  if (isTransportQuery(lastUserMessage)) {
+    const locationHint = extractLocationFromHistory(messages);
+    const transportCtx = buildCairoTransportContext(locationHint);
+    finalSystemPrompt = finalSystemPrompt + transportCtx;
+    console.log(`[Transport] query detected → location=${locationHint ? locationHint.name + (locationHint.area ? ` (${locationHint.area})` : "") : "not found"}`);
   }
 
   if (attachedFile?.type === "pdf" && attachedFile.text) {
