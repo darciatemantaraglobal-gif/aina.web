@@ -1887,6 +1887,33 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     setBulkLoading(false);
   };
 
+  const [bulkReformatLoading, setBulkReformatLoading] = useState(false);
+
+  const handleBulkReformat = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Reformat ${selected.size} artikel dengan AI? Konten akan diperbaiki strukturnya tanpa mengubah isi. Proses ini bisa memakan waktu beberapa menit.`)) return;
+    setBulkReformatLoading(true);
+    try {
+      const auth = await getAuthHeader();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 menit
+      const res = await fetch("/api/admin/articles/bulk-reformat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: "Gagal" })); throw new Error(err.error); }
+      const result = await res.json();
+      toast.success(`Selesai! ${result.reformatted} artikel berhasil diformat${result.failed > 0 ? `, ${result.failed} gagal` : ""}.`);
+      load();
+    } catch (e: any) {
+      toast.error(e.name === "AbortError" ? "Timeout — coba kurangi jumlah artikel yang dipilih" : e.message);
+    }
+    setBulkReformatLoading(false);
+  };
+
   const handleBulkDelete = async () => {
     if (selected.size === 0) return;
     if (!confirm(`Yakin hapus ${selected.size} artikel sekaligus? Tindakan ini tidak bisa dibatalkan.`)) return;
@@ -2100,9 +2127,22 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                   </Button>
                 </>
               )}
+              {isMasterAdmin && (
+                <Button
+                  size="sm" disabled={bulkReformatLoading || bulkLoading}
+                  className="h-7 gap-1.5 bg-violet-500/10 border border-violet-500/30 text-violet-400 hover:bg-violet-500/20 text-xs"
+                  variant="outline"
+                  onClick={handleBulkReformat}
+                >
+                  {bulkReformatLoading
+                    ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" /> Memformat...</>
+                    : <><RefreshCw className="h-3 w-3" /> Reformat {selected.size}</>
+                  }
+                </Button>
+              )}
               {(filter !== "approved" || isMasterAdmin) && (
                 <Button
-                  size="sm" disabled={bulkLoading}
+                  size="sm" disabled={bulkLoading || bulkReformatLoading}
                   className="h-7 gap-1.5 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 text-xs"
                   variant="outline"
                   onClick={handleBulkDelete}
