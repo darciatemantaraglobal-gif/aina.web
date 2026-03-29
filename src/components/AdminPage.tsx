@@ -1359,6 +1359,8 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
 
   const handleClose = () => { reset(); onClose(); };
 
+  const htmlInputRef = useRef<HTMLInputElement>(null);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1369,6 +1371,42 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
       toast.success(`File "${file.name}" berhasil dimuat`);
     };
     reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  };
+
+  const handleHtmlUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    let pending = files.length;
+    const results: { name: string; text: string }[] = [];
+
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const html = ev.target?.result as string;
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        // Remove script/style tags before extracting text
+        doc.querySelectorAll("script, style, noscript, nav, footer, header").forEach(el => el.remove());
+        // Preserve heading structure and paragraph breaks
+        doc.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(el => {
+          el.textContent = `\n\n## ${el.textContent?.trim()}\n`;
+        });
+        doc.querySelectorAll("p, li, br, tr").forEach(el => {
+          el.insertAdjacentText("afterend", "\n");
+        });
+        const text = (doc.body?.textContent || "")
+          .replace(/\n{3,}/g, "\n\n") // collapse excess blank lines
+          .trim();
+        results.push({ name: file.name, text });
+        pending--;
+        if (pending === 0) {
+          const combined = results.map(r => `<!-- ${r.name} -->\n${r.text}`).join("\n\n---\n\n");
+          setRawText(prev => prev ? `${prev}\n\n---\n\n${combined}` : combined);
+          toast.success(`${files.length} file HTML berhasil dimuat`);
+        }
+      };
+      reader.readAsText(file, "utf-8");
+    });
     e.target.value = "";
   };
 
@@ -1525,7 +1563,16 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
                       : <><Image className="h-3.5 w-3.5" /> Gambar (bulk)</>
                     }
                   </button>
+                  <button
+                    onClick={() => htmlInputRef.current?.click()}
+                    disabled={step === "parsing" || imageLoading}
+                    className="flex items-center gap-1.5 rounded-lg border border-dashed border-orange-500/40 bg-orange-500/5 hover:bg-orange-500/10 px-3 py-1.5 text-xs font-medium text-orange-400 transition-colors disabled:opacity-50"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    .html
+                  </button>
                   <input ref={fileInputRef}  type="file" accept=".txt,text/plain" className="hidden" onChange={handleFileUpload} />
+                  <input ref={htmlInputRef}  type="file" accept=".html,.htm,text/html" multiple className="hidden" onChange={handleHtmlUpload} />
                   <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
                 </div>
               </div>
