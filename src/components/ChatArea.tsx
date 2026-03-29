@@ -47,32 +47,30 @@ interface ChatAreaProps {
 
 const API_URL = "/api/chat";
 
-const SUGGESTION_CATEGORIES = [
-  { id: "semua", label: "Semua" },
-  { id: "akademik", label: "Akademik" },
-  { id: "dokumen", label: "Dokumen" },
-  { id: "keuangan", label: "Keuangan" },
-  { id: "kehidupan", label: "Kehidupan" },
+const WELCOME_SUBTITLES = [
+  "Ada yang bisa aku bantu hari ini?",
+  "Mau tanya soal apa hari ini?",
+  "Apa yang ingin kamu ketahui?",
+  "Siap membantu perjalananmu di Mesir.",
+  "Tanya aja, aku siap jawab.",
+  "Butuh info tentang kehidupan di Kairo?",
+  "Kuliah, dokumen, atau kehidupan sehari-hari — tanya saja.",
+  "Semua pertanyaan tentang Mesir, aku siap bantu.",
+  "Ada info apa yang kamu cari hari ini?",
+  "Yuk, mulai ngobrol.",
 ];
 
-const ALL_SUGGESTIONS = [
-  { text: "Bagaimana cara daftar kuliah di Al-Azhar?", cat: "akademik" },
-  { text: "Apa saja fakultas di Al-Azhar University?", cat: "akademik" },
-  { text: "Jadwal semester dan ujian di Al-Azhar", cat: "akademik" },
-  { text: "Tips lulus ujian lebih cepat di Mesir", cat: "akademik" },
-  { text: "Cara mengurus visa pelajar Mesir", cat: "dokumen" },
-  { text: "Cara perpanjang iqomah di Mesir", cat: "dokumen" },
-  { text: "Prosedur legalisasi dokumen di Mesir", cat: "dokumen" },
-  { text: "Apa itu KITAS dan bagaimana cara membuatnya?", cat: "dokumen" },
-  { text: "Biaya hidup di Kairo untuk mahasiswa", cat: "keuangan" },
-  { text: "Cara kirim uang dari Indonesia ke Mesir", cat: "keuangan" },
-  { text: "Estimasi biaya kos dan makan per bulan", cat: "keuangan" },
-  { text: "Berapa kurs Pound Mesir vs Rupiah?", cat: "keuangan" },
-  { text: "Tips mencari tempat tinggal di Kairo", cat: "kehidupan" },
-  { text: "Makanan halal dan warung Indonesia di Kairo", cat: "kehidupan" },
-  { text: "Transportasi umum di Kairo", cat: "kehidupan" },
-  { text: "Tempat wisata wajib dikunjungi di Mesir", cat: "kehidupan" },
-];
+function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 11)  return "Selamat pagi";
+  if (hour >= 11 && hour < 15) return "Selamat siang";
+  if (hour >= 15 && hour < 19) return "Selamat sore";
+  return "Selamat malam";
+}
+
+function getRandomSubtitle(): string {
+  return WELCOME_SUBTITLES[Math.floor(Math.random() * WELCOME_SUBTITLES.length)];
+}
 
 const AinaLogo = ({ className }: { className?: string }) => (
   <img src="/aina-icon.png" alt="AINA" className={className} />
@@ -325,7 +323,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [feedbackMap, setFeedbackMap] = useState<Record<string, "up" | "down">>(loadStoredFeedback);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [currentStyle, setCurrentStyle] = useState<ResponseStyleKey>(() => getPersonalization().responseStyle ?? "step_by_step");
-  const [suggestionCat, setSuggestionCat] = useState("semua");
+  const [welcomeSubtitle] = useState(() => getRandomSubtitle());
+  const [timeGreeting] = useState(() => getTimeGreeting());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
@@ -894,53 +893,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
           </div>
         ) : isEmpty ? (
-          <div className="flex h-full flex-col items-center justify-center px-4 pb-4">
-            <AinaLogo className="mb-5 h-14 w-14 object-contain drop-shadow-[0_0_18px_rgba(139,92,246,0.85)]" />
-            <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">Halo! Saya AINA</h1>
-            <p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
-              Asisten AI khusus mahasiswa Indonesia di Mesir. Tanya apa saja tentang kehidupan di Kairo!
+          <div className="flex h-full flex-col items-center justify-center px-4 pb-16 select-none">
+            <AinaLogo className="mb-6 h-16 w-16 object-contain drop-shadow-[0_0_24px_rgba(139,92,246,0.9)]" />
+            <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground text-center">
+              {timeGreeting}!
+            </h1>
+            <p className="mt-3 max-w-xs text-center text-base text-muted-foreground leading-relaxed">
+              {welcomeSubtitle}
             </p>
-
-            <div className="mt-6 sm:mt-8 w-full max-w-lg">
-              {/* Category filter tabs */}
-              <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-                {SUGGESTION_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSuggestionCat(cat.id)}
-                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      suggestionCat === cat.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-              {/* Suggestion buttons */}
-              <div className="grid grid-cols-2 gap-2">
-                {ALL_SUGGESTIONS
-                  .filter(s => suggestionCat === "semua" || s.cat === suggestionCat)
-                  .slice(0, 6)
-                  .map((s) => (
-                    <button
-                      key={s.text}
-                      onClick={() => {
-                        setInput(s.text);
-                        setTimeout(() => {
-                          textareaRef.current?.focus();
-                          autoResize();
-                        }, 0);
-                      }}
-                      className="rounded-2xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
-                    >
-                      {s.text}
-                    </button>
-                  ))
-                }
-              </div>
-            </div>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
