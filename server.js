@@ -488,8 +488,6 @@ async function fetchRelevantArticles(userQuestion) {
     .filter(w => w.length >= 3)   // min 3 chars (was >3) — catches short org names like "ppi", "kmm"
     .slice(0, 8);                 // up to 8 keywords (was 5)
 
-  console.log(`[KB Search] query="${userQuestion.slice(0,60)}" keywords=${JSON.stringify(keywords)}`);
-
   // No meaningful keywords → no KB match possible
   if (keywords.length === 0) return [];
 
@@ -512,7 +510,6 @@ async function fetchRelevantArticles(userQuestion) {
 
   // Only return articles that genuinely matched — no fallback to recent articles
   // (returning unrelated recent articles inflates kbStrength and causes wrong confidence labels)
-  console.log(`[KB Search] → found ${matched?.length ?? 0} articles: ${(matched||[]).map(a=>a.title?.slice(0,40)).join(' | ')}`);
   return matched ?? [];
 }
 
@@ -1275,40 +1272,6 @@ app.get("/api/ping", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-/* ── Temporary: KB Diagnostics (internal only) ─── */
-app.get("/api/debug/kb-stats", async (_req, res) => {
-  const supabase = getAdminClient();
-  if (!supabase) return res.status(500).json({ error: "No admin client" });
-  // Test 1: Direct PostgREST query
-  const r1 = await supabase.from("knowledge_base").select("id,title,category,status,created_at").order("created_at", { ascending: false }).limit(20);
-  console.log("[debug/kb-stats] REST query error:", JSON.stringify(r1.error), "data count:", r1.data?.length);
-
-  // Test 2: exec_sql-based count
-  let execResult = null;
-  try {
-    const r3 = await supabase.rpc("exec_sql_returning", { sql: "SELECT count(*)::int AS cnt FROM public.knowledge_base" });
-    execResult = { data: r3.data, error: r3.error };
-  } catch(e) {
-    execResult = { error: e.message };
-  }
-  console.log("[debug/kb-stats] exec_sql_returning:", JSON.stringify(execResult));
-
-  // Test 3: Try direct SQL via exec_sql 
-  const r4 = await supabase.rpc("exec_sql", { sql: "SELECT 1" });
-  console.log("[debug/kb-stats] exec_sql(SELECT 1):", JSON.stringify({ data: r4.data, error: r4.error }));
-
-  const recent = r1.data || [];
-  const byStatus = {};
-  recent.forEach(a => { byStatus[a.status]=(byStatus[a.status]||0)+1; });
-  res.json({ 
-    restQueryError: r1.error?.message || null, 
-    restQueryCount: r1.data?.length ?? "null",
-    execSqlWorks: !r4.error,
-    execSqlError: r4.error?.message || null,
-    byStatus,
-    recentItems: recent.map(a=>({title:a.title?.slice(0,55),category:a.category,status:a.status}))
-  });
-});
 
 /* ── Current user info (role, master admin status) ───── */
 app.get("/api/me", async (req, res) => {
