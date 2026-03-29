@@ -1363,37 +1363,49 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
     e.target.value = "";
   };
 
+  const [imageProgress, setImageProgress] = useState("");
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast.error("Ukuran gambar maksimal 10 MB"); return; }
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const tooBig = files.filter(f => f.size > 10 * 1024 * 1024);
+    if (tooBig.length) { toast.error(`${tooBig.length} file melebihi 10 MB`); return; }
+
     setImageLoading(true);
-    try {
-      const auth = await getAuthHeader();
-      const form = new FormData();
-      form.append("image", file);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      const res = await fetch("/api/admin/articles/image-extract", {
-        method: "POST",
-        headers: { Authorization: auth },
-        body: form,
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Gagal" }));
-        throw new Error(err.error || "Gagal membaca gambar");
-      }
-      const data = await res.json();
-      setRawText(prev => prev ? prev + "\n\n" + data.text : data.text);
-      toast.success(`Teks dari gambar berhasil diekstrak`);
-    } catch (e: any) {
-      toast.error(e.message || "Gagal memproses gambar");
-    } finally {
-      setImageLoading(false);
-      e.target.value = "";
+    const extracted: string[] = [];
+    let failed = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setImageProgress(`Membaca gambar ${i + 1} / ${files.length}…`);
+      try {
+        const auth = await getAuthHeader();
+        const form = new FormData();
+        form.append("image", file);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const res = await fetch("/api/admin/articles/image-extract", {
+          method: "POST",
+          headers: { Authorization: auth },
+          body: form,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok) { failed++; continue; }
+        const data = await res.json();
+        extracted.push(data.text);
+      } catch { failed++; }
     }
+
+    if (extracted.length) {
+      setRawText(prev => prev ? prev + "\n\n" + extracted.join("\n\n") : extracted.join("\n\n"));
+      toast.success(`${extracted.length} gambar berhasil diekstrak${failed ? `, ${failed} gagal` : ""}`);
+    } else {
+      toast.error("Semua gambar gagal diproses");
+    }
+    setImageLoading(false);
+    setImageProgress("");
+    e.target.value = "";
   };
 
   const handleParse = async () => {
@@ -1481,12 +1493,12 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
                     className="flex items-center gap-1.5 rounded-lg border border-dashed border-sky-500/40 bg-sky-500/5 hover:bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-400 transition-colors disabled:opacity-50"
                   >
                     {imageLoading
-                      ? <><div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" /> Membaca...</>
-                      : <><Image className="h-3.5 w-3.5" /> Gambar</>
+                      ? <><div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />{imageProgress || "Membaca..."}</>
+                      : <><Image className="h-3.5 w-3.5" /> Gambar (bulk)</>
                     }
                   </button>
                   <input ref={fileInputRef}  type="file" accept=".txt,text/plain" className="hidden" onChange={handleFileUpload} />
-                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                  <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
                 </div>
               </div>
               {parseError && (
