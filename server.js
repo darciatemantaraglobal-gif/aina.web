@@ -506,7 +506,7 @@ async function fetchRelevantArticles(userQuestion) {
     .select(selectCols)
     .eq("status", "approved")
     .or(orFilter)
-    .limit(5);
+    .limit(8);
 
   // Only return articles that genuinely matched — no fallback to recent articles
   // (returning unrelated recent articles inflates kbStrength and causes wrong confidence labels)
