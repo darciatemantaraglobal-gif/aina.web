@@ -274,6 +274,22 @@ async function initProcedures() {
 }
 initProcedures();
 
+/* ── Check keywords column on startup and warn if missing ── */
+async function initKBKeywordsCol() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const { error } = await supabase.from("knowledge_base").select("keywords").limit(1);
+  if (error?.message?.includes("does not exist") || error?.code === "42703") {
+    console.warn("[KB] ⚠ 'keywords' column missing from knowledge_base.");
+    console.warn("[KB]   Run this in Supabase SQL Editor to enable AI keyword search:");
+    console.warn("[KB]   ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS keywords TEXT;");
+    console.warn("[KB]   Then click 'Generate Keywords' in Admin Panel → Knowledge Base.");
+  } else {
+    console.log("[KB] ✓ keywords column ready");
+  }
+}
+initKBKeywordsCol();
+
 async function initUserNotes() {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) return;
@@ -462,6 +478,79 @@ async function detectMapsUrlCol(supabase) {
     console.warn("[schema] 'maps_url' column not found — run: ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS maps_url TEXT;");
   }
   return _hasMapsUrlCol;
+}
+
+/* ── AI keyword generation for KB articles ───────────── */
+async function generateArticleKeywords(title, content, category) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const snippet = content?.slice(0, 800) || "";
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA KB Keywords",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-lite-001",
+        messages: [{
+          role: "user",
+          content: `Kamu adalah asisten yang membantu indexing artikel knowledge base untuk mahasiswa Indonesia di Mesir (Masisir).
+
+Artikel:
+- Judul: ${title}
+- Kategori: ${category}
+- Isi (cuplikan): ${snippet}
+
+Tugas: Buat daftar kata kunci dan frasa pencarian yang mungkin diketik pengguna saat mencari artikel ini. Sertakan:
+1. Kata kunci utama dari judul/isi
+2. Variasi informal (bahasa gaul Masisir: "gimana", "cara", "mau ke", dll)
+3. Sinonim dan variasi ejaan
+4. Pertanyaan pendek yang relevan
+5. Nama tempat/organisasi yang disebutkan
+
+Format output: hanya daftar kata/frasa dipisahkan koma, tanpa numbering, tanpa penjelasan, tanpa tanda kutip. Maksimal 25 frasa.`,
+        }],
+        max_tokens: 300,
+        temperature: 0.3,
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "";
+    // Clean up: remove any numbering, bullets, newlines — normalize to comma-separated
+    return raw
+      .replace(/\n+/g, ", ")
+      .replace(/\d+\.\s*/g, "")
+      .replace(/[-•]\s*/g, "")
+      .replace(/,\s*,/g, ",")
+      .replace(/^,|,$/g, "")
+      .trim()
+      .slice(0, 1000); // hard cap to avoid huge stored values
+  } catch {
+    return null;
+  }
+}
+
+/* Trigger keyword generation for one article (fire-and-forget) */
+async function triggerKeywordGen(articleId) {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  try {
+    const { data: art } = await supabase
+      .from("knowledge_base")
+      .select("title, content, category")
+      .eq("id", articleId)
+      .single();
+    if (!art) return;
+    const keywords = await generateArticleKeywords(art.title, art.content, art.category);
+    if (keywords) {
+      await supabase.from("knowledge_base").update({ keywords }).eq("id", articleId);
+    }
+  } catch { /* silent — keyword gen is best-effort */ }
 }
 
 /* ── Fetch relevant knowledge base articles ──────────── */
@@ -3349,6 +3438,9 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
   const { data: articleData } = await supabase.from("knowledge_base").select("title").eq("id", id).single();
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
+  // Fire-and-forget keyword generation when article is approved
+  if (status === "approved") triggerKeywordGen(id);
+
   const authorInfo = await getUserEmail(article.author_id);
   const appUrl = process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
@@ -3669,6 +3761,11 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   const pendingIds = pendingArticles.map(a => a.id);
   await supabase.from("knowledge_base").update({ status }).in("id", pendingIds);
 
+  // Fire-and-forget keyword generation for all newly approved articles
+  if (status === "approved") {
+    for (const id of pendingIds) triggerKeywordGen(id);
+  }
+
   if (status === "approved") {
     const authorGroups = {};
     for (const art of pendingArticles) {
@@ -3710,6 +3807,39 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   }
 
   res.json({ updated: pendingIds.length });
+});
+
+/* ── Admin: Bulk-generate keywords for all approved articles ── */
+app.post("/api/admin/articles/generate-keywords", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  // Fetch all approved articles (or only those without keywords if regenerate=false)
+  const regenerate = req.body?.regenerate !== false; // default true
+  let query = supabase.from("knowledge_base").select("id, title, content, category").eq("status", "approved");
+  if (!regenerate) query = query.is("keywords", null);
+
+  const { data: articles, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  if (!articles?.length) return res.json({ generated: 0, total: 0 });
+
+  // Start processing in background — respond immediately with count
+  res.json({ started: true, total: articles.length, message: `Generating keywords for ${articles.length} articles in background` });
+
+  // Process sequentially with small delay to avoid rate limits
+  let generated = 0;
+  for (const art of articles) {
+    try {
+      const keywords = await generateArticleKeywords(art.title, art.content, art.category);
+      if (keywords) {
+        await supabase.from("knowledge_base").update({ keywords }).eq("id", art.id);
+        generated++;
+      }
+    } catch { /* skip on error */ }
+    await new Promise(r => setTimeout(r, 200)); // 200ms between requests
+  }
+  console.log(`[KB] Keyword generation done: ${generated}/${articles.length} articles updated`);
 });
 
 /* ── Admin: Input Article Directly ──────────────────── */
@@ -6309,6 +6439,7 @@ CREATE INDEX IF NOT EXISTS idx_message_reports_status ON public.message_reports(
 -- Column migrations for existing installations:
 ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS user_question TEXT;
 ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS additional_note TEXT;
+ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS keywords TEXT;
 -- Helper function for server-side migrations (required for auto-migration to work):
 CREATE OR REPLACE FUNCTION public.exec_sql(sql text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN EXECUTE sql; END; $$;`,
 

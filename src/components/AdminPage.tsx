@@ -16,7 +16,7 @@ import {
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
-  GripVertical, Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight,
+  GripVertical, Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -1826,6 +1826,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [reformattingId, setReformattingId] = useState<string | null>(null);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [scraperOpen, setScraperOpen] = useState(false);
+  const [kwGenLoading, setKwGenLoading] = useState(false);
 
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
@@ -1969,6 +1970,19 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const handleGenerateKeywords = async () => {
+    if (!confirm("Generate kata kunci AI untuk semua artikel approved? Proses berjalan di background (~2-3 menit untuk 87 artikel).")) return;
+    setKwGenLoading(true);
+    try {
+      const result = await adminFetch("/api/admin/articles/generate-keywords", {
+        method: "POST",
+        body: JSON.stringify({ regenerate: true }),
+      });
+      toast.success(`Proses dimulai — ${result.total} artikel sedang diproses di background. AINA akan makin pintar dalam beberapa menit.`);
+    } catch (e: any) { toast.error(e.message); }
+    setKwGenLoading(false);
+  };
+
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -2026,6 +2040,18 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                 {reformatLoading
                   ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Memformat...</>
                   : <><RefreshCw className="h-3.5 w-3.5" /> Reformat</>
+                }
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                className="h-8 gap-1.5 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                disabled={kwGenLoading}
+                onClick={handleGenerateKeywords}
+                title="Generate kata kunci AI untuk semua artikel — meningkatkan kemampuan AINA menemukan artikel dari berbagai cara bertanya"
+              >
+                {kwGenLoading
+                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" /> Generating...</>
+                  : <><Sparkles className="h-3.5 w-3.5" /> Generate Keywords</>
                 }
               </Button>
               <Button
