@@ -1342,9 +1342,24 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
   const [importResult, setImportResult] = useState<{ imported: number; total: number } | null>(null);
   const [parseError, setParseError] = useState("");
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const reset = () => { setStep("paste"); setRawText(""); setArticles([]); setImportResult(null); setParseError(""); };
 
   const handleClose = () => { reset(); onClose(); };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setRawText(text || "");
+      toast.success(`File "${file.name}" berhasil dimuat`);
+    };
+    reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  };
 
   const handleParse = async () => {
     if (!rawText.trim()) { toast.error("Paste teks dulu!"); return; }
@@ -1412,9 +1427,26 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
           {/* STEP 1: Paste */}
           {(step === "paste" || step === "parsing") && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Paste teks dari bot Telegram, halaman web, PDF, atau sumber apapun. AI akan otomatis memecah jadi artikel-artikel KB yang terstruktur.
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Upload file <code className="text-xs bg-secondary px-1 py-0.5 rounded">.txt</code> atau paste teks langsung. AI akan otomatis memecah jadi artikel-artikel KB.
+                </p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={step === "parsing"}
+                  className="shrink-0 flex items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors disabled:opacity-50"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload .txt
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,text/plain"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </div>
               {parseError && (
                 <div className="flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
                   <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
