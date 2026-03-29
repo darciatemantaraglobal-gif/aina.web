@@ -2550,20 +2550,45 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (ddgResult)                                       responseSources.push("DuckDuckGo");
     if (responseSources.length === 0)                    responseSources.push("Pengetahuan Umum");
 
+    // ── Normalize confidence label to short form ──────────────────────────
+    // classifyConfidence() returns verbose labels; simplify for the API surface.
+    const CONFIDENCE_LABEL_MAP = {
+      high_confidence:    "high",
+      medium_confidence:  "medium",
+      needs_verification: "needs_verification",
+    };
+    const normalizedConfidence = CONFIDENCE_LABEL_MAP[confidence.level] ?? confidence.level;
+
+    // ── Determine source_used for easy client consumption ─────────────────
+    // Single string: "KB" | "Perplexity" | "Wikipedia" | "DuckDuckGo" | "Model"
+    // Reflects the highest-trust source that was actually injected.
+    const sourceUsed =
+      pinnedUpdates.length > 0     ? "KB"          // pinned treated as KB-tier
+      : articles.length > 0        ? "KB"
+      : perplexityResult           ? "Perplexity"
+      : wikiResult                 ? "Wikipedia"
+      : ddgResult                  ? "DuckDuckGo"
+      : queryType === "currency" && exchangeRates ? "RealTimeAPI"
+      : "Model";
+
     res.json({
       reply,
-      model:    result.model,
-      intent:   intent.primary,
-      confidence: confidence.level,
-      sources:  responseSources,
+      model:       result.model,
+      intent:      intent.primary,
+      intent_type: intent.primary,          // alias matching the spec name
+      confidence:  normalizedConfidence,
+      source_used: sourceUsed,              // primary source consumed (spec field)
+      sources:     responseSources,         // display badge list (unchanged)
       // ── Structured source metadata (for UI badges + logging) ──────────────
       sourceMetadata: {
-        confidence:      sourceResult.confidence,
+        confidence:      normalizedConfidence,
         primary_source:  sourceResult.primary_source,
         sources_used:    sourceResult.sources_used,
         may_be_outdated: sourceResult.may_be_outdated,
         source_summary:  sourceResult.source_summary,
         retrieved_at:    sourceResult.retrieved_at,
+        source_used:     sourceUsed,
+        intent_type:     intent.primary,
       },
     });
     // Fire-and-forget: extract memories + record intel signals (Phase 6 + Phase 12)

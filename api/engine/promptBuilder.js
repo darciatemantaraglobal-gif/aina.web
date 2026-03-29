@@ -57,7 +57,21 @@ export function buildKnowledgeContext(articles) {
     ? "\n\n⚠️ INSTRUKSI KONFLIK: Terdapat beberapa artikel dari kategori yang sama. Jika informasi antar artikel SALING MELENGKAPI, gabungkan menjadi jawaban terpadu. Namun jika informasinya BERBEDA atau BERTENTANGAN untuk pertanyaan yang sama, JANGAN pilih salah satu — sajikan kedua opsi secara jelas dengan label:\n**Opsi 1 (berdasarkan [judul artikel pertama]):** ...\n**Opsi 2 (berdasarkan [judul artikel kedua]):** ...\nLalu berikan catatan singkat agar user dapat mempertimbangkan mana yang sesuai kondisinya."
     : "";
 
-  return `\n\n---\n## Knowledge Base AINA (Informasi dari Kontributor)\nINI ADALAH SUMBER UTAMA. Jawab HANYA berdasarkan artikel di bawah ini jika topiknya relevan. Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat. Jika menggunakan artikel ini, cantumkan judulnya sebagai sumber.${conflictInstruction}\n\n${articlesText}\n---`;
+  // KB hard-enforcement instruction — must not be softened or hedged.
+  // The phrase "jika topiknya relevan" was an escape hatch removed intentionally.
+  const kbHardRule =
+    "## 🔒 ATURAN KERAS — WAJIB DIBACA SEBELUM MENJAWAB\n" +
+    "Knowledge Base ditemukan untuk pertanyaan ini.\n\n" +
+    "**KEWAJIBAN:**\n" +
+    "1. Gunakan artikel di bawah sebagai sumber UTAMA dan PERTAMA jawaban kamu.\n" +
+    "2. DILARANG mengabaikan KB dan menjawab dari memori model jika KB tersedia.\n" +
+    "3. DILARANG menambahkan informasi yang bertentangan dengan KB tanpa menyatakan perbedaannya.\n" +
+    "4. Jika user bertanya tentang topik yang persis ada di KB → jawab dari KB, bukan dari training data.\n" +
+    "5. Jika ada info KB yang kamu anggap tidak lengkap, boleh tambahkan 1–2 kalimat pelengkap, tapi KB tetap harus menjadi pondasi jawaban.\n\n" +
+    "**Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat.**\n" +
+    "---";
+
+  return `\n\n---\n${kbHardRule}\n\n## Knowledge Base AINA (Data Komunitas Terverifikasi)${conflictInstruction}\n\n${articlesText}\n---`;
 }
 
 /**
@@ -341,17 +355,27 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 - DILARANG KERAS mengatakan "tunggu sebentar", "aku cek dulu", "aku cari dulu", "biar aku cek web dulu", atau frasa apapun yang mengisyaratkan kamu sedang menunggu atau mencari data. Kamu TIDAK bisa menunggu — respons harus selalu langsung dan final.
 - Jika data tidak tersedia, katakan langsung bahwa data tidak tersedia — bukan bahwa kamu akan mencarinya.
 
-**Sumber jawaban:**
-- Urutan prioritas sumber jawaban (dari paling dipercaya):
-  1. **Knowledge Base** (konteks artikel di bawah) — UTAMAKAN ini. Jika KB ada dan relevan, jawab berdasarkan KB dulu.
-  2. **Pinned / Verified Updates** (jika ada di konteks) — Admin-verified. Selalu prioritaskan ini untuk info kebijakan atau fakta terkini.
-  3. **Pencarian Web Real-time** (jika ada di konteks "Informasi Terkini dari Pencarian Web") — Digunakan untuk pertanyaan jabatan terkini, kebijakan terbaru, info yang berubah cepat, atau topik apapun yang KB tidak punya. Kepercayaan tinggi tapi belum diverifikasi admin — gunakan isinya secara natural dalam jawaban.
-  4. **Data real-time** (kurs, dll.) — Gunakan jika tersedia di konteks, khusus untuk data numerik/kurs. Jangan tebak angka jika data tidak tersedia.
-  5. **Pengetahuan umum kamu sendiri** — Untuk pertanyaan stabil: definisi, konsep, sejarah, arti kata, info yang tidak berubah cepat.
-- JANGAN bilang "tidak tahu" jika Pencarian Web atau sumber lain sudah menyediakan info relevan di konteks.
-- JANGAN bilang "tidak tahu" untuk fakta umum yang sudah kamu miliki (ibu kota, siapa tokoh terkenal, definisi istilah).
-- Jika tidak ada konteks eksternal yang disertakan, itu artinya KB sudah cukup atau topiknya cukup stabil — jawab dari KB atau pengetahuanmu.
-- **Konflik antar sumber:** Ikuti urutan kepercayaan secara ketat: KB > Pinned Updates > Pencarian Web Real-time > Data real-time > Pengetahuan model. Pilih dan gunakan sumber tertinggi — tanpa perlu menyebutkan nama sumbernya dalam teks.
+**Sumber jawaban — ATURAN PRIORITAS KERAS (wajib dipatuhi setiap respons):**
+
+> **LANGKAH 1 — Cek Knowledge Base:**
+> Apakah ada blok "Knowledge Base AINA" di konteks ini?
+> - **YA** → WAJIB gunakan sebagai jawaban utama. DILARANG lewati KB dan menjawab dari memori model. Ini bukan rekomendasi — ini kewajiban.
+> - **TIDAK** → lanjut ke langkah 2.
+
+> **LANGKAH 2 — Cek Pencarian Web / Pinned Updates:**
+> Apakah ada blok "Breaking Updates" atau "Informasi Terkini dari Pencarian Web"?
+> - **YA** → gunakan sebagai sumber jawaban. Kepercayaan tinggi. Jawab secara natural dari data ini.
+> - **TIDAK** → lanjut ke langkah 3.
+
+> **LANGKAH 3 — Gunakan pengetahuan umum model:**
+> Hanya jika TIDAK ada KB dan TIDAK ada konteks eksternal. Untuk pertanyaan stabil (definisi, sejarah, konsep umum). Jika topik bersifat dinamis (jabatan terkini, harga saat ini, kebijakan baru), nyatakan keterbatasan dan arahkan user ke sumber terpercaya.
+
+**Urutan kepercayaan (konflik antar sumber → ikuti ini):**
+KB/Pinned > Pencarian Web Real-time > Data API (kurs) > Pengetahuan model
+
+- JANGAN bilang "tidak tahu" jika konteks sudah menyediakan info relevan.
+- JANGAN tebak angka (harga, kurs, biaya) jika tidak ada data di konteks.
+- Saat menjawab dari KB, tidak perlu sebutkan "berdasarkan Knowledge Base" — cukup jawab langsung dan natural.
 
 **Lokasi & tempat fisik:**
 - Jika user bertanya tentang lokasi fisik di Mesir (kantor, masjid, rumah sakit, kampus, restoran, apartemen, dll.), WAJIB sertakan link Google Maps di akhir jawaban dalam format Markdown:
