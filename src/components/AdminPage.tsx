@@ -1342,7 +1342,9 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
   const [importResult, setImportResult] = useState<{ imported: number; total: number } | null>(null);
   const [parseError, setParseError] = useState("");
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef  = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [imageLoading, setImageLoading] = useState(false);
 
   const reset = () => { setStep("paste"); setRawText(""); setArticles([]); setImportResult(null); setParseError(""); };
 
@@ -1359,6 +1361,39 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
     };
     reader.readAsText(file, "utf-8");
     e.target.value = "";
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast.error("Ukuran gambar maksimal 10 MB"); return; }
+    setImageLoading(true);
+    try {
+      const auth = await getAuthHeader();
+      const form = new FormData();
+      form.append("image", file);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      const res = await fetch("/api/admin/articles/image-extract", {
+        method: "POST",
+        headers: { Authorization: auth },
+        body: form,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Gagal" }));
+        throw new Error(err.error || "Gagal membaca gambar");
+      }
+      const data = await res.json();
+      setRawText(prev => prev ? prev + "\n\n" + data.text : data.text);
+      toast.success(`Teks dari gambar berhasil diekstrak`);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal memproses gambar");
+    } finally {
+      setImageLoading(false);
+      e.target.value = "";
+    }
   };
 
   const handleParse = async () => {
@@ -1427,25 +1462,32 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
           {/* STEP 1: Paste */}
           {(step === "paste" || step === "parsing") && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start justify-between gap-3">
                 <p className="text-sm text-muted-foreground">
-                  Upload file <code className="text-xs bg-secondary px-1 py-0.5 rounded">.txt</code> atau paste teks langsung. AI akan otomatis memecah jadi artikel-artikel KB.
+                  Upload file <code className="text-xs bg-secondary px-1 py-0.5 rounded">.txt</code> atau gambar screenshot, atau paste teks langsung. AI otomatis ekstrak dan pecah jadi artikel KB.
                 </p>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={step === "parsing"}
-                  className="shrink-0 flex items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors disabled:opacity-50"
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                  Upload .txt
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".txt,text/plain"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={step === "parsing" || imageLoading}
+                    className="flex items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors disabled:opacity-50"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    .txt
+                  </button>
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={step === "parsing" || imageLoading}
+                    className="flex items-center gap-1.5 rounded-lg border border-dashed border-sky-500/40 bg-sky-500/5 hover:bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-400 transition-colors disabled:opacity-50"
+                  >
+                    {imageLoading
+                      ? <><div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" /> Membaca...</>
+                      : <><Image className="h-3.5 w-3.5" /> Gambar</>
+                    }
+                  </button>
+                  <input ref={fileInputRef}  type="file" accept=".txt,text/plain" className="hidden" onChange={handleFileUpload} />
+                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </div>
               </div>
               {parseError && (
                 <div className="flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">

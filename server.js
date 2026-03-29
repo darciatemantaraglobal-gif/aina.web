@@ -3495,6 +3495,69 @@ Format output: [{"title":"...","content":"...","category":"...","keywords":"..."
   }
 });
 
+/* POST /api/admin/articles/image-extract — extract text from image using AI vision */
+const imageExtractUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Hanya file gambar yang diizinkan"));
+  },
+});
+
+app.post("/api/admin/articles/image-extract", imageExtractUpload.single("image"), async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  if (!req.file) return res.status(400).json({ error: "File gambar diperlukan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
+
+  try {
+    const base64 = req.file.buffer.toString("base64");
+    const mimeType = req.file.mimetype;
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+
+    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-001",
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Ekstrak SEMUA teks yang ada di gambar ini secara lengkap dan akurat. Jika ada tabel, format sebagai teks biasa. Jika ada poin-poin atau menu, tuliskan satu per satu. Jangan tambahkan komentar, penjelasan, atau interpretasi — hanya teks asli dari gambar. Jika gambar tidak mengandung teks yang bermakna, balas dengan: [TIDAK ADA TEKS]",
+            },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        }],
+        max_tokens: 4000,
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const err = await aiRes.text();
+      console.error("[image-extract] AI error:", err);
+      return res.status(500).json({ error: "AI gagal membaca gambar" });
+    }
+
+    const aiData = await aiRes.json();
+    const extractedText = aiData.choices?.[0]?.message?.content?.trim() ?? "";
+
+    if (!extractedText || extractedText === "[TIDAK ADA TEKS]") {
+      return res.status(422).json({ error: "Tidak ada teks yang bisa diekstrak dari gambar ini" });
+    }
+
+    return res.json({ text: extractedText });
+  } catch (e) {
+    console.error("[image-extract]", e.message);
+    return res.status(500).json({ error: "Gagal memproses gambar: " + e.message });
+  }
+});
+
 /* POST /api/admin/articles/bulk-import — insert parsed articles into KB */
 app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
