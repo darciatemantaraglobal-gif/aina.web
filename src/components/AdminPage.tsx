@@ -1456,7 +1456,10 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
         method: "POST", body: JSON.stringify({ articles }),
       });
       setImportResult({ imported: data.imported, total: data.total });
-      if (data.errors?.length) data.errors.forEach((e: string) => console.warn("[bulk-import]", e));
+      if (data.errors?.length) {
+        data.errors.forEach((e: string) => console.warn("[bulk-import]", e));
+        toast.error(`${data.errors.length} artikel gagal diimpor: ${data.errors[0]}`);
+      }
       setStep("done");
       onDone();
     } catch (e: any) {

@@ -3567,28 +3567,38 @@ app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
   if (!Array.isArray(articles) || articles.length === 0) return res.status(400).json({ error: "articles array diperlukan" });
   if (articles.length > 20) return res.status(400).json({ error: "Maksimal 20 artikel per import" });
 
-  const VALID_CATS = new Set(["administrasi","kehidupan_mesir","akademik","keuangan","transportasi","kesehatan","lainnya"]);
+  // Must match DB CHECK constraint exactly (case-sensitive)
+  const VALID_CATS = new Set(["Administrasi","Akademik","Kehidupan Mesir","Transport","Tempat Tinggal","Kuliner"]);
   const supabase = getAdminClient();
+
+  const [hasTypeCol, hasKwCol, hasMapsUrlCol] = await Promise.all([
+    detectArticleTypeCol(supabase),
+    detectKeywordsCol(supabase),
+    detectMapsUrlCol(supabase),
+  ]);
 
   let imported = 0;
   const errors = [];
 
   for (const art of articles) {
     if (!art.title?.trim() || !art.content?.trim()) { errors.push(`Skip: judul/konten kosong`); continue; }
-    const category = VALID_CATS.has(art.category) ? art.category : "lainnya";
+    const category = VALID_CATS.has(art.category) ? art.category : "Administrasi";
 
-    const { error } = await supabase.from("knowledge_base").insert({
+    const safeType = ["narrative","step_by_step"].includes(art.article_type) ? art.article_type : "narrative";
+
+    const payload = {
       author_id: admin.id,
       title: String(art.title).slice(0, 120).trim(),
       content: String(art.content).trim(),
       category,
-      keywords: String(art.keywords || "").slice(0, 300).trim(),
-      maps_url: art.maps_url?.trim() || null,
-      contact_number: art.contact_number?.trim() || null,
-      article_type: "approved",
       status: "approved",
       hidden: false,
-    });
+      ...(hasTypeCol    ? { article_type: safeType } : {}),
+      ...(hasKwCol      ? { keywords: String(art.keywords || "").slice(0, 300).trim() } : {}),
+      ...(hasMapsUrlCol ? { maps_url: art.maps_url?.trim() || null } : {}),
+    };
+
+    const { error } = await supabase.from("knowledge_base").insert(payload);
 
     if (error) {
       errors.push(`Gagal: ${art.title?.slice(0, 40)} — ${error.message}`);
