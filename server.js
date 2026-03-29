@@ -2276,6 +2276,152 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
   return { level: "medium_confidence", hint: "" };
 }
 
+/* ── Clarification-to-KB: Self-Learning from User Corrections ────────────
+ * When a user corrects/clarifies AINA's previous answer in chat, automatically
+ * extract the correction as a pending KB draft for admin approval.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+// Keywords that signal a user is correcting/clarifying AINA's answer
+const CLARIFICATION_PATTERNS = [
+  /sebenarnya\b/i, /sebetulnya\b/i, /yang\s+benar\b/i, /yang\s+betul\b/i,
+  /\bkoreksi\b/i, /\bralat\b/i, /\bperbaikan\b/i, /perlu\s+dikoreksi\b/i,
+  /\bsalah\b.*\bitu\b/i, /\bbukan\s+(begitu|seperti|itu)\b/i,
+  /faktanya\b/i, /info\s+(yang\s+)?benar\b/i, /harusnya\b/i,
+  /tidak\s+(tepat|benar|seperti\s+itu|akurat)\b/i, /kurang\s+(tepat|akurat)\b/i,
+  /bukan\s+itu\b/i, /ingin\s+(meluruskan|mengoreksi|mengklarifikasi)\b/i,
+  /mau\s+(lurusin|koreksi|klarifikasi)\b/i, /perlu\s+(lurusin|diluruskan)\b/i,
+  /yang\s+benar\s+adalah\b/i, /yang\s+bener\b/i,
+];
+
+/**
+ * Returns true if the user message appears to be correcting AINA's previous answer.
+ * Requires: a previous assistant message exists + correction keywords present + sufficient content.
+ */
+function isClarificationMessage(lastUserMsg, messages) {
+  if (!lastUserMsg || lastUserMsg.trim().length < 30) return false;
+  // Must have a previous assistant message to correct
+  const hasPrevAI = messages.some(m => m.role === "assistant");
+  if (!hasPrevAI) return false;
+  return CLARIFICATION_PATTERNS.some(p => p.test(lastUserMsg));
+}
+
+// Per-user daily clarification rate limit (in-memory, resets at midnight Cairo time)
+const _clarifRateMap = new Map(); // userId → { date: "YYYY-MM-DD", count: number }
+const CLARIF_DAILY_LIMIT = 3;
+
+function checkClarificationRateLimit(userId) {
+  const today = new Date().toLocaleDateString("id-ID", { timeZone: "Africa/Cairo" });
+  const entry = _clarifRateMap.get(userId);
+  if (!entry || entry.date !== today) {
+    _clarifRateMap.set(userId, { date: today, count: 0 });
+    return true;
+  }
+  if (entry.count >= CLARIF_DAILY_LIMIT) return false;
+  return true;
+}
+
+function incrementClarificationCount(userId) {
+  const today = new Date().toLocaleDateString("id-ID", { timeZone: "Africa/Cairo" });
+  const entry = _clarifRateMap.get(userId) ?? { date: today, count: 0 };
+  _clarifRateMap.set(userId, { date: today, count: entry.count + 1 });
+}
+
+/**
+ * Uses AI to extract a user clarification into a structured KB article draft.
+ * Returns { title, category, content, summary, keywords } or null on failure.
+ */
+async function extractKBDraftFromClarification(userClarification, prevAiAnswer, apiKey) {
+  const prompt = `Kamu adalah editor Knowledge Base AINA untuk komunitas mahasiswa Indonesia di Mesir (Masisir).
+
+Seorang user memberikan koreksi/klarifikasi terhadap jawaban AI berikut:
+
+=== JAWABAN AI SEBELUMNYA ===
+${(prevAiAnswer ?? "").slice(0, 1000)}
+
+=== KOREKSI/KLARIFIKASI USER ===
+${userClarification.slice(0, 1000)}
+
+Tugasmu: Ekstrak informasi BENAR dari klarifikasi user ini menjadi draft artikel Knowledge Base.
+
+Balas dalam format JSON berikut (tanpa markdown, hanya JSON):
+{
+  "title": "judul artikel yang spesifik dan informatif (10-100 karakter)",
+  "category": "salah satu dari: Administrasi|Akademik|Kehidupan Mesir|Transport|Tempat Tinggal|Kuliner",
+  "content": "konten artikel minimal 100 karakter. Tulis fakta yang benar dari klarifikasi user secara lengkap dan terstruktur. Gunakan format yang mudah dibaca.",
+  "summary": "ringkasan 1-2 kalimat tentang isi artikel ini (maks 200 karakter)",
+  "keywords": "3-5 kata kunci relevan dipisah koma"
+}
+
+Jika klarifikasi user tidak mengandung informasi yang cukup untuk dibuat artikel KB, balas: null`;
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type":  "application/json",
+        "HTTP-Referer":  "https://aina-masisir.replit.app",
+        "X-Title":       "AINA Masisir",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-lite-001",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 800,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+
+    // Strip markdown fences if present
+    const jsonStr = raw.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+    if (jsonStr === "null" || jsonStr === "") return null;
+
+    const draft = JSON.parse(jsonStr);
+    if (!draft?.title || !draft?.content || !draft?.category) return null;
+    if (draft.content.trim().length < 80) return null;
+
+    return draft;
+  } catch (e) {
+    console.warn("[Clarif/Extract] extraction failed:", e.message);
+    return null;
+  }
+}
+
+/**
+ * Submits an extracted clarification as a pending KB article for admin review.
+ * Returns the new article ID or null on failure.
+ */
+async function submitClarificationDraft(draft, userId, supabase) {
+  const payload = {
+    author_id:    userId,
+    title:        draft.title.trim().slice(0, 200),
+    content:      draft.content.trim().slice(0, 50000),
+    category:     draft.category,
+    status:       "pending",
+    keywords:     `dari-klarifikasi-user, ${(draft.keywords ?? "").trim()}`.slice(0, 500),
+    summary:      (draft.summary ?? "").slice(0, 600),
+    last_updated: new Date().toISOString(),
+  };
+
+  try {
+    const { data, error } = await supabase.from("knowledge_base").insert(payload).select("id").single();
+    if (error) {
+      // Graceful fallback: strip optional columns
+      const fallback = { author_id: userId, title: payload.title, content: payload.content, category: payload.category, status: "pending" };
+      const { data: d2 } = await supabase.from("knowledge_base").insert(fallback).select("id").single();
+      return d2?.id ?? null;
+    }
+    return data?.id ?? null;
+  } catch (e) {
+    console.warn("[Clarif/Submit] submit failed:", e.message);
+    return null;
+  }
+}
+
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", chatLimiter, async (req, res) => {
   // Auth is required — unauthenticated requests must not reach OpenRouter
@@ -2326,6 +2472,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const lastUserMessage = Array.isArray(rawLastContent)
     ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
     : rawLastContent;
+
+  // Extract previous assistant message (needed for clarification detection + extraction)
+  const prevAiContent = [...messages].reverse().find(m => m.role === "assistant")?.content ?? null;
+  const prevAiMsg = typeof prevAiContent === "string" ? prevAiContent : null;
+
+  // Clarification detection: is user correcting AINA's previous answer?
+  const clarificationDetected = isClarificationMessage(lastUserMessage, messages) && checkClarificationRateLimit(user.id);
+  if (clarificationDetected) {
+    console.log(`[Clarif] ✓ correction detected from user ${user.id} — "${lastUserMessage.slice(0, 60)}"`);
+  }
 
   // Intent detection is synchronous — compute before parallel fetches so memory retrieval is query-aware
   const intent = detectIntent(lastUserMessage);
@@ -2795,6 +2951,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       confidence:  normalizedConfidence,
       source_used: sourceUsed,              // primary source consumed (spec field)
       sources:     responseSources,         // display badge list (unchanged)
+      // Self-learning: flag if user correction was detected and draft queued
+      clarification_pending: clarificationDetected || undefined,
       // ── Structured source metadata (for UI badges + logging) ──────────────
       sourceMetadata: {
         confidence:      normalizedConfidence,
@@ -2810,6 +2968,23 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     // Fire-and-forget: extract memories + record intel signals + log query (Phase 6 + Phase 12 + Self-Improvement)
     setImmediate(() => {
       extractAndSaveMemories(user.id, [...messages, { role: "assistant", content: reply }], apiKey);
+      // Self-learning: if clarification detected, extract KB draft in background
+      if (clarificationDetected) {
+        incrementClarificationCount(user.id);
+        (async () => {
+          const supabase = getAdminClient();
+          if (!supabase) return;
+          const draft = await extractKBDraftFromClarification(lastUserMessage, prevAiMsg, apiKey);
+          if (!draft) {
+            console.log(`[Clarif] extraction returned null — nothing submitted`);
+            return;
+          }
+          const articleId = await submitClarificationDraft(draft, user.id, supabase);
+          if (articleId) {
+            console.log(`[Clarif] ✓ draft submitted — id=${articleId} title="${draft.title.slice(0, 50)}" user=${user.id}`);
+          }
+        })();
+      }
       recordIntelSignal({
         intent,
         kbStrength,

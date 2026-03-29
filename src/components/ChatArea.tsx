@@ -842,6 +842,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         content: data.reply,
       });
 
+      // Self-learning: notify user when their clarification was queued for admin review
+      if (data.clarification_pending) {
+        toast.info("Koreksimu sudah dikirim ke admin untuk ditinjau. Terima kasih sudah membantu AINA belajar!", {
+          duration: 6000,
+          icon: "💬",
+        });
+      }
+
       // Start typewriter animation (carry intent, confidence, sources, and sourceMetadata for badge rendering)
       setStreamingMsg({ id: msgId, full: fullContent, displayed: "", intent: data.intent, confidence: data.confidence, sources: data.sources ?? [], sourceMetadata: data.sourceMetadata ?? undefined });
 

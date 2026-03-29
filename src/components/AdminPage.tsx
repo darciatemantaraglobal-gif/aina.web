@@ -2231,6 +2231,11 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                             ✏️ Koreksi AI
                           </span>
                         )}
+                        {art.keywords?.includes("dari-klarifikasi-user") && (
+                          <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs text-violet-400 flex items-center gap-1">
+                            💬 Klarifikasi User
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">{fmtDate(art.created_at)}</span>
                       </div>
                       <h3 className="mt-1.5 font-medium text-foreground">{art.title}</h3>
