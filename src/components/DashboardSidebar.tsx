@@ -98,14 +98,26 @@ function savePersonalization(p: AinaPersonalization) {
   localStorage.setItem(PERSONALIZATION_KEY, JSON.stringify(p));
 }
 
-const baseNavItems = [
-  { id: "saved", label: "Jawaban Tersimpan", icon: Bookmark },
-  { id: "productivity", label: "Ruang Produktif", icon: LayoutDashboard },
-  { id: "berita", label: "Berita Masisir", icon: Newspaper },
-  { id: "threads", label: "Threads", icon: Hash },
-  { id: "leaderboard", label: "Leaderboard", icon: Trophy },
-  { id: "contributor", label: "Contributor", icon: Users },
+const NAV_GROUPS = [
+  {
+    label: "Utama",
+    items: [
+      { id: "berita", label: "Berita Masisir", icon: Newspaper },
+      { id: "productivity", label: "Ruang Produktif", icon: LayoutDashboard },
+      { id: "saved", label: "Jawaban Tersimpan", icon: Bookmark },
+    ],
+  },
+  {
+    label: "Komunitas",
+    items: [
+      { id: "threads", label: "Threads", icon: Hash },
+      { id: "leaderboard", label: "Leaderboard", icon: Trophy },
+      { id: "contributor", label: "Contributor", icon: Users },
+    ],
+  },
 ];
+
+const baseNavItems = NAV_GROUPS.flatMap((g) => g.items);
 
 function AvatarDisplay({ name, avatarUrl, size = "sm" }: { name: string | null; avatarUrl: string | null; size?: "sm" | "md" | "lg" }) {
   const [imgError, setImgError] = useState(false);
@@ -788,10 +800,6 @@ const DashboardSidebar = ({
   onDeleteChat,
   onStartTour,
 }: DashboardSidebarProps) => {
-  const navItems = isAdmin
-    ? [...baseNavItems, { id: "admin", label: "Admin", icon: Shield }]
-    : baseNavItems;
-
   const [collapsed, setCollapsed] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userEmail, setUserEmail] = useState("");
@@ -889,22 +897,53 @@ const DashboardSidebar = ({
           )}
         </button>
 
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            data-tour={`nav-${item.id}`}
-            onClick={() => onTabChange(item.id)}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
-              activeTab === item.id
-                ? "bg-primary/15 text-primary font-medium"
-                : "text-sidebar-foreground hover:bg-sidebar-accent"
-            } ${collapsed ? "justify-center" : ""}`}
-            title={item.label}
-          >
-            <item.icon className="h-4 w-4 shrink-0" />
-            {!collapsed && item.label}
-          </button>
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label}>
+            {!collapsed && (
+              <p className="mt-2 mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">
+                {group.label}
+              </p>
+            )}
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                data-tour={`nav-${item.id}`}
+                onClick={() => onTabChange(item.id)}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
+                  activeTab === item.id
+                    ? "bg-primary/15 text-primary font-medium"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                } ${collapsed ? "justify-center" : ""}`}
+                title={item.label}
+              >
+                <item.icon className="h-4 w-4 shrink-0" />
+                {!collapsed && item.label}
+              </button>
+            ))}
+          </div>
         ))}
+        {isAdmin && (
+          <div>
+            {!collapsed && (
+              <p className="mt-2 mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">
+                Admin
+              </p>
+            )}
+            <button
+              data-tour="nav-admin"
+              onClick={() => onTabChange("admin")}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
+                activeTab === "admin"
+                  ? "bg-primary/15 text-primary font-medium"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+              } ${collapsed ? "justify-center" : ""}`}
+              title="Admin"
+            >
+              <Shield className="h-4 w-4 shrink-0" />
+              {!collapsed && "Admin"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Middle: flex spacer ──────────────────────────── */}

@@ -65,13 +65,25 @@ const AnnouncementPopup = () => {
   }, []);
 
   useEffect(() => {
+    let delayTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleOrFetch = (hasSession: boolean) => {
+      if (!hasSession) return;
+      delayTimer = setTimeout(() => {
+        fetchAnnouncements();
+      }, 5000);
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) fetchAnnouncements();
+      scheduleOrFetch(!!session);
     });
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) fetchAnnouncements();
+      scheduleOrFetch(!!session);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (delayTimer) clearTimeout(delayTimer);
+    };
   }, [fetchAnnouncements]);
 
   const navigate = useCallback((newIdx: number, dir: "left" | "right") => {

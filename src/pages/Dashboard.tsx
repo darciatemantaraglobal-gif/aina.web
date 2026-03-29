@@ -194,13 +194,6 @@ const Dashboard = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authReady]);
 
-  // Show guided tour for first-time users
-  useEffect(() => {
-    if (!authReady) return;
-    if (localStorage.getItem(TOUR_KEY)) return;
-    const t = setTimeout(() => setShowTour(true), 1500);
-    return () => clearTimeout(t);
-  }, [authReady]);
 
   // Realtime: when admin deletes a chat, fade it out and remove from sidebar
   useEffect(() => {
@@ -432,15 +425,18 @@ const Dashboard = () => {
         <BreakingUpdatesBanner />
 
         {/* Chat — always mounted, hidden when not active */}
-        <div className={activeTab === "chat" ? "flex-1 min-h-0" : "hidden"}>
-          <ChatArea
-            onMenuClick={() => setSidebarOpen(true)}
-            chatId={activeChatId}
-            onChatCreated={handleChatCreated}
-            onNewChat={handleNewChat}
-            initialMessage={pendingMessage}
-            onGoContributor={handleGoContributor}
-          />
+        <div className={activeTab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
+          <WelcomeModal onGoContributor={handleGoContributor} onStartTour={handleStartTour} />
+          <div className="flex-1 min-h-0">
+            <ChatArea
+              onMenuClick={() => setSidebarOpen(true)}
+              chatId={activeChatId}
+              onChatCreated={handleChatCreated}
+              onNewChat={handleNewChat}
+              initialMessage={pendingMessage}
+              onGoContributor={handleGoContributor}
+            />
+          </div>
         </div>
 
         {/* Non-chat tabs — only the active one is mounted at a time */}
@@ -538,7 +534,6 @@ const Dashboard = () => {
         />
       )}
       <FeedbackButton />
-      {!showSetup && <WelcomeModal onGoContributor={handleGoContributor} />}
       {!showSetup && <AnnouncementPopup />}
       {showTour && (
         <GuidedTour

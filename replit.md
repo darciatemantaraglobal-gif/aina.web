@@ -220,7 +220,14 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
   - **All API endpoints**: Focus CRUD + AI (`/api/productivity/focus/*`), Tracker CRUD (`/api/productivity/tracker/*`), Reminders (`/api/productivity/reminders/*`), Cron (`/api/cron/daily`, `/api/cron/weekly`)
   - **Migration**: Run `supabase/migrations/20260328_productivity_v2.sql` in Supabase dashboard
   - **Email**: `RESEND_API_KEY` required (silently skipped if not set). `CRON_SECRET` optional but recommended for cron protection.
-- **Guided Tour** — Custom 8-step onboarding tour (`GuidedTour.tsx`) auto-shown to first-time users; spotlight + tooltip overlay via React portal; skippable and restartable via "Panduan Fitur" button in sidebar; state persisted in `localStorage` under `aina_tour_seen_v1`
+- **Guided Tour** — Custom 8-step onboarding tour (`GuidedTour.tsx`); NOT auto-shown (removed auto-trigger); accessible via "Lihat tur singkat" link in WelcomeBanner and "Panduan Fitur" button in sidebar; state persisted in `localStorage` under `aina_tour_seen_v1`
+- **UX Improvements (Mar 2026)**:
+  - Auto-redirect logged-in users from `/` → `/dashboard?tab=chat`
+  - Login page: Google is primary CTA (purple full-width button), email login secondary, register tertiary
+  - WelcomeModal replaced with a small non-blocking dismissible banner rendered inside chat area (not a full modal overlay); storage key upgraded to `aina_welcome_seen_v2`
+  - AnnouncementPopup has 5-second delay before showing after session is detected
+  - Sidebar nav grouped into **Utama** (Berita, Produktif, Tersimpan) and **Komunitas** (Threads, Leaderboard, Contributor) with section labels; Admin section shown only for admins
+  - Chat empty state has 4 suggested prompt chips (Al-Azhar, visa, biaya hidup, iqama) that trigger chat on click
 - **Partner Promo (Temantiket)** — Keyword-triggered partner recommendation system in AI chat. `detectPartnerPromo(query)` in `server.js` detects queries about tiket pesawat / VOA Mesir / visa student, then injects a structured rule block into `finalSystemPrompt` instructing AI to append Temantiket recommendation (temantiket.com, WA +6281311506025) naturally at end of answer. 3 KB articles seeded via `seedPartnerArticles()` at startup (idempotent via `INSERT...WHERE NOT EXISTS` + `exec_sql` RPC). Keywords: tiket pesawat, booking tiket, VOA Mesir, visa on arrival, visa student, student entry, entry visa, penerbangan ke mesir.
 
 ## Key Files

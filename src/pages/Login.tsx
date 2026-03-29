@@ -29,7 +29,7 @@ const Login = () => {
   }, []);
 
   const [view, setView] = useState<View>("main");
-  const [mode, setMode] = useState<Mode>("register");
+  const [mode, setMode] = useState<Mode>("login");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -188,55 +188,46 @@ const Login = () => {
 
           <div className="overflow-hidden rounded-2xl border border-border bg-card/80 backdrop-blur-sm">
 
-            {/* Google option */}
+            {/* Google — primary CTA */}
             <div className="p-5">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Masuk dengan akun lain
-              </p>
               <button
                 onClick={handleGoogleLogin}
                 disabled={loading}
-                className="flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/60 px-4 py-3.5 text-sm font-medium text-foreground transition-all hover:border-primary/30 hover:bg-secondary disabled:opacity-50"
+                className="group flex w-full items-center gap-3 rounded-xl bg-gradient-purple px-4 py-4 text-sm font-semibold text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.3)] transition-all hover:shadow-[0_0_24px_hsl(270_80%_65%/0.5)] hover:opacity-95 disabled:opacity-50"
               >
                 <GoogleIcon />
-                <span className="flex-1 text-left">Lanjutkan dengan Google</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1 text-left">Masuk dengan Google</span>
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </button>
             </div>
 
             {/* Divider */}
             <div className="flex items-center gap-3 px-5">
               <div className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">atau daftar langsung</span>
+              <span className="text-xs text-muted-foreground">atau gunakan email</span>
               <div className="h-px flex-1 bg-border" />
             </div>
 
-            {/* AINA direct options */}
+            {/* Email options */}
             <div className="space-y-2.5 p-5">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Akun AINA
-              </p>
+              {/* Login with email — secondary */}
+              <button
+                onClick={() => goToEmailForm("login")}
+                className="group flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/60 px-4 py-3.5 text-sm font-medium text-foreground transition-all hover:border-primary/30 hover:bg-secondary/80"
+              >
+                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 text-left">Masuk dengan Email</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </button>
 
-              {/* Register */}
+              {/* Register — tertiary */}
               <button
                 onClick={() => goToEmailForm("register")}
-                className="group flex w-full items-center gap-3 rounded-xl bg-gradient-purple px-4 py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.3)] transition-all hover:shadow-[0_0_24px_hsl(270_80%_65%/0.5)] hover:opacity-95"
+                className="group flex w-full items-center gap-3 rounded-xl border border-border/50 bg-transparent px-4 py-3.5 text-sm font-medium text-muted-foreground transition-all hover:border-border hover:bg-secondary/40 hover:text-foreground"
               >
                 <Mail className="h-4 w-4 shrink-0" />
                 <span className="flex-1 text-left">Buat Akun Baru</span>
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </button>
-
-              {/* Login */}
-              <button
-                onClick={() => goToEmailForm("login")}
-                className="group flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/40 px-4 py-3.5 text-sm font-medium text-foreground transition-all hover:border-primary/30 hover:bg-secondary/70"
-              >
-                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 text-left text-muted-foreground group-hover:text-foreground">
-                  Sudah punya akun? Masuk
-                </span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </button>
             </div>
           </div>

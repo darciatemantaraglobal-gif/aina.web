@@ -1,0 +1,96 @@
+Improve UX flow pada aplikasi AINA dengan fokus: mempercepat user masuk ke core value (chat AI) tanpa menghilangkan fitur penting seperti announcement popup.
+
+1. Auto Redirect User Login
+- Jika user sudah login (session aktif), akses "/" langsung redirect ke "/dashboard?tab=chat"
+- Jangan tampilkan landing page untuk user yang sudah login
+
+2. Fokus ke Chat sebagai Default
+- Default dashboard selalu buka tab Chat
+- Jika ada last chat → tampilkan chat terakhir
+- Jika belum ada → tampilkan empty state + 3–4 suggested prompts
+
+3. Sederhanakan Onboarding (Kurangi Distraksi)
+- Jangan tampilkan bersamaan:
+  - Welcome modal
+  - Announcement popup
+  - Guided tour
+- Ganti dengan:
+  - 1 welcome banner kecil (non-blocking)
+  - Tombol opsional: "Lihat tur singkat"
+- Setup profile:
+  - Tidak wajib
+  - Bisa di-skip
+
+4. Perbaiki Flow Login
+- Jadikan CTA utama: "Lanjutkan dengan Google"
+- Email login sebagai opsi secondary
+- Jangan jadikan register sebagai default state
+
+5. Kirim Prompt dari Homepage ke Dashboard
+- Jika user mengetik di homepage:
+  - Simpan prompt
+  - Setelah login → redirect ke dashboard
+  - Auto kirim prompt tersebut ke chat
+
+6. Rapikan Sidebar (Hierarki)
+Kelompokkan menu menjadi:
+
+Utama:
+- Chat
+- Berita
+- Produktivitas
+
+Komunitas:
+- Threads
+- Leaderboard
+- Contributor
+
+Akun:
+- Saved
+- Profile
+- Settings
+
+- Admin hanya muncul jika role = admin
+- Kurangi semua menu tampil setara
+
+7. Sistem Announcement (Popup + Banner)
+- Tetap gunakan popup, tetapi dengan aturan:
+
+Popup hanya untuk:
+- Launch fitur penting
+- Campaign besar (contoh: open beta, contributor)
+- Informasi critical
+
+Behavior popup:
+- Tidak muncul langsung saat halaman load
+- Delay 3–5 detik ATAU setelah user kirim 1 chat
+- Maksimal muncul 1x per user per campaign
+- Bisa di-close, dan tidak muncul ulang setelah ditutup
+
+Untuk announcement biasa:
+- Gunakan banner kecil di atas dashboard (non-blocking)
+- Bisa di-dismiss
+- Tidak mengganggu flow chat
+
+8. Sederhanakan Guided Tour
+- Buat 2 mode:
+  - Quick Tour: Chat, Berita, Produktivitas
+  - Advanced Tour: fitur lainnya
+- Jangan auto tampilkan full tour saat pertama masuk
+
+9. Delay Fitur Non-Core
+- Personalization settings:
+  - Jangan ditonjolkan di awal
+  - Tampilkan setelah user sudah pakai chat beberapa kali
+
+10. Prinsip UX Utama
+User harus bisa:
+- Masuk
+- Langsung nanya
+- Dapat jawaban
+Dalam waktu < 10 detik tanpa distraksi
+
+Pastikan:
+- Tidak merusak fitur existing
+- Fokus simplifikasi, bukan tambah fitur
+- UX lebih cepat, ringan, dan jelas untuk user baru

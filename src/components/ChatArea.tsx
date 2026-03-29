@@ -901,6 +901,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             <p className="mt-3 max-w-xs text-center text-base text-muted-foreground leading-relaxed">
               {welcomeSubtitle}
             </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-md">
+              {[
+                "Bagaimana cara daftar kuliah di Al-Azhar?",
+                "Cara mengurus visa pelajar Mesir",
+                "Biaya hidup bulanan di Kairo",
+                "Cara perpanjang iqama mahasiswa",
+              ].map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => handleSend(prompt)}
+                  className="rounded-full border border-border bg-secondary/60 px-4 py-2 text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground active:scale-95"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
