@@ -3461,6 +3461,9 @@ function PerfGuide({ items }: { items: Array<{ term: string; desc: string; color
   );
 }
 
+const PERF_AUTO_REFRESH_MS = 60_000; // 60 detik
+const PERF_STALE_MS        = 120_000; // data dianggap basi setelah 2 menit
+
 function PerformanceTab() {
   const [view, setView]         = useState<PerfView>("summary");
   const [loading, setLoading]   = useState(false);
@@ -3472,9 +3475,13 @@ function PerformanceTab() {
   const [faq, setFaq]           = useState<FaqRow[]>([]);
   const [evalSum, setEvalSum]   = useState<EvalSummaryRow[]>([]);
   const [benchmarks, setBenchmarks] = useState<BenchmarkRow[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [now, setNow]           = useState(() => Date.now());
+  const autoTimerRef            = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clockRef                = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const load = useCallback(async (v: PerfView) => {
-    setLoading(true);
+  const load = useCallback(async (v: PerfView, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       if (v === "summary") {
         const [d, mc] = await Promise.all([
@@ -3503,11 +3510,36 @@ function PerformanceTab() {
         setEvalSum(Array.isArray(es) ? es : (es?.summary ?? []));
         setBenchmarks(Array.isArray(bm) ? bm : (bm?.benchmarks ?? []));
       }
-    } catch (e: any) { toast.error(e.message); }
-    setLoading(false);
+      setLastUpdated(new Date());
+    } catch (e: any) { if (!silent) toast.error(e.message); }
+    if (!silent) setLoading(false);
   }, []);
 
+  // Fetch when view changes
   useEffect(() => { load(view); }, [view, load]);
+
+  // Auto-refresh every 60s (silent — no spinner)
+  useEffect(() => {
+    autoTimerRef.current = setInterval(() => { load(view, true); }, PERF_AUTO_REFRESH_MS);
+    return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
+  }, [view, load]);
+
+  // Clock tick every 10s to update the "X detik lalu" label
+  useEffect(() => {
+    clockRef.current = setInterval(() => setNow(Date.now()), 10_000);
+    return () => { if (clockRef.current) clearInterval(clockRef.current); };
+  }, []);
+
+  const isStale = lastUpdated ? (now - lastUpdated.getTime()) > PERF_STALE_MS : false;
+
+  const relativeTime = (date: Date) => {
+    const secs = Math.floor((now - date.getTime()) / 1000);
+    if (secs < 10)  return "baru saja";
+    if (secs < 60)  return `${secs} detik lalu`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60)  return `${mins} menit lalu`;
+    return `${Math.floor(mins / 60)} jam lalu`;
+  };
 
   const pctBar = (pct: number | null) => {
     const val = pct ?? 0;
@@ -3533,13 +3565,30 @@ function PerformanceTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-bold text-foreground">Performa AINA</h2>
           <p className="text-sm text-muted-foreground">Intelijen agregat sistem — semua data anonim, tidak ada data pribadi user</p>
+          <div className="mt-1 flex items-center gap-2">
+            {lastUpdated ? (
+              <>
+                <span className={`text-[11px] ${isStale ? "text-amber-500" : "text-muted-foreground/60"}`}>
+                  {isStale ? "⚠ Data mungkin basi — " : ""}Diperbarui {relativeTime(lastUpdated)}
+                </span>
+                <span className="text-[10px] text-muted-foreground/30">· auto-refresh tiap 60 dtk</span>
+              </>
+            ) : (
+              <span className="text-[11px] text-muted-foreground/50">Memuat data pertama kali…</span>
+            )}
+          </div>
         </div>
-        <button onClick={() => load(view)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground">
+        <button
+          onClick={() => load(view)}
+          disabled={loading}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+        >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Memuat…" : "Refresh"}
         </button>
       </div>
 
