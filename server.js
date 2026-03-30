@@ -4073,14 +4073,18 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
   if (!["approved", "rejected"].includes(status)) return res.status(400).json({ error: "Invalid status" });
 
   const supabase = getAdminClient();
-  const { data: article } = await supabase.from("knowledge_base").select("author_id").eq("id", id).single();
+  const { data: article } = await supabase.from("knowledge_base").select("author_id, title, category").eq("id", id).single();
   if (!article) return res.status(404).json({ error: "Article not found" });
 
-  const { data: articleData } = await supabase.from("knowledge_base").select("title").eq("id", id).single();
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
-  // Fire-and-forget keyword generation when article is approved
-  if (status === "approved") triggerKeywordGen(id);
+  // Fire-and-forget keyword generation and duplicate check when article is approved
+  if (status === "approved") {
+    triggerKeywordGen(id);
+    checkAndArchiveDuplicate(supabase, id, article.title, article.category).catch(() => {});
+  }
+
+  const articleData = article; // alias — already has title
 
   const authorInfo = await getUserEmail(article.author_id);
   const appUrl = process.env.REPLIT_DEV_DOMAIN
@@ -4332,6 +4336,71 @@ app.post("/api/admin/articles/image-extract", imageExtractUpload.single("image")
   }
 });
 
+/* ── Auto-deduplication: archive older article if new one covers same topic ───
+   Called after any article is approved (admin create, bulk import, review).
+   Uses word-overlap (Jaccard) on normalised titles within the same category.
+   Threshold = 55 % overlap → considered duplicate.
+   Old article is HIDDEN (not deleted) so master admin can restore it.
+   ─────────────────────────────────────────────────────────────────────────── */
+async function checkAndArchiveDuplicate(supabase, newArticleId, newTitle, category) {
+  if (!newTitle || !category) return null;
+  try {
+    function words(str) {
+      return new Set(
+        str.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(w => w.length > 2)
+      );
+    }
+    function jaccard(a, b) {
+      const setA = words(a), setB = words(b);
+      if (!setA.size || !setB.size) return 0;
+      let overlap = 0;
+      for (const w of setA) if (setB.has(w)) overlap++;
+      const union = new Set([...setA, ...setB]).size;
+      return overlap / union;
+    }
+
+    const { data: existing } = await supabase
+      .from("knowledge_base")
+      .select("id, title, created_at")
+      .eq("category", category)
+      .eq("status", "approved")
+      .eq("hidden", false)
+      .neq("id", newArticleId);
+
+    if (!existing?.length) return null;
+
+    let best = null, bestScore = 0;
+    for (const art of existing) {
+      const score = jaccard(newTitle, art.title);
+      if (score > bestScore) { bestScore = score; best = art; }
+    }
+
+    if (bestScore < 0.55 || !best) return null;
+
+    // Archive the older article
+    await supabase.from("knowledge_base").update({ hidden: true }).eq("id", best.id);
+
+    // Notify all master admins
+    const masterIds = [...MASTER_ADMIN_IDS];
+    if (masterIds.length > 0) {
+      await supabase.from("notifications").insert(
+        masterIds.map(userId => ({
+          user_id: userId,
+          title: "🔄 Artikel lama diarsipkan otomatis",
+          message: `Artikel lama "${best.title}" (kategori: ${category}) diarsipkan karena artikel baru "${newTitle}" terdeteksi membahas topik serupa (kesamaan ${Math.round(bestScore * 100)}%). Artikel lama masih tersimpan dan bisa dipulihkan dari panel admin → Knowledge Base.`,
+          type: "info",
+        }))
+      ).then(undefined, () => {});
+    }
+
+    console.log(`[DuplicateCheck] Archived "${best.title}" → replaced by "${newTitle}" (${Math.round(bestScore * 100)}% match)`);
+    return { archivedId: best.id, archivedTitle: best.title, score: bestScore };
+  } catch (e) {
+    console.warn("[DuplicateCheck] error:", e.message);
+    return null;
+  }
+}
+
 /* POST /api/admin/articles/bulk-import — insert parsed articles into KB */
 app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
@@ -4372,12 +4441,14 @@ app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
       ...(hasMapsUrlCol ? { maps_url: art.maps_url?.trim() || null } : {}),
     };
 
-    const { error } = await supabase.from("knowledge_base").insert(payload);
+    const { data: inserted, error } = await supabase.from("knowledge_base").insert(payload).select("id").single();
 
     if (error) {
       errors.push(`Gagal: ${art.title?.slice(0, 40)} — ${error.message}`);
     } else {
       imported++;
+      // Fire-and-forget duplicate check (archive old article if similar topic exists)
+      if (inserted?.id) checkAndArchiveDuplicate(supabase, inserted.id, payload.title, category).catch(() => {});
     }
   }
 
@@ -4402,7 +4473,7 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   if (!["approved", "rejected"].includes(status)) return res.status(400).json({ error: "Invalid status" });
 
   const supabase = getAdminClient();
-  const { data: articles } = await supabase.from("knowledge_base").select("id, title, author_id, status").in("id", ids);
+  const { data: articles } = await supabase.from("knowledge_base").select("id, title, category, author_id, status").in("id", ids);
   if (!articles?.length) return res.status(404).json({ error: "No articles found" });
 
   const pendingArticles = articles.filter(a => a.status === "pending");
@@ -4411,9 +4482,12 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   const pendingIds = pendingArticles.map(a => a.id);
   await supabase.from("knowledge_base").update({ status }).in("id", pendingIds);
 
-  // Fire-and-forget keyword generation for all newly approved articles
+  // Fire-and-forget: keyword generation + duplicate check for all newly approved articles
   if (status === "approved") {
-    for (const id of pendingIds) triggerKeywordGen(id);
+    for (const art of pendingArticles) {
+      triggerKeywordGen(art.id);
+      checkAndArchiveDuplicate(supabase, art.id, art.title, art.category).catch(() => {});
+    }
   }
 
   if (status === "approved") {
@@ -4515,7 +4589,7 @@ app.post("/api/admin/articles", async (req, res) => {
     insertPayload.contact_number = rawAdminContact.trim().slice(0, 50);
   }
 
-  const { error } = await supabase.from("knowledge_base").insert(insertPayload);
+  const { data: inserted, error } = await supabase.from("knowledge_base").insert(insertPayload).select("id").single();
 
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
 
@@ -4525,6 +4599,9 @@ app.post("/api/admin/articles", async (req, res) => {
   const newCount = prev + 1;
   const level = newCount >= 10 ? "Senior Contributor" : "Contributor";
   await supabase.from("profiles").update({ contribution_count: newCount, level }).eq("user_id", admin.id);
+
+  // Fire-and-forget duplicate check
+  if (inserted?.id) checkAndArchiveDuplicate(supabase, inserted.id, insertPayload.title, insertPayload.category).catch(() => {});
 
   res.json({ success: true });
 });
