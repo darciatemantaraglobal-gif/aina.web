@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import {
   Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot,
   Upload, X, RefreshCw, Sparkles, Pencil, Check, ChevronDown, ChevronUp,
-  Link2, Loader2,
+  Link2, Loader2, Wand2,
 } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
@@ -177,6 +177,9 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [artContactNumber, setArtContactNumber] = useState("");
   const [artImportantNotes, setArtImportantNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const [autoCategorizing, setAutoCategorizing] = useState(false);
+  const [autoCategoryReason, setAutoCategoryReason] = useState("");
 
   // URL import dialog
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
@@ -434,6 +437,36 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Koneksi gagal. Coba lagi.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleAutoCategorize = async () => {
+    if (!artTitle.trim() && !artContent.trim()) {
+      toast.error("Tulis judul atau konten artikel dulu sebelum auto-kategorikan");
+      return;
+    }
+    setAutoCategorizing(true);
+    setAutoCategoryReason("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/articles/auto-categorize", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ title: artTitle, content: artContent }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || "Gagal auto-kategorikan"); return; }
+      setArtCategory(json.category);
+      setArtType(json.article_type);
+      setAutoCategoryReason(json.reason ?? "");
+      toast.success(`Kategori: ${json.category} · Tipe: ${json.article_type === "step_by_step" ? "Panduan" : "Informasi Umum"}`);
+    } catch {
+      toast.error("Koneksi gagal. Coba lagi.");
+    } finally {
+      setAutoCategorizing(false);
     }
   };
 
@@ -1216,7 +1249,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             </Dialog>
 
             {/* Manual write dialog */}
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes(""); setArtFromUrl(false); } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes(""); setArtFromUrl(false); setAutoCategoryReason(""); } }}>
               <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-display">
@@ -1242,16 +1275,39 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       <p className="text-[10px] text-amber-500">Judul terlalu pendek — buat lebih spesifik (min 10 karakter)</p>
                     )}
                   </div>
-                  <Select value={artCategory} onValueChange={setArtCategory}>
-                    <SelectTrigger className="bg-secondary">
-                      <SelectValue placeholder="Pilih kategori" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <Select value={artCategory} onValueChange={(v) => { setArtCategory(v); setAutoCategoryReason(""); }}>
+                        <SelectTrigger className="bg-secondary flex-1">
+                          <SelectValue placeholder="Pilih kategori" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((c) => (
+                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <button
+                        type="button"
+                        onClick={handleAutoCategorize}
+                        disabled={autoCategorizing || (!artTitle.trim() && !artContent.trim())}
+                        className="flex shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="AI akan mendeteksi kategori dan tipe artikel secara otomatis"
+                      >
+                        {autoCategorizing
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Wand2 className="h-3.5 w-3.5" />
+                        }
+                        {autoCategorizing ? "Mendeteksi..." : "Auto"}
+                      </button>
+                    </div>
+                    {autoCategoryReason && (
+                      <p className="text-[11px] text-primary/70 flex items-center gap-1">
+                        <Wand2 className="h-3 w-3 shrink-0" />
+                        {autoCategoryReason}
+                      </p>
+                    )}
+                  </div>
                   <div className="space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">Tipe Artikel</p>
                     <div className="grid grid-cols-2 gap-2">

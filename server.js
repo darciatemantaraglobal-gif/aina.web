@@ -5444,6 +5444,83 @@ OUTPUT WAJIB dalam format JSON murni (tanpa markdown, tanpa komentar):
   }
 });
 
+app.post("/api/articles/auto-categorize", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const { title = "", content = "" } = req.body;
+  if (!title.trim() && !content.trim()) {
+    return res.status(400).json({ error: "Tulis judul atau konten terlebih dahulu" });
+  }
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
+
+  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+  const VALID_TYPES = ["narrative", "step_by_step"];
+
+  const prompt = `Kamu adalah asisten yang membantu mengkategorikan artikel Knowledge Base untuk komunitas mahasiswa Indonesia di Mesir (Masisir).
+
+Kategorikan artikel berikut berdasarkan judul dan/atau kontennya.
+
+KATEGORI YANG TERSEDIA:
+- Administrasi: iqomah, visa, paspor, dokumen resmi, KTP, SIM, birokrasi
+- Akademik: perkuliahan Al-Azhar, pendaftaran, ujian, beasiswa, nilai, jadwal kuliah
+- Kehidupan Mesir: tips sehari-hari, budaya, keamanan, belanja, hiburan, kesehatan
+- Transport: metro, taksi, uber, bus, perjalanan, rute
+- Tempat Tinggal: sewa flat, lokasi, harga sewa, furnitur, pindah flat
+- Kuliner: restoran halal, masakan, harga makanan, warung, resep
+- Bahasa Arab: kosakata, tata bahasa Arab, percakapan, belajar bahasa Arab, dialek Mesir
+
+TIPE ARTIKEL:
+- narrative: artikel informatif/naratif, penjelasan umum
+- step_by_step: panduan langkah-langkah, prosedur, cara melakukan sesuatu
+
+Judul: ${title.slice(0, 200)}
+Konten (potongan): ${content.slice(0, 800)}
+
+Jawab HANYA dalam format JSON berikut, tanpa penjelasan tambahan:
+{"category":"<salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>","reason":"<1 kalimat alasan>"}`;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Auto Categorize",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-preview",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        max_tokens: 150,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    if (!resp.ok) return res.status(502).json({ error: "AI tidak merespons, coba lagi" });
+
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(502).json({ error: "Respons AI tidak valid, coba lagi" });
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const category = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
+    const article_type = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : "narrative";
+
+    if (!category) return res.status(422).json({ error: "AI tidak bisa menentukan kategori — tambah lebih banyak konten" });
+
+    res.json({ category, article_type, reason: parsed.reason ?? "" });
+  } catch (err) {
+    console.error("[AutoCategorize]", err.message);
+    res.status(500).json({ error: "Gagal menghubungi AI, coba lagi" });
+  }
+});
+
 app.post("/api/articles", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Login diperlukan" });
