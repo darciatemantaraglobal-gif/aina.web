@@ -5459,28 +5459,53 @@ app.post("/api/articles/auto-categorize", async (req, res) => {
   const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
   const VALID_TYPES = ["narrative", "step_by_step"];
 
-  const prompt = `Kamu adalah asisten yang membantu mengkategorikan artikel Knowledge Base untuk komunitas mahasiswa Indonesia di Mesir (Masisir).
+  const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tugasmu adalah menentukan kategori dan tipe artikel yang PALING TEPAT berdasarkan seluruh konteks yang tersedia.
 
-Kategorikan artikel berikut berdasarkan judul dan/atau kontennya.
+═══ PANDUAN KATEGORI (baca dengan teliti) ═══
 
-KATEGORI YANG TERSEDIA:
-- Administrasi: iqomah, visa, paspor, dokumen resmi, KTP, SIM, birokrasi
-- Akademik: perkuliahan Al-Azhar, pendaftaran, ujian, beasiswa, nilai, jadwal kuliah
-- Kehidupan Mesir: tips sehari-hari, budaya, keamanan, belanja, hiburan, kesehatan
-- Transport: metro, taksi, uber, bus, perjalanan, rute
-- Tempat Tinggal: sewa flat, lokasi, harga sewa, furnitur, pindah flat
-- Kuliner: restoran halal, masakan, harga makanan, warung, resep
-- Bahasa Arab: kosakata, tata bahasa Arab, percakapan, belajar bahasa Arab, dialek Mesir
+1. ADMINISTRASI
+   Topik: iqomah, visa, paspor, dokumen resmi pemerintah Mesir/Indonesia, legalisasi, apostille, KTP, SIM internasional, surat keterangan, birokrasi, imigrasi, KBRI, PPMI, pendaftaran resmi kependudukan
+   BUKAN administrasi: hal akademik, transportasi, atau biaya hidup umum
 
-TIPE ARTIKEL:
-- narrative: artikel informatif/naratif, penjelasan umum
-- step_by_step: panduan langkah-langkah, prosedur, cara melakukan sesuatu
+2. AKADEMIK
+   Topik: perkuliahan di Al-Azhar/universitas Mesir, pendaftaran semester/tahun ajaran, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, kutub dars, fakultas, jurusan, wisuda, cara belajar untuk ujian Al-Azhar
+   BUKAN akademik: hal administrasi kependudukan atau kehidupan sehari-hari
 
-Judul: ${title.slice(0, 200)}
-Konten (potongan): ${content.slice(0, 800)}
+3. KEHIDUPAN MESIR
+   Topik: tips hidup sehari-hari di Mesir, budaya setempat, keamanan, belanja kebutuhan pokok, fasilitas kesehatan (rumah sakit/klinik), sim card/internet, laundry, perbankan, rekreasi, adaptasi budaya, musim/cuaca, hal-hal yang tidak masuk kategori lain
+   Ini adalah kategori "serba-serbi" kehidupan di Mesir yang tidak spesifik transport/kuliner/tempat tinggal
 
-Jawab HANYA dalam format JSON berikut, tanpa penjelasan tambahan:
-{"category":"<salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>","reason":"<1 kalimat alasan>"}`;
+4. TRANSPORT
+   Topik: metro Kairo, taksi (Uber/Careem/konvensional), bus, microbus, kereta api Mesir, rute perjalanan antar kota, perjalanan ke bandara, biaya transport, cara naik metro, apps transportasi
+   BUKAN transport: biaya hidup umum atau perjalanan wisata
+
+5. TEMPAT TINGGAL
+   Topik: sewa flat/apartemen, lokasi tempat tinggal mahasiswa (Hay Asyir, Abbasiyah, Nasr City, dll), harga sewa, kontrak sewa, mencari flat, pindah flat, furnitur, listrik/air flat, permasalahan dengan pemilik flat (shahibul beit)
+   BUKAN tempat tinggal: biaya makan atau transportasi
+
+6. KULINER
+   Topik: restoran halal, warung/kantin Indonesia di Mesir, masakan lokal Mesir yang bisa dimakan, harga makanan, resep masakan, tempat makan mahasiswa, tips belanja bahan makanan
+   BUKAN kuliner: belanja kebutuhan non-makanan
+
+7. BAHASA ARAB
+   Topik: belajar bahasa Arab (fusha/amiyah Mesir), kosakata, tata bahasa (nahwu/sharaf), percakapan sehari-hari, tips belajar bahasa Arab, kamus, dialek Mesir, ungkapan sehari-hari
+   BUKAN bahasa Arab: konten yang kebetulan berbahasa Arab tapi topiknya bukan tentang belajar bahasa Arab
+
+═══ TIPE ARTIKEL ═══
+- step_by_step: ada urutan langkah (1, 2, 3... / pertama, kedua...), panduan prosedur, cara melakukan sesuatu yang berurutan
+- narrative: penjelasan informatif, deskriptif, tips umum, ulasan, tanpa urutan langkah ketat
+
+═══ CARA MEMUTUSKAN ═══
+1. Baca JUDUL terlebih dahulu — judul biasanya sudah sangat menentukan
+2. Baca KONTEN untuk konfirmasi dan konteks tambahan
+3. Jika ada dua kategori yang mungkin, pilih yang LEBIH SPESIFIK
+4. Untuk tipe: jika ada minimal 2 langkah bernomor/berurutan → step_by_step
+
+Judul: ${title.slice(0, 300)}
+Konten: ${content.slice(0, 4000)}
+
+Jawab HANYA dalam format JSON berikut tanpa teks lain:
+{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>","reason":"<1 kalimat singkat alasan memilih kategori ini>"}`;
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -5494,8 +5519,8 @@ Jawab HANYA dalam format JSON berikut, tanpa penjelasan tambahan:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-preview",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.1,
-        max_tokens: 150,
+        temperature: 0.0,
+        max_tokens: 200,
       }),
       signal: AbortSignal.timeout(12_000),
     });

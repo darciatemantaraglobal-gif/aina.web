@@ -180,6 +180,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
   const [autoCategorizing, setAutoCategorizing] = useState(false);
   const [autoCategoryReason, setAutoCategoryReason] = useState("");
+  const autoCatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAutoCatInputRef = useRef("");
 
   // URL import dialog
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
@@ -440,11 +442,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
     }
   };
 
-  const handleAutoCategorize = async () => {
-    if (!artTitle.trim() && !artContent.trim()) {
-      toast.error("Tulis judul atau konten artikel dulu sebelum auto-kategorikan");
-      return;
-    }
+  const runAutoCategorize = async (title: string, content: string) => {
     setAutoCategorizing(true);
     setAutoCategoryReason("");
     try {
@@ -455,20 +453,32 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
           "Content-Type": "application/json",
           ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
         },
-        body: JSON.stringify({ title: artTitle, content: artContent }),
+        body: JSON.stringify({ title, content }),
       });
       const json = await res.json();
-      if (!res.ok) { toast.error(json.error || "Gagal auto-kategorikan"); return; }
+      if (!res.ok) return;
       setArtCategory(json.category);
       setArtType(json.article_type);
       setAutoCategoryReason(json.reason ?? "");
-      toast.success(`Kategori: ${json.category} · Tipe: ${json.article_type === "step_by_step" ? "Panduan" : "Informasi Umum"}`);
     } catch {
-      toast.error("Koneksi gagal. Coba lagi.");
     } finally {
       setAutoCategorizing(false);
     }
   };
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    const combinedInput = artTitle.trim() + artContent.trim();
+    const hasEnoughContent = artTitle.trim().length >= 8 || artContent.trim().length >= 40;
+    if (!hasEnoughContent) return;
+    if (combinedInput === lastAutoCatInputRef.current) return;
+    if (autoCatTimerRef.current) clearTimeout(autoCatTimerRef.current);
+    autoCatTimerRef.current = setTimeout(() => {
+      lastAutoCatInputRef.current = combinedInput;
+      runAutoCategorize(artTitle, artContent);
+    }, 1400);
+    return () => { if (autoCatTimerRef.current) clearTimeout(autoCatTimerRef.current); };
+  }, [artTitle, artContent, dialogOpen]);
 
   // PDF upload & extraction — file goes directly to Supabase Storage (no Vercel size limit)
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1249,7 +1259,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             </Dialog>
 
             {/* Manual write dialog */}
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes(""); setArtFromUrl(false); setAutoCategoryReason(""); } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes(""); setArtFromUrl(false); setAutoCategoryReason(""); lastAutoCatInputRef.current = ""; if (autoCatTimerRef.current) clearTimeout(autoCatTimerRef.current); } }}>
               <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-display">
@@ -1276,10 +1286,16 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    <div className="flex gap-2">
+                    <div className="relative">
                       <Select value={artCategory} onValueChange={(v) => { setArtCategory(v); setAutoCategoryReason(""); }}>
-                        <SelectTrigger className="bg-secondary flex-1">
-                          <SelectValue placeholder="Pilih kategori" />
+                        <SelectTrigger className={`bg-secondary transition-all ${autoCategorizing ? "border-primary/40 ring-1 ring-primary/20" : ""}`}>
+                          {autoCategorizing
+                            ? <span className="flex items-center gap-2 text-muted-foreground text-sm">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                AI mendeteksi kategori...
+                              </span>
+                            : <SelectValue placeholder="Pilih kategori" />
+                          }
                         </SelectTrigger>
                         <SelectContent>
                           {categories.map((c) => (
@@ -1287,21 +1303,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                           ))}
                         </SelectContent>
                       </Select>
-                      <button
-                        type="button"
-                        onClick={handleAutoCategorize}
-                        disabled={autoCategorizing || (!artTitle.trim() && !artContent.trim())}
-                        className="flex shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="AI akan mendeteksi kategori dan tipe artikel secara otomatis"
-                      >
-                        {autoCategorizing
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <Wand2 className="h-3.5 w-3.5" />
-                        }
-                        {autoCategorizing ? "Mendeteksi..." : "Auto"}
-                      </button>
                     </div>
-                    {autoCategoryReason && (
+                    {autoCategoryReason && !autoCategorizing && (
                       <p className="text-[11px] text-primary/70 flex items-center gap-1">
                         <Wand2 className="h-3 w-3 shrink-0" />
                         {autoCategoryReason}
