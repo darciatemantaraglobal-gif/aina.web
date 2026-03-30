@@ -304,145 +304,97 @@ async function initKBKeywordsCol() {
 }
 initKBKeywordsCol();
 
-/* ── Missing topic logging ───────────────────────────────────────────────────
- * When KB returns zero results for a query, log it as a "missing topic" so
- * admins can see what users are asking that has no KB coverage yet.
- * Fire-and-forget — never blocks the main request.
+/* ── Self-Improvement: query_log + missing_topics (Supabase) ────────────────
+ * All logging now uses Supabase so it works in both dev (Replit) and prod
+ * (Railway). Tables must exist in Supabase — run the SQL below once:
+ *
+ *  CREATE TABLE IF NOT EXISTS public.query_log (
+ *    id            BIGSERIAL PRIMARY KEY,
+ *    query_text    TEXT NOT NULL,
+ *    intent_type   TEXT,
+ *    source_used   TEXT,
+ *    confidence    TEXT,
+ *    user_id       TEXT,
+ *    has_kb_result BOOLEAN DEFAULT false,
+ *    is_transport  BOOLEAN DEFAULT false,
+ *    rating        SMALLINT,
+ *    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+ *  );
+ *  CREATE TABLE IF NOT EXISTS public.missing_topics (
+ *    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ *    query       TEXT NOT NULL,
+ *    intent_type TEXT,
+ *    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+ *  );
  * ─────────────────────────────────────────────────────────────────────────── */
-let _missingTopicsTableReady = false;
-let _queryLogTableReady      = false;
 
-/* ── Self-Improvement: query_log ────────────────────────
-   Logs every AI chat query with intent, confidence, source,
-   and user rating. Drives the /api/admin/insights endpoint.
-   ─────────────────────────────────────────────────────── */
 async function ensureQueryLogTable() {
-  if (_queryLogTableReady) return true;
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) return false;
-  let client;
-  try {
-    const { Client } = await import("pg");
-    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    await client.connect();
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS query_log (
-        id            SERIAL PRIMARY KEY,
-        query_text    TEXT NOT NULL,
-        intent_type   TEXT,
-        source_used   TEXT,
-        confidence    TEXT,
-        user_id       TEXT,
-        has_kb_result BOOLEAN DEFAULT false,
-        is_transport  BOOLEAN DEFAULT false,
-        rating        SMALLINT,
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
-      CREATE INDEX IF NOT EXISTS idx_query_log_created  ON query_log(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_query_log_intent   ON query_log(intent_type);
-      CREATE INDEX IF NOT EXISTS idx_query_log_rating   ON query_log(rating) WHERE rating IS NOT NULL;
-    `);
-    _queryLogTableReady = true;
-    console.log("[QueryLog] ✓ table ready");
-    return true;
-  } catch (e) {
-    console.warn("[QueryLog] init warning:", e.message);
+  const supabase = getAdminClient();
+  if (!supabase) return false;
+  const { error } = await supabase.from("query_log").select("id").limit(1);
+  if (error && (error.code === "42P01" || error.message?.includes("does not exist"))) {
+    console.warn("[QueryLog] ⚠ table missing in Supabase — run the SQL in the comment above.");
     return false;
-  } finally {
-    if (client) await client.end().catch(() => {});
   }
+  console.log("[QueryLog] ✓ table ready");
+  return true;
 }
 ensureQueryLogTable();
 
 /**
- * Fire-and-forget: log a user query to query_log.
- * Returns the new row id (or null on failure) via a Promise — used to embed
- * log_id in the API response so clients can send back a rating.
+ * Fire-and-forget: log a user query to query_log (Supabase).
+ * Returns the new row id (or null on failure).
  */
 async function logQuery({ queryText, intentType, sourceUsed, confidence, userId, hasKbResult, isTransport, rating }) {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl || !queryText?.trim()) return null;
-  let client;
+  const supabase = getAdminClient();
+  if (!supabase || !queryText?.trim()) return null;
   try {
-    const { Client } = await import("pg");
-    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    await client.connect();
-    const result = await client.query(
-      `INSERT INTO query_log (query_text, intent_type, source_used, confidence, user_id, has_kb_result, is_transport, rating)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id`,
-      [
-        queryText.trim().slice(0, 500),
-        intentType   ?? null,
-        sourceUsed   ?? null,
-        confidence   ?? null,
-        userId       ?? null,
-        hasKbResult  ?? false,
-        isTransport  ?? false,
-        rating       ?? null,
-      ]
-    );
-    return result.rows[0]?.id ?? null;
+    const { data, error } = await supabase
+      .from("query_log")
+      .insert({
+        query_text:    queryText.trim().slice(0, 500),
+        intent_type:   intentType  ?? null,
+        source_used:   sourceUsed  ?? null,
+        confidence:    confidence  ?? null,
+        user_id:       userId      ?? null,
+        has_kb_result: hasKbResult ?? false,
+        is_transport:  isTransport ?? false,
+        rating:        rating      ?? null,
+      })
+      .select("id")
+      .single();
+    if (error) { console.warn("[QueryLog] insert failed (non-critical):", error.message); return null; }
+    return data?.id ?? null;
   } catch (e) {
     console.warn("[QueryLog] insert failed (non-critical):", e.message);
     return null;
-  } finally {
-    if (client) await client.end().catch(() => {});
   }
 }
 
 async function ensureMissingTopicsTable() {
-  if (_missingTopicsTableReady) return true;
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) return false;
-  let client;
-  try {
-    const { Client } = await import("pg");
-    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    await client.connect();
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS missing_topics (
-        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        query       TEXT NOT NULL,
-        intent_type TEXT,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
-      CREATE INDEX IF NOT EXISTS idx_missing_topics_created ON missing_topics(created_at DESC);
-    `);
-    _missingTopicsTableReady = true;
-    console.log("[MissingTopics] ✓ table ready");
-    return true;
-  } catch (e) {
-    console.warn("[MissingTopics] init warning:", e.message);
+  const supabase = getAdminClient();
+  if (!supabase) return false;
+  const { error } = await supabase.from("missing_topics").select("id").limit(1);
+  if (error && (error.code === "42P01" || error.message?.includes("does not exist"))) {
+    console.warn("[MissingTopics] ⚠ table missing in Supabase — run the SQL in the comment above.");
     return false;
-  } finally {
-    if (client) await client.end().catch(() => {});
   }
+  console.log("[MissingTopics] ✓ table ready");
+  return true;
 }
 ensureMissingTopicsTable();
 
 /**
- * Fire-and-forget log of a query that returned no KB results.
- * @param {string} query - The user's question
- * @param {string} [intentType] - Intent classification (factual/procedural/etc.)
+ * Fire-and-forget: log a query that returned no KB results (Supabase).
  */
 function logMissingTopic(query, intentType) {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl || !query?.trim()) return;
-  (async () => {
-    let client;
-    try {
-      const { Client } = await import("pg");
-      client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-      await client.connect();
-      await client.query(
-        "INSERT INTO missing_topics (query, intent_type) VALUES ($1, $2)",
-        [query.trim().slice(0, 500), intentType ?? null]
-      );
-    } catch { /* silent — never crash the main request */ } finally {
-      if (client) await client.end().catch(() => {});
-    }
-  })();
+  const supabase = getAdminClient();
+  if (!supabase || !query?.trim()) return;
+  supabase
+    .from("missing_topics")
+    .insert({ query: query.trim().slice(0, 500), intent_type: intentType ?? null })
+    .then(({ error }) => { if (error) console.warn("[MissingTopics] insert failed:", error.message); })
+    .catch(() => {});
 }
 
 async function initUserNotes() {
@@ -5964,46 +5916,42 @@ app.get("/api/admin/missing-topics", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) return res.status(503).json({ error: "DATABASE_URL not configured" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Server config error" });
 
-  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const limit = Math.min(parseInt(req.query.limit) || 500, 1000);
   const since = req.query.since; // ISO date string filter
 
-  let client;
   try {
-    const { Client } = await import("pg");
-    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    await client.connect();
+    let query = supabase
+      .from("missing_topics")
+      .select("id, query, intent_type, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
 
-    let whereClause = since ? `WHERE created_at >= $2` : "";
-    const params = since ? [limit, since] : [limit];
+    if (since) query = query.gte("created_at", since);
 
-    const result = await client.query(
-      `SELECT id, query, intent_type, created_at
-       FROM missing_topics
-       ${whereClause}
-       ORDER BY created_at DESC
-       LIMIT $1`,
-      params
-    );
+    const { data, error } = await query;
+    if (error) {
+      if (error.code === "42P01" || error.message?.includes("does not exist")) {
+        return res.json({ total: 0, topics: [], setup_required: true });
+      }
+      return res.status(500).json({ error: sanitizeErr(error) });
+    }
 
-    // Group queries by similarity — count duplicates to surface most-asked gaps
-    const rows = result.rows;
+    const rows = data ?? [];
+    // Group by normalised query text — surface most-asked gaps first
     const countMap = {};
     for (const row of rows) {
       const key = row.query.toLowerCase().trim().slice(0, 80);
       if (!countMap[key]) countMap[key] = { ...row, count: 0 };
       countMap[key].count++;
     }
-    const grouped = Object.values(countMap)
-      .sort((a, b) => b.count - a.count);
+    const grouped = Object.values(countMap).sort((a, b) => b.count - a.count);
 
     res.json({ total: rows.length, topics: grouped });
   } catch (e) {
-    res.status(500).json({ error: "Tabel missing_topics belum tersedia: " + e.message });
-  } finally {
-    if (client) await client.end().catch(() => {});
+    res.status(500).json({ error: "Gagal memuat missing topics: " + e.message });
   }
 });
 
@@ -6079,128 +6027,114 @@ app.get("/api/admin/answer-feedback", async (req, res) => {
 /* ── GET /api/admin/insights ─────────────────────────────
    Self-improvement dashboard: top queries, bad responses,
    missing KB topics, weekly usage summary.
-   Master-admin only.
+   Master-admin only. Uses Supabase (works in dev + prod).
    ─────────────────────────────────────────────────────── */
 app.get("/api/admin/insights", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) return res.status(503).json({ error: "DATABASE_URL not configured" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Server config error" });
 
-  let client;
   try {
-    const { Client } = await import("pg");
-    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    await client.connect();
+    const now = new Date();
+    const ago30d = new Date(now - 30 * 86400_000).toISOString();
+    const ago14d = new Date(now - 14 * 86400_000).toISOString();
+    const ago7d  = new Date(now - 7  * 86400_000).toISOString();
 
-    // ── 1. Top queries (last 30 days) ──────────────────────────────────────
-    const topQueriesResult = await client.query(`
-      SELECT
-        lower(trim(query_text)) AS normalized,
-        MIN(query_text)         AS sample_query,
-        COUNT(*)::int           AS count,
-        MAX(intent_type)        AS intent_type,
-        MAX(source_used)        AS source_used,
-        MAX(created_at)         AS last_seen
-      FROM query_log
-      WHERE created_at >= now() - INTERVAL '30 days'
-        AND rating IS NULL
-      GROUP BY lower(trim(query_text))
-      ORDER BY count DESC
-      LIMIT 20
-    `);
+    // Fetch raw data in parallel
+    const [logRes, missingRes] = await Promise.all([
+      supabase
+        .from("query_log")
+        .select("id, query_text, intent_type, source_used, confidence, has_kb_result, is_transport, rating, created_at")
+        .gte("created_at", ago30d)
+        .order("created_at", { ascending: false })
+        .limit(2000),
+      supabase
+        .from("missing_topics")
+        .select("query, intent_type, created_at")
+        .gte("created_at", ago30d)
+        .order("created_at", { ascending: false })
+        .limit(500),
+    ]);
 
-    // ── 2. Bad responses (thumbs down, last 30 days) ───────────────────────
-    const badResponsesResult = await client.query(`
-      SELECT
-        query_text,
-        intent_type,
-        source_used,
-        confidence,
-        created_at
-      FROM query_log
-      WHERE rating = -1
-        AND created_at >= now() - INTERVAL '30 days'
-      ORDER BY created_at DESC
-      LIMIT 30
-    `);
+    if (logRes.error && (logRes.error.code === "42P01" || logRes.error.message?.includes("does not exist"))) {
+      return res.json({
+        top_queries: [], bad_responses: [], missing_topics: [],
+        weekly_summary: {}, daily_trend: [], intent_breakdown: [],
+        setup_required: true, generated_at: now.toISOString(),
+      });
+    }
+    if (logRes.error) return res.status(500).json({ error: sanitizeErr(logRes.error) });
 
-    // ── 3. Missing topics (from missing_topics table) ─────────────────────
-    let missingTopics = [];
-    try {
-      const mtResult = await client.query(`
-        SELECT
-          lower(trim(query)) AS normalized,
-          MIN(query)         AS sample_query,
-          COUNT(*)::int      AS count,
-          MAX(intent_type)   AS intent_type,
-          MAX(created_at)    AS last_seen
-        FROM missing_topics
-        WHERE created_at >= now() - INTERVAL '30 days'
-        GROUP BY lower(trim(query))
-        ORDER BY count DESC
-        LIMIT 20
-      `);
-      missingTopics = mtResult.rows;
-    } catch { /* table might not exist yet */ }
+    const logs    = logRes.data    ?? [];
+    const missing = missingRes.data ?? [];
 
-    // ── 4. Weekly summary (last 7 days) ───────────────────────────────────
-    const weeklyResult = await client.query(`
-      SELECT
-        COUNT(*)::int                                          AS total_queries,
-        COUNT(*) FILTER (WHERE rating = -1)::int              AS bad_responses,
-        COUNT(*) FILTER (WHERE has_kb_result = true)::int     AS kb_hits,
-        COUNT(*) FILTER (WHERE is_transport = true)::int      AS transport_queries,
-        COUNT(*) FILTER (WHERE source_used = 'KB')::int       AS source_kb,
-        COUNT(*) FILTER (WHERE source_used = 'Perplexity')::int AS source_perplexity,
-        COUNT(*) FILTER (WHERE source_used = 'Wikipedia')::int  AS source_wiki,
-        COUNT(*) FILTER (WHERE source_used = 'Model')::int      AS source_model,
-        COUNT(*) FILTER (WHERE confidence = 'high')::int        AS conf_high,
-        COUNT(*) FILTER (WHERE confidence = 'medium')::int      AS conf_medium,
-        COUNT(*) FILTER (WHERE confidence = 'needs_verification')::int AS conf_low
-      FROM query_log
-      WHERE created_at >= now() - INTERVAL '7 days'
-    `);
+    // ── 1. Top queries (last 30d, unrated) — group by normalised text ──────
+    const qMap = {};
+    for (const r of logs) {
+      if (r.rating !== null && r.rating !== undefined) continue;
+      const key = (r.query_text || "").toLowerCase().trim().slice(0, 80);
+      if (!key) continue;
+      if (!qMap[key]) qMap[key] = { normalized: key, sample_query: r.query_text, count: 0, intent_type: r.intent_type, source_used: r.source_used, last_seen: r.created_at };
+      qMap[key].count++;
+      if (r.created_at > qMap[key].last_seen) { qMap[key].last_seen = r.created_at; qMap[key].source_used = r.source_used; }
+    }
+    const top_queries = Object.values(qMap).sort((a, b) => b.count - a.count).slice(0, 20);
 
-    // ── 5. Trend: daily query count (last 14 days) ────────────────────────
-    const trendResult = await client.query(`
-      SELECT
-        date_trunc('day', created_at AT TIME ZONE 'Africa/Cairo')::date AS day,
-        COUNT(*)::int AS count
-      FROM query_log
-      WHERE created_at >= now() - INTERVAL '14 days'
-      GROUP BY 1
-      ORDER BY 1 ASC
-    `);
+    // ── 2. Bad responses (rating = -1, last 30d) ───────────────────────────
+    const bad_responses = logs
+      .filter(r => r.rating === -1)
+      .slice(0, 30)
+      .map(r => ({ query_text: r.query_text, intent_type: r.intent_type, source_used: r.source_used, confidence: r.confidence, created_at: r.created_at }));
 
-    // ── 6. Intent breakdown (last 7 days) ─────────────────────────────────
-    const intentResult = await client.query(`
-      SELECT
-        COALESCE(intent_type, 'unknown') AS intent,
-        COUNT(*)::int AS count
-      FROM query_log
-      WHERE created_at >= now() - INTERVAL '7 days'
-        AND rating IS NULL
-      GROUP BY 1
-      ORDER BY count DESC
-      LIMIT 10
-    `);
+    // ── 3. Missing topics (last 30d) — group by normalised text ───────────
+    const mtMap = {};
+    for (const r of missing) {
+      const key = (r.query || "").toLowerCase().trim().slice(0, 80);
+      if (!key) continue;
+      if (!mtMap[key]) mtMap[key] = { normalized: key, sample_query: r.query, count: 0, intent_type: r.intent_type, last_seen: r.created_at };
+      mtMap[key].count++;
+      if (r.created_at > mtMap[key].last_seen) mtMap[key].last_seen = r.created_at;
+    }
+    const missing_topics = Object.values(mtMap).sort((a, b) => b.count - a.count).slice(0, 20);
 
-    res.json({
-      top_queries:    topQueriesResult.rows,
-      bad_responses:  badResponsesResult.rows,
-      missing_topics: missingTopics,
-      weekly_summary: weeklyResult.rows[0] ?? {},
-      daily_trend:    trendResult.rows,
-      intent_breakdown: intentResult.rows,
-      generated_at:   new Date().toISOString(),
-    });
+    // ── 4. Weekly summary (last 7d) ────────────────────────────────────────
+    const weekly = logs.filter(r => r.created_at >= ago7d);
+    const weekly_summary = {
+      total_queries:     weekly.length,
+      bad_responses:     weekly.filter(r => r.rating === -1).length,
+      kb_hits:           weekly.filter(r => r.has_kb_result).length,
+      transport_queries: weekly.filter(r => r.is_transport).length,
+      source_kb:         weekly.filter(r => r.source_used === "KB").length,
+      source_perplexity: weekly.filter(r => r.source_used === "Perplexity").length,
+      source_wiki:       weekly.filter(r => r.source_used === "Wikipedia").length,
+      source_model:      weekly.filter(r => r.source_used === "Model").length,
+      conf_high:         weekly.filter(r => r.confidence === "high").length,
+      conf_medium:       weekly.filter(r => r.confidence === "medium").length,
+      conf_low:          weekly.filter(r => r.confidence === "needs_verification").length,
+    };
+
+    // ── 5. Daily trend (last 14d) ──────────────────────────────────────────
+    const dayMap = {};
+    for (const r of logs.filter(x => x.created_at >= ago14d)) {
+      const day = r.created_at.slice(0, 10);
+      dayMap[day] = (dayMap[day] || 0) + 1;
+    }
+    const daily_trend = Object.entries(dayMap).sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count }));
+
+    // ── 6. Intent breakdown (last 7d) ─────────────────────────────────────
+    const intentMap = {};
+    for (const r of weekly.filter(x => x.rating === null || x.rating === undefined)) {
+      const intent = r.intent_type || "unknown";
+      intentMap[intent] = (intentMap[intent] || 0) + 1;
+    }
+    const intent_breakdown = Object.entries(intentMap).sort(([, a], [, b]) => b - a).slice(0, 10).map(([intent, count]) => ({ intent, count }));
+
+    res.json({ top_queries, bad_responses, missing_topics, weekly_summary, daily_trend, intent_breakdown, generated_at: now.toISOString() });
   } catch (e) {
     console.error("[Insights] error:", e.message);
     res.status(500).json({ error: "Gagal memuat insights: " + e.message });
-  } finally {
-    if (client) await client.end().catch(() => {});
   }
 });
 
