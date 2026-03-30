@@ -2100,88 +2100,96 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-base font-bold text-foreground sm:text-lg">Moderasi Knowledge Base</h2>
-          <p className="text-xs text-muted-foreground sm:text-sm">Review, terbitkan, dan tambah artikel langsung.</p>
+          <p className="text-xs text-muted-foreground sm:text-sm">Review, terbitkan, dan kelola artikel KB.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {isMasterAdmin && (
-            <>
-              <Button
-                variant="outline" size="sm"
-                className="h-8 gap-1.5 text-xs"
-                disabled={reformatLoading}
-                onClick={handleReformatAll}
-              >
-                {reformatLoading
-                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Memformat...</>
-                  : <><RefreshCw className="h-3.5 w-3.5" /> Reformat</>
-                }
-              </Button>
-              <Button
-                variant="outline" size="sm"
-                className="h-8 gap-1.5 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-                disabled={kwGenLoading || kwGenProgress?.running}
-                onClick={handleGenerateKeywords}
-                title="Generate kata kunci AI untuk semua artikel — meningkatkan kemampuan AINA menemukan artikel dari berbagai cara bertanya"
-              >
-                {(kwGenLoading || kwGenProgress?.running)
-                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
-                      {kwGenProgress?.running && kwGenProgress.total > 0
-                        ? `${kwGenProgress.generated}/${kwGenProgress.total} artikel...`
-                        : "Generating..."}
-                    </>
-                  : <><Sparkles className="h-3.5 w-3.5" /> Generate Keywords</>
-                }
-              </Button>
-              <Button
-                variant="outline" size="sm"
-                className="h-8 gap-1.5 text-xs border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
-                disabled={autoCatLoading || autoCatProgress?.running}
-                onClick={handleBulkAutoCategorize}
-                title="Auto-kategorisasi semua artikel KB menggunakan AI — update kategori & tipe artikel secara massal"
-              >
-                {(autoCatLoading || autoCatProgress?.running)
-                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
-                      {autoCatProgress?.running && autoCatProgress.total > 0
-                        ? `${autoCatProgress.processed}/${autoCatProgress.total} artikel...`
-                        : "Mengkategorisasi..."}
-                    </>
-                  : <><Tags className="h-3.5 w-3.5" /> Auto-Kategorisasi</>
-                }
-              </Button>
-              <Button
-                variant="outline" size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={async () => {
-                  try {
-                    const authHeader = await getAuthHeader();
-                    const res = await fetch("/api/admin/export/articles", { headers: { Authorization: authHeader } });
-                    if (!res.ok) throw new Error("Gagal export");
-                    const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url; a.download = `aina_articles_${Date.now()}.csv`; a.click();
-                    URL.revokeObjectURL(url);
-                  } catch (e: any) { toast.error(e.message); }
-                }}
-              >
-                <Download className="h-3.5 w-3.5" /> Export CSV
-              </Button>
-            </>
-          )}
-          <Button onClick={() => setScraperOpen(true)} size="sm" variant="outline" className="gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/></svg>
-            Ambil dari Bot
-          </Button>
-          <Button onClick={() => setBulkImportOpen(true)} size="sm" variant="outline" className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10">
-            <Wand2 className="h-3.5 w-3.5" /> Import Massal
-          </Button>
-          <Button onClick={() => setAddOpen(true)} size="sm" className="gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
-            <Plus className="h-4 w-4" /> Tambah Artikel
-          </Button>
-        </div>
+        <Button onClick={() => setAddOpen(true)} size="sm" className="shrink-0 gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90">
+          <Plus className="h-4 w-4" /> Tambah Artikel
+        </Button>
+      </div>
+
+      {/* ── Toolbar ── */}
+      <div className="rounded-xl border border-border bg-card/60 p-2 flex flex-wrap items-center gap-1.5">
+        {/* Content tools */}
+        <Button onClick={() => setScraperOpen(true)} size="sm" variant="ghost"
+          className="h-8 gap-1.5 text-xs text-sky-400 hover:bg-sky-500/10 hover:text-sky-300">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current shrink-0" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.883 13.7l-2.963-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.268.859z"/>
+          </svg>
+          Ambil dari Bot
+        </Button>
+        <Button onClick={() => setBulkImportOpen(true)} size="sm" variant="ghost"
+          className="h-8 gap-1.5 text-xs text-primary hover:bg-primary/10 hover:text-primary">
+          <Wand2 className="h-3.5 w-3.5" /> Import Massal
+        </Button>
+
+        {isMasterAdmin && (
+          <>
+            {/* Separator */}
+            <div className="h-5 w-px bg-border mx-0.5" />
+
+            {/* AI tools */}
+            <span className="text-[10px] text-muted-foreground/60 font-medium px-1 uppercase tracking-wide">AI Tools</span>
+            <Button
+              size="sm" variant="ghost"
+              className="h-8 gap-1.5 text-xs text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+              disabled={kwGenLoading || kwGenProgress?.running}
+              onClick={handleGenerateKeywords}
+              title="Generate kata kunci AI untuk semua artikel — meningkatkan kemampuan AINA menemukan artikel dari berbagai cara bertanya"
+            >
+              {(kwGenLoading || kwGenProgress?.running)
+                ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+                    {kwGenProgress?.running && kwGenProgress.total > 0
+                      ? `${kwGenProgress.generated}/${kwGenProgress.total}...`
+                      : "Generating..."}
+                  </>
+                : <><Sparkles className="h-3.5 w-3.5" /> Gen Keywords</>
+              }
+            </Button>
+            <Button
+              size="sm" variant="ghost"
+              className="h-8 gap-1.5 text-xs text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+              disabled={autoCatLoading || autoCatProgress?.running}
+              onClick={handleBulkAutoCategorize}
+              title="Auto-kategorisasi semua artikel KB menggunakan AI — update kategori & tipe artikel secara massal"
+            >
+              {(autoCatLoading || autoCatProgress?.running)
+                ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                    {autoCatProgress?.running && autoCatProgress.total > 0
+                      ? `${autoCatProgress.processed}/${autoCatProgress.total}...`
+                      : "Auto-cat..."}
+                  </>
+                : <><Tags className="h-3.5 w-3.5" /> Auto-Kategori</>
+              }
+            </Button>
+
+            {/* Separator */}
+            <div className="h-5 w-px bg-border mx-0.5" />
+
+            {/* Export */}
+            <Button
+              size="sm" variant="ghost"
+              className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={async () => {
+                try {
+                  const authHeader = await getAuthHeader();
+                  const res = await fetch("/api/admin/export/articles", { headers: { Authorization: authHeader } });
+                  if (!res.ok) throw new Error("Gagal export");
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url; a.download = `aina_articles_${Date.now()}.csv`; a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e: any) { toast.error(e.message); }
+              }}
+            >
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </Button>
+          </>
+        )}
       </div>
 
       {/* ── Keyword generation progress / summary panel ─────────────────── */}
