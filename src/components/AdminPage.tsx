@@ -1827,6 +1827,12 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [scraperOpen, setScraperOpen] = useState(false);
   const [kwGenLoading, setKwGenLoading] = useState(false);
+  const [kwGenProgress, setKwGenProgress] = useState<{
+    running: boolean; total: number; generated: number; errors: number;
+    withKeywords: number; totalArticles: number;
+    startedAt: string | null; completedAt: string | null;
+  } | null>(null);
+  const kwGenPollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
@@ -1970,17 +1976,44 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const fetchKwGenStatus = React.useCallback(async () => {
+    try {
+      const s = await adminFetch("/api/admin/articles/generate-keywords/status");
+      setKwGenProgress(s);
+      if (!s.running) {
+        setKwGenLoading(false);
+        if (kwGenPollRef.current) { clearInterval(kwGenPollRef.current); kwGenPollRef.current = null; }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  React.useEffect(() => {
+    fetchKwGenStatus();
+    return () => { if (kwGenPollRef.current) clearInterval(kwGenPollRef.current); };
+  }, [fetchKwGenStatus]);
+
   const handleGenerateKeywords = async () => {
-    if (!confirm("Generate kata kunci AI untuk semua artikel approved? Proses berjalan di background (~2-3 menit untuk 87 artikel).")) return;
+    if (kwGenProgress?.running) return;
+    const total = kwGenProgress?.totalArticles ?? 0;
+    const mins = Math.max(1, Math.round((total * 0.2) / 60));
+    if (!confirm(`Generate kata kunci AI untuk ${total} artikel approved?\nEstimasi waktu: ~${mins} menit. Proses berjalan di background.`)) return;
     setKwGenLoading(true);
     try {
       const result = await adminFetch("/api/admin/articles/generate-keywords", {
         method: "POST",
         body: JSON.stringify({ regenerate: true }),
       });
-      toast.success(`Proses dimulai — ${result.total} artikel sedang diproses di background. AINA akan makin pintar dalam beberapa menit.`);
-    } catch (e: any) { toast.error(e.message); }
-    setKwGenLoading(false);
+      if (result.alreadyRunning) {
+        toast.info("Proses generate keyword sedang berjalan.");
+      } else if (result.started) {
+        toast.success(`Dimulai — ${result.total} artikel sedang diproses.`);
+        kwGenPollRef.current = setInterval(fetchKwGenStatus, 3000);
+        fetchKwGenStatus();
+      } else {
+        toast.info("Tidak ada artikel yang perlu diproses.");
+        setKwGenLoading(false);
+      }
+    } catch (e: any) { toast.error(e.message); setKwGenLoading(false); }
   };
 
   const toggleSelect = (id: string) => {
@@ -2045,12 +2078,16 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
               <Button
                 variant="outline" size="sm"
                 className="h-8 gap-1.5 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-                disabled={kwGenLoading}
+                disabled={kwGenLoading || kwGenProgress?.running}
                 onClick={handleGenerateKeywords}
                 title="Generate kata kunci AI untuk semua artikel — meningkatkan kemampuan AINA menemukan artikel dari berbagai cara bertanya"
               >
-                {kwGenLoading
-                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" /> Generating...</>
+                {(kwGenLoading || kwGenProgress?.running)
+                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+                      {kwGenProgress?.running && kwGenProgress.total > 0
+                        ? `${kwGenProgress.generated}/${kwGenProgress.total} artikel...`
+                        : "Generating..."}
+                    </>
                   : <><Sparkles className="h-3.5 w-3.5" /> Generate Keywords</>
                 }
               </Button>
@@ -2086,6 +2123,70 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
           </Button>
         </div>
       </div>
+
+      {/* ── Keyword generation progress / summary panel ─────────────────── */}
+      {kwGenProgress && (kwGenProgress.running || kwGenProgress.completedAt) && (
+        <div className={`rounded-xl border px-4 py-3 text-xs space-y-2 ${kwGenProgress.running ? "border-emerald-500/30 bg-emerald-500/5" : "border-border bg-card"}`}>
+          {kwGenProgress.running ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-emerald-400 flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Sedang generate keywords...
+                </span>
+                <span className="text-muted-foreground tabular-nums">{kwGenProgress.generated}/{kwGenProgress.total} artikel</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                  style={{ width: kwGenProgress.total > 0 ? `${Math.round(kwGenProgress.generated / kwGenProgress.total * 100)}%` : "0%" }}
+                />
+              </div>
+              <p className="text-muted-foreground">
+                {Math.round(kwGenProgress.generated / kwGenProgress.total * 100)}% selesai
+                {kwGenProgress.total > kwGenProgress.generated && ` — estimasi ${Math.max(1, Math.ceil((kwGenProgress.total - kwGenProgress.generated) * 0.2 / 60))} menit lagi`}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-foreground flex items-center gap-1.5">
+                  <span className="text-emerald-400">✓</span> Generate keywords selesai
+                </span>
+                <span className="text-muted-foreground tabular-nums">{kwGenProgress.generated}/{kwGenProgress.total} berhasil
+                  {kwGenProgress.errors > 0 && `, ${kwGenProgress.errors} gagal`}
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                <div className="h-full rounded-full bg-emerald-400" style={{ width: "100%" }} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 text-muted-foreground">
+                <span>Artikel dengan keyword:</span>
+                <span className="font-medium text-foreground">{kwGenProgress.withKeywords} / {kwGenProgress.totalArticles} artikel</span>
+                <span>Efek ke AINA:</span>
+                <span className="font-medium text-emerald-400">Pencarian makin akurat ↑</span>
+              </div>
+              <p className="text-muted-foreground border-t border-border pt-2 leading-relaxed">
+                Keyword yang di-generate membantu AINA mencocokkan pertanyaan user dengan artikel yang tepat, meskipun user memakai kata yang berbeda dari judul artikel.
+                Makin banyak artikel berkeyword → makin sering AINA jawab dari KB sendiri tanpa perlu ke internet.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Static keyword coverage indicator (always shown when data available) */}
+      {kwGenProgress && !kwGenProgress.running && !kwGenProgress.completedAt && kwGenProgress.totalArticles > 0 && (
+        <div className="rounded-xl border border-border bg-card px-4 py-2.5 text-xs flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Coverage keyword KB</span>
+          <div className="flex items-center gap-2 flex-1 max-w-[200px]">
+            <div className="h-1.5 flex-1 rounded-full bg-border overflow-hidden">
+              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.round(kwGenProgress.withKeywords / kwGenProgress.totalArticles * 100)}%` }} />
+            </div>
+            <span className="tabular-nums shrink-0 text-foreground font-medium">{kwGenProgress.withKeywords}/{kwGenProgress.totalArticles}</span>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
         {tabs.map(t => (

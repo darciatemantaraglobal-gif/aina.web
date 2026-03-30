@@ -4533,37 +4533,59 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   res.json({ updated: pendingIds.length });
 });
 
+/* ── In-memory tracker for bulk keyword generation progress ── */
+let _kwGenState = { running: false, total: 0, generated: 0, errors: 0, startedAt: null, completedAt: null };
+
+/* GET /api/admin/articles/generate-keywords/status */
+app.get("/api/admin/articles/generate-keywords/status", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const [{ count: withKw }, { count: totalApproved }] = await Promise.all([
+    supabase.from("knowledge_base").select("*", { count: "exact", head: true }).eq("status", "approved").not("keywords", "is", null).neq("keywords", ""),
+    supabase.from("knowledge_base").select("*", { count: "exact", head: true }).eq("status", "approved"),
+  ]);
+  res.json({ ..._kwGenState, withKeywords: withKw ?? 0, totalArticles: totalApproved ?? 0 });
+});
+
 /* ── Admin: Bulk-generate keywords for all approved articles ── */
 app.post("/api/admin/articles/generate-keywords", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
+  if (_kwGenState.running) {
+    return res.json({ started: false, alreadyRunning: true, ..._kwGenState });
+  }
+
   const supabase = getAdminClient();
-  // Fetch all approved articles (or only those without keywords if regenerate=false)
-  const regenerate = req.body?.regenerate !== false; // default true
+  const regenerate = req.body?.regenerate !== false;
   let query = supabase.from("knowledge_base").select("id, title, content, category").eq("status", "approved");
   if (!regenerate) query = query.is("keywords", null);
 
   const { data: articles, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
-  if (!articles?.length) return res.json({ generated: 0, total: 0 });
+  if (!articles?.length) return res.json({ started: false, generated: 0, total: 0 });
 
-  // Start processing in background — respond immediately with count
-  res.json({ started: true, total: articles.length, message: `Generating keywords for ${articles.length} articles in background` });
+  // Initialise tracker and respond immediately
+  _kwGenState = { running: true, total: articles.length, generated: 0, errors: 0, startedAt: new Date().toISOString(), completedAt: null };
+  res.json({ started: true, total: articles.length });
 
-  // Process sequentially with small delay to avoid rate limits
-  let generated = 0;
+  // Process in background
+  let generated = 0, errors = 0;
   for (const art of articles) {
     try {
       const keywords = await generateArticleKeywords(art.title, art.content, art.category);
       if (keywords) {
         await supabase.from("knowledge_base").update({ keywords }).eq("id", art.id);
         generated++;
-      }
-    } catch { /* skip on error */ }
-    await new Promise(r => setTimeout(r, 200)); // 200ms between requests
+      } else { errors++; }
+    } catch { errors++; }
+    _kwGenState.generated = generated;
+    _kwGenState.errors = errors;
+    await new Promise(r => setTimeout(r, 200));
   }
-  console.log(`[KB] Keyword generation done: ${generated}/${articles.length} articles updated`);
+  _kwGenState = { ..._kwGenState, running: false, generated, errors, completedAt: new Date().toISOString() };
+  console.log(`[KB] Keyword generation done: ${generated}/${articles.length} updated, ${errors} errors`);
 });
 
 /* ── Admin: Input Article Directly ──────────────────── */
