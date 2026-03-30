@@ -16,7 +16,7 @@ import {
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
-  GripVertical, Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles,
+  Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -5352,17 +5352,53 @@ const AdminPage = () => {
     {
       label: "Konten",
       items: [
-        { id: "knowledge", label: "Knowledge Base", icon: FileText,  badge: stats.pendingArticles || undefined },
-        { id: "updates",   label: "Breaking Updates", icon: Zap },
-        { id: "news",      label: "Berita",          icon: Newspaper },
-        { id: "procedures",label: "Prosedur",        icon: BookOpen, masterOnly: true },
+        { id: "knowledge",  label: "Knowledge Base",   icon: FileText,  badge: stats.pendingArticles || undefined },
+        { id: "updates",    label: "Breaking Updates", icon: Zap },
+        { id: "news",       label: "Berita",           icon: Newspaper },
+        { id: "procedures", label: "Prosedur",         icon: BookOpen,  masterOnly: true },
       ],
     },
     {
       label: "Pengguna",
       items: [
-        { id: "users",    label: "Users",        icon: Users,    masterOnly: true, badge: stats.totalUsers || undefined },
-        { id: "requests", label: "Requests",     icon: UserCheck, badge:
+        { id: "users",    label: "Users",    icon: Users,    masterOnly: true, badge: stats.totalUsers || undefined },
+        { id: "requests", label: "Requests", icon: UserCheck, badge: stats.pendingRequests || undefined },
+        { id: "reports",  label: "Laporan",  icon: Flag },
+        { id: "waitlist", label: "Waitlist Pro", icon: Crown, masterOnly: true },
+      ],
+    },
+    {
+      label: "Monitoring",
+      masterOnly: true,
+      items: [
+        { id: "monitor",  label: "Chat Monitor", icon: Eye },
+        { id: "security", label: "Security",     icon: ShieldAlert },
+        { id: "signals",  label: "Sinyal User",  icon: ThumbsUp },
+      ],
+    },
+    {
+      label: "Komunikasi",
+      masterOnly: true,
+      items: [
+        { id: "announcements", label: "Pengumuman", icon: Megaphone },
+      ],
+    },
+    {
+      label: "Analitik",
+      masterOnly: true,
+      items: [
+        { id: "performance", label: "Performa AI", icon: TrendingUp },
+        { id: "coverage",    label: "Coverage KB", icon: Search },
+        { id: "insights",    label: "Insights",    icon: Sparkles },
+      ],
+    },
+  ];
+
+  // Filter groups and items based on admin level
+  const visibleGroups = navGroups
+    .filter(g => !g.masterOnly || isMasterAdmin)
+    .map(g => ({ ...g, items: g.items.filter(item => !item.masterOnly || isMasterAdmin) }))
+    .filter(g => g.items.length > 0);
 
   const tabContent = (
     <>
@@ -5399,27 +5435,32 @@ const AdminPage = () => {
             <h1 className="font-display text-base font-bold text-foreground">Admin Panel</h1>
           </div>
         </div>
-        {/* Mobile tab bar */}
-        <div className="flex overflow-x-auto border-b border-border px-4 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] shrink-0">
-          {navItems.map((item) => {
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-medium transition-colors
-                  ${isActive ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-              >
-                <item.icon className="h-3.5 w-3.5 shrink-0" />
-                {item.label}
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Mobile tab bar — flat, grouped with dividers */}
+        <div className="flex overflow-x-auto border-b border-border px-2 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] shrink-0">
+          {visibleGroups.map((group, gi) => (
+            <div key={group.label} className="flex items-center">
+              {gi > 0 && <div className="mx-1 h-4 w-px bg-border shrink-0" />}
+              {group.items.map(item => {
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-xs font-medium transition-colors
+                      ${isActive ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <item.icon className="h-3.5 w-3.5 shrink-0" />
+                    {item.label}
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
         {/* Mobile content */}
         <div className="flex-1 overflow-y-auto p-4">{tabContent}</div>
@@ -5441,53 +5482,39 @@ const AdminPage = () => {
             </div>
           </div>
 
-          {/* Nav items */}
+          {/* Nav items — categorized */}
           <div className="flex-1 overflow-y-auto py-2 scrollbar-none [scrollbar-width:none]">
-            {navItems.map((item, idx) => {
-              const isActive   = activeTab === item.id;
-              const isDragging = draggingId === item.id;
-              const isOver     = dragOverId === item.id && dragOverId !== draggingId;
-
-              return (
-                <div
-                  key={item.id}
-                  draggable
-                  onDragStart={() => onDragStart(idx, item.id)}
-                  onDragOver={e => onDragOver(e, idx, item.id)}
-                  onDrop={onDrop}
-                  onDragEnd={cleanup}
-                  className={`mx-2 my-0.5 rounded-lg transition-all duration-150 select-none
-                    ${isDragging ? "opacity-40 scale-95" : "opacity-100"}
-                    ${isOver ? "border-t-2 border-t-primary/60" : "border-t-2 border-t-transparent"}
-                  `}
-                >
-                  <button
-                    onClick={() => setActiveTab(item.id)}
-                    className={`group w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors text-left
-                      ${isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"}
-                    `}
-                  >
-                    <GripVertical className="shrink-0 h-3 w-3 text-muted-foreground/20 group-hover:text-muted-foreground/50 cursor-grab active:cursor-grabbing transition-colors" />
-                    <item.icon className={`shrink-0 h-3.5 w-3.5 ${isActive ? "text-primary" : ""}`} />
-                    <span className="flex-1 truncate">{item.label}</span>
-                    {item.badge !== undefined && item.badge > 0 && (
-                      <span className="shrink-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Sidebar footer — drag hint */}
-          <div className="border-t border-border px-4 py-2.5 shrink-0">
-            <p className="flex items-center gap-1 text-[10px] text-muted-foreground/40 select-none">
-              <GripVertical className="h-3 w-3" /> drag to reorder
-            </p>
+            {visibleGroups.map((group, gi) => (
+              <div key={group.label}>
+                {/* Category header */}
+                <p className={`px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/40 select-none ${gi === 0 ? "pt-2" : "pt-4"}`}>
+                  {group.label}
+                </p>
+                {group.items.map(item => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <div key={item.id} className="mx-2 my-0.5">
+                      <button
+                        onClick={() => setActiveTab(item.id)}
+                        className={`w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors text-left
+                          ${isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-secondary hover:text-foreground"}
+                        `}
+                      >
+                        <item.icon className={`shrink-0 h-3.5 w-3.5 ${isActive ? "text-primary" : ""}`} />
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {item.badge !== undefined && item.badge > 0 && (
+                          <span className="shrink-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
 
