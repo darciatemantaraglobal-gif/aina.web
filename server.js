@@ -4169,6 +4169,152 @@ Jawab HANYA dalam format JSON:
   return res.json({ updated, errors, results });
 });
 
+/* ── Master Admin: Auto-generate judul untuk satu artikel ── */
+app.post("/api/admin/articles/:id/auto-title", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { id } = req.params;
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
+
+  const supabase = getAdminClient();
+  const { data: art } = await supabase
+    .from("knowledge_base").select("id, title, content, category").eq("id", id).single();
+  if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
+
+  const prompt = `Kamu adalah editor Knowledge Base untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Tugasmu: buat judul artikel yang PALING OPTIMAL.
+
+Kriteria judul yang baik:
+- Spesifik dan informatif — pembaca langsung tahu isinya tanpa perlu buka artikel
+- Bahasa Indonesia yang baku dan jelas
+- 5-12 kata (cukup panjang untuk deskriptif, cukup pendek untuk mudah dibaca)
+- Mengandung kata kunci utama yang dicari orang (misal: "iqomah", "metro Kairo", "daftar Al-Azhar")
+- TIDAK clickbait, tidak ambigu, tidak terlalu generik
+- Hindari pembuka tidak perlu: "Tips...", "Panduan Lengkap...", "Cara..." kecuali memang judulnya tentang cara/tips
+
+Kategori: ${art.category || "umum"}
+Judul saat ini: ${art.title}
+Konten: ${(art.content || "").slice(0, 2500)}
+
+Jawab HANYA dengan JSON:
+{"title":"<judul baru yang optimal>"}`;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA AutoTitle",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-preview",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 100,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!resp.ok) return res.status(502).json({ error: "AI error" });
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return res.status(502).json({ error: "Gagal parse respons AI" });
+    const parsed = JSON.parse(match[0]);
+    const newTitle = typeof parsed.title === "string" && parsed.title.trim().length > 0
+      ? parsed.title.trim() : null;
+    if (!newTitle) return res.status(502).json({ error: "Judul tidak valid dari AI" });
+
+    await supabase.from("knowledge_base").update({ title: newTitle }).eq("id", id);
+    return res.json({ success: true, id, oldTitle: art.title, newTitle });
+  } catch (e) {
+    return res.status(500).json({ error: String(e) });
+  }
+});
+
+/* ── Master Admin: Auto-generate judul untuk artikel yang dipilih ── */
+app.post("/api/admin/articles/auto-title/selected", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids (array) diperlukan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
+
+  const supabase = getAdminClient();
+  const { data: articles, error } = await supabase
+    .from("knowledge_base")
+    .select("id, title, content, category")
+    .in("id", ids);
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!articles?.length) return res.json({ updated: 0, errors: 0, results: [] });
+
+  const results = [];
+  let updated = 0, errors = 0;
+
+  for (const art of articles) {
+    try {
+      const prompt = `Kamu adalah editor Knowledge Base untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Tugasmu: buat judul artikel yang PALING OPTIMAL.
+
+Kriteria judul yang baik:
+- Spesifik dan informatif — pembaca langsung tahu isinya tanpa perlu buka artikel
+- Bahasa Indonesia yang baku dan jelas
+- 5-12 kata (cukup panjang untuk deskriptif, cukup pendek untuk mudah dibaca)
+- Mengandung kata kunci utama yang dicari orang (misal: "iqomah", "metro Kairo", "daftar Al-Azhar")
+- TIDAK clickbait, tidak ambigu, tidak terlalu generik
+- Hindari pembuka tidak perlu: "Tips...", "Panduan Lengkap...", "Cara..." kecuali memang judulnya tentang cara/tips
+
+Kategori: ${art.category || "umum"}
+Judul saat ini: ${art.title}
+Konten: ${(art.content || "").slice(0, 2500)}
+
+Jawab HANYA dengan JSON:
+{"title":"<judul baru yang optimal>"}`;
+
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://ainalabs.pro",
+          "X-Title": "AINA BulkAutoTitle",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-preview",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.2,
+          max_tokens: 100,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          const newTitle = typeof parsed.title === "string" && parsed.title.trim().length > 0 ? parsed.title.trim() : null;
+          if (newTitle) {
+            await supabase.from("knowledge_base").update({ title: newTitle }).eq("id", art.id);
+            results.push({ id: art.id, oldTitle: art.title, newTitle });
+            updated++;
+          } else { errors++; results.push({ id: art.id, error: "invalid title" }); }
+        } else { errors++; results.push({ id: art.id, error: "parse error" }); }
+      } else { errors++; results.push({ id: art.id, error: "api error" }); }
+    } catch (e) { errors++; results.push({ id: art.id, error: String(e) }); }
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  return res.json({ updated, errors, results });
+});
+
 app.post("/api/admin/articles/:id/review", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });

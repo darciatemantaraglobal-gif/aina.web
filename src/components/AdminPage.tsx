@@ -16,7 +16,7 @@ import {
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
-  Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags,
+  Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags, Heading,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -1843,6 +1843,8 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 
   const [bulkHideLoading, setBulkHideLoading] = useState(false);
   const [selectionAutoCatLoading, setSelectionAutoCatLoading] = useState(false);
+  const [autoTitleingId, setAutoTitleingId] = useState<string | null>(null);
+  const [selectionAutoTitleLoading, setSelectionAutoTitleLoading] = useState(false);
 
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
@@ -2061,6 +2063,41 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         setAutoCatLoading(false);
       }
     } catch (e: any) { toast.error(e.message); setAutoCatLoading(false); }
+  };
+
+  const handleAutoTitleOne = async (art: Article) => {
+    if (autoTitleingId) return;
+    setAutoTitleingId(art.id);
+    try {
+      const result = await adminFetch(`/api/admin/articles/${art.id}/auto-title`, { method: "POST" });
+      if (result.newTitle) {
+        setArticles(prev => prev.map(a => a.id === art.id ? { ...a, title: result.newTitle } : a));
+        toast.success(`Judul diperbarui AI`, { description: result.newTitle });
+      }
+    } catch (e: any) { toast.error(e.message); }
+    finally { setAutoTitleingId(null); }
+  };
+
+  const handleSelectionAutoTitle = async () => {
+    if (selected.size === 0 || selectionAutoTitleLoading) return;
+    if (!confirm(`Auto-judul AI untuk ${selected.size} artikel yang dipilih?\nJudul artikel akan di-rewrite berdasarkan konten.`)) return;
+    setSelectionAutoTitleLoading(true);
+    try {
+      const result = await adminFetch("/api/admin/articles/auto-title/selected", {
+        method: "POST",
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      if (result.updated > 0) {
+        result.results.forEach((r: { id: string; newTitle?: string }) => {
+          if (r.newTitle) {
+            setArticles(prev => prev.map(a => a.id === r.id ? { ...a, title: r.newTitle! } : a));
+          }
+        });
+      }
+      toast.success(`${result.updated} judul diperbarui AI${result.errors > 0 ? `, ${result.errors} gagal` : ""}`);
+      setSelected(new Set());
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSelectionAutoTitleLoading(false); }
   };
 
   const handleBulkHide = async (hide: boolean) => {
@@ -2462,6 +2499,18 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                       : <><Tags className="h-3 w-3" /> Auto-Kategori {selected.size}</>
                     }
                   </Button>
+                  <Button
+                    size="sm" disabled={selectionAutoTitleLoading || bulkLoading}
+                    className="h-7 gap-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 text-xs"
+                    variant="outline"
+                    onClick={handleSelectionAutoTitle}
+                    title="Auto-generate judul optimal AI untuk artikel yang dipilih"
+                  >
+                    {selectionAutoTitleLoading
+                      ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" /> Menggenerate judul...</>
+                      : <><Heading className="h-3 w-3" /> Auto-Judul {selected.size}</>
+                    }
+                  </Button>
                 </>
               )}
             </div>
@@ -2590,6 +2639,20 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                         {reformattingId === art.id
                           ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                           : <RefreshCw className="h-3.5 w-3.5" />
+                        }
+                      </Button>
+                    )}
+                    {isMasterAdmin && (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-8 gap-1 border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                        disabled={autoTitleingId === art.id}
+                        onClick={() => handleAutoTitleOne(art)}
+                        title="Auto-generate judul optimal dengan AI"
+                      >
+                        {autoTitleingId === art.id
+                          ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                          : <Heading className="h-3.5 w-3.5" />
                         }
                       </Button>
                     )}
