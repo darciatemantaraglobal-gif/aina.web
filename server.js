@@ -4588,6 +4588,111 @@ app.post("/api/admin/articles/generate-keywords", async (req, res) => {
   console.log(`[KB] Keyword generation done: ${generated}/${articles.length} updated, ${errors} errors`);
 });
 
+/* ── Admin: Bulk Auto-Categorize existing KB articles ── */
+let _autoCatState = { running: false, total: 0, processed: 0, updated: 0, errors: 0, startedAt: null, completedAt: null };
+
+app.get("/api/admin/articles/auto-categorize/status", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { count: totalArticles } = await supabase
+    .from("knowledge_base").select("*", { count: "exact", head: true }).eq("status", "approved");
+  res.json({ ..._autoCatState, totalArticles: totalArticles ?? 0 });
+});
+
+app.post("/api/admin/articles/auto-categorize/bulk", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  if (_autoCatState.running) return res.json({ started: false, alreadyRunning: true, ..._autoCatState });
+
+  const supabase = getAdminClient();
+  const { data: articles, error } = await supabase
+    .from("knowledge_base")
+    .select("id, title, content, category, article_type")
+    .eq("status", "approved");
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!articles?.length) return res.json({ started: false, total: 0 });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
+
+  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+  const VALID_TYPES = ["narrative", "step_by_step"];
+
+  _autoCatState = { running: true, total: articles.length, processed: 0, updated: 0, errors: 0, startedAt: new Date().toISOString(), completedAt: null };
+  res.json({ started: true, total: articles.length });
+
+  // Run in background
+  let processed = 0, updated = 0, errors = 0;
+  for (const art of articles) {
+    try {
+      const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
+
+PANDUAN KATEGORI:
+1. ADMINISTRASI: iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, SIM internasional, birokrasi, imigrasi, KBRI, PPMI
+2. AKADEMIK: perkuliahan Al-Azhar/universitas Mesir, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, cara belajar ujian
+3. KEHIDUPAN MESIR: tips hidup sehari-hari, budaya, keamanan, belanja pokok, fasilitas kesehatan, sim card, perbankan, adaptasi, musim/cuaca
+4. TRANSPORT: metro Kairo, taksi (Uber/Careem), bus, microbus, kereta api Mesir, rute perjalanan, biaya transport, apps transportasi
+5. TEMPAT TINGGAL: sewa flat/apartemen, lokasi (Hay Asyir, Nasr City, dll), harga sewa, kontrak, pindah flat, furnitur, listrik/air, shahibul beit
+6. KULINER: restoran halal, warung/kantin Indonesia, masakan lokal Mesir, harga makanan, resep, tempat makan, bahan makanan
+7. BAHASA ARAB: belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir, tips belajar bahasa Arab
+
+TIPE: step_by_step = ada urutan langkah bernomor/berurutan | narrative = penjelasan informatif, tips umum
+
+Judul: ${art.title.slice(0, 300)}
+Konten: ${(art.content || "").slice(0, 3000)}
+
+Jawab HANYA dalam format JSON:
+{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
+
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://ainalabs.pro",
+          "X-Title": "AINA Bulk AutoCat",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-preview",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.0,
+          max_tokens: 80,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
+          const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
+          if (newCategory) {
+            const update = { category: newCategory };
+            if (newType) update.article_type = newType;
+            await supabase.from("knowledge_base").update(update).eq("id", art.id);
+            updated++;
+          } else { errors++; }
+        } else { errors++; }
+      } else { errors++; }
+    } catch { errors++; }
+
+    processed++;
+    _autoCatState.processed = processed;
+    _autoCatState.updated = updated;
+    _autoCatState.errors = errors;
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  _autoCatState = { ..._autoCatState, running: false, processed, updated, errors, completedAt: new Date().toISOString() };
+  console.log(`[AutoCat] Bulk done: ${updated}/${articles.length} updated, ${errors} errors`);
+});
+
 /* ── Admin: Input Article Directly ──────────────────── */
 app.post("/api/admin/articles", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);

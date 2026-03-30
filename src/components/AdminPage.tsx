@@ -16,7 +16,7 @@ import {
   ShieldAlert, Filter, Trash, ShieldOff, ShieldCheck, Download, Crown, ListChecks,
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
-  Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles,
+  Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -1834,6 +1834,13 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   } | null>(null);
   const kwGenPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [autoCatLoading, setAutoCatLoading] = useState(false);
+  const [autoCatProgress, setAutoCatProgress] = useState<{
+    running: boolean; total: number; processed: number; updated: number; errors: number;
+    totalArticles: number; startedAt: string | null; completedAt: string | null;
+  } | null>(null);
+  const autoCatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
     try {
@@ -1992,6 +1999,22 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     return () => { if (kwGenPollRef.current) clearInterval(kwGenPollRef.current); };
   }, [fetchKwGenStatus]);
 
+  const fetchAutoCatStatus = useCallback(async () => {
+    try {
+      const s = await adminFetch("/api/admin/articles/auto-categorize/status");
+      setAutoCatProgress(s);
+      if (!s.running) {
+        setAutoCatLoading(false);
+        if (autoCatPollRef.current) { clearInterval(autoCatPollRef.current); autoCatPollRef.current = null; }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    fetchAutoCatStatus();
+    return () => { if (autoCatPollRef.current) clearInterval(autoCatPollRef.current); };
+  }, [fetchAutoCatStatus]);
+
   const handleGenerateKeywords = async () => {
     if (kwGenProgress?.running) return;
     const total = kwGenProgress?.totalArticles ?? 0;
@@ -2014,6 +2037,27 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         setKwGenLoading(false);
       }
     } catch (e: any) { toast.error(e.message); setKwGenLoading(false); }
+  };
+
+  const handleBulkAutoCategorize = async () => {
+    if (autoCatProgress?.running) return;
+    const total = autoCatProgress?.totalArticles ?? 0;
+    const mins = Math.max(1, Math.round((total * 0.35) / 60));
+    if (!confirm(`Auto-kategorisasi AI untuk semua ${total} artikel di KB?\nKategori & tipe artikel akan di-update berdasarkan konten.\nEstimasi waktu: ~${mins} menit. Proses berjalan di background.`)) return;
+    setAutoCatLoading(true);
+    try {
+      const result = await adminFetch("/api/admin/articles/auto-categorize/bulk", { method: "POST" });
+      if (result.alreadyRunning) {
+        toast.info("Proses auto-kategorisasi sedang berjalan.");
+      } else if (result.started) {
+        toast.success(`Dimulai — ${result.total} artikel sedang dikategorisasi.`);
+        autoCatPollRef.current = setInterval(fetchAutoCatStatus, 3000);
+        fetchAutoCatStatus();
+      } else {
+        toast.info("Tidak ada artikel yang perlu diproses.");
+        setAutoCatLoading(false);
+      }
+    } catch (e: any) { toast.error(e.message); setAutoCatLoading(false); }
   };
 
   const toggleSelect = (id: string) => {
@@ -2089,6 +2133,22 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                         : "Generating..."}
                     </>
                   : <><Sparkles className="h-3.5 w-3.5" /> Generate Keywords</>
+                }
+              </Button>
+              <Button
+                variant="outline" size="sm"
+                className="h-8 gap-1.5 text-xs border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                disabled={autoCatLoading || autoCatProgress?.running}
+                onClick={handleBulkAutoCategorize}
+                title="Auto-kategorisasi semua artikel KB menggunakan AI — update kategori & tipe artikel secara massal"
+              >
+                {(autoCatLoading || autoCatProgress?.running)
+                  ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                      {autoCatProgress?.running && autoCatProgress.total > 0
+                        ? `${autoCatProgress.processed}/${autoCatProgress.total} artikel...`
+                        : "Mengkategorisasi..."}
+                    </>
+                  : <><Tags className="h-3.5 w-3.5" /> Auto-Kategorisasi</>
                 }
               </Button>
               <Button
@@ -2170,6 +2230,53 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                 Keyword yang di-generate membantu AINA mencocokkan pertanyaan user dengan artikel yang tepat, meskipun user memakai kata yang berbeda dari judul artikel.
                 Makin banyak artikel berkeyword → makin sering AINA jawab dari KB sendiri tanpa perlu ke internet.
               </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Auto-categorize bulk progress */}
+      {autoCatProgress && (autoCatProgress.running || autoCatProgress.completedAt) && (
+        <div className={`rounded-xl border px-4 py-3 text-xs space-y-2 ${autoCatProgress.running ? "border-violet-500/30 bg-violet-500/5" : "border-border bg-card"}`}>
+          {autoCatProgress.running ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-violet-400 flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-violet-400 animate-pulse" />
+                  Sedang auto-kategorisasi...
+                </span>
+                <span className="text-muted-foreground tabular-nums">{autoCatProgress.processed}/{autoCatProgress.total} artikel</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-violet-400 transition-all duration-500"
+                  style={{ width: autoCatProgress.total > 0 ? `${Math.round(autoCatProgress.processed / autoCatProgress.total * 100)}%` : "0%" }}
+                />
+              </div>
+              <p className="text-muted-foreground">
+                {autoCatProgress.total > 0 ? Math.round(autoCatProgress.processed / autoCatProgress.total * 100) : 0}% selesai
+                {autoCatProgress.total > autoCatProgress.processed && ` — estimasi ${Math.max(1, Math.ceil((autoCatProgress.total - autoCatProgress.processed) * 0.35 / 60))} menit lagi`}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-foreground flex items-center gap-1.5">
+                  <span className="text-violet-400">✓</span> Auto-kategorisasi selesai
+                </span>
+                <span className="text-muted-foreground tabular-nums">{autoCatProgress.updated}/{autoCatProgress.total} diupdate
+                  {autoCatProgress.errors > 0 && `, ${autoCatProgress.errors} gagal`}
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                <div className="h-full rounded-full bg-violet-400" style={{ width: "100%" }} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 text-muted-foreground">
+                <span>Artikel diupdate:</span>
+                <span className="font-medium text-foreground">{autoCatProgress.updated} / {autoCatProgress.total} artikel</span>
+                <span>Efek ke filter:</span>
+                <span className="font-medium text-violet-400">Filter kategori makin akurat ↑</span>
+              </div>
             </>
           )}
         </div>
