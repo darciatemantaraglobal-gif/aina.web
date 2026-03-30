@@ -1,0 +1,48 @@
+Implement 2 improvements in AINA: targeted announcement popup system and increase free daily chat limit from 3 to 5.
+
+1. Targeted Announcement Popup System
+Improve announcement system so popup can be shown only to selected users or selected user groups, not always to everyone.
+
+Requirements:
+- Add audience targeting support for announcements
+- Announcement fields should support:
+  - title
+  - message
+  - type: popup or banner
+  - cta_text
+  - cta_link
+  - audience_type: all | selected_users | contributors | non_contributors | new_users | existing_users | admins
+  - selected_user_ids (for bulk targeted users)
+  - show_once_per_user
+  - trigger_type: on_dashboard_open | after_first_chat
+  - delay_seconds
+  - start_date
+  - end_date
+  - is_active
+
+Behavior:
+- Popup should only appear if the current user matches the announcement audience rules
+- If audience_type = selected_users, only users in selected_user_ids can see it
+- If show_once_per_user = true, do not show the same popup again after user closes or sees it
+- If trigger_type = on_dashboard_open, popup can appear after configured delay
+- If trigger_type = after_first_chat, popup appears only after user sends first message
+- Keep normal announcements available as banner for broader audience
+
+Admin side:
+- Update announcement creation/edit system to support these targeting fields
+- Make it easy to bulk target selected users
+- Keep existing announcement functionality working
+
+2. Increase Free Daily Chat Limit
+Change free user daily chat limit from 3 to 5.
+
+Requirements:
+- Update all logic related to free daily chat usage
+- Update UI text/messages so they consistently show 5 free chats per day
+- Make sure limit reset behavior still works correctly
+- Keep contributor or premium unlimited access logic unchanged
+
+Goal:
+- Make announcements more relevant and strategic
+- Give new users enough free chats to feel AINA value before hitting the limit
+- Do not break existing features
