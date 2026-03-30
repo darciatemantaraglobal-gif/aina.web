@@ -2475,16 +2475,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
   // ──────────────────────────────────────────────────────────────────────────────
   const MODEL_TIERS = {
-    // Tier A — cheapest safe model for simple, non-dynamic queries
+    // Tier A — main model for simple/casual queries
     lightweight: {
-      primary:   "google/gemini-2.0-flash-lite-001",       // cheapest safe ($0.075/1M in)
-      fallback:  "google/gemini-2.0-flash-001",            // paid fallback if lite unavailable
+      primary:   "google/gemini-2.5-flash-preview",        // upgraded: smarter reasoning, better instruction-following (~$0.15/1M in)
+      fallback:  "google/gemini-2.0-flash-001",            // paid fallback if 2.5 unavailable
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
     },
-    // Tier B — stronger model for complex, procedural, and dynamic queries
+    // Tier B — main model for complex, procedural, and dynamic queries
     standard: {
-      primary:   "google/gemini-2.0-flash-001",            // main standard — training cutoff early 2025, knows post-election world
-      fallback:  "openai/gpt-4o-mini",                     // backup — good quality but cutoff Oct 2023
+      primary:   "google/gemini-2.5-flash-preview",        // upgraded: handles complex context, long threads, nuanced answers
+      fallback:  "google/gemini-2.0-flash-001",            // reliable paid fallback
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
     },
   };
@@ -8225,7 +8225,7 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
       lightweight: {
         label: "Tier A — Ringan",
         description: "Pertanyaan kasual, KB kuat + intent sederhana",
-        primary:   "google/gemini-2.0-flash-lite-001",
+        primary:   "google/gemini-2.5-flash-preview",
         fallback:  "google/gemini-2.0-flash-001",
         emergency: "meta-llama/llama-3.3-70b-instruct:free",
         routes_for: ["casual", "KB kuat + factual/procedural/confused"],
@@ -8233,8 +8233,8 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
       standard: {
         label: "Tier B — Standar",
         description: "Pertanyaan kompleks, time-sensitive, fiqh, Arabic, atau KB lemah/tidak ada",
-        primary:   "google/gemini-2.0-flash-001",
-        fallback:  "openai/gpt-4o-mini",
+        primary:   "google/gemini-2.5-flash-preview",
+        fallback:  "google/gemini-2.0-flash-001",
         emergency: "meta-llama/llama-3.3-70b-instruct:free",
         routes_for: ["procedural", "fiqh", "arabic_writing", "dynamic", "time-sensitive", "currency", "KB lemah/tidak ada"],
       },
