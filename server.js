@@ -8199,6 +8199,7 @@ async function runColumnMigrations() {
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'context_memory';",
     "ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS is_long_term BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE public.intel_retrieval_stats ADD COLUMN IF NOT EXISTS had_perplexity BOOLEAN NOT NULL DEFAULT false;",
+    "ALTER TABLE public.intel_retrieval_stats ADD COLUMN IF NOT EXISTS external_tier TEXT;",
     "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS user_question TEXT;",
     "ALTER TABLE public.message_reports ADD COLUMN IF NOT EXISTS additional_note TEXT;",
     // Contributor requests new fields
