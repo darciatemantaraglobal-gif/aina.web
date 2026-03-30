@@ -3702,7 +3702,7 @@ function PerformanceTab() {
                 <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold text-foreground">Top FAQ Topics</h3>
                   {summary.top_faqs.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Belum ada data — SQL Phase 12 perlu dijalankan dulu</p>
+                    <p className="text-xs text-muted-foreground">Belum ada data — akan muncul setelah ada percakapan.</p>
                   ) : summary.top_faqs.map((f, i) => (
                     <div key={i} className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -3732,7 +3732,7 @@ function PerformanceTab() {
             </div>
           )}
           {view === "summary" && !summary && !loading && (
-            <p className="py-12 text-center text-sm text-muted-foreground">Gagal memuat data. Pastikan SQL Phase 12 sudah dijalankan di Supabase.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">Gagal memuat data performa. Coba refresh halaman ini.</p>
           )}
 
           {/* ── RATINGS ── */}
@@ -3776,7 +3776,7 @@ function PerformanceTab() {
               ]} />
               <PerfTable
                 cols={["Intent", "KB Strength", "Confidence", "Turn", "KB%", "Perplexity%", "Wiki%", "DDG%", "Pinned%"]}
-                empty="Belum ada data retrieval. Pastikan SQL Phase 12 sudah dijalankan."
+                empty="Belum ada data retrieval. Data akan muncul setelah ada percakapan dengan AINA."
                 rows={retrieval.map(r => {
                   const pct = (n: number) => r.total > 0 ? `${Math.round(n / r.total * 100)}%` : "—";
                   return [
@@ -3831,7 +3831,7 @@ function PerformanceTab() {
               ]} />
               <PerfTable
                 cols={["Topik Cluster", "Contoh Pertanyaan", "Frekuensi", "Terakhir"]}
-                empty="Belum ada pola FAQ. SQL Phase 12 perlu dijalankan terlebih dahulu."
+                empty="Belum ada pola FAQ. Data akan muncul setelah ada percakapan dengan AINA."
                 rows={faq.map(f => [
                   <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary font-mono text-[11px]">{f.topic_cluster}</span>,
                   <span className="text-muted-foreground italic">{f.sample_query ?? "—"}</span>,

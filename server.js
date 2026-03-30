@@ -8287,6 +8287,41 @@ async function runColumnMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );`,
+    // ── AI Performance intel tables ──────────────────────────────────────────
+    `CREATE TABLE IF NOT EXISTS public.intel_retrieval_stats (
+      id BIGSERIAL PRIMARY KEY,
+      intent TEXT,
+      kb_strength TEXT,
+      had_kb BOOLEAN NOT NULL DEFAULT false,
+      had_wiki BOOLEAN NOT NULL DEFAULT false,
+      had_ddg BOOLEAN NOT NULL DEFAULT false,
+      had_pinned BOOLEAN NOT NULL DEFAULT false,
+      had_perplexity BOOLEAN NOT NULL DEFAULT false,
+      confidence_level TEXT,
+      external_tier TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    `CREATE TABLE IF NOT EXISTS public.intel_query_patterns (
+      id BIGSERIAL PRIMARY KEY,
+      topic_cluster TEXT NOT NULL,
+      sample_query TEXT,
+      frequency INTEGER NOT NULL DEFAULT 1,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    `CREATE TABLE IF NOT EXISTS public.intel_edge_cases (
+      id BIGSERIAL PRIMARY KEY,
+      pattern_type TEXT NOT NULL,
+      topic_hint TEXT,
+      frequency INTEGER NOT NULL DEFAULT 1,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    `CREATE TABLE IF NOT EXISTS public.intel_message_ratings (
+      id BIGSERIAL PRIMARY KEY,
+      rating INTEGER NOT NULL,
+      intent TEXT,
+      confidence TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {
