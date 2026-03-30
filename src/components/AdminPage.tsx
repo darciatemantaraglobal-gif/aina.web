@@ -1832,7 +1832,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     withKeywords: number; totalArticles: number;
     startedAt: string | null; completedAt: string | null;
   } | null>(null);
-  const kwGenPollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const kwGenPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
@@ -1976,7 +1976,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const fetchKwGenStatus = React.useCallback(async () => {
+  const fetchKwGenStatus = useCallback(async () => {
     try {
       const s = await adminFetch("/api/admin/articles/generate-keywords/status");
       setKwGenProgress(s);
@@ -1987,7 +1987,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch { /* ignore */ }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     fetchKwGenStatus();
     return () => { if (kwGenPollRef.current) clearInterval(kwGenPollRef.current); };
   }, [fetchKwGenStatus]);
