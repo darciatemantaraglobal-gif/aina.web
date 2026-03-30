@@ -1841,6 +1841,9 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   } | null>(null);
   const autoCatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [bulkHideLoading, setBulkHideLoading] = useState(false);
+  const [selectionAutoCatLoading, setSelectionAutoCatLoading] = useState(false);
+
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
     try {
@@ -2058,6 +2061,47 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         setAutoCatLoading(false);
       }
     } catch (e: any) { toast.error(e.message); setAutoCatLoading(false); }
+  };
+
+  const handleBulkHide = async (hide: boolean) => {
+    if (selected.size === 0 || bulkHideLoading) return;
+    const label = hide ? "sembunyikan" : "tampilkan kembali";
+    if (!confirm(`Yakin ${label} ${selected.size} artikel sekaligus dari publik?`)) return;
+    setBulkHideLoading(true);
+    try {
+      await adminFetch("/api/admin/articles/bulk-visibility", {
+        method: "PATCH",
+        body: JSON.stringify({ ids: [...selected], hidden: hide }),
+      });
+      toast.success(hide ? `${selected.size} artikel disembunyikan dari publik` : `${selected.size} artikel ditampilkan kembali`);
+      setArticles(prev => prev.map(a => selected.has(a.id) ? { ...a, hidden: hide } : a));
+      setSelected(new Set());
+    } catch (e: any) { toast.error(e.message); }
+    finally { setBulkHideLoading(false); }
+  };
+
+  const handleSelectionAutoCat = async () => {
+    if (selected.size === 0 || selectionAutoCatLoading) return;
+    if (!confirm(`Auto-kategorisasi AI untuk ${selected.size} artikel yang dipilih?\nKategori & tipe artikel akan di-update sesuai konten.`)) return;
+    setSelectionAutoCatLoading(true);
+    try {
+      const result = await adminFetch("/api/admin/articles/auto-categorize/selected", {
+        method: "POST",
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      if (result.updated > 0) {
+        result.results.forEach((r: { id: string; category?: string; article_type?: string }) => {
+          if (r.category) {
+            setArticles(prev => prev.map(a =>
+              a.id === r.id ? { ...a, category: r.category!, ...(r.article_type ? { article_type: r.article_type } : {}) } : a
+            ));
+          }
+        });
+      }
+      toast.success(`${result.updated} artikel dikategorisasi${result.errors > 0 ? `, ${result.errors} gagal` : ""}`);
+      setSelected(new Set());
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSelectionAutoCatLoading(false); }
   };
 
   const toggleSelect = (id: string) => {
@@ -2348,7 +2392,8 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
           </button>
 
           {selected.size > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Standard admin actions */}
               {filter === "pending" && (
                 <>
                   <Button
@@ -2369,19 +2414,6 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                   </Button>
                 </>
               )}
-              {isMasterAdmin && (
-                <Button
-                  size="sm" disabled={bulkReformatLoading || bulkLoading}
-                  className="h-7 gap-1.5 bg-violet-500/10 border border-violet-500/30 text-violet-400 hover:bg-violet-500/20 text-xs"
-                  variant="outline"
-                  onClick={handleBulkReformat}
-                >
-                  {bulkReformatLoading
-                    ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" /> Memformat...</>
-                    : <><RefreshCw className="h-3 w-3" /> Reformat {selected.size}</>
-                  }
-                </Button>
-              )}
               {(filter !== "approved" || isMasterAdmin) && (
                 <Button
                   size="sm" disabled={bulkLoading || bulkReformatLoading}
@@ -2391,6 +2423,46 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                 >
                   <Trash2 className="h-3 w-3" /> Hapus {selected.size}
                 </Button>
+              )}
+
+              {/* Master admin only actions */}
+              {isMasterAdmin && (
+                <>
+                  <div className="h-4 w-px bg-border" />
+                  <Button
+                    size="sm" disabled={bulkHideLoading || bulkLoading}
+                    className="h-7 gap-1.5 bg-slate-500/10 border border-slate-500/30 text-slate-400 hover:bg-slate-500/20 text-xs"
+                    variant="outline"
+                    onClick={() => handleBulkHide(true)}
+                    title="Sembunyikan artikel dari publik (tidak dihapus)"
+                  >
+                    {bulkHideLoading
+                      ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" /> Menyembunyikan...</>
+                      : <><EyeOff className="h-3 w-3" /> Sembunyikan {selected.size}</>
+                    }
+                  </Button>
+                  <Button
+                    size="sm" disabled={bulkHideLoading || bulkLoading}
+                    className="h-7 gap-1.5 bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20 text-xs"
+                    variant="outline"
+                    onClick={() => handleBulkHide(false)}
+                    title="Tampilkan kembali artikel ke publik"
+                  >
+                    <Eye className="h-3 w-3" /> Tampilkan {selected.size}
+                  </Button>
+                  <Button
+                    size="sm" disabled={selectionAutoCatLoading || bulkLoading}
+                    className="h-7 gap-1.5 bg-violet-500/10 border border-violet-500/30 text-violet-400 hover:bg-violet-500/20 text-xs"
+                    variant="outline"
+                    onClick={handleSelectionAutoCat}
+                    title="Auto-kategorisasi AI untuk artikel yang dipilih"
+                  >
+                    {selectionAutoCatLoading
+                      ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" /> Mengkategorisasi...</>
+                      : <><Tags className="h-3 w-3" /> Auto-Kategori {selected.size}</>
+                    }
+                  </Button>
+                </>
               )}
             </div>
           )}

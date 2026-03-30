@@ -4064,6 +4064,111 @@ app.patch("/api/admin/articles/:id/visibility", async (req, res) => {
   return res.json({ success: true, hidden });
 });
 
+/* ── Master Admin: Bulk hide / show selected articles ── */
+app.patch("/api/admin/articles/bulk-visibility", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { ids, hidden } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids (array) diperlukan" });
+  if (typeof hidden !== "boolean") return res.status(400).json({ error: "hidden (boolean) diperlukan" });
+
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("knowledge_base").update({ hidden }).in("id", ids);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  return res.json({ success: true, updated: ids.length, hidden });
+});
+
+/* ── Master Admin: Auto-kategorisasi artikel yang dipilih ── */
+app.post("/api/admin/articles/auto-categorize/selected", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids (array) diperlukan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
+
+  const supabase = getAdminClient();
+  const { data: articles, error } = await supabase
+    .from("knowledge_base")
+    .select("id, title, content")
+    .in("id", ids)
+    .eq("status", "approved");
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!articles?.length) return res.json({ updated: 0, errors: 0, results: [] });
+
+  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+  const VALID_TYPES = ["narrative", "step_by_step"];
+
+  const results = [];
+  let updated = 0, errors = 0;
+
+  for (const art of articles) {
+    try {
+      const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
+
+PANDUAN KATEGORI:
+1. ADMINISTRASI: iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, SIM internasional, birokrasi, imigrasi, KBRI, PPMI
+2. AKADEMIK: perkuliahan Al-Azhar/universitas Mesir, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, cara belajar ujian
+3. KEHIDUPAN MESIR: tips hidup sehari-hari, budaya, keamanan, belanja pokok, fasilitas kesehatan, sim card, perbankan, adaptasi, musim/cuaca
+4. TRANSPORT: metro Kairo, taksi (Uber/Careem), bus, microbus, kereta api Mesir, rute perjalanan, biaya transport, apps transportasi
+5. TEMPAT TINGGAL: sewa flat/apartemen, lokasi (Hay Asyir, Nasr City, dll), harga sewa, kontrak, pindah flat, furnitur, listrik/air, shahibul beit
+6. KULINER: restoran halal, warung/kantin Indonesia, masakan lokal Mesir, harga makanan, resep, tempat makan, bahan makanan
+7. BAHASA ARAB: belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir, tips belajar bahasa Arab
+
+TIPE: step_by_step = ada urutan langkah bernomor/berurutan | narrative = penjelasan informatif, tips umum
+
+Judul: ${art.title.slice(0, 300)}
+Konten: ${(art.content || "").slice(0, 3000)}
+
+Jawab HANYA dalam format JSON:
+{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
+
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://ainalabs.pro",
+          "X-Title": "AINA SelAutoCat",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-preview",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.0,
+          max_tokens: 80,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
+          const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
+          if (newCategory) {
+            const update = { category: newCategory };
+            if (newType) update.article_type = newType;
+            await supabase.from("knowledge_base").update(update).eq("id", art.id);
+            results.push({ id: art.id, category: newCategory, article_type: newType });
+            updated++;
+          } else { errors++; results.push({ id: art.id, error: "invalid category" }); }
+        } else { errors++; results.push({ id: art.id, error: "parse error" }); }
+      } else { errors++; results.push({ id: art.id, error: "api error" }); }
+    } catch (e) { errors++; results.push({ id: art.id, error: String(e) }); }
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  return res.json({ updated, errors, results });
+});
+
 app.post("/api/admin/articles/:id/review", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
