@@ -552,25 +552,27 @@ export default function LeaderboardPage() {
           </TabsList>
 
           {/* Contributors */}
-          <TabsContent value="contributors" className="flex-1 overflow-y-auto px-4 pb-6 pt-4 md:px-6">
-            {loading ? (
-              <div className="space-y-2">
-                {[...Array(6)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}
-              </div>
-            ) : contributors.length === 0 ? (
-              <div className="flex flex-col items-center py-16 text-center">
-                <Trophy className="mb-3 h-12 w-12 text-muted-foreground/30" />
-                <p className="font-medium text-foreground">Belum ada kontributor</p>
-                <p className="mt-1 text-sm text-muted-foreground">Jadilah kontributor pertama dan tulis artikel!</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground pb-1">{contributors.length} kontributor</p>
-                {contributors.map((c, i) => (
-                  <ContributorCard key={c.user_id} contributor={c} rank={i + 1} />
-                ))}
-              </div>
-            )}
+          <TabsContent value="contributors" className="flex-1 overflow-hidden">
+            <div className="h-full overflow-y-auto px-4 pb-6 pt-4 md:px-6">
+              {loading ? (
+                <div className="space-y-2">
+                  {[...Array(6)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}
+                </div>
+              ) : contributors.length === 0 ? (
+                <div className="flex flex-col items-center py-16 text-center">
+                  <Trophy className="mb-3 h-12 w-12 text-muted-foreground/30" />
+                  <p className="font-medium text-foreground">Belum ada kontributor</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Jadilah kontributor pertama dan tulis artikel!</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground pb-1">{contributors.length} kontributor</p>
+                  {contributors.map((c, i) => (
+                    <ContributorCard key={c.user_id} contributor={c} rank={i + 1} />
+                  ))}
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           {/* Articles */}
