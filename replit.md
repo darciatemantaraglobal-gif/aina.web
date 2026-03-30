@@ -234,6 +234,13 @@ external_success, fallback_used, final_source, answer_mode (=responseStyle key)
   - Chat empty state has 4 suggested prompt chips (Al-Azhar, visa, biaya hidup, iqama) that trigger chat on click
 - **Partner Promo (Temantiket)** — Keyword-triggered partner recommendation system in AI chat. `detectPartnerPromo(query)` in `server.js` detects queries about tiket pesawat / VOA Mesir / visa student, then injects a structured rule block into `finalSystemPrompt` instructing AI to append Temantiket recommendation (temantiket.com, WA +6281311506025) naturally at end of answer. 3 KB articles seeded via `seedPartnerArticles()` at startup (idempotent via `INSERT...WHERE NOT EXISTS` + `exec_sql` RPC). Keywords: tiket pesawat, booking tiket, VOA Mesir, visa on arrival, visa student, student entry, entry visa, penerbangan ke mesir.
 
+## Deployment Workflow
+
+- **Development**: Replit (this environment) — used for building and editing features
+- **Production**: Vercel (frontend) + Railway (backend) — deployed via GitHub push
+- **Flow**: Edit on Replit → push to GitHub → Vercel auto-deploys frontend, Railway auto-deploys backend
+- All changes made here should be kept clean and production-compatible for Vercel deployment
+
 ## Key Files
 
 - `server.js` — Express backend with all API routes
