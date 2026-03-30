@@ -3839,14 +3839,20 @@ app.get("/api/announcements/active", async (req, res) => {
   const supabase = getAdminClient();
   const now = new Date().toISOString();
 
-  // Get user profile to determine if they're a new user (registered ≤ 7 days ago)
-  const { data: profile } = await supabase.from("profiles").select("created_at").eq("user_id", user.id).single();
-  const isNewUser = profile?.created_at
-    ? (Date.now() - new Date(profile.created_at).getTime()) < 7 * 24 * 60 * 60 * 1000
+  // Get user profile + roles in parallel
+  const [profileResult, rolesResult] = await Promise.all([
+    supabase.from("profiles").select("created_at").eq("user_id", user.id).single(),
+    supabase.from("user_roles").select("role").eq("user_id", user.id),
+  ]);
+  const isNewUser = profileResult.data?.created_at
+    ? (Date.now() - new Date(profileResult.data.created_at).getTime()) < 7 * 24 * 60 * 60 * 1000
     : false;
+  const userRoles = rolesResult.data ?? [];
+  const isContributor = userRoles.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role));
+  const isAdmin = userRoles.some(r => r.role === "admin");
 
-  // Fetch active announcements that haven't expired and match audience
-  let query = supabase
+  // Fetch active announcements that haven't expired
+  const { data: announcements, error } = await supabase
     .from("system_announcements")
     .select("*")
     .eq("is_active", true)
@@ -3854,22 +3860,48 @@ app.get("/api/announcements/active", async (req, res) => {
     .or(`end_at.is.null,end_at.gte.${now}`)
     .order("created_at", { ascending: false });
 
-  const { data: announcements, error } = await query;
   if (error) return res.json([]);
   if (!announcements || announcements.length === 0) return res.json([]);
 
-  // Filter by audience
-  const filtered = announcements.filter(a => {
-    if (a.target_audience === "all_users") return true;
-    if (a.target_audience === "new_users") return isNewUser;
-    if (a.target_audience === "old_users") return !isNewUser;
+  // Filter by audience_type (falls back to target_audience for backward compat)
+  const audienceMatches = (a) => {
+    const audience = a.audience_type || a.target_audience || "all_users";
+    if (audience === "all_users") return true;
+    if (audience === "new_users") return isNewUser;
+    if (audience === "old_users") return !isNewUser;
+    if (audience === "contributors") return isContributor;
+    if (audience === "non_contributors") return !isContributor;
+    if (audience === "admins") return isAdmin;
+    if (audience === "selected_users") {
+      const ids = a.selected_user_ids ?? [];
+      return Array.isArray(ids) ? ids.includes(user.id) : false;
+    }
     return false;
+  };
+
+  const audienceFiltered = announcements.filter(audienceMatches);
+  if (audienceFiltered.length === 0) return res.json([]);
+
+  // For show_once_per_user announcements, filter out already-dismissed ones
+  const announcementIds = audienceFiltered.map(a => a.id);
+  const { data: views } = await supabase
+    .from("user_announcement_views")
+    .select("announcement_id, dismissed_at")
+    .eq("user_id", user.id)
+    .in("announcement_id", announcementIds);
+
+  const dismissedIds = new Set(
+    (views ?? []).filter(v => v.dismissed_at).map(v => v.announcement_id)
+  );
+
+  const filtered = audienceFiltered.filter(a => {
+    if (a.show_once_per_user && dismissedIds.has(a.id)) return false;
+    return true;
   });
 
   if (filtered.length === 0) return res.json([]);
 
-  // Always return all active announcements — shown every session like an ad.
-  // Mark as seen (for analytics), but never filter by dismissed status.
+  // Mark as seen (analytics only)
   const seenRecords = filtered.map(a => ({
     user_id: user.id,
     announcement_id: a.id,
@@ -3919,12 +3951,22 @@ app.post("/api/master/announcements", writeLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
 
-  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url } = req.body;
+  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url, show_once_per_user, trigger_type, delay_seconds, selected_user_ids } = req.body;
   if (!title?.trim() || !message?.trim()) return res.status(400).json({ error: "title and message required" });
   const validTypes = ["welcome", "announcement"];
-  const validAudiences = ["new_users", "old_users", "all_users"];
+  const validAudiences = ["new_users", "old_users", "all_users", "contributors", "non_contributors", "selected_users", "admins"];
+  const validTriggers = ["on_dashboard_open", "after_first_chat"];
   if (type && !validTypes.includes(type)) return res.status(400).json({ error: "Invalid type" });
   if (target_audience && !validAudiences.includes(target_audience)) return res.status(400).json({ error: "Invalid target_audience" });
+  if (trigger_type && !validTriggers.includes(trigger_type)) return res.status(400).json({ error: "Invalid trigger_type" });
+
+  // Parse selected_user_ids: accept array or newline/comma-separated string
+  let parsedUserIds = null;
+  if (target_audience === "selected_users") {
+    if (Array.isArray(selected_user_ids)) parsedUserIds = selected_user_ids.filter(Boolean);
+    else if (typeof selected_user_ids === "string")
+      parsedUserIds = selected_user_ids.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+  }
 
   const supabase = getAdminClient();
   const { data, error } = await supabase.from("system_announcements").insert({
@@ -3939,6 +3981,10 @@ app.post("/api/master/announcements", writeLimiter, async (req, res) => {
     start_at: start_at || null,
     end_at: end_at || null,
     image_url: image_url?.trim().slice(0, 1000) || null,
+    show_once_per_user: show_once_per_user === true,
+    trigger_type: validTriggers.includes(trigger_type) ? trigger_type : "on_dashboard_open",
+    delay_seconds: Number.isInteger(delay_seconds) ? Math.min(Math.max(delay_seconds, 0), 60) : 5,
+    selected_user_ids: parsedUserIds,
     created_by: admin.id,
   }).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -3950,8 +3996,10 @@ app.patch("/api/master/announcements/:id", writeLimiter, async (req, res) => {
   if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
 
   const { id } = req.params;
-  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url } = req.body;
+  const { title, message, type, target_audience, is_active, button_text, button_link, dismissible, start_at, end_at, image_url, show_once_per_user, trigger_type, delay_seconds, selected_user_ids } = req.body;
   const supabase = getAdminClient();
+
+  const validTriggers = ["on_dashboard_open", "after_first_chat"];
 
   const updates = { updated_at: new Date().toISOString() };
   if (title !== undefined) updates.title = title.trim().slice(0, 200);
@@ -3965,6 +4013,18 @@ app.patch("/api/master/announcements/:id", writeLimiter, async (req, res) => {
   if (start_at !== undefined) updates.start_at = start_at || null;
   if (end_at !== undefined) updates.end_at = end_at || null;
   if (image_url !== undefined) updates.image_url = image_url?.trim().slice(0, 1000) || null;
+  if (show_once_per_user !== undefined) updates.show_once_per_user = show_once_per_user === true;
+  if (trigger_type !== undefined && validTriggers.includes(trigger_type)) updates.trigger_type = trigger_type;
+  if (delay_seconds !== undefined) updates.delay_seconds = Number.isInteger(delay_seconds) ? Math.min(Math.max(delay_seconds, 0), 60) : 5;
+  if (selected_user_ids !== undefined) {
+    if (target_audience === "selected_users" || updates.target_audience === "selected_users") {
+      if (Array.isArray(selected_user_ids)) updates.selected_user_ids = selected_user_ids.filter(Boolean);
+      else if (typeof selected_user_ids === "string")
+        updates.selected_user_ids = selected_user_ids.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    } else {
+      updates.selected_user_ids = null;
+    }
+  }
 
   const { data, error } = await supabase.from("system_announcements").update(updates).eq("id", id).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -8216,6 +8276,10 @@ async function runColumnMigrations() {
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;",
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;",
     "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS image_url TEXT;",
+    "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS show_once_per_user BOOLEAN NOT NULL DEFAULT false;",
+    "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS trigger_type TEXT NOT NULL DEFAULT 'on_dashboard_open';",
+    "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS delay_seconds INTEGER NOT NULL DEFAULT 5;",
+    "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS selected_user_ids TEXT[];",
     // Custom instructions / personalization (ChatGPT-style)
     "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_about TEXT;",
     "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_instructions TEXT;",

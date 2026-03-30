@@ -3877,6 +3877,10 @@ interface Announcement {
   button_text?: string; button_link?: string; dismissible: boolean;
   image_url?: string;
   start_at?: string; end_at?: string;
+  show_once_per_user: boolean;
+  trigger_type: string;
+  delay_seconds: number;
+  selected_user_ids?: string[] | null;
   created_by?: string; created_at: string; updated_at: string;
 }
 
@@ -3893,7 +3897,7 @@ function AnnouncementsTab() {
   const [imgUrl, setImgUrl] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  const blank = { title: "", message: "", type: "announcement", target_audience: "all_users", is_active: true, button_text: "", button_link: "", dismissible: true, start_at: "", end_at: "" };
+  const blank = { title: "", message: "", type: "announcement", target_audience: "all_users", is_active: true, button_text: "", button_link: "", dismissible: true, start_at: "", end_at: "", show_once_per_user: false, trigger_type: "on_dashboard_open", delay_seconds: 5, selected_user_ids: "" };
   const [form, setForm] = useState<typeof blank>(blank);
 
   const load = async () => {
@@ -3914,6 +3918,10 @@ function AnnouncementsTab() {
       is_active: a.is_active, button_text: a.button_text ?? "", button_link: a.button_link ?? "",
       dismissible: a.dismissible, start_at: a.start_at ? a.start_at.slice(0, 16) : "",
       end_at: a.end_at ? a.end_at.slice(0, 16) : "",
+      show_once_per_user: a.show_once_per_user ?? false,
+      trigger_type: a.trigger_type ?? "on_dashboard_open",
+      delay_seconds: a.delay_seconds ?? 5,
+      selected_user_ids: Array.isArray(a.selected_user_ids) ? a.selected_user_ids.join("\n") : "",
     });
     setShowForm(true);
   };
@@ -3951,6 +3959,8 @@ function AnnouncementsTab() {
         start_at: form.start_at || null,
         end_at: form.end_at || null,
         image_url: imgUrl || null,
+        delay_seconds: Number(form.delay_seconds) || 5,
+        selected_user_ids: form.target_audience === "selected_users" ? form.selected_user_ids : null,
       };
       if (editing) await adminFetch(`/api/master/announcements/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       else await adminFetch("/api/master/announcements", { method: "POST", body: JSON.stringify(body) });
@@ -3984,7 +3994,8 @@ function AnnouncementsTab() {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const audienceLabel: Record<string, string> = { all_users: "Semua Pengguna", new_users: "User Baru (≤7 hari)", old_users: "User Lama" };
+  const audienceLabel: Record<string, string> = { all_users: "Semua", new_users: "User Baru", old_users: "User Lama", contributors: "Kontributor", non_contributors: "Non-Kontributor", selected_users: "User Pilihan", admins: "Admin" };
+  const triggerLabel: Record<string, string> = { on_dashboard_open: "Buka Dashboard", after_first_chat: "Setelah Chat Pertama" };
   const typeLabel: Record<string, string> = { welcome: "Selamat Datang", announcement: "Pengumuman" };
 
   return (
@@ -4057,15 +4068,55 @@ function AnnouncementsTab() {
               </Select>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Target</p>
+              <p className="text-xs text-muted-foreground">Target Audiens</p>
               <Select value={form.target_audience} onValueChange={v => setForm(p => ({ ...p, target_audience: v }))}>
                 <SelectTrigger className="bg-secondary h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all_users">Semua</SelectItem>
-                  <SelectItem value="new_users">User Baru</SelectItem>
-                  <SelectItem value="old_users">User Lama</SelectItem>
+                  <SelectItem value="all_users">Semua Pengguna</SelectItem>
+                  <SelectItem value="new_users">User Baru (≤7 hari)</SelectItem>
+                  <SelectItem value="old_users">User Lama (&gt;7 hari)</SelectItem>
+                  <SelectItem value="contributors">Kontributor</SelectItem>
+                  <SelectItem value="non_contributors">Non-Kontributor</SelectItem>
+                  <SelectItem value="admins">Admin Saja</SelectItem>
+                  <SelectItem value="selected_users">User Pilihan (manual)</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Selected user IDs — shown only when target_audience = selected_users */}
+          {form.target_audience === "selected_users" && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">User ID yang ditarget <span className="text-muted-foreground/60">(satu per baris atau pisahkan koma)</span></p>
+              <Textarea
+                value={form.selected_user_ids}
+                onChange={e => setForm(p => ({ ...p, selected_user_ids: e.target.value }))}
+                placeholder={"uuid-user-1\nuuid-user-2\nuuid-user-3"}
+                rows={4}
+                className="bg-secondary resize-none text-xs font-mono"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Trigger</p>
+              <Select value={form.trigger_type} onValueChange={v => setForm(p => ({ ...p, trigger_type: v }))}>
+                <SelectTrigger className="bg-secondary h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="on_dashboard_open">Saat Buka Dashboard</SelectItem>
+                  <SelectItem value="after_first_chat">Setelah Chat Pertama</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Delay (detik)</p>
+              <input
+                type="number" min={0} max={60}
+                value={form.delay_seconds}
+                onChange={e => setForm(p => ({ ...p, delay_seconds: parseInt(e.target.value) || 0 }))}
+                className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
             </div>
           </div>
 
@@ -4085,7 +4136,7 @@ function AnnouncementsTab() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.is_active} onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} className="rounded" />
               <span className="text-xs text-foreground">Aktif</span>
@@ -4093,6 +4144,10 @@ function AnnouncementsTab() {
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.dismissible} onChange={e => setForm(p => ({ ...p, dismissible: e.target.checked }))} className="rounded" />
               <span className="text-xs text-foreground">Bisa ditutup</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.show_once_per_user} onChange={e => setForm(p => ({ ...p, show_once_per_user: e.target.checked }))} className="rounded" />
+              <span className="text-xs text-foreground">Tampil sekali per user</span>
             </label>
           </div>
 
@@ -4125,6 +4180,8 @@ function AnnouncementsTab() {
                     </span>
                     <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{typeLabel[a.type] ?? a.type}</span>
                     <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{audienceLabel[a.target_audience] ?? a.target_audience}</span>
+                    <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{triggerLabel[a.trigger_type ?? "on_dashboard_open"] ?? a.trigger_type}</span>
+                    {a.show_once_per_user && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500">1× per user</span>}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{a.message}</p>
                   {a.image_url && (

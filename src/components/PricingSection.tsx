@@ -234,8 +234,8 @@ const PricingSection = () => {
           <div className="mx-auto grid max-w-3xl gap-3 sm:gap-4 md:grid-cols-2">
             {[
               {
-                q: "Apa itu limit 3 chat per hari?",
-                a: "User gratis bisa mengirim 3 pesan ke AINA setiap hari. Limit reset otomatis setiap tengah malam.",
+                q: "Apa itu limit 5 chat per hari?",
+                a: "User gratis bisa mengirim 5 pesan ke AINA setiap hari. Limit reset otomatis setiap tengah malam.",
               },
               {
                 q: "Kapan paket Pro tersedia?",

@@ -164,7 +164,7 @@ function loadStoredFeedback(): Record<string, "up" | "down"> {
   try { return JSON.parse(localStorage.getItem(FEEDBACK_STORE_KEY) ?? "{}"); } catch { return {}; }
 }
 
-const DAILY_LIMIT = 3;
+const DAILY_LIMIT = 5;
 const REMARK_PLUGINS = [remarkGfm];
 
 const MD_COMPONENTS = {
@@ -833,6 +833,9 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         if (!isPaidUser && next >= DAILY_LIMIT) setLimitReached(true);
         return next;
       });
+
+      // Signal first chat sent — used by announcement popup trigger
+      window.dispatchEvent(new CustomEvent("aina:first_chat"));
 
       // Save assistant reply to DB
       await supabase.from("messages").insert({
