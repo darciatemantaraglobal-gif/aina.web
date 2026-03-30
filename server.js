@@ -5856,7 +5856,7 @@ app.get("/api/leaderboard", async (req, res) => {
       .eq("status", "approved")
       .neq("hidden", true)
       .order("vote_count", { ascending: false })
-      .limit(20),
+      .limit(500),
   ]);
 
   const profileIds = (topProfiles ?? []).map(p => p.user_id);

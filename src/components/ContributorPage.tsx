@@ -15,7 +15,7 @@ import {
   Link2, Loader2,
 } from "lucide-react";
 
-const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
 const articleTypes = [
   { value: "narrative", label: "Informasi Umum", desc: "Penjelasan/narasi tentang topik tertentu" },
   { value: "step_by_step", label: "Panduan Langkah-langkah", desc: "Prosedur yang bisa langsung diikuti" },
