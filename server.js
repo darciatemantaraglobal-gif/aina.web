@@ -4381,6 +4381,15 @@ app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
     }
   }
 
+  // Increment contribution_count for the admin who uploaded these articles
+  if (imported > 0) {
+    const { data: profile } = await supabase.from("profiles").select("contribution_count").eq("user_id", admin.id).single();
+    const prev = profile?.contribution_count || 0;
+    const newCount = prev + imported;
+    const level = newCount >= 10 ? "Senior Contributor" : "Contributor";
+    await supabase.from("profiles").update({ contribution_count: newCount, level }).eq("user_id", admin.id);
+  }
+
   res.json({ imported, total: articles.length, errors });
 });
 
@@ -4509,6 +4518,14 @@ app.post("/api/admin/articles", async (req, res) => {
   const { error } = await supabase.from("knowledge_base").insert(insertPayload);
 
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  // Increment contribution_count for the admin who created this article
+  const { data: profile } = await supabase.from("profiles").select("contribution_count").eq("user_id", admin.id).single();
+  const prev = profile?.contribution_count || 0;
+  const newCount = prev + 1;
+  const level = newCount >= 10 ? "Senior Contributor" : "Contributor";
+  await supabase.from("profiles").update({ contribution_count: newCount, level }).eq("user_id", admin.id);
+
   res.json({ success: true });
 });
 
@@ -4517,12 +4534,21 @@ app.delete("/api/admin/articles/:id", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { data: art } = await supabase.from("knowledge_base").select("status").eq("id", req.params.id).single();
+  const { data: art } = await supabase.from("knowledge_base").select("id, status, author_id").eq("id", req.params.id).single();
   if (art?.status === "approved" && !isMasterAdminId(admin.id)) {
     return res.status(403).json({ error: "Tidak diizinkan" });
   }
 
   await supabase.from("knowledge_base").delete().eq("id", req.params.id);
+
+  // Decrement contribution_count if the deleted article was approved and authored by the deleting user
+  if (art?.status === "approved" && art?.author_id === admin.id) {
+    const { data: profile } = await supabase.from("profiles").select("contribution_count").eq("user_id", admin.id).single();
+    const newCount = Math.max(0, (profile?.contribution_count || 0) - 1);
+    const level = newCount >= 10 ? "Senior Contributor" : "Contributor";
+    await supabase.from("profiles").update({ contribution_count: newCount, level }).eq("user_id", admin.id);
+  }
+
   res.json({ success: true });
 });
 
@@ -8786,10 +8812,53 @@ Temantiket adalah mitra resmi AINA yang khusus melayani Masisir:
   }
 }
 
+/* ── Sync contribution_count from actual KB article counts ───────────────────
+   Recalculates contribution_count for every author based on the number of
+   approved (and non-hidden) articles they actually have in the knowledge_base.
+   This ensures articles uploaded via admin panel are counted correctly.
+   ─────────────────────────────────────────────────────────────────────────── */
+async function syncContributionCounts() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  try {
+    const { data: articles, error } = await supabase
+      .from("knowledge_base")
+      .select("author_id")
+      .eq("status", "approved");
+    if (error || !articles?.length) return;
+
+    // Count approved articles per author
+    const countByAuthor = {};
+    for (const a of articles) {
+      if (!a.author_id) continue;
+      countByAuthor[a.author_id] = (countByAuthor[a.author_id] || 0) + 1;
+    }
+
+    // Update each author's profile
+    let synced = 0;
+    for (const [authorId, count] of Object.entries(countByAuthor)) {
+      const { data: profile } = await supabase.from("profiles").select("contribution_count").eq("user_id", authorId).single();
+      if (!profile) continue;
+      // Only update if count differs to avoid unnecessary writes
+      if ((profile.contribution_count || 0) !== count) {
+        const level = count >= 10 ? "Senior Contributor" : "Contributor";
+        await supabase.from("profiles").update({ contribution_count: count, level }).eq("user_id", authorId);
+        synced++;
+      }
+    }
+    if (synced > 0) console.log(`[ContribSync] ✓ Updated contribution_count for ${synced} author(s)`);
+  } catch (e) {
+    console.warn("[ContribSync] failed:", e.message);
+  }
+}
+
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
   checkRequiredTables();
-  runColumnMigrations().then(() => seedPartnerArticles());
+  runColumnMigrations().then(() => {
+    seedPartnerArticles();
+    syncContributionCounts();
+  });
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AINA API server running on port ${PORT}`);
   });
