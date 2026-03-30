@@ -5297,7 +5297,8 @@ function CoverageTab() {
 /* ─── Main AdminPage ─────────────────────────────────── */
 type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights";
 
-const TAB_ORDER_KEY = "aina_admin_tab_order";
+interface NavItem { id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }
+interface NavGroup { label: string; masterOnly?: boolean; items: NavItem[] }
 
 const AdminPage = () => {
   const [isAdmin, setIsAdmin]           = useState(false);
@@ -5306,13 +5307,6 @@ const AdminPage = () => {
   const [activeTab, setActiveTab]       = useState<Tab>("overview");
   const [stats, setStats] = useState<Stats>({ totalUsers: 0, totalChats: 0, pendingRequests: 0, pendingArticles: 0, approvedArticles: 0, totalArticles: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
-
-  // ── Drag-and-drop state (desktop only) ────────────────
-  const [tabOrder, setTabOrder]   = useState<Tab[]>([]);
-  const dragIdx = useRef<number | null>(null);
-  const overIdx = useRef<number | null>(null);
-  const [dragOverId, setDragOverId] = useState<Tab | null>(null);
-  const [draggingId, setDraggingId] = useState<Tab | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -5347,85 +5341,28 @@ const AdminPage = () => {
     return <NoAdminScreen onClaimed={() => window.location.reload()} />;
   }
 
-  // Full ordered list (all possible tabs in default order)
-  const allNavItems: Array<{ id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }> = [
-    { id: "overview",      label: "Overview",        icon: LayoutDashboard },
-    { id: "users",         label: "Users",           icon: Users,       masterOnly: true, badge: stats.totalUsers || undefined },
-    { id: "monitor",       label: "Monitor",         icon: Eye,         masterOnly: true },
-    { id: "requests",      label: "Requests",        icon: UserCheck,   badge: stats.pendingRequests || undefined },
-    { id: "knowledge",     label: "Knowledge Base",  icon: FileText,    badge: stats.pendingArticles || undefined },
-    { id: "updates",       label: "Breaking Updates",icon: Zap },
-    { id: "news",          label: "Berita",          icon: Newspaper },
-    { id: "reports",       label: "Laporan",         icon: Flag },
-    { id: "waitlist",      label: "Waitlist Pro",    icon: Crown,       masterOnly: true },
-    { id: "security",      label: "Security",        icon: ShieldAlert, masterOnly: true },
-    { id: "performance",   label: "Performa AI",     icon: TrendingUp,  masterOnly: true },
-    { id: "announcements", label: "Pengumuman",      icon: Megaphone,   masterOnly: true },
-    { id: "signals",       label: "Sinyal User",     icon: ThumbsUp,    masterOnly: true },
-    { id: "procedures",    label: "Prosedur",         icon: BookOpen,    masterOnly: true },
-    { id: "coverage",      label: "Coverage KB",      icon: Search,      masterOnly: true },
-    { id: "insights",      label: "Insights",          icon: Sparkles,    masterOnly: true },
-  ];
-
-  // Visible tabs for this admin level
-  const visibleItems = allNavItems.filter(t => !t.masterOnly || isMasterAdmin);
-  const visibleIds   = visibleItems.map(t => t.id);
-
-  // Resolve order: saved order (filtered to visible) + any new tabs appended
-  const resolveOrder = (): Tab[] => {
-    try {
-      const saved: Tab[] = JSON.parse(localStorage.getItem(TAB_ORDER_KEY) || "[]");
-      const valid = saved.filter(id => visibleIds.includes(id));
-      const missing = visibleIds.filter(id => !valid.includes(id));
-      return [...valid, ...missing];
-    } catch {
-      return visibleIds;
-    }
-  };
-
-  // Initialize order once (after isMasterAdmin is known)
-  const orderedIds = tabOrder.length > 0 ? tabOrder : resolveOrder();
-
-  // Map id → nav item (for badge/label/icon access)
-  const navMap = Object.fromEntries(allNavItems.map(t => [t.id, t]));
-
-  // Ordered visible nav items (with live badge values)
-  const navItems = orderedIds
-    .filter(id => visibleIds.includes(id))
-    .map(id => ({ ...navMap[id], badge: navMap[id]?.badge }));
-
-  // ── Drag handlers ─────────────────────────────────────
-  const onDragStart = (idx: number, id: Tab) => {
-    dragIdx.current = idx;
-    setDraggingId(id);
-  };
-
-  const onDragOver = (e: React.DragEvent, idx: number, id: Tab) => {
-    e.preventDefault();
-    overIdx.current = idx;
-    setDragOverId(id);
-  };
-
-  const onDrop = () => {
-    const from = dragIdx.current;
-    const to   = overIdx.current;
-    if (from === null || to === null || from === to) {
-      cleanup(); return;
-    }
-    const next = [...orderedIds];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setTabOrder(next);
-    try { localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(next)); } catch {}
-    cleanup();
-  };
-
-  const cleanup = () => {
-    dragIdx.current = null;
-    overIdx.current = null;
-    setDraggingId(null);
-    setDragOverId(null);
-  };
+  // ── Grouped nav structure ──────────────────────────────
+  const navGroups: NavGroup[] = [
+    {
+      label: "Umum",
+      items: [
+        { id: "overview", label: "Overview", icon: LayoutDashboard },
+      ],
+    },
+    {
+      label: "Konten",
+      items: [
+        { id: "knowledge", label: "Knowledge Base", icon: FileText,  badge: stats.pendingArticles || undefined },
+        { id: "updates",   label: "Breaking Updates", icon: Zap },
+        { id: "news",      label: "Berita",          icon: Newspaper },
+        { id: "procedures",label: "Prosedur",        icon: BookOpen, masterOnly: true },
+      ],
+    },
+    {
+      label: "Pengguna",
+      items: [
+        { id: "users",    label: "Users",        icon: Users,    masterOnly: true, badge: stats.totalUsers || undefined },
+        { id: "requests", label: "Requests",     icon: UserCheck, badge:
 
   const tabContent = (
     <>
