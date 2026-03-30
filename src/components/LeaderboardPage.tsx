@@ -540,7 +540,7 @@ export default function LeaderboardPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <Tabs defaultValue="contributors" className="flex h-full flex-col">
           <TabsList className="mx-4 mt-4 md:mx-6 shrink-0 grid w-auto grid-cols-2 max-w-xs">
             <TabsTrigger value="contributors" className="gap-1.5 text-xs">
@@ -554,7 +554,7 @@ export default function LeaderboardPage() {
           </TabsList>
 
           {/* Contributors */}
-          <TabsContent value="contributors" className="flex-1 overflow-hidden">
+          <TabsContent value="contributors" className="flex-1 min-h-0 overflow-hidden mt-0">
             <div className="h-full overflow-y-auto px-4 pb-6 pt-4 md:px-6">
               {loading ? (
                 <div className="space-y-2">
@@ -578,7 +578,7 @@ export default function LeaderboardPage() {
           </TabsContent>
 
           {/* Articles */}
-          <TabsContent value="articles" className="flex-1 overflow-hidden flex flex-col">
+          <TabsContent value="articles" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-0">
             {/* Search bar */}
             <div className="shrink-0 px-4 pt-4 md:px-6 space-y-3">
               <div className="relative">

@@ -458,7 +458,7 @@ const Dashboard = () => {
               </div>
             </header>
 
-            <div className="flex-1 overflow-hidden" key={activeTab}>
+            <div className="flex-1 min-h-0 h-full overflow-hidden" key={activeTab}>
               {activeTab === "productivity" && (
                 <TabErrorBoundary tabName="Productivity">
                   <Suspense fallback={<TabLoader />}>
