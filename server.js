@@ -3160,7 +3160,7 @@ async function ocrPdf(buffer) {
           "X-Title": "AINA PDF OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-001",
+          model: "google/gemini-2.5-flash-preview",
           messages: [{
             role: "user",
             content: [
@@ -3265,7 +3265,7 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
           "X-Title": "AINA Image OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-001",
+          model: "google/gemini-2.5-flash-preview",
           messages: [{
             role: "user",
             content: [
@@ -3540,7 +3540,7 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
           "X-Title": "AINA Image OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-001",
+          model: "google/gemini-2.5-flash-preview",
           messages: [{
             role: "user",
             content: [
@@ -4219,7 +4219,7 @@ Format output: [{"title":"...","content":"...","category":"...","keywords":"..."
         "X-Title": "AINA Admin Bulk Parse",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "google/gemini-2.5-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Parse teks berikut menjadi artikel-artikel knowledge base:\n\n${rawText.slice(0, 40_000)}` },
@@ -4301,7 +4301,7 @@ app.post("/api/admin/articles/image-extract", imageExtractUpload.single("image")
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "google/gemini-2.5-flash-preview",
         messages: [{
           role: "user",
           content: [
@@ -4743,7 +4743,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan).
         "X-Title": "AINA Article Reformatter",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "google/gemini-2.5-flash-preview",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 4000,
       }),
@@ -4820,7 +4820,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan a
           "X-Title": "AINA Article Reformatter",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-001",
+          model: "google/gemini-2.5-flash-preview",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 4000,
         }),
@@ -4908,7 +4908,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan a
           "X-Title": "AINA Article Reformatter",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-001",
+          model: "google/gemini-2.5-flash-preview",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 4000,
         }),
@@ -5190,7 +5190,7 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan
         "X-Title": "AINA Article Parser",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "google/gemini-2.5-flash-preview",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 16000,
       }),
@@ -8239,7 +8239,7 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
         routes_for: ["procedural", "fiqh", "arabic_writing", "dynamic", "time-sensitive", "currency", "KB lemah/tidak ada"],
       },
     },
-    vision_model: "google/gemini-2.0-flash-001",
+    vision_model: "google/gemini-2.5-flash-preview",
     source_pipeline: [
       { name: "Admin Pinned Updates",  trust: 100, always_checked: true },
       { name: "Knowledge Base (KB)",   trust: 90,  always_checked: true },
