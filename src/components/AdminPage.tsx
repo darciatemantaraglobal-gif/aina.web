@@ -48,7 +48,7 @@ interface Stats {
 }
 
 /* ─── Helpers ────────────────────────────────────────── */
-const CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+const CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa"];
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin", senior_contributor: "Sr. Contributor",
   contributor: "Contributor", user: "User",

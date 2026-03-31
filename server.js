@@ -581,7 +581,7 @@ async function callOpenRouter(apiKey, { messages, temperature = 0.0, max_tokens 
 }
 
 /* ── Category resolver: exact → case-insensitive → keyword fallback ── */
-const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa"];
 const VALID_TYPES      = ["narrative", "step_by_step"];
 
 const _CAT_KEYWORDS = [
@@ -591,7 +591,7 @@ const _CAT_KEYWORDS = [
   { cat: "Transport",      kw: ["transport", "metro", "taksi", "taxi", "uber", "careem", "bus", "microbus", "kereta", "rute", "perjalanan", "kendaraan"] },
   { cat: "Tempat Tinggal", kw: ["tinggal", "flat", "apartemen", "sewa", "kontrakan", "furnitur", "shahibul", "beit", "rumah", "lokasi", "nasr", "hay asyir"] },
   { cat: "Kuliner",        kw: ["kuliner", "makanan", "makan", "restoran", "warung", "masak", "resep", "menu", "kantin", "bahan makanan"] },
-  { cat: "Bahasa Arab",    kw: ["bahasa arab", "arabic", "fusha", "amiyah", "nahwu", "sharaf", "kosakata", "vocab", "dialek", "percakapan"] },
+  { cat: "Bahasa",         kw: ["bahasa arab", "bahasa", "arabic", "fusha", "amiyah", "nahwu", "sharaf", "kosakata", "vocab", "dialek", "percakapan", "grammar", "mufrodat"] },
 ];
 
 function resolveCategoryFromAI(rawCategory) {
@@ -620,7 +620,7 @@ KATEGORI YANG TERSEDIA (gunakan PERSIS salah satu string ini):
 - "Transport"      → metro Kairo, taksi, Uber, Careem, bus, microbus, kereta, rute perjalanan
 - "Tempat Tinggal" → sewa flat/apartemen, shahibul beit, Hay Asyir, Nasr City, kontrak, furnitur, listrik
 - "Kuliner"        → restoran halal, warung Indonesia, masakan Mesir, harga makanan, resep, bahan makanan
-- "Bahasa Arab"    → belajar bahasa Arab, fusha, amiyah, nahwu, sharaf, kosakata, dialek Mesir
+- "Bahasa"         → belajar bahasa Arab/amiyah, fusha, nahwu, sharaf, kosakata, mufrodat, dialek Mesir, grammar
 
 TIPE ARTIKEL:
 - "step_by_step" → ada langkah bernomor/berurutan (cara melakukan sesuatu)
@@ -5886,7 +5886,7 @@ app.post("/api/articles/auto-categorize", async (req, res) => {
 "Transport"       → metro Kairo, taksi (Uber/Careem), bus, microbus, kereta, rute perjalanan, biaya transport
 "Tempat Tinggal"  → sewa flat/apartemen, Hay Asyir, Nasr City, kontrak, pindah flat, furnitur, shahibul beit
 "Kuliner"         → restoran halal, warung Indonesia, masakan Mesir, harga makanan, resep, bahan makanan
-"Bahasa Arab"     → belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir
+"Bahasa"          → belajar bahasa Arab/amiyah, fusha, nahwu, sharaf, kosakata, mufrodat, percakapan, dialek Mesir
 
 ═══ TIPE ARTIKEL ═══
 "step_by_step" → ada urutan langkah bernomor (1,2,3... / pertama, kedua...), panduan prosedur
@@ -5953,7 +5953,7 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   if (content.trim().length > 50000)
     return res.status(400).json({ error: "Konten terlalu panjang (maks 50.000 karakter)" });
 
-  const validCategories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+  const validCategories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa"];
   if (!validCategories.includes(category)) return res.status(400).json({ error: "Kategori tidak valid" });
   const validTypes = ["narrative", "step_by_step"];
   const safeType    = validTypes.includes(article_type) ? article_type : "narrative";
@@ -6399,7 +6399,7 @@ app.get("/api/articles/search", async (req, res) => {
   const supabase = getAdminClient();
   if (!supabase) return res.status(503).json({ error: "Service unavailable" });
 
-  const VALID_CATEGORIES = ["Administrasi","Akademik","Kehidupan Mesir","Transport","Tempat Tinggal","Kuliner"];
+  const VALID_CATEGORIES = ["Administrasi","Akademik","Kehidupan Mesir","Transport","Tempat Tinggal","Kuliner","Bahasa"];
 
   let query = supabase
     .from("knowledge_base")
