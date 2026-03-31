@@ -546,6 +546,40 @@ async function verifyMasterAdmin(authHeader) {
   return user;
 }
 
+/* ── OpenRouter AI call with primary→fallback ──────── */
+const OR_PRIMARY  = "google/gemini-2.5-flash-preview";
+const OR_FALLBACK = "google/gemini-2.0-flash-001";
+
+async function callOpenRouter(apiKey, { messages, temperature = 0.0, max_tokens = 200, timeoutMs = 20_000, label = "AI" }) {
+  const tryModel = async (model) => {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": `AINA ${label}`,
+      },
+      body: JSON.stringify({ model, messages, temperature, max_tokens }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => "");
+      console.error(`[${label}] ${model} → ${resp.status}: ${errBody.slice(0, 300)}`);
+      return null;
+    }
+    return resp.json();
+  };
+
+  let data = await tryModel(OR_PRIMARY);
+  if (!data) {
+    console.warn(`[${label}] Primary model failed, trying fallback ${OR_FALLBACK}`);
+    data = await tryModel(OR_FALLBACK);
+  }
+  if (!data) throw new Error("Semua model AI tidak merespons");
+  return data;
+}
+
 /* ── Article type column detection (cached) ──────────── */
 let _hasArticleTypeCol  = null; // null=unknown, true/false=detected
 let _hasKeywordsCol     = null;
@@ -4206,38 +4240,27 @@ Jawab HANYA dalam format JSON:
 {"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
 
   try {
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ainalabs.pro",
-        "X-Title": "AINA AutoCat",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.0,
-        max_tokens: 80,
-      }),
-      signal: AbortSignal.timeout(12_000),
+    const data = await callOpenRouter(apiKey, {
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.0,
+      max_tokens: 80,
+      timeoutMs: 20_000,
+      label: "AutoCat",
     });
-
-    if (!resp.ok) return res.status(502).json({ error: "AI error" });
-    const data = await resp.json();
     const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return res.status(502).json({ error: "Gagal parse respons AI" });
     const parsed = JSON.parse(match[0]);
     const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
     const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
-    if (!newCategory) return res.status(502).json({ error: "Kategori tidak valid dari AI" });
+    if (!newCategory) return res.status(502).json({ error: "Kategori tidak valid dari AI: " + parsed.category });
 
     const update = { category: newCategory };
     if (newType) update.article_type = newType;
     await supabase.from("knowledge_base").update(update).eq("id", id);
     return res.json({ success: true, id, category: newCategory, article_type: newType });
   } catch (e) {
+    console.error("[auto-categorize single]", e);
     return res.status(500).json({ error: String(e) });
   }
 });
@@ -4274,25 +4297,13 @@ Jawab HANYA dengan JSON:
 {"title":"<judul baru yang optimal>"}`;
 
   try {
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ainalabs.pro",
-        "X-Title": "AINA AutoTitle",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 100,
-      }),
-      signal: AbortSignal.timeout(15_000),
+    const data = await callOpenRouter(apiKey, {
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 100,
+      timeoutMs: 20_000,
+      label: "AutoTitle",
     });
-
-    if (!resp.ok) return res.status(502).json({ error: "AI error" });
-    const data = await resp.json();
     const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return res.status(502).json({ error: "Gagal parse respons AI" });
@@ -4951,8 +4962,7 @@ app.post("/api/admin/articles/auto-categorize/bulk", async (req, res) => {
   // Run in background
   let processed = 0, updated = 0, errors = 0;
   for (const art of articles) {
-    try {
-      const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
+    const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
 
 PANDUAN KATEGORI:
 1. ADMINISTRASI: iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, SIM internasional, birokrasi, imigrasi, KBRI, PPMI
@@ -4971,40 +4981,31 @@ Konten: ${(art.content || "").slice(0, 3000)}
 Jawab HANYA dalam format JSON:
 {"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
 
-      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://ainalabs.pro",
-          "X-Title": "AINA Bulk AutoCat",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.0,
-          max_tokens: 80,
-        }),
-        signal: AbortSignal.timeout(15_000),
+    try {
+      const data = await callOpenRouter(apiKey, {
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.0,
+        max_tokens: 80,
+        timeoutMs: 20_000,
+        label: "BulkAutoCat",
       });
-
-      if (resp.ok) {
-        const data = await resp.json();
-        const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (match) {
-          const parsed = JSON.parse(match[0]);
-          const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
-          const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
-          if (newCategory) {
-            const update = { category: newCategory };
-            if (newType) update.article_type = newType;
-            await supabase.from("knowledge_base").update(update).eq("id", art.id);
-            updated++;
-          } else { errors++; }
+      const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
+        const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
+        if (newCategory) {
+          const update = { category: newCategory };
+          if (newType) update.article_type = newType;
+          await supabase.from("knowledge_base").update(update).eq("id", art.id);
+          updated++;
         } else { errors++; }
       } else { errors++; }
-    } catch { errors++; }
+    } catch (aiErr) {
+      console.error("[BulkAutoCat] article", art.id, aiErr.message);
+      errors++;
+    }
 
     processed++;
     _autoCatState.processed = processed;
