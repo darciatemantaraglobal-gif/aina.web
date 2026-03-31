@@ -108,26 +108,27 @@ export async function sendDailyReminder(userId, { getAdminClient, sendEmail, ema
   if (!pendingItems.length) return { ok: true, skipped: true, reason: "Semua fokus sudah selesai" };
 
   const profile = await getUserEmail(userId);
-  if (profile?.email) {
-    const focusList = pendingItems
-      .map(f => `<li style="margin-bottom:6px">${f.title}</li>`)
-      .join("");
+  if (!profile?.email) return { ok: true, skipped: true, reason: "Email pengguna tidak ditemukan" };
 
-    await sendEmail({
-      to:      profile.email,
-      name:    profile.full_name || "Kamu",
-      subject: "AINA: Fokus harianmu hari ini belum selesai 👋",
-      html:    emailTemplate({
-        title:   "Jangan lupa fokusmu hari ini",
-        body:    `<p>Bro, fokus harian kamu hari ini masih ada yang belum beres:</p>
+  const focusList = pendingItems
+    .map(f => `<li style="margin-bottom:6px">${f.title}</li>`)
+    .join("");
+
+  const emailSent = await sendEmail({
+    to:      profile.email,
+    name:    profile.full_name || "Kamu",
+    subject: "AINA: Fokus harianmu hari ini belum selesai 👋",
+    html:    emailTemplate({
+      title:   "Jangan lupa fokusmu hari ini",
+      body:    `<p>Bro, fokus harian kamu hari ini masih ada yang belum beres:</p>
 <ul style="padding-left:20px;margin:12px 0">${focusList}</ul>
 <p>Gak usah semuanya — lanjut satu langkah kecil dulu. Yang penting tetap gerak. 💪</p>`,
-        ctaText: "Buka Ruang Produktif",
-        ctaUrl:  CLIENT_URL() + "/dashboard",
-      }),
-    });
-  }
+      ctaText: "Buka Ruang Produktif",
+      ctaUrl:  CLIENT_URL() + "/dashboard",
+    }),
+  });
 
+  if (!emailSent) return { ok: true, skipped: true, reason: "Email tidak dikonfigurasi di server ini" };
   await logReminder(supabase, userId, "daily_focus", "email", { focus_count: pendingItems.length });
   return { ok: true, sent: true };
 }
@@ -146,30 +147,31 @@ export async function sendAdminReminder(userId, { getAdminClient, sendEmail, ema
   if (!urgentItems.length) return { ok: true, skipped: true, reason: "Tidak ada item urgent" };
 
   const profile = await getUserEmail(userId);
-  if (profile?.email) {
-    const itemList = urgentItems.map(i => {
-      const due    = i.due_date
-        ? ` — tenggat ${new Date(i.due_date).toLocaleDateString("id-ID", { day: "numeric", month: "long" })}`
-        : "";
-      const urgent = i.is_urgent ? " ⚠️" : "";
-      return `<li style="margin-bottom:6px">${i.title}${due}${urgent}</li>`;
-    }).join("");
+  if (!profile?.email) return { ok: true, skipped: true, reason: "Email pengguna tidak ditemukan" };
 
-    await sendEmail({
-      to:      profile.email,
-      name:    profile.full_name || "Kamu",
-      subject: "AINA: Urusan pentingmu masih pending 📋",
-      html:    emailTemplate({
-        title:   "Urusan penting butuh perhatianmu",
-        body:    `<p>Urusan penting kamu masih pending dan waktunya makin dekat:</p>
+  const itemList = urgentItems.map(i => {
+    const due    = i.due_date
+      ? ` — tenggat ${new Date(i.due_date).toLocaleDateString("id-ID", { day: "numeric", month: "long" })}`
+      : "";
+    const urgent = i.is_urgent ? " ⚠️" : "";
+    return `<li style="margin-bottom:6px">${i.title}${due}${urgent}</li>`;
+  }).join("");
+
+  const emailSent = await sendEmail({
+    to:      profile.email,
+    name:    profile.full_name || "Kamu",
+    subject: "AINA: Urusan pentingmu masih pending 📋",
+    html:    emailTemplate({
+      title:   "Urusan penting butuh perhatianmu",
+      body:    `<p>Urusan penting kamu masih pending dan waktunya makin dekat:</p>
 <ul style="padding-left:20px;margin:12px 0">${itemList}</ul>
 <p>Cek lagi biar gak keteteran. Satu langkah kecil sekarang bisa mencegah masalah besar nanti. 🗂️</p>`,
-        ctaText: "Buka Dokumen & Admin",
-        ctaUrl:  CLIENT_URL() + "/dashboard",
-      }),
-    });
-  }
+      ctaText: "Buka Dokumen & Admin",
+      ctaUrl:  CLIENT_URL() + "/dashboard",
+    }),
+  });
 
+  if (!emailSent) return { ok: true, skipped: true, reason: "Email tidak dikonfigurasi di server ini" };
   await logReminder(supabase, userId, "admin_tracker", "email", { item_count: urgentItems.length });
   return { ok: true, sent: true };
 }
@@ -208,32 +210,33 @@ export async function sendWeeklyRecap(userId, { getAdminClient, sendEmail, email
   const totalFocus  = (weekFocus || []).length;
 
   const profile = await getUserEmail(userId);
-  if (profile?.email) {
-    const doneList = doneFocus.length
-      ? doneFocus.map(f => `<li style="margin-bottom:4px">✅ ${f.title}</li>`).join("")
-      : "<li style='color:#888'>Belum ada fokus yang selesai minggu ini</li>";
+  if (!profile?.email) return { ok: true, skipped: true, reason: "Email pengguna tidak ditemukan" };
 
-    const undoneList = undoneFocus.length
-      ? undoneFocus.map(f => `<li style="margin-bottom:4px">⏳ ${f.title}</li>`).join("")
-      : "<li style='color:#888'>Semua fokus sudah selesai — keren!</li>";
+  const doneList = doneFocus.length
+    ? doneFocus.map(f => `<li style="margin-bottom:4px">✅ ${f.title}</li>`).join("")
+    : "<li style='color:#888'>Belum ada fokus yang selesai minggu ini</li>";
 
-    const adminList = (pendingAdmin || []).length
-      ? pendingAdmin.map(a => `<li style="margin-bottom:4px">📋 ${a.title} (${a.category})</li>`).join("")
-      : "<li style='color:#888'>Tidak ada urusan yang pending</li>";
+  const undoneList = undoneFocus.length
+    ? undoneFocus.map(f => `<li style="margin-bottom:4px">⏳ ${f.title}</li>`).join("")
+    : "<li style='color:#888'>Semua fokus sudah selesai — keren!</li>";
 
-    const motivasi = doneFocus.length >= totalFocus && totalFocus > 0
-      ? "Luar biasa minggu ini! Kamu menyelesaikan semua fokus yang sudah kamu set. 🎉"
-      : doneFocus.length > 0
-      ? `Minggu ini kamu menyelesaikan ${doneFocus.length} dari ${totalFocus} fokus. Progress tetap progress — terus gerak minggu depan! 💪`
-      : "Minggu ini belum sempat banyak yang selesai. Tidak apa-apa, mulai lagi dari yang kecil minggu depan.";
+  const adminList = (pendingAdmin || []).length
+    ? pendingAdmin.map(a => `<li style="margin-bottom:4px">📋 ${a.title} (${a.category})</li>`).join("")
+    : "<li style='color:#888'>Tidak ada urusan yang pending</li>";
 
-    await sendEmail({
-      to:      profile.email,
-      name:    profile.full_name || "Kamu",
-      subject: "AINA: Recap Mingguanmu 📊",
-      html:    emailTemplate({
-        title:   "Rekap Minggu Ini dari AINA",
-        body:    `
+  const motivasi = doneFocus.length >= totalFocus && totalFocus > 0
+    ? "Luar biasa minggu ini! Kamu menyelesaikan semua fokus yang sudah kamu set. 🎉"
+    : doneFocus.length > 0
+    ? `Minggu ini kamu menyelesaikan ${doneFocus.length} dari ${totalFocus} fokus. Progress tetap progress — terus gerak minggu depan! 💪`
+    : "Minggu ini belum sempat banyak yang selesai. Tidak apa-apa, mulai lagi dari yang kecil minggu depan.";
+
+  const emailSent = await sendEmail({
+    to:      profile.email,
+    name:    profile.full_name || "Kamu",
+    subject: "AINA: Recap Mingguanmu 📊",
+    html:    emailTemplate({
+      title:   "Rekap Minggu Ini dari AINA",
+      body:    `
 <p>${motivasi}</p>
 <h3 style="font-size:15px;margin:20px 0 8px;color:#e0e0f0">✅ Fokus yang selesai:</h3>
 <ul style="padding-left:20px;margin:0 0 12px">${doneList}</ul>
@@ -241,12 +244,12 @@ export async function sendWeeklyRecap(userId, { getAdminClient, sendEmail, email
 <ul style="padding-left:20px;margin:0 0 12px">${undoneList}</ul>
 <h3 style="font-size:15px;margin:20px 0 8px;color:#e0e0f0">📋 Urusan admin yang masih pending:</h3>
 <ul style="padding-left:20px;margin:0 0 12px">${adminList}</ul>`,
-        ctaText: "Mulai Minggu Depan",
-        ctaUrl:  CLIENT_URL() + "/dashboard",
-      }),
-    });
-  }
+      ctaText: "Mulai Minggu Depan",
+      ctaUrl:  CLIENT_URL() + "/dashboard",
+    }),
+  });
 
+  if (!emailSent) return { ok: true, skipped: true, reason: "Email tidak dikonfigurasi di server ini" };
   await logReminder(supabase, userId, "weekly_recap", "email", { done: doneFocus.length, total: totalFocus });
   return { ok: true, sent: true };
 }

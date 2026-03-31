@@ -136,7 +136,7 @@ function FocusTab() {
     try {
       const { items: data } = await apiCall("GET", "/productivity/focus/today");
       setItems(data);
-    } catch { /* silent */ }
+    } catch (e: any) { toast.error(e.message || "Gagal memuat fokus"); }
     setLoading(false);
   }, []);
 
@@ -144,7 +144,7 @@ function FocusTab() {
 
   const addManual = async () => {
     if (!manualTitle.trim()) { toast.error("Tulis judul fokus dulu"); return; }
-    if (activeCount >= 5) { toast.error("Maksimal 5 fokus aktif per hari"); return; }
+    if (activeCount >= 3) { toast.error("Maksimal 3 fokus aktif per hari"); return; }
     setSaving(true);
     try {
       const { item } = await apiCall("POST", "/productivity/focus", {
@@ -178,8 +178,8 @@ function FocusTab() {
 
   const saveAiSuggestions = async () => {
     if (!aiSuggestions.length) return;
-    const canAdd = 5 - activeCount;
-    if (canAdd <= 0) { toast.error("Sudah 5 fokus aktif hari ini"); return; }
+    const canAdd = 3 - activeCount;
+    if (canAdd <= 0) { toast.error("Sudah 3 fokus aktif hari ini"); return; }
     setSaving(true);
     const toSave = aiSuggestions.slice(0, canAdd);
     let added = 0;
@@ -378,7 +378,7 @@ function FocusTab() {
       )}
 
       {/* Add mode buttons */}
-      {mode === "none" && activeCount < 5 && (
+      {mode === "none" && activeCount < 3 && (
         <div className="grid grid-cols-3 gap-2">
           <button
             onClick={() => setMode("manual")}
@@ -498,9 +498,9 @@ function FocusTab() {
         </div>
       )}
 
-      {activeCount >= 5 && mode === "none" && (
+      {activeCount >= 3 && mode === "none" && (
         <p className="text-center text-xs text-muted-foreground py-2">
-          Sudah 5 fokus aktif — selesaikan dulu sebelum menambah yang baru.
+          Sudah 3 fokus aktif — selesaikan dulu sebelum menambah yang baru.
         </p>
       )}
     </div>
@@ -525,7 +525,7 @@ function TrackerTab() {
     try {
       const { items: data } = await apiCall("GET", "/productivity/tracker");
       setItems(data);
-    } catch { /* silent */ }
+    } catch (e: any) { toast.error(e.message || "Gagal memuat dokumen"); }
     setLoading(false);
   }, []);
 
@@ -1434,7 +1434,13 @@ function NoteEditor({ note, onBack, onSaved, onDeleted }: {
     <div className="flex flex-col h-full">
       {/* Topbar */}
       <div className="flex items-center gap-2 mb-4 shrink-0">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <button
+          onClick={() => {
+            if (dirty && !confirm("Ada perubahan yang belum disimpan. Keluar tanpa menyimpan?")) return;
+            onBack();
+          }}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
           <ArrowLeft className="h-3.5 w-3.5" /> Kembali
         </button>
         <span className="ml-auto flex items-center gap-1.5">
@@ -1567,7 +1573,7 @@ function NotesTab() {
     try {
       const { notes: data } = await apiCall("GET", "/productivity/notes");
       setNotes(data);
-    } catch { /* silent */ }
+    } catch (e: any) { toast.error(e.message || "Gagal memuat catatan"); }
     setLoading(false);
   }, []);
 
@@ -1773,7 +1779,10 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {tab === "fokus"     && <FocusTab />}
         {tab === "dokumen"   && <TrackerTab />}
-        {tab === "prosedur"  && userId && <ProcedureTab userId={userId} />}
+        {tab === "prosedur"  && (userId
+          ? <ProcedureTab userId={userId} />
+          : <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" /></div>
+        )}
         {tab === "catatan"   && <NotesTab />}
         {tab === "pengingat" && <ReminderTab />}
       </div>

@@ -443,7 +443,7 @@ async function getUserEmail(userId) {
 
 async function sendEmail({ to, name, subject, html }) {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return;
+  if (!apiKey) return false; // email not configured — caller should skip logging
   const from = process.env.EMAIL_FROM || "AINA <onboarding@resend.dev>";
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -457,11 +457,13 @@ async function sendEmail({ to, name, subject, html }) {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       console.warn("Resend error:", err);
-    } else {
-      console.log(`Email sent to ${to}: ${subject}`);
+      return false;
     }
+    console.log(`Email sent to ${to}: ${subject}`);
+    return true;
   } catch (e) {
     console.warn("Email send failed:", e.message);
+    return false;
   }
 }
 
