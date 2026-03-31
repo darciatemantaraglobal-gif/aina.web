@@ -183,6 +183,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [autoCategoryReason, setAutoCategoryReason] = useState("");
   const autoCatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAutoCatInputRef = useRef("");
+  const userOverriddenCategoryRef = useRef(false);
 
   // URL import dialog
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
@@ -386,6 +387,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       setArtType(json.article_type ?? "narrative");
       setArtKeywords(json.keywords ?? "");
       setArtFromUrl(true);
+      userOverriddenCategoryRef.current = false;
+      lastAutoCatInputRef.current = "";
       setUrlDialogOpen(false);
       setImportUrl("");
       setDialogOpen(true);
@@ -458,9 +461,11 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       });
       const json = await res.json();
       if (!res.ok) return;
-      setArtCategory(json.category);
-      setArtType(json.article_type);
-      setAutoCategoryReason(json.reason ?? "");
+      if (!userOverriddenCategoryRef.current) {
+        setArtCategory(json.category);
+        setArtType(json.article_type);
+        setAutoCategoryReason(json.reason ?? "");
+      }
     } catch {
     } finally {
       setAutoCategorizing(false);
@@ -1260,7 +1265,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             </Dialog>
 
             {/* Manual write dialog */}
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes(""); setArtFromUrl(false); setAutoCategoryReason(""); lastAutoCatInputRef.current = ""; if (autoCatTimerRef.current) clearTimeout(autoCatTimerRef.current); } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setArtTitle(""); setArtSummary(""); setArtContent(""); setArtCategory(""); setArtType("narrative"); setArtKeywords(""); setArtContactNumber(""); setArtImportantNotes(""); setArtFromUrl(false); setAutoCategoryReason(""); lastAutoCatInputRef.current = ""; userOverriddenCategoryRef.current = false; if (autoCatTimerRef.current) clearTimeout(autoCatTimerRef.current); } }}>
               <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-display">
@@ -1288,7 +1293,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                   </div>
                   <div className="space-y-1.5">
                     <div className="relative">
-                      <Select value={artCategory} onValueChange={(v) => { setArtCategory(v); setAutoCategoryReason(""); }}>
+                      <Select value={artCategory} onValueChange={(v) => { setArtCategory(v); setAutoCategoryReason(""); userOverriddenCategoryRef.current = true; }}>
                         <SelectTrigger className={`bg-secondary transition-all ${autoCategorizing ? "border-primary/40 ring-1 ring-primary/20" : ""}`}>
                           {autoCategorizing
                             ? <span className="flex items-center gap-2 text-muted-foreground text-sm">

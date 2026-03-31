@@ -4775,7 +4775,7 @@ app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
   if (articles.length > 20) return res.status(400).json({ error: "Maksimal 20 artikel per import" });
 
   // Must match DB CHECK constraint exactly (case-sensitive)
-  const VALID_CATS = new Set(["Administrasi","Akademik","Kehidupan Mesir","Transport","Tempat Tinggal","Kuliner"]);
+  const VALID_CATS = new Set(["Administrasi","Akademik","Kehidupan Mesir","Transport","Tempat Tinggal","Kuliner","Bahasa"]);
   const supabase = getAdminClient();
 
   const [hasTypeCol, hasKwCol, hasMapsUrlCol] = await Promise.all([
@@ -5851,7 +5851,7 @@ OUTPUT WAJIB dalam format JSON murni (tanpa markdown, tanpa komentar):
       return res.status(502).json({ error: "Gagal menghasilkan artikel dari konten ini. Coba URL lain." });
     }
 
-    const validCats = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner"];
+    const validCats = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa"];
     if (!validCats.includes(parsed.category)) parsed.category = "Kehidupan Mesir";
     if (!["narrative", "step_by_step"].includes(parsed.article_type)) parsed.article_type = "narrative";
 
