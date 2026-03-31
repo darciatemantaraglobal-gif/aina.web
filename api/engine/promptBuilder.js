@@ -64,14 +64,17 @@ export function buildKnowledgeContext(articles) {
   // KB hard-enforcement instruction — must not be softened or hedged.
   // The phrase "jika topiknya relevan" was an escape hatch removed intentionally.
   const kbHardRule =
-    "## 🔒 ATURAN KERAS — WAJIB DIBACA SEBELUM MENJAWAB\n" +
-    "Knowledge Base ditemukan untuk pertanyaan ini.\n\n" +
-    "**KEWAJIBAN:**\n" +
-    "1. Gunakan artikel di bawah sebagai sumber UTAMA dan PERTAMA jawaban kamu.\n" +
-    "2. DILARANG mengabaikan KB dan menjawab dari memori model jika KB tersedia.\n" +
-    "3. DILARANG menambahkan informasi yang bertentangan dengan KB tanpa menyatakan perbedaannya.\n" +
-    "4. Jika user bertanya tentang topik yang persis ada di KB → jawab dari KB, bukan dari training data.\n" +
-    "5. Jika ada info KB yang kamu anggap tidak lengkap, boleh tambahkan 1–2 kalimat pelengkap, tapi KB tetap harus menjadi pondasi jawaban.\n\n" +
+    "## 🔒 ATURAN KERAS KB — WAJIB DIBACA SEBELUM MENJAWAB\n" +
+    "Sistem telah menemukan artikel Knowledge Base yang relevan untuk pertanyaan ini.\n\n" +
+    "**KEWAJIBAN MUTLAK:**\n" +
+    "1. Baca SEMUA artikel KB di bawah dengan teliti sebelum menjawab.\n" +
+    "2. Gunakan artikel KB sebagai sumber UTAMA dan PERTAMA — ini bukan rekomendasi, ini kewajiban.\n" +
+    "3. DILARANG KERAS menjawab 'tidak tahu', 'aku tidak memiliki informasi', 'informasi tidak tersedia', atau frasa serupa — jika artikel KB sudah memuat jawabannya.\n" +
+    "4. DILARANG mengabaikan KB dan menjawab dari memori model jika KB tersedia.\n" +
+    "5. DILARANG menambahkan informasi yang bertentangan dengan KB tanpa menyatakan perbedaannya.\n" +
+    "6. Jika ada info KB yang kamu anggap tidak lengkap → boleh tambahkan 1–2 kalimat pelengkap dari pengetahuanmu, tapi KB tetap harus menjadi pondasi utama jawaban.\n" +
+    "7. Jika user bertanya hal yang SPESIFIK dan artikel KB membahas topik yang SAMA → WAJIB ekstrak dan sampaikan informasi spesifik itu, jangan lewati.\n\n" +
+    "**Ingat:** Artikel ini sudah diverifikasi oleh admin AINA. Kepercayaannya lebih tinggi dari training data model.\n" +
     "**Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat.**\n" +
     "---";
 
@@ -363,7 +366,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 
 > **LANGKAH 1 — Cek Knowledge Base:**
 > Apakah ada blok "Knowledge Base AINA" di konteks ini?
-> - **YA** → WAJIB gunakan sebagai jawaban utama. DILARANG lewati KB dan menjawab dari memori model. Ini bukan rekomendasi — ini kewajiban.
+> - **YA** → WAJIB gunakan sebagai jawaban utama. DILARANG lewati KB dan menjawab dari memori model. DILARANG bilang "tidak tahu" atau "aku tidak punya informasi" selama artikel KB memuat jawabannya — baca seluruh artikel KB dengan seksama, informasinya ada di sana. Ini bukan rekomendasi — ini kewajiban mutlak.
 > - **TIDAK** → lanjut ke langkah 2.
 
 > **LANGKAH 2 — Cek Pencarian Web / Pinned Updates:**
@@ -377,7 +380,7 @@ ATURAN KERAS — WAJIB DIIKUTI TANPA PENGECUALIAN:
 **Urutan kepercayaan (konflik antar sumber → ikuti ini):**
 KB/Pinned > Pencarian Web Real-time > Data API (kurs) > Pengetahuan model
 
-- JANGAN bilang "tidak tahu" jika konteks sudah menyediakan info relevan.
+- JANGAN bilang "tidak tahu", "aku tidak punya informasi", atau "aku tidak bisa menemukan" jika konteks KB atau sumber eksternal sudah menyediakan info yang relevan — baca konteksnya sampai habis sebelum menyerah.
 - JANGAN tebak angka (harga, kurs, biaya) jika tidak ada data di konteks.
 - Saat menjawab dari KB, tidak perlu sebutkan "berdasarkan Knowledge Base" — cukup jawab langsung dan natural.
 

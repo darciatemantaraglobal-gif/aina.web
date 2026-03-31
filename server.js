@@ -854,11 +854,25 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     return { ...article, _relevanceScore: score };
   });
 
-  // Sort by score descending, return top 5 (reduced from 12 to keep context tight)
+  // Sort by score descending
   scored.sort((a, b) => b._relevanceScore - a._relevanceScore);
-  const top = scored.slice(0, 5).map(({ _relevanceScore, ...a }) => a);
 
-  console.log(`[KB] query="${userQuestion.slice(0, 60)}" → ${matched.length} candidates → top ${top.length} after scoring`);
+  // Minimum relevance threshold: score < 3 means the article only weakly matches
+  // (e.g. 1 content-only keyword hit). These low-signal articles pollute context
+  // and trick assessKBStrength into saying "strong" when the KB doesn't actually
+  // cover the query → Perplexity gets blocked → AI has nothing real to say.
+  const MIN_SCORE = 3;
+  const relevant = scored.filter(a => a._relevanceScore >= MIN_SCORE);
+
+  if (relevant.length === 0) {
+    console.log(`[KB] query="${userQuestion.slice(0, 60)}" → ${scored.length} candidates but all below relevance threshold (min=${MIN_SCORE}, top=${scored[0]?._relevanceScore ?? 0}) → treating as absent`);
+    logMissingTopic(userQuestion, intentType);
+    return [];
+  }
+
+  const top = relevant.slice(0, 5).map(({ _relevanceScore, ...a }) => a);
+
+  console.log(`[KB] query="${userQuestion.slice(0, 60)}" → ${matched.length} candidates → ${relevant.length} above threshold → top ${top.length} returned (topScore=${scored[0]._relevanceScore})`);
   if (top.length > 0) {
     console.log(`[KB] top article: "${top[0].title}" (score=${scored[0]._relevanceScore})`);
   }
@@ -890,14 +904,19 @@ async function fetchPinnedUpdates() {
 
 /**
  * Assess how well the Knowledge Base covers the query.
- * 'strong'  → ≥2 articles, or 1 article with ≥800 chars — KB can answer unaided
- * 'weak'    → 1 short article (<800 chars) — supplementary external may help
- * 'absent'  → no articles — external retrieval needed
+ * Articles passed here have already been score-filtered (min score ≥ 3),
+ * so we only need to check quantity + content depth.
+ *
+ * 'strong'  → ≥2 relevant articles, OR 1 article with ≥1500 chars of content
+ *             → KB is self-sufficient; Perplexity is skipped
+ * 'weak'    → 1 article with <1500 chars — KB gives partial coverage;
+ *             Perplexity should still supplement
+ * 'absent'  → no articles at all
  */
 function assessKBStrength(articles) {
   if (!articles || articles.length === 0) return "absent";
   const totalChars = articles.reduce((sum, a) => sum + (a.content?.length ?? 0), 0);
-  if (articles.length >= 2 || totalChars >= 800) return "strong";
+  if (articles.length >= 2 || totalChars >= 1500) return "strong";
   return "weak";
 }
 
