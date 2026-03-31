@@ -794,13 +794,82 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     hasNotesCol   ? ", important_notes"  : "",
   ].join("");
 
-  // Extract keywords from the user question (≥3 chars, max 10 terms)
-  const keywords = userQuestion
+  // ── Indonesian stopwords — high-frequency words that add search noise ───────
+  const INDO_STOPWORDS = new Set([
+    // Question / wh-words
+    "apa","apakah","bagaimana","gimana","kenapa","mengapa","kapan","siapa","mana",
+    "dimana","kemana","berapa","gimana",
+    // Prepositions / connectors
+    "dan","atau","tapi","tetapi","namun","juga","serta","bahkan","karena","sehingga",
+    "agar","supaya","oleh","pada","dalam","antara","melalui","dengan","untuk","dari",
+    "tentang","mengenai","soal","hal",
+    // Pronouns / articles
+    "saya","aku","gue","gwa","gw","kamu","kau","elo","dia","mereka","kami","kita",
+    "ini","itu","nya",
+    // Modal / auxiliary verbs
+    "bisa","boleh","minta","tolong","mohon","harus","perlu","wajib","dapat","ada",
+    "tidak","bukan","gak","nggak","udah","sudah","belum","sedang","akan","lagi",
+    "punya","mau","ingin","pengen",
+    // Discourse fillers
+    "ya","dong","deh","sih","nih","tuh","kan","cuma","aja","saja","banget","sekali",
+    "info","tahu","tau","cara","tolong","kasih","jelasin","jelaskan",
+  ]);
+
+  // ── Masisir term aliases — maps one spelling to alternative spellings ────────
+  // When user uses any variant, all variants are searched in the KB.
+  const MASISIR_ALIASES = {
+    "iqomah":     ["iqama","igamah","izin tinggal","residence"],
+    "iqama":      ["iqomah","igamah","izin tinggal"],
+    "igamah":     ["iqomah","iqama","izin tinggal"],
+    "kbri":       ["kedutaan","kedubes","konsulat"],
+    "kedutaan":   ["kbri","kedubes"],
+    "kedubes":    ["kbri","kedutaan"],
+    "paspor":     ["passport"],
+    "passport":   ["paspor"],
+    "visa":       ["viza","izin masuk"],
+    "viza":       ["visa"],
+    "azhar":      ["al-azhar","universitas azhar"],
+    "qaid":       ["shahada","surat aktif","syahadat"],
+    "shahada":    ["qaid","syahadat"],
+    "ppmi":       ["organisasi","masisir"],
+    "kost":       ["sewa","apartemen","kontrakan"],
+    "kos":        ["sewa","apartemen","kontrakan"],
+    "sewa":       ["kost","kos","kontrakan","apartemen"],
+    "bus":        ["autobus","metro"],
+    "metro":      ["bus","autobus"],
+    "halal":      ["kuliner","makanan halal"],
+    "kuliner":    ["makanan","restoran"],
+    "makan":      ["kuliner","restoran"],
+    "transfer":   ["bayar","pembayaran","kirim uang"],
+    "rasm":       ["biaya kuliah","spp","uang kuliah"],
+    "riyal":      ["egp","pound mesir"],
+    "perpanjang": ["perpanjangan","renew","renewal"],
+    "daftar":     ["pendaftaran","registrasi","register"],
+    "kuliah":     ["akademik","kampus","perkuliahan"],
+    "rumah":      ["apartemen","sewa","kost"],
+    "muadzin":    ["mu'adzin","azan"],
+  };
+
+  // ── Extract keywords: strip stopwords → expand aliases → sort by specificity ──
+  const rawWords = userQuestion
     .toLowerCase()
     .replace(/[^\w\s]/g, " ")
     .split(/\s+/)
-    .filter(w => w.length >= 3)
-    .slice(0, 10);
+    .filter(w => w.length >= 3 && !INDO_STOPWORDS.has(w));
+
+  // Expand with Masisir aliases (multi-word phrases stay as one entry for phrase search)
+  const expandedSet = new Set(rawWords);
+  for (const w of rawWords) {
+    const aliases = MASISIR_ALIASES[w];
+    if (aliases) aliases.forEach(a => expandedSet.add(a));
+  }
+
+  // Sort: longer words first (more specific), cap at 15 to avoid query bloat
+  const keywords = [...expandedSet]
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 15);
+
+  console.log(`[KB] keywords extracted: [${keywords.join(", ")}] from "${userQuestion.slice(0, 60)}"`);
 
   // No meaningful keywords → no KB match possible → log as missing topic
   if (keywords.length === 0) {
