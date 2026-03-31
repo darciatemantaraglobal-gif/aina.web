@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+const MD_LINK = { a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a> };
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2590,7 +2591,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                           prose-em:text-muted-foreground/80
                           prose-code:text-primary prose-code:bg-secondary prose-code:px-1 prose-code:rounded prose-code:text-xs
                           prose-hr:border-border">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{art.content}</ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_LINK}>{art.content}</ReactMarkdown>
                         </div>
                       ) : (
                         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
@@ -2690,6 +2691,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 /* ─── Markdown components for chat monitor ────────────── */
 const MONITOR_MD = {
   br: () => <br />,
+  a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a>,
   p: ({ children }: any) => <p className="mb-2 last:mb-0 break-words leading-relaxed">{children}</p>,
   strong: ({ children }: any) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }: any) => <em className="italic text-muted-foreground/80">{children}</em>,

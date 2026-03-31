@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Bookmark, Trash2, BookOpen, ChevronDown, ChevronUp, Search, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
+const MD_LINK = { a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a> };
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 
@@ -90,6 +91,7 @@ function SavedAnswerCard({ item, onDelete }: { item: SavedAnswer; onDelete: (id:
         {expanded ? (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
+            components={MD_LINK}
             className="prose prose-sm prose-invert max-w-none [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_p]:text-sm [&_li]:text-sm [&_code]:text-xs"
           >
             {item.content}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+const MD_LINK = { a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a> };
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -1154,7 +1155,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                               </>
                             ) : (
                               <div className="prose prose-sm prose-invert max-w-none text-xs text-muted-foreground [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-foreground/90 [&_h2]:mt-3 [&_h2]:mb-1.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-foreground/80 [&_h3]:mt-2 [&_h3]:mb-1 [&_p]:mb-2 [&_p]:leading-relaxed [&_ul]:ml-4 [&_ul]:list-disc [&_ul]:space-y-1 [&_ol]:ml-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_li]:leading-relaxed [&_strong]:font-semibold [&_strong]:text-foreground/90">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{display.content}</ReactMarkdown>
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_LINK}>{display.content}</ReactMarkdown>
                               </div>
                             )}
                           </div>
@@ -1436,7 +1437,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                                 prose-strong:text-foreground prose-strong:font-semibold
                                 prose-code:text-primary prose-code:bg-secondary prose-code:px-1 prose-code:rounded prose-code:text-xs
                                 prose-hr:border-border">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{article.content}</ReactMarkdown>
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_LINK}>{article.content}</ReactMarkdown>
                               </div>
                             ) : (
                               <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{article.content}</p>
