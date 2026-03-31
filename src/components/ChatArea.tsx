@@ -238,7 +238,8 @@ const MD_COMPONENTS = {
     const isGoogleMaps = href && (
       href.includes("google.com/maps") ||
       href.includes("maps.google.com") ||
-      href.includes("goo.gl/maps")
+      href.includes("goo.gl/maps") ||
+      href.includes("maps.app.goo.gl")
     );
     if (isGoogleMaps) {
       const label = typeof children === "string"
