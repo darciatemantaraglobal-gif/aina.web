@@ -25,51 +25,51 @@ const FEAT_TOUR_KEYS: Record<string, string> = {
 const FEATURE_TOURS: Record<string, TourStep[]> = {
   chat: [
     {
-      title: "Chat AI ✨",
-      content: "Tanyakan apa saja ke AINA — iqomah, visa, kehidupan di Mesir, sampai bantu nulis tugas atau terjemah. AINA dilatih khusus untuk kebutuhan Masisir.",
+      title: "Chat AI — Asisten Cerdasmu 🤖",
+      content: "Tanyakan apa saja ke AINA: cara perpanjang iqama, prosedur visa, daftar Al-Azhar, terjemah dokumen, atau sekadar curhat soal kehidupan di Mesir. AINA menjawab berdasarkan Knowledge Base khusus Masisir.",
     },
     {
       target: '[data-tour="chat-input"]',
-      title: "Mulai Bertanya",
-      content: "Ketik pertanyaanmu di sini dan tekan Enter. Bisa juga upload gambar atau dokumen! Pengguna gratis dapat 3 chat/hari — jadi Kontributor untuk akses lebih banyak.",
+      title: "Kotak Pertanyaan",
+      content: "Ketik pertanyaanmu lalu tekan Enter atau klik kirim. Kamu juga bisa melampirkan gambar (JPG/PNG) atau file PDF untuk dianalisis AINA. Pengguna gratis mendapat kuota harian — daftar jadi Kontributor untuk lebih banyak.",
       delay: 400,
     },
   ],
   threads: [
     {
-      title: "Threads — Diskusi Komunitas 💬",
-      content: "Forum diskusi sesama Masisir. Tanya, jawab, dan berbagi pengalaman seputar kehidupan di Mesir. Jawaban terbaik dari komunitas bisa masuk ke Knowledge Base AINA!",
+      title: "Threads — Forum Diskusi Masisir 💬",
+      content: "Tempat tanya jawab dan berbagi pengalaman sesama Masisir. Buat thread baru, balas diskusi orang lain, atau upvote jawaban yang paling membantu. Diskusi aktif di sini bisa ikut membentuk jawaban AINA ke depannya.",
     },
   ],
   productivity: [
     {
-      title: "Ruang Produktif 📋",
-      content: "Kelola tenggat ujian & dokumen penting di satu tempat. Ada juga panduan langkah demi langkah untuk prosedur Masisir — perpanjang iqama, visa, daftar Al-Azhar, dan lainnya.",
+      title: "Ruang Produktif — 4 Tab Dalam 1 Tempat 📋",
+      content: "Ada empat tab di sini: Fokus (catat tugas harianmu, bisa dibantu AI), Dokumen (lacak tenggat iqama, visa, ujian, dll. + tanda urgenti), Prosedur (panduan langkah demi langkah untuk perpanjang iqama, visa, daftar ulang Al-Azhar, dan lainnya), dan Pengingat (catatan bebas formatmu).",
     },
   ],
   leaderboard: [
     {
-      title: "Leaderboard 🏆",
-      content: "Lihat siapa Masisir paling aktif dan bermanfaat di AINA. Semakin banyak artikel berkualitas yang kamu kontribusikan, semakin tinggi peringkat dan poinmu!",
+      title: "Leaderboard — Siapa Paling Bermanfaat? 🏆",
+      content: "Ada dua tab: Kontributor (peringkat berdasarkan jumlah artikel yang lolos review) dan Artikel (semua artikel publik yang bisa kamu baca & upvote). Semakin banyak artikel berkualitas yang kamu tulis, semakin tinggi peringkatmu!",
     },
   ],
   contributor: [
     {
       target: '[data-tour="contributor-registration"]',
       title: "Formulir Pendaftaran Kontributor",
-      content: "Isi nama, pendidikan, tahun masuk, dan bidang keahlianmu. Tuliskan juga alasan ingin berkontribusi — ini membantu admin mengenal kamu lebih baik.",
+      content: "Isi nama lengkap, pendidikan, tahun masuk, bidang keahlian, dan alasan ingin berkontribusi. Data ini membantu admin mengenal profilmu sebelum memutuskan.",
       delay: 500,
     },
     {
       target: '[data-tour="contributor-article-sample"]',
       title: "Artikel Sampel — Wajib Diisi",
-      content: "Admin akan menilai kemampuan menulismu melalui artikel sampel ini. Bisa tulis langsung di kotak teks, atau upload file PDF / DOCX / TXT. Topik bebas seputar kehidupan Masisir.",
+      content: "Tulis satu artikel contoh tentang topik Masisir (prosedur, tips, info kampus, dll.). Bisa langsung di kotak teks atau upload file PDF / DOCX / TXT. Inilah yang akan dinilai admin untuk memutuskan pendaftaranmu.",
       delay: 400,
     },
     {
       target: '[data-tour="contributor-submit"]',
       title: "Kirim Pendaftaran",
-      content: "Klik tombol ini untuk mengirim. Admin akan meninjau artikel sampelmu dan memberi keputusan, biasanya dalam 1–3 hari kerja.",
+      content: "Setelah semua terisi, klik tombol ini. Admin akan meninjau artikel sampelmu dan memberi keputusan — biasanya dalam 1–3 hari kerja. Jika disetujui, kamu langsung bisa menulis artikel untuk ribuan Masisir!",
       delay: 400,
     },
   ],
