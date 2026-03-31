@@ -580,6 +580,68 @@ async function callOpenRouter(apiKey, { messages, temperature = 0.0, max_tokens 
   return data;
 }
 
+/* ── Category resolver: exact → case-insensitive → keyword fallback ── */
+const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+const VALID_TYPES      = ["narrative", "step_by_step"];
+
+const _CAT_KEYWORDS = [
+  { cat: "Administrasi",   kw: ["administ", "visa", "iqomah", "iqama", "paspor", "dokumen", "birokrasi", "imigrasi", "kbri", "ppmi", "legalis", "apostil"] },
+  { cat: "Akademik",       kw: ["akademik", "akademis", "kuliah", "kampus", "azhar", "ujian", "imtihan", "beasiswa", "darjah", "syahadah", "nilai", "mutasi", "semester"] },
+  { cat: "Kehidupan Mesir",kw: ["kehidupan", "sehari-hari", "hidup", "budaya", "keamanan", "adaptasi", "asuransi", "kesehatan", "simcard", "banking", "perbank", "cuaca", "musim"] },
+  { cat: "Transport",      kw: ["transport", "metro", "taksi", "taxi", "uber", "careem", "bus", "microbus", "kereta", "rute", "perjalanan", "kendaraan"] },
+  { cat: "Tempat Tinggal", kw: ["tinggal", "flat", "apartemen", "sewa", "kontrakan", "furnitur", "shahibul", "beit", "rumah", "lokasi", "nasr", "hay asyir"] },
+  { cat: "Kuliner",        kw: ["kuliner", "makanan", "makan", "restoran", "warung", "masak", "resep", "menu", "kantin", "bahan makanan"] },
+  { cat: "Bahasa Arab",    kw: ["bahasa arab", "arabic", "fusha", "amiyah", "nahwu", "sharaf", "kosakata", "vocab", "dialek", "percakapan"] },
+];
+
+function resolveCategoryFromAI(rawCategory) {
+  if (!rawCategory || typeof rawCategory !== "string") return null;
+  const s = rawCategory.trim();
+  // 1. Exact match
+  if (VALID_CATEGORIES.includes(s)) return s;
+  // 2. Case-insensitive
+  const lower = s.toLowerCase();
+  const ci = VALID_CATEGORIES.find(c => c.toLowerCase() === lower);
+  if (ci) return ci;
+  // 3. Keyword scan
+  for (const { cat, kw } of _CAT_KEYWORDS) {
+    if (kw.some(k => lower.includes(k))) return cat;
+  }
+  return null;
+}
+
+function buildAutoCatPrompt(title, content) {
+  return `Kamu adalah sistem kategorisasi otomatis untuk Knowledge Base Masisir (mahasiswa Indonesia di Mesir).
+
+KATEGORI YANG TERSEDIA (gunakan PERSIS salah satu string ini):
+- "Administrasi"   → dokumen, visa, iqomah, paspor, KBRI, PPMI, imigrasi, legalisasi, apostille, KTP
+- "Akademik"       → perkuliahan, Al-Azhar, ujian (imtihan), beasiswa, darjah, syahadah, mutasi, semester
+- "Kehidupan Mesir"→ tips hidup sehari-hari, adaptasi, budaya, keamanan, kesehatan, SIM card, perbankan, cuaca
+- "Transport"      → metro Kairo, taksi, Uber, Careem, bus, microbus, kereta, rute perjalanan
+- "Tempat Tinggal" → sewa flat/apartemen, shahibul beit, Hay Asyir, Nasr City, kontrak, furnitur, listrik
+- "Kuliner"        → restoran halal, warung Indonesia, masakan Mesir, harga makanan, resep, bahan makanan
+- "Bahasa Arab"    → belajar bahasa Arab, fusha, amiyah, nahwu, sharaf, kosakata, dialek Mesir
+
+TIPE ARTIKEL:
+- "step_by_step" → ada langkah bernomor/berurutan (cara melakukan sesuatu)
+- "narrative"    → penjelasan informatif, tips umum, tidak ada urutan langkah
+
+Judul: ${(title || "").slice(0, 300)}
+Konten: ${(content || "").slice(0, 2500)}
+
+Jawab HANYA JSON tanpa teks lain:
+{"category":"<salah satu dari 7 string di atas PERSIS>","article_type":"<narrative atau step_by_step>"}`;
+}
+
+function parseAutoCatResponse(raw) {
+  if (!raw) return null;
+  // strip markdown code blocks if any
+  const cleaned = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+  const match = cleaned.match(/\{[\s\S]*?\}/);
+  if (!match) return null;
+  try { return JSON.parse(match[0]); } catch { return null; }
+}
+
 /* ── Article type column detection (cached) ──────────── */
 let _hasArticleTypeCol  = null; // null=unknown, true/false=detected
 let _hasKeywordsCol     = null;
@@ -4135,67 +4197,34 @@ app.post("/api/admin/articles/auto-categorize/selected", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   if (!articles?.length) return res.json({ updated: 0, errors: 0, results: [] });
 
-  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
-  const VALID_TYPES = ["narrative", "step_by_step"];
-
   const results = [];
   let updated = 0, errors = 0;
 
   for (const art of articles) {
     try {
-      const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
-
-PANDUAN KATEGORI:
-1. ADMINISTRASI: iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, SIM internasional, birokrasi, imigrasi, KBRI, PPMI
-2. AKADEMIK: perkuliahan Al-Azhar/universitas Mesir, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, cara belajar ujian
-3. KEHIDUPAN MESIR: tips hidup sehari-hari, budaya, keamanan, belanja pokok, fasilitas kesehatan, sim card, perbankan, adaptasi, musim/cuaca
-4. TRANSPORT: metro Kairo, taksi (Uber/Careem), bus, microbus, kereta api Mesir, rute perjalanan, biaya transport, apps transportasi
-5. TEMPAT TINGGAL: sewa flat/apartemen, lokasi (Hay Asyir, Nasr City, dll), harga sewa, kontrak, pindah flat, furnitur, listrik/air, shahibul beit
-6. KULINER: restoran halal, warung/kantin Indonesia, masakan lokal Mesir, harga makanan, resep, tempat makan, bahan makanan
-7. BAHASA ARAB: belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir, tips belajar bahasa Arab
-
-TIPE: step_by_step = ada urutan langkah bernomor/berurutan | narrative = penjelasan informatif, tips umum
-
-Judul: ${art.title.slice(0, 300)}
-Konten: ${(art.content || "").slice(0, 3000)}
-
-Jawab HANYA dalam format JSON:
-{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
-
-      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://ainalabs.pro",
-          "X-Title": "AINA SelAutoCat",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.0,
-          max_tokens: 80,
-        }),
-        signal: AbortSignal.timeout(15_000),
+      const prompt = buildAutoCatPrompt(art.title, art.content);
+      const data = await callOpenRouter(apiKey, {
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.0,
+        max_tokens: 80,
+        timeoutMs: 20_000,
+        label: "SelAutoCat",
       });
-
-      if (resp.ok) {
-        const data = await resp.json();
-        const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (match) {
-          const parsed = JSON.parse(match[0]);
-          const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
-          const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
-          if (newCategory) {
-            const update = { category: newCategory };
-            if (newType) update.article_type = newType;
-            await supabase.from("knowledge_base").update(update).eq("id", art.id);
-            results.push({ id: art.id, category: newCategory, article_type: newType });
-            updated++;
-          } else { errors++; results.push({ id: art.id, error: "invalid category" }); }
-        } else { errors++; results.push({ id: art.id, error: "parse error" }); }
-      } else { errors++; results.push({ id: art.id, error: "api error" }); }
+      const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+      const parsed = parseAutoCatResponse(raw);
+      const newCategory = resolveCategoryFromAI(parsed?.category);
+      const newType = VALID_TYPES.includes(parsed?.article_type) ? parsed.article_type : null;
+      if (newCategory) {
+        const update = { category: newCategory };
+        if (newType) update.article_type = newType;
+        await supabase.from("knowledge_base").update(update).eq("id", art.id);
+        results.push({ id: art.id, category: newCategory, article_type: newType });
+        updated++;
+      } else {
+        console.warn("[SelAutoCat] rejected:", art.id, "AI cat:", parsed?.category);
+        errors++;
+        results.push({ id: art.id, error: "kategori tidak valid: " + parsed?.category });
+      }
     } catch (e) { errors++; results.push({ id: art.id, error: String(e) }); }
     await new Promise(r => setTimeout(r, 250));
   }
@@ -4217,27 +4246,7 @@ app.post("/api/admin/articles/:id/auto-categorize", async (req, res) => {
     .from("knowledge_base").select("id, title, content, category").eq("id", id).single();
   if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
 
-  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
-  const VALID_TYPES = ["narrative", "step_by_step"];
-
-  const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
-
-PANDUAN KATEGORI:
-1. ADMINISTRASI: iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, SIM internasional, birokrasi, imigrasi, KBRI, PPMI
-2. AKADEMIK: perkuliahan Al-Azhar/universitas Mesir, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, cara belajar ujian
-3. KEHIDUPAN MESIR: tips hidup sehari-hari, budaya, keamanan, belanja pokok, fasilitas kesehatan, sim card, perbankan, adaptasi, musim/cuaca
-4. TRANSPORT: metro Kairo, taksi (Uber/Careem), bus, microbus, kereta api Mesir, rute perjalanan, biaya transport, apps transportasi
-5. TEMPAT TINGGAL: sewa flat/apartemen, lokasi (Hay Asyir, Nasr City, dll), harga sewa, kontrak, pindah flat, furnitur, listrik/air, shahibul beit
-6. KULINER: restoran halal, warung/kantin Indonesia, masakan lokal Mesir, harga makanan, resep, tempat makan, bahan makanan
-7. BAHASA ARAB: belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir, tips belajar bahasa Arab
-
-TIPE: step_by_step = ada urutan langkah bernomor/berurutan | narrative = penjelasan informatif, tips umum
-
-Judul: ${art.title.slice(0, 300)}
-Konten: ${(art.content || "").slice(0, 3000)}
-
-Jawab HANYA dalam format JSON:
-{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
+  const prompt = buildAutoCatPrompt(art.title, art.content);
 
   try {
     const data = await callOpenRouter(apiKey, {
@@ -4248,12 +4257,13 @@ Jawab HANYA dalam format JSON:
       label: "AutoCat",
     });
     const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return res.status(502).json({ error: "Gagal parse respons AI" });
-    const parsed = JSON.parse(match[0]);
-    const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
-    const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
-    if (!newCategory) return res.status(502).json({ error: "Kategori tidak valid dari AI: " + parsed.category });
+    const parsed = parseAutoCatResponse(raw);
+    const newCategory = resolveCategoryFromAI(parsed?.category);
+    const newType = VALID_TYPES.includes(parsed?.article_type) ? parsed.article_type : null;
+    if (!newCategory) {
+      console.warn("[AutoCat] rejected AI category:", parsed?.category, "| raw:", raw.slice(0, 200));
+      return res.status(502).json({ error: "Kategori tidak dapat diidentifikasi dari AI" });
+    }
 
     const update = { category: newCategory };
     if (newType) update.article_type = newType;
@@ -4953,33 +4963,13 @@ app.post("/api/admin/articles/auto-categorize/bulk", async (req, res) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
 
-  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
-  const VALID_TYPES = ["narrative", "step_by_step"];
-
   _autoCatState = { running: true, total: articles.length, processed: 0, updated: 0, errors: 0, startedAt: new Date().toISOString(), completedAt: null };
   res.json({ started: true, total: articles.length });
 
   // Run in background
   let processed = 0, updated = 0, errors = 0;
   for (const art of articles) {
-    const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
-
-PANDUAN KATEGORI:
-1. ADMINISTRASI: iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, SIM internasional, birokrasi, imigrasi, KBRI, PPMI
-2. AKADEMIK: perkuliahan Al-Azhar/universitas Mesir, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, cara belajar ujian
-3. KEHIDUPAN MESIR: tips hidup sehari-hari, budaya, keamanan, belanja pokok, fasilitas kesehatan, sim card, perbankan, adaptasi, musim/cuaca
-4. TRANSPORT: metro Kairo, taksi (Uber/Careem), bus, microbus, kereta api Mesir, rute perjalanan, biaya transport, apps transportasi
-5. TEMPAT TINGGAL: sewa flat/apartemen, lokasi (Hay Asyir, Nasr City, dll), harga sewa, kontrak, pindah flat, furnitur, listrik/air, shahibul beit
-6. KULINER: restoran halal, warung/kantin Indonesia, masakan lokal Mesir, harga makanan, resep, tempat makan, bahan makanan
-7. BAHASA ARAB: belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir, tips belajar bahasa Arab
-
-TIPE: step_by_step = ada urutan langkah bernomor/berurutan | narrative = penjelasan informatif, tips umum
-
-Judul: ${art.title.slice(0, 300)}
-Konten: ${(art.content || "").slice(0, 3000)}
-
-Jawab HANYA dalam format JSON:
-{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
+    const prompt = buildAutoCatPrompt(art.title, art.content);
 
     try {
       const data = await callOpenRouter(apiKey, {
@@ -4990,18 +4980,18 @@ Jawab HANYA dalam format JSON:
         label: "BulkAutoCat",
       });
       const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
-        const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
-        if (newCategory) {
-          const update = { category: newCategory };
-          if (newType) update.article_type = newType;
-          await supabase.from("knowledge_base").update(update).eq("id", art.id);
-          updated++;
-        } else { errors++; }
-      } else { errors++; }
+      const parsed = parseAutoCatResponse(raw);
+      const newCategory = resolveCategoryFromAI(parsed?.category);
+      const newType = VALID_TYPES.includes(parsed?.article_type) ? parsed.article_type : null;
+      if (newCategory) {
+        const update = { category: newCategory };
+        if (newType) update.article_type = newType;
+        await supabase.from("knowledge_base").update(update).eq("id", art.id);
+        updated++;
+      } else {
+        console.warn("[BulkAutoCat] rejected:", art.id, "AI cat:", parsed?.category);
+        errors++;
+      }
     } catch (aiErr) {
       console.error("[BulkAutoCat] article", art.id, aiErr.message);
       errors++;
@@ -5886,88 +5876,47 @@ app.post("/api/articles/auto-categorize", async (req, res) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
 
-  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
-  const VALID_TYPES = ["narrative", "step_by_step"];
-
   const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tugasmu adalah menentukan kategori dan tipe artikel yang PALING TEPAT berdasarkan seluruh konteks yang tersedia.
 
-═══ PANDUAN KATEGORI (baca dengan teliti) ═══
+═══ KATEGORI YANG TERSEDIA (gunakan PERSIS salah satu string ini) ═══
 
-1. ADMINISTRASI
-   Topik: iqomah, visa, paspor, dokumen resmi pemerintah Mesir/Indonesia, legalisasi, apostille, KTP, SIM internasional, surat keterangan, birokrasi, imigrasi, KBRI, PPMI, pendaftaran resmi kependudukan
-   BUKAN administrasi: hal akademik, transportasi, atau biaya hidup umum
-
-2. AKADEMIK
-   Topik: perkuliahan di Al-Azhar/universitas Mesir, pendaftaran semester/tahun ajaran, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, kutub dars, fakultas, jurusan, wisuda, cara belajar untuk ujian Al-Azhar
-   BUKAN akademik: hal administrasi kependudukan atau kehidupan sehari-hari
-
-3. KEHIDUPAN MESIR
-   Topik: tips hidup sehari-hari di Mesir, budaya setempat, keamanan, belanja kebutuhan pokok, fasilitas kesehatan (rumah sakit/klinik), sim card/internet, laundry, perbankan, rekreasi, adaptasi budaya, musim/cuaca, hal-hal yang tidak masuk kategori lain
-   Ini adalah kategori "serba-serbi" kehidupan di Mesir yang tidak spesifik transport/kuliner/tempat tinggal
-
-4. TRANSPORT
-   Topik: metro Kairo, taksi (Uber/Careem/konvensional), bus, microbus, kereta api Mesir, rute perjalanan antar kota, perjalanan ke bandara, biaya transport, cara naik metro, apps transportasi
-   BUKAN transport: biaya hidup umum atau perjalanan wisata
-
-5. TEMPAT TINGGAL
-   Topik: sewa flat/apartemen, lokasi tempat tinggal mahasiswa (Hay Asyir, Abbasiyah, Nasr City, dll), harga sewa, kontrak sewa, mencari flat, pindah flat, furnitur, listrik/air flat, permasalahan dengan pemilik flat (shahibul beit)
-   BUKAN tempat tinggal: biaya makan atau transportasi
-
-6. KULINER
-   Topik: restoran halal, warung/kantin Indonesia di Mesir, masakan lokal Mesir yang bisa dimakan, harga makanan, resep masakan, tempat makan mahasiswa, tips belanja bahan makanan
-   BUKAN kuliner: belanja kebutuhan non-makanan
-
-7. BAHASA ARAB
-   Topik: belajar bahasa Arab (fusha/amiyah Mesir), kosakata, tata bahasa (nahwu/sharaf), percakapan sehari-hari, tips belajar bahasa Arab, kamus, dialek Mesir, ungkapan sehari-hari
-   BUKAN bahasa Arab: konten yang kebetulan berbahasa Arab tapi topiknya bukan tentang belajar bahasa Arab
+"Administrasi"    → iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, birokrasi, imigrasi, KBRI, PPMI
+"Akademik"        → perkuliahan Al-Azhar/universitas Mesir, ujian (imtihan), beasiswa, darjah, syahadah, mutasi, cara belajar
+"Kehidupan Mesir" → tips hidup sehari-hari, budaya, keamanan, kesehatan, sim card, perbankan, adaptasi, cuaca (hal serba-serbi di Mesir)
+"Transport"       → metro Kairo, taksi (Uber/Careem), bus, microbus, kereta, rute perjalanan, biaya transport
+"Tempat Tinggal"  → sewa flat/apartemen, Hay Asyir, Nasr City, kontrak, pindah flat, furnitur, shahibul beit
+"Kuliner"         → restoran halal, warung Indonesia, masakan Mesir, harga makanan, resep, bahan makanan
+"Bahasa Arab"     → belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir
 
 ═══ TIPE ARTIKEL ═══
-- step_by_step: ada urutan langkah (1, 2, 3... / pertama, kedua...), panduan prosedur, cara melakukan sesuatu yang berurutan
-- narrative: penjelasan informatif, deskriptif, tips umum, ulasan, tanpa urutan langkah ketat
-
-═══ CARA MEMUTUSKAN ═══
-1. Baca JUDUL terlebih dahulu — judul biasanya sudah sangat menentukan
-2. Baca KONTEN untuk konfirmasi dan konteks tambahan
-3. Jika ada dua kategori yang mungkin, pilih yang LEBIH SPESIFIK
-4. Untuk tipe: jika ada minimal 2 langkah bernomor/berurutan → step_by_step
+"step_by_step" → ada urutan langkah bernomor (1,2,3... / pertama, kedua...), panduan prosedur
+"narrative"    → penjelasan informatif, tips umum, tanpa urutan langkah ketat
 
 Judul: ${title.slice(0, 300)}
 Konten: ${content.slice(0, 4000)}
 
-Jawab HANYA dalam format JSON berikut tanpa teks lain:
-{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>","reason":"<1 kalimat singkat alasan memilih kategori ini>"}`;
+Jawab HANYA JSON tanpa teks lain:
+{"category":"<salah satu dari 7 string di atas PERSIS>","article_type":"<narrative atau step_by_step>","reason":"<1 kalimat singkat alasan>"}`;
 
   try {
-    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://ainalabs.pro",
-        "X-Title": "AINA Auto Categorize",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.0,
-        max_tokens: 200,
-      }),
-      signal: AbortSignal.timeout(12_000),
+    const data = await callOpenRouter(apiKey, {
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.0,
+      max_tokens: 200,
+      timeoutMs: 20_000,
+      label: "AutoCategorize",
     });
-
-    if (!resp.ok) return res.status(502).json({ error: "AI tidak merespons, coba lagi" });
-
-    const data = await resp.json();
     const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+    const parsed = parseAutoCatResponse(raw);
+    if (!parsed) return res.status(502).json({ error: "Respons AI tidak valid, coba lagi" });
 
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return res.status(502).json({ error: "Respons AI tidak valid, coba lagi" });
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    const category = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
+    const category = resolveCategoryFromAI(parsed.category);
     const article_type = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : "narrative";
 
-    if (!category) return res.status(422).json({ error: "AI tidak bisa menentukan kategori — tambah lebih banyak konten" });
+    if (!category) {
+      console.warn("[AutoCategorize] rejected:", parsed.category, "| raw:", raw.slice(0, 150));
+      return res.status(422).json({ error: "AI tidak bisa menentukan kategori — tambah lebih banyak konten" });
+    }
 
     res.json({ category, article_type, reason: parsed.reason ?? "" });
   } catch (err) {
