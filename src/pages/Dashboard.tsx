@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense, Component, ReactNode, useCallback } from "react";
+import { useState, useEffect, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import ChatArea from "@/components/ChatArea";
@@ -12,7 +12,68 @@ import { supabase } from "@/integrations/supabase/client";
 import { Menu, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-const TOUR_KEY = "aina_tour_seen_v1";
+// Per-feature tour storage keys (each feature has its own first-visit tracking)
+const FEAT_TOUR_KEYS: Record<string, string> = {
+  chat:         "aina_feat_tour_chat_v1",
+  threads:      "aina_feat_tour_threads_v1",
+  productivity: "aina_feat_tour_productivity_v1",
+  leaderboard:  "aina_feat_tour_leaderboard_v1",
+  contributor:  "aina_feat_tour_contributor_v1",
+};
+
+// Per-feature tour step definitions (static — no component-level callbacks needed)
+const FEATURE_TOURS: Record<string, TourStep[]> = {
+  chat: [
+    {
+      title: "Chat AI ✨",
+      content: "Tanyakan apa saja ke AINA — iqomah, visa, kehidupan di Mesir, sampai bantu nulis tugas atau terjemah. AINA dilatih khusus untuk kebutuhan Masisir.",
+    },
+    {
+      target: '[data-tour="chat-input"]',
+      title: "Mulai Bertanya",
+      content: "Ketik pertanyaanmu di sini dan tekan Enter. Bisa juga upload gambar atau dokumen! Pengguna gratis dapat 3 chat/hari — jadi Kontributor untuk akses lebih banyak.",
+      delay: 400,
+    },
+  ],
+  threads: [
+    {
+      title: "Threads — Diskusi Komunitas 💬",
+      content: "Forum diskusi sesama Masisir. Tanya, jawab, dan berbagi pengalaman seputar kehidupan di Mesir. Jawaban terbaik dari komunitas bisa masuk ke Knowledge Base AINA!",
+    },
+  ],
+  productivity: [
+    {
+      title: "Ruang Produktif 📋",
+      content: "Kelola tenggat ujian & dokumen penting di satu tempat. Ada juga panduan langkah demi langkah untuk prosedur Masisir — perpanjang iqama, visa, daftar Al-Azhar, dan lainnya.",
+    },
+  ],
+  leaderboard: [
+    {
+      title: "Leaderboard 🏆",
+      content: "Lihat siapa Masisir paling aktif dan bermanfaat di AINA. Semakin banyak artikel berkualitas yang kamu kontribusikan, semakin tinggi peringkat dan poinmu!",
+    },
+  ],
+  contributor: [
+    {
+      target: '[data-tour="contributor-registration"]',
+      title: "Formulir Pendaftaran Kontributor",
+      content: "Isi nama, pendidikan, tahun masuk, dan bidang keahlianmu. Tuliskan juga alasan ingin berkontribusi — ini membantu admin mengenal kamu lebih baik.",
+      delay: 500,
+    },
+    {
+      target: '[data-tour="contributor-article-sample"]',
+      title: "Artikel Sampel — Wajib Diisi",
+      content: "Admin akan menilai kemampuan menulismu melalui artikel sampel ini. Bisa tulis langsung di kotak teks, atau upload file PDF / DOCX / TXT. Topik bebas seputar kehidupan Masisir.",
+      delay: 400,
+    },
+    {
+      target: '[data-tour="contributor-submit"]',
+      title: "Kirim Pendaftaran",
+      content: "Klik tombol ini untuk mengirim. Admin akan meninjau artikel sampelmu dan memberi keputusan, biasanya dalam 1–3 hari kerja.",
+      delay: 400,
+    },
+  ],
+};
 
 class TabErrorBoundary extends Component<
   { children: ReactNode; tabName: string },
@@ -107,6 +168,8 @@ const Dashboard = () => {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
   const [showTour, setShowTour] = useState(false);
+  const [activeTourSteps, setActiveTourSteps] = useState<TourStep[]>([]);
+  const [activeTourKey, setActiveTourKey] = useState<string>("");
 
   // Persist last active chat across page reloads
   useEffect(() => {
@@ -282,104 +345,44 @@ const Dashboard = () => {
     setActiveChatId((id) => (id === chatId ? null : id));
   }, []);
 
+  // Trigger the per-feature tour for a given tab.
+  // `force = true` bypasses the "already seen" check (used by the sidebar button).
+  const triggerFeatureTour = useCallback((tab: string, force = false) => {
+    const steps = FEATURE_TOURS[tab];
+    const key   = FEAT_TOUR_KEYS[tab];
+    if (!steps || !key) return;
+    if (!force && localStorage.getItem(key)) return; // already seen
+    setActiveTourSteps(steps);
+    setActiveTourKey(key);
+    const delay = tab === "contributor" ? 800 : 600;
+    setTimeout(() => setShowTour(true), delay);
+  }, []);
+
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
     setSidebarOpen(false);
-  }, []);
+    triggerFeatureTour(tab);
+  }, [triggerFeatureTour]);
 
   const handleGoContributor = useCallback(() => {
     setActiveTab("contributor");
     setSidebarOpen(false);
-  }, []);
+    triggerFeatureTour("contributor");
+  }, [triggerFeatureTour]);
 
-  const handleStartTour = useCallback(() => {
-    setShowTour(true);
-  }, []);
+  // Show the tour for the initial tab on first-ever load (e.g. chat).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { triggerFeatureTour(initialTab); }, []);
 
   const handleTourComplete = useCallback(() => {
-    localStorage.setItem(TOUR_KEY, "1");
+    if (activeTourKey) localStorage.setItem(activeTourKey, "1");
     setShowTour(false);
-  }, []);
+  }, [activeTourKey]);
 
-  const tourSteps = useMemo<TourStep[]>(() => [
-    {
-      title: "Selamat datang di AINA! 👋",
-      content: "AINA adalah asisten AI khusus untuk Masisir — mahasiswa Indonesia di Mesir. Yuk, kenalan sama fitur-fitur utamanya dalam 1 menit!",
-    },
-    {
-      target: '[data-tour="nav-chat"]',
-      title: "Chat AI",
-      content: "Tanyakan apa saja ke AINA — info kampus Al-Azhar, visa, kehidupan di Mesir, sampai bantu nulis tugas atau terjemah. AINA dilatih khusus untuk kebutuhan Masisir.",
-      onBefore: () => setSidebarOpen(true),
-      delay: 600,
-    },
-    {
-      target: '[data-tour="chat-input"]',
-      title: "Mulai Bertanya",
-      content: "Ketik pertanyaanmu di sini dan tekan Enter. Bisa juga upload gambar atau dokumen! Pengguna gratis dapat 3 chat/hari — jadi Kontributor untuk lebih banyak.",
-      onBefore: () => setSidebarOpen(false),
-      delay: 500,
-    },
-    {
-      target: '[data-tour="nav-threads"]',
-      title: "Threads — Diskusi Komunitas",
-      content: "Forum diskusi sesama Masisir. Tanya, jawab, dan berbagi pengalaman. Jawaban terbaik dari komunitas bisa masuk ke knowledge base AINA!",
-      onBefore: () => setSidebarOpen(true),
-      delay: 600,
-    },
-    {
-      target: '[data-tour="nav-productivity"]',
-      title: "Ruang Produktif",
-      content: "Kelola tenggat waktu ujian & dokumen penting, plus panduan langkah demi langkah untuk prosedur umum Masisir — perpanjang iqama, visa, pendaftaran Al-Azhar, dan lainnya.",
-      onBefore: () => setSidebarOpen(true),
-      delay: 600,
-    },
-    {
-      target: '[data-tour="nav-leaderboard"]',
-      title: "Leaderboard",
-      content: "Lihat siapa Masisir paling aktif dan bermanfaat di AINA. Semakin banyak kontribusimu, semakin tinggi peringkat dan semakin besar manfaatnya!",
-      onBefore: () => setSidebarOpen(true),
-      delay: 600,
-    },
-    {
-      target: '[data-tour="nav-contributor"]',
-      title: "Jadi Kontributor",
-      content: "Kontributor AINA dapat akses chat lebih banyak, badge eksklusif, dan ikut membangun knowledge base untuk seluruh Masisir. Yuk, lihat cara daftarnya!",
-      onBefore: () => setSidebarOpen(true),
-      delay: 600,
-    },
-    {
-      target: '[data-tour="contributor-registration"]',
-      title: "Formulir Pendaftaran Kontributor",
-      content: "Isi nama, pendidikan, tahun masuk, dan bidang keahlianmu. Tuliskan juga alasan ingin berkontribusi — ini membantu admin mengenal kamu lebih baik.",
-      onBefore: () => { setActiveTab("contributor"); setSidebarOpen(false); },
-      delay: 900,
-    },
-    {
-      target: '[data-tour="contributor-article-sample"]',
-      title: "Artikel Sampel — Wajib Diisi",
-      content: "Admin akan menilai kemampuan menulismu melalui artikel sampel ini. Bisa tulis langsung di kotak teks, atau upload file PDF / DOCX / TXT. Topik bebas — seputar kehidupan Masisir di Mesir.",
-      delay: 400,
-    },
-    {
-      target: '[data-tour="contributor-submit"]',
-      title: "Kirim Pendaftaran",
-      content: "Klik tombol ini untuk mengirim pendaftaranmu. Admin akan meninjau artikel sampelmu dan memberi keputusan. Biasanya dalam 1–3 hari kerja. Kamu akan diberi tahu hasilnya.",
-      delay: 400,
-    },
-    {
-      target: '[data-tour="contributor-write-area"]',
-      title: "Upload Artikel (Setelah Jadi Kontributor)",
-      content: "Setelah disetujui, kamu bisa: ① Klik 'Tulis Artikel' untuk nulis langsung di editor, atau ② 'Upload PDF / Dokumen' untuk upload file — AI akan otomatis membaca dan mengkategorikan isinya! Artikel yang lolos review admin langsung masuk Knowledge Base AINA.",
-      delay: 400,
-    },
-    {
-      title: "Siap Menjelajahi AINA! 🚀",
-      content: "Itu semua fitur utama AINA. Kalau mau ulangi panduan ini kapan saja, klik 'Panduan Fitur' di bagian bawah sidebar. Selamat belajar dan berkontribusi!",
-      onBefore: () => { setActiveTab("chat"); setSidebarOpen(false); },
-    },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  // Sidebar "Panduan Fitur" button — replays the current tab's tour
+  const handleStartTour = useCallback(() => {
+    triggerFeatureTour(activeTab, true);
+  }, [activeTab, triggerFeatureTour]);
 
   if (!authReady) {
     return (
@@ -535,9 +538,9 @@ const Dashboard = () => {
       )}
       <FeedbackButton />
       {!showSetup && <AnnouncementPopup />}
-      {showTour && (
+      {showTour && activeTourSteps.length > 0 && (
         <GuidedTour
-          steps={tourSteps}
+          steps={activeTourSteps}
           onComplete={handleTourComplete}
           onSkip={handleTourComplete}
         />
