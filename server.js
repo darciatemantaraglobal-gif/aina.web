@@ -397,33 +397,32 @@ function logMissingTopic(query, intentType) {
     .catch(() => {});
 }
 
+/* ── User Notes (Supabase) ────────────────────────────────────────────────────
+ * Table must exist in Supabase. If missing, run once in Supabase SQL Editor:
+ *
+ *  CREATE TABLE IF NOT EXISTS public.user_notes (
+ *    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ *    user_id     UUID NOT NULL,
+ *    title       TEXT NOT NULL DEFAULT 'Catatan Baru',
+ *    format      TEXT NOT NULL DEFAULT 'note'
+ *                CHECK (format IN ('todo', 'checklist', 'note')),
+ *    content     TEXT,
+ *    items       JSONB DEFAULT '[]'::jsonb,
+ *    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+ *    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+ *  );
+ *  CREATE INDEX IF NOT EXISTS idx_user_notes_user
+ *    ON public.user_notes(user_id, updated_at DESC);
+ * ─────────────────────────────────────────────────────────────────────────── */
 async function initUserNotes() {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) return;
-  let client;
-  try {
-    const { Client } = await import("pg");
-    client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    await client.connect();
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS user_notes (
-        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id     UUID NOT NULL,
-        title       TEXT NOT NULL DEFAULT 'Catatan Baru',
-        format      TEXT NOT NULL DEFAULT 'note' CHECK (format IN ('todo', 'checklist', 'note')),
-        content     TEXT,
-        items       JSONB DEFAULT '[]'::jsonb,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
-      CREATE INDEX IF NOT EXISTS idx_user_notes_user ON user_notes(user_id, created_at DESC);
-    `);
-    console.log("User notes: table ready");
-  } catch (e) {
-    console.warn("User notes init warning:", e.message);
-  } finally {
-    if (client) await client.end().catch(() => {});
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const { error } = await supabase.from("user_notes").select("id").limit(1);
+  if (error && (error.code === "42P01" || error.message?.includes("does not exist") || error.code === "PGRST205")) {
+    console.warn("[UserNotes] ⚠ table missing in Supabase — run the SQL in the comment above initUserNotes() in server.js.");
+    return;
   }
+  console.log("User notes: table ready");
 }
 initUserNotes();
 
