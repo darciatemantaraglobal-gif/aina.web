@@ -16,7 +16,7 @@ import {
   Link2, Loader2, Wand2,
 } from "lucide-react";
 
-const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa"];
 const articleTypes = [
   { value: "narrative", label: "Informasi Umum", desc: "Penjelasan/narasi tentang topik tertentu" },
   { value: "step_by_step", label: "Panduan Langkah-langkah", desc: "Prosedur yang bisa langsung diikuti" },
@@ -753,7 +753,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     <Input placeholder="Nama lengkap" value={regName} onChange={(e) => setRegName(e.target.value)} className="bg-secondary" />
                     <Input placeholder="Pendidikan (misal: S1 Syariah Al-Azhar)" value={regEdu} onChange={(e) => setRegEdu(e.target.value)} className="bg-secondary" />
                     <Input placeholder="Tahun masuk (misal: 2022)" value={regYear} onChange={(e) => setRegYear(e.target.value)} className="bg-secondary" />
-                    <Input placeholder="Bidang/keahlian (misal: Administrasi, Bahasa Arab)" value={regExpertise} onChange={(e) => setRegExpertise(e.target.value)} className="bg-secondary" />
+                    <Input placeholder="Bidang/keahlian (misal: Administrasi, Bahasa)" value={regExpertise} onChange={(e) => setRegExpertise(e.target.value)} className="bg-secondary" />
                   </div>
 
                   <textarea

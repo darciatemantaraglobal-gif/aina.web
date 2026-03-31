@@ -69,7 +69,7 @@ const CATEGORIES = [
   { label: "Transport",      value: "Transport" },
   { label: "Tempat Tinggal", value: "Tempat Tinggal" },
   { label: "Kuliner",        value: "Kuliner" },
-  { label: "Bahasa Arab",    value: "Bahasa Arab" },
+  { label: "Bahasa",         value: "Bahasa" },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -79,7 +79,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Transport:         "bg-yellow-500/15 text-yellow-400",
   "Tempat Tinggal":  "bg-orange-500/15 text-orange-400",
   Kuliner:           "bg-pink-500/15 text-pink-400",
-  "Bahasa Arab":     "bg-teal-500/15 text-teal-400",
+  Bahasa:            "bg-teal-500/15 text-teal-400",
 };
 
 const CATEGORY_CHIP_ACTIVE: Record<string, string> = {
@@ -89,7 +89,7 @@ const CATEGORY_CHIP_ACTIVE: Record<string, string> = {
   Transport:         "bg-yellow-500/25 text-yellow-300 border-yellow-500/40",
   "Tempat Tinggal":  "bg-orange-500/25 text-orange-300 border-orange-500/40",
   Kuliner:           "bg-pink-500/25 text-pink-300 border-pink-500/40",
-  "Bahasa Arab":     "bg-teal-500/25 text-teal-300 border-teal-500/40",
+  Bahasa:            "bg-teal-500/25 text-teal-300 border-teal-500/40",
 };
 
 /* ─── Highlight helper ───────────────────────────────── */
