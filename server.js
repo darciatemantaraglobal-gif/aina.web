@@ -4355,7 +4355,11 @@ app.post("/api/admin/articles/:id/auto-categorize", async (req, res) => {
 
     const update = { category: newCategory };
     if (newType) update.article_type = newType;
-    await supabase.from("knowledge_base").update(update).eq("id", id);
+    const { error: dbErr } = await supabase.from("knowledge_base").update(update).eq("id", id);
+    if (dbErr) {
+      console.error("[AutoCat single] DB update failed:", dbErr.message, "| category:", newCategory);
+      return res.status(500).json({ error: `DB update gagal: ${dbErr.message}` });
+    }
     return res.json({ success: true, id, category: newCategory, article_type: newType });
   } catch (e) {
     console.error("[auto-categorize single]", e);
@@ -9016,6 +9020,16 @@ async function runColumnMigrations() {
       confidence TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );`,
+    // Fix: "Bahasa" category was added after the initial schema.
+    // Step 1: drop old constraints (which don't include "Bahasa" or "Bahasa Arab")
+    "ALTER TABLE public.knowledge_base DROP CONSTRAINT IF EXISTS knowledge_base_category_check;",
+    "ALTER TABLE public.threads DROP CONSTRAINT IF EXISTS threads_category_check;",
+    // Step 2: migrate any existing "Bahasa Arab" rows (old label) to the new "Bahasa" label
+    "UPDATE public.knowledge_base SET category = 'Bahasa' WHERE category = 'Bahasa Arab';",
+    "UPDATE public.threads SET category = 'Bahasa' WHERE category = 'Bahasa Arab';",
+    // Step 3: add updated constraints that include "Bahasa"
+    "ALTER TABLE public.knowledge_base ADD CONSTRAINT knowledge_base_category_check CHECK (category IN ('Administrasi', 'Akademik', 'Kehidupan Mesir', 'Transport', 'Tempat Tinggal', 'Kuliner', 'Bahasa'));",
+    "ALTER TABLE public.threads ADD CONSTRAINT threads_category_check CHECK (category IN ('Administrasi', 'Akademik', 'Kehidupan Mesir', 'Transport', 'Tempat Tinggal', 'Kuliner', 'Bahasa'));",
   ];
   let succeeded = 0;
   for (const sql of migrations) {
