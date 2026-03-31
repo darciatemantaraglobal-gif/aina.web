@@ -102,6 +102,18 @@ export function detectIntent(text) {
 
   const isFiqhIntent = !isArabicWriting && isFiqhQuery(text);
 
+  // Vague/general question detection — triggers AINA to ask ONE clarifying question first.
+  // Fires when:
+  //   (a) user uses an "open invitation" phrase (ceritain, sharing, pengen tau, dll.) AND
+  //   (b) topic is broad/general (mesir, masisir, azhar, kehidupan, dll.) AND
+  //   (c) no specific narrowing keyword is present (biaya, cara, syarat, dll.) AND
+  //   (d) no more specific intent already matched.
+  const hasVagueInvite = /\b(ceritain|cerita dong|cerita dikit|sharing dong|sharing dikit|sharing soal|kasih tau|kasih tahu|pengen tau|pengen tahu|mau tau|mau tahu|bisa dijelasin|bisa cerita|bisa ceritain|gimana ya|gimana sih|kayak gimana|seperti apa sih|gimana itu|ngomong-ngomong soal|ada info|ada yang bisa jelasin|bisa jelasin)\b/.test(t);
+  const hasBroadMasisirTopic = /\b(mesir|masisir|kairo|cairo|azhar|al-azhar|al azhar|kehidupan|hidup di|kuliah di|studi di|jadi masisir|selama di mesir|pas di mesir|di mesir|di kairo|dunia kuliah|perkuliahan|kehidupan mahasiswa|sebagai masisir|jadi mahasiswa)\b/.test(t);
+  const hasSpecificNarrow = /\b(biaya|harga|syarat|cara|berapa|di mana|dimana|kapan|siapa|dokumen|prosedur|langkah|alamat|kontak|tanggal|jadwal|semester|nilai|ipk|kelas|mata kuliah|dosen|ujian|exam|iqomah|paspor|visa|voa|tiket|penerbangan|apartemen|kost|sewa|makanan|kuliner|restoran|masjid|bank|atm|sim card|transportasi|bis|bus|metro|taxi|ongkos|tarif)\b/.test(t);
+  const isVagueGeneral = hasVagueInvite && hasBroadMasisirTopic && !hasSpecificNarrow &&
+    !isProcedural && !isFiqhIntent && !isRecommend && !isConfused;
+
   // Priority resolution
   let primary;
   if (isArabicWriting)              primary = "arabic_writing";
@@ -111,6 +123,7 @@ export function detectIntent(text) {
   else if (isProcedural)            primary = "procedural";
   else if (isRecommend)             primary = "recommendation";
   else if (isBrainstorm)            primary = "brainstorming";
+  else if (isVagueGeneral)          primary = "vague_general";
   else                              primary = "factual";
 
   return { primary, casual: isCasual };
@@ -197,6 +210,15 @@ export function buildIntentHint({ primary, casual }) {
       "- Terlalu formal atau terstruktur seperti laporan\n" +
       "- Frasa robot: 'tentu saja!', 'pastinya!', 'dengan senang hati!', 'sebagai AI...'\n" +
       "Panjang ideal: 2-4 kalimat mengalir. Sesekali lebih panjang kalau topiknya seru.",
+
+    vague_general:
+      "Pertanyaan ini terlalu umum — satu topik bisa mencakup puluhan aspek yang berbeda. " +
+      "Terapkan aturan berikut secara berurutan:\n" +
+      "1. **Cek KB terlebih dahulu:** Jika ada artikel Knowledge Base di konteks ini yang membahas aspek SPESIFIK dari topik ini → gunakan KB itu dan jawab fokus pada aspek tersebut saja.\n" +
+      "2. **Jika KB tidak ada atau tidak spesifik:** JANGAN tulis dinding teks tentang semua aspek sekaligus. Akui dalam 1 kalimat bahwa topiknya luas, lalu tanya balik user dengan 1 pertanyaan dan berikan 3–5 pilihan aspek yang konkret. " +
+      "Contoh format yang natural: \"Wah, [topik] itu luas banget — mau explore soal apa dulu? Misalnya: [aspek 1], [aspek 2], [aspek 3]... atau ada hal spesifik yang kamu penasarin?\"\n" +
+      "3. **Setelah user memilih aspek → baru jawab dengan detail dan fokus pada aspek itu.**\n" +
+      "JANGAN jawab semua aspek sekaligus tanpa tahu apa yang user butuhkan. Respons tepat sasaran jauh lebih berguna dari jawaban ensiklopedia.",
 
     fiqh:
       "Kamu sedang menjawab pertanyaan ilmu agama Islam. Ikuti metodologi ilmiah Islam:\n" +
