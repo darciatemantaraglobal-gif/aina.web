@@ -2080,24 +2080,22 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 
   const handleSelectionAutoTitle = async () => {
     if (selected.size === 0 || selectionAutoTitleLoading) return;
-    if (!confirm(`Auto-judul AI untuk ${selected.size} artikel yang dipilih?\nJudul artikel akan di-rewrite berdasarkan konten.`)) return;
+    const ids = [...selected];
+    if (!confirm(`Auto-judul AI untuk ${ids.length} artikel yang dipilih?\nJudul akan di-rewrite satu per satu (masing-masing ~5 detik).`)) return;
     setSelectionAutoTitleLoading(true);
-    try {
-      const result = await adminFetch("/api/admin/articles/auto-title/selected", {
-        method: "POST",
-        body: JSON.stringify({ ids: [...selected] }),
-      });
-      if (result.updated > 0) {
-        result.results.forEach((r: { id: string; newTitle?: string }) => {
-          if (r.newTitle) {
-            setArticles(prev => prev.map(a => a.id === r.id ? { ...a, title: r.newTitle! } : a));
-          }
-        });
-      }
-      toast.success(`${result.updated} judul diperbarui AI${result.errors > 0 ? `, ${result.errors} gagal` : ""}`);
-      setSelected(new Set());
-    } catch (e: any) { toast.error(e.message); }
-    finally { setSelectionAutoTitleLoading(false); }
+    let updated = 0, errors = 0;
+    for (const id of ids) {
+      try {
+        const result = await adminFetch(`/api/admin/articles/${id}/auto-title`, { method: "POST" });
+        if (result.newTitle) {
+          setArticles(prev => prev.map(a => a.id === id ? { ...a, title: result.newTitle } : a));
+          updated++;
+        } else { errors++; }
+      } catch { errors++; }
+    }
+    toast.success(`${updated}/${ids.length} judul diperbarui AI${errors > 0 ? `, ${errors} gagal` : ""}`);
+    setSelected(new Set());
+    setSelectionAutoTitleLoading(false);
   };
 
   const handleBulkHide = async (hide: boolean) => {
@@ -2119,26 +2117,24 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 
   const handleSelectionAutoCat = async () => {
     if (selected.size === 0 || selectionAutoCatLoading) return;
-    if (!confirm(`Auto-kategorisasi AI untuk ${selected.size} artikel yang dipilih?\nKategori & tipe artikel akan di-update sesuai konten.`)) return;
+    const ids = [...selected];
+    if (!confirm(`Auto-kategorisasi AI untuk ${ids.length} artikel yang dipilih?\nKategori & tipe akan di-update satu per satu (masing-masing ~5 detik).`)) return;
     setSelectionAutoCatLoading(true);
-    try {
-      const result = await adminFetch("/api/admin/articles/auto-categorize/selected", {
-        method: "POST",
-        body: JSON.stringify({ ids: [...selected] }),
-      });
-      if (result.updated > 0) {
-        result.results.forEach((r: { id: string; category?: string; article_type?: string }) => {
-          if (r.category) {
-            setArticles(prev => prev.map(a =>
-              a.id === r.id ? { ...a, category: r.category!, ...(r.article_type ? { article_type: r.article_type } : {}) } : a
-            ));
-          }
-        });
-      }
-      toast.success(`${result.updated} artikel dikategorisasi${result.errors > 0 ? `, ${result.errors} gagal` : ""}`);
-      setSelected(new Set());
-    } catch (e: any) { toast.error(e.message); }
-    finally { setSelectionAutoCatLoading(false); }
+    let updated = 0, errors = 0;
+    for (const id of ids) {
+      try {
+        const result = await adminFetch(`/api/admin/articles/${id}/auto-categorize`, { method: "POST" });
+        if (result.category) {
+          setArticles(prev => prev.map(a =>
+            a.id === id ? { ...a, category: result.category, ...(result.article_type ? { article_type: result.article_type } : {}) } : a
+          ));
+          updated++;
+        } else { errors++; }
+      } catch { errors++; }
+    }
+    toast.success(`${updated}/${ids.length} artikel dikategorisasi${errors > 0 ? `, ${errors} gagal` : ""}`);
+    setSelected(new Set());
+    setSelectionAutoCatLoading(false);
   };
 
   const toggleSelect = (id: string) => {

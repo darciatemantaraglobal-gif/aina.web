@@ -4169,6 +4169,79 @@ Jawab HANYA dalam format JSON:
   return res.json({ updated, errors, results });
 });
 
+/* ── Master Admin: Auto-kategorisasi satu artikel dan save ── */
+app.post("/api/admin/articles/:id/auto-categorize", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { id } = req.params;
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak tersedia" });
+
+  const supabase = getAdminClient();
+  const { data: art } = await supabase
+    .from("knowledge_base").select("id, title, content, category").eq("id", id).single();
+  if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
+
+  const VALID_CATEGORIES = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa Arab"];
+  const VALID_TYPES = ["narrative", "step_by_step"];
+
+  const prompt = `Kamu adalah pakar kategorisasi artikel untuk Knowledge Base komunitas mahasiswa Indonesia di Mesir (Masisir). Tentukan kategori dan tipe artikel yang PALING TEPAT.
+
+PANDUAN KATEGORI:
+1. ADMINISTRASI: iqomah, visa, paspor, dokumen resmi, legalisasi, apostille, KTP, SIM internasional, birokrasi, imigrasi, KBRI, PPMI
+2. AKADEMIK: perkuliahan Al-Azhar/universitas Mesir, ujian (imtihan), beasiswa, nilai (darjah), jadwal kuliah, mutasi, syahadah, cara belajar ujian
+3. KEHIDUPAN MESIR: tips hidup sehari-hari, budaya, keamanan, belanja pokok, fasilitas kesehatan, sim card, perbankan, adaptasi, musim/cuaca
+4. TRANSPORT: metro Kairo, taksi (Uber/Careem), bus, microbus, kereta api Mesir, rute perjalanan, biaya transport, apps transportasi
+5. TEMPAT TINGGAL: sewa flat/apartemen, lokasi (Hay Asyir, Nasr City, dll), harga sewa, kontrak, pindah flat, furnitur, listrik/air, shahibul beit
+6. KULINER: restoran halal, warung/kantin Indonesia, masakan lokal Mesir, harga makanan, resep, tempat makan, bahan makanan
+7. BAHASA ARAB: belajar bahasa Arab (fusha/amiyah), kosakata, nahwu/sharaf, percakapan, dialek Mesir, tips belajar bahasa Arab
+
+TIPE: step_by_step = ada urutan langkah bernomor/berurutan | narrative = penjelasan informatif, tips umum
+
+Judul: ${art.title.slice(0, 300)}
+Konten: ${(art.content || "").slice(0, 3000)}
+
+Jawab HANYA dalam format JSON:
+{"category":"<tepat salah satu dari 7 kategori>","article_type":"<narrative atau step_by_step>"}`;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA AutoCat",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-preview",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.0,
+        max_tokens: 80,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    if (!resp.ok) return res.status(502).json({ error: "AI error" });
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? "";
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return res.status(502).json({ error: "Gagal parse respons AI" });
+    const parsed = JSON.parse(match[0]);
+    const newCategory = VALID_CATEGORIES.includes(parsed.category) ? parsed.category : null;
+    const newType = VALID_TYPES.includes(parsed.article_type) ? parsed.article_type : null;
+    if (!newCategory) return res.status(502).json({ error: "Kategori tidak valid dari AI" });
+
+    const update = { category: newCategory };
+    if (newType) update.article_type = newType;
+    await supabase.from("knowledge_base").update(update).eq("id", id);
+    return res.json({ success: true, id, category: newCategory, article_type: newType });
+  } catch (e) {
+    return res.status(500).json({ error: String(e) });
+  }
+});
+
 /* ── Master Admin: Auto-generate judul untuk satu artikel ── */
 app.post("/api/admin/articles/:id/auto-title", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
