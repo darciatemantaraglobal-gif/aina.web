@@ -1727,16 +1727,21 @@ function ArticleFormDialog({
   const [mapsUrl, setMapsUrl] = useState(initial?.maps_url ?? "");
   const [contactNumber, setContactNumber] = useState(initial?.contact_number ?? "");
   const [saving, setSaving] = useState(false);
+  const prevOpenRef = useRef(false);
 
   useEffect(() => {
-    if (open) {
+    // Only reset form when dialog transitions from closed → open.
+    // Using `initial` as dep causes reset on every parent re-render (new object ref),
+    // which reverts user edits while the dialog is still open.
+    if (open && !prevOpenRef.current) {
       setTitle(initial?.title ?? "");
       setContent(initial?.content ?? "");
       setCategory(initial?.category ?? "");
       setMapsUrl(initial?.maps_url ?? "");
       setContactNumber(initial?.contact_number ?? "");
     }
-  }, [open, initial]);
+    prevOpenRef.current = open;
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     if (!title.trim() || !content.trim() || !category) { toast.error("Semua field harus diisi"); return; }
