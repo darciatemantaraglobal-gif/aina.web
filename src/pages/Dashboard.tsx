@@ -25,51 +25,51 @@ const FEAT_TOUR_KEYS: Record<string, string> = {
 const FEATURE_TOURS: Record<string, TourStep[]> = {
   chat: [
     {
-      title: "Chat AI — Asisten Cerdasmu 🤖",
-      content: "Tanyakan apa saja ke AINA: cara perpanjang iqama, prosedur visa, daftar Al-Azhar, terjemah dokumen, atau sekadar curhat soal kehidupan di Mesir. AINA menjawab berdasarkan Knowledge Base khusus Masisir.",
+      title: "Chat AI 🤖",
+      content: "Tanya apa saja soal kehidupan Masisir — iqama, visa, Al-Azhar, terjemah dokumen, atau bantu nulis tugas. AINA menjawab berdasarkan Knowledge Base khusus Masisir.",
     },
     {
       target: '[data-tour="chat-input"]',
-      title: "Kotak Pertanyaan",
-      content: "Ketik pertanyaanmu lalu tekan Enter atau klik kirim. Kamu juga bisa melampirkan gambar (JPG/PNG) atau file PDF untuk dianalisis AINA. Pengguna gratis mendapat kuota harian — daftar jadi Kontributor untuk lebih banyak.",
+      title: "Ketik & Kirim ✍️",
+      content: "Tulis pertanyaanmu lalu tekan Enter. Bisa juga lampirkan foto atau PDF. Pengguna gratis dapat kuota harian — jadi Kontributor untuk akses lebih banyak.",
       delay: 400,
     },
   ],
   threads: [
     {
-      title: "Threads — Forum Diskusi Masisir 💬",
-      content: "Tempat tanya jawab dan berbagi pengalaman sesama Masisir. Buat thread baru, balas diskusi orang lain, atau upvote jawaban yang paling membantu. Diskusi aktif di sini bisa ikut membentuk jawaban AINA ke depannya.",
+      title: "Threads 💬",
+      content: "Forum tanya jawab sesama Masisir. Buat thread, balas, upvote jawaban terbaik. Diskusi yang aktif ikut memperkaya jawaban AINA.",
     },
   ],
   productivity: [
     {
-      title: "Ruang Produktif — 4 Tab Dalam 1 Tempat 📋",
-      content: "Ada empat tab di sini: Fokus (catat tugas harianmu, bisa dibantu AI), Dokumen (lacak tenggat iqama, visa, ujian, dll. + tanda urgenti), Prosedur (panduan langkah demi langkah untuk perpanjang iqama, visa, daftar ulang Al-Azhar, dan lainnya), dan Pengingat (catatan bebas formatmu).",
+      title: "Ruang Produktif 📋",
+      content: "4 tab sekaligus: Fokus (tugas harian + bantuan AI), Dokumen (lacak tenggat & tandai urgenti), Prosedur (panduan iqama, visa, Al-Azhar, dll.), Pengingat (catatan bebas).",
     },
   ],
   leaderboard: [
     {
-      title: "Leaderboard — Siapa Paling Bermanfaat? 🏆",
-      content: "Ada dua tab: Kontributor (peringkat berdasarkan jumlah artikel yang lolos review) dan Artikel (semua artikel publik yang bisa kamu baca & upvote). Semakin banyak artikel berkualitas yang kamu tulis, semakin tinggi peringkatmu!",
+      title: "Leaderboard 🏆",
+      content: "Lihat peringkat Kontributor dan artikel terpopuler. Baca, upvote, dan buktikan kontribusimu ada di atas!",
     },
   ],
   contributor: [
     {
       target: '[data-tour="contributor-registration"]',
-      title: "Formulir Pendaftaran Kontributor",
-      content: "Isi nama lengkap, pendidikan, tahun masuk, bidang keahlian, dan alasan ingin berkontribusi. Data ini membantu admin mengenal profilmu sebelum memutuskan.",
+      title: "Data Diri 📝",
+      content: "Isi nama, pendidikan, tahun masuk, bidang keahlian, dan alasan bergabung. Data ini yang admin baca sebelum memutuskan.",
       delay: 500,
     },
     {
       target: '[data-tour="contributor-article-sample"]',
-      title: "Artikel Sampel — Wajib Diisi",
-      content: "Tulis satu artikel contoh tentang topik Masisir (prosedur, tips, info kampus, dll.). Bisa langsung di kotak teks atau upload file PDF / DOCX / TXT. Inilah yang akan dinilai admin untuk memutuskan pendaftaranmu.",
+      title: "Artikel Sampel ✍️",
+      content: "Tulis langsung atau upload PDF/DOCX/TXT. Topik bebas — seputar kehidupan Masisir. Inilah yang dinilai admin.",
       delay: 400,
     },
     {
       target: '[data-tour="contributor-submit"]',
-      title: "Kirim Pendaftaran",
-      content: "Setelah semua terisi, klik tombol ini. Admin akan meninjau artikel sampelmu dan memberi keputusan — biasanya dalam 1–3 hari kerja. Jika disetujui, kamu langsung bisa menulis artikel untuk ribuan Masisir!",
+      title: "Kirim! 🚀",
+      content: "Tekan tombol ini untuk mendaftar. Admin memutuskan dalam 1–3 hari. Jika disetujui, kamu bisa langsung menulis untuk ribuan Masisir.",
       delay: 400,
     },
   ],
