@@ -1845,6 +1845,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [bulkHideLoading, setBulkHideLoading] = useState(false);
   const [selectionAutoCatLoading, setSelectionAutoCatLoading] = useState(false);
   const [autoTitleingId, setAutoTitleingId] = useState<string | null>(null);
+  const [autoCatOneId, setAutoCatOneId] = useState<string | null>(null);
   const [selectionAutoTitleLoading, setSelectionAutoTitleLoading] = useState(false);
 
   const handleReformatOne = async (id: string) => {
@@ -2077,6 +2078,24 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       }
     } catch (e: any) { toast.error(e.message); }
     finally { setAutoTitleingId(null); }
+  };
+
+  const handleAutoCatOne = async (art: Article) => {
+    if (autoCatOneId) return;
+    setAutoCatOneId(art.id);
+    try {
+      const result = await adminFetch(`/api/admin/articles/${art.id}/auto-categorize`, { method: "POST" });
+      if (result.category || result.type) {
+        setArticles(prev => prev.map(a => a.id === art.id
+          ? { ...a, ...(result.category && { category: result.category }), ...(result.type && { type: result.type }) }
+          : a
+        ));
+        toast.success(`Kategori diperbarui AI`, { description: `${result.category ?? ""}${result.type ? ` · ${result.type}` : ""}` });
+      } else {
+        toast.info("AI tidak menemukan perubahan kategori");
+      }
+    } catch (e: any) { toast.error(e.message); }
+    finally { setAutoCatOneId(null); }
   };
 
   const handleSelectionAutoTitle = async () => {
@@ -2650,6 +2669,20 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                         {autoTitleingId === art.id
                           ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
                           : <Heading className="h-3.5 w-3.5" />
+                        }
+                      </Button>
+                    )}
+                    {isMasterAdmin && (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-8 gap-1 border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                        disabled={autoCatOneId === art.id}
+                        onClick={() => handleAutoCatOne(art)}
+                        title="Auto-kategorisasi dengan AI"
+                      >
+                        {autoCatOneId === art.id
+                          ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+                          : <Tags className="h-3.5 w-3.5" />
                         }
                       </Button>
                     )}
