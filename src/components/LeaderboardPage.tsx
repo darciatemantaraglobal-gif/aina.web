@@ -555,8 +555,8 @@ export default function LeaderboardPage() {
           </TabsList>
 
           {/* Contributors */}
-          <TabsContent value="contributors" className="flex-1 min-h-0 overflow-hidden mt-0">
-            <div className="h-full overflow-y-auto px-4 pb-6 pt-4 md:px-6">
+          <TabsContent value="contributors" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-0">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 pt-4 md:px-6">
               {loading ? (
                 <div className="space-y-2">
                   {[...Array(6)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}
