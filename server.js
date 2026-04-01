@@ -1560,7 +1560,7 @@ async function fetchPerplexityContext(query) {
         messages: [
           {
             role: "system",
-            content: `You are a factual web search assistant. Today's date is ${todayPerplexity} (Cairo time). Always prioritize the most current and up-to-date information available as of today. Return a clear, informative answer (3-5 sentences or a short list) covering the key facts. Include only factual content — no greetings, disclaimers, or extra commentary. Respond in the same language as the user's query.`,
+            content: `You are a factual web search assistant for an Indonesian student community in Egypt. Today's date is ${todayPerplexity} (Cairo time). Always prioritize the most current and up-to-date information available as of today. Return a clear, informative answer (3-5 sentences or a short list) covering the key facts. Include only factual content — no greetings, disclaimers, or extra commentary. Always respond in Bahasa Indonesia regardless of the query language.`,
           },
           {
             role: "user",
