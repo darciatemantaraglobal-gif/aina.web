@@ -5076,33 +5076,44 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
 /* ── In-memory tracker for bulk keyword generation progress ── */
 let _kwGenState = { running: false, total: 0, generated: 0, errors: 0, startedAt: null, completedAt: null };
 
-/* POST /api/admin/articles/generate-embeddings — batch re-embed all approved articles */
+/* POST /api/admin/articles/generate-embeddings — batch re-embed approved articles
+   Body: { ids?: string[] } — if provided, only embed those IDs; otherwise embed all approved */
 app.post("/api/admin/articles/generate-embeddings", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "OPENAI_API_KEY not configured" });
 
   const supabase = getAdminClient();
-  const { data: articles } = await supabase
-    .from("knowledge_base")
-    .select("id")
-    .eq("status", "approved");
+  const { ids: requestedIds } = req.body || {};
+  const isSelective = Array.isArray(requestedIds) && requestedIds.length > 0;
 
-  if (!articles?.length) return res.json({ embedded: 0, total: 0 });
+  let articleIds;
+  if (isSelective) {
+    articleIds = requestedIds;
+  } else {
+    const { data: articles } = await supabase
+      .from("knowledge_base")
+      .select("id")
+      .eq("status", "approved");
+    articleIds = (articles || []).map(a => a.id);
+  }
 
-  res.json({ message: `Embedding ${articles.length} articles in background...`, total: articles.length });
+  if (!articleIds.length) return res.json({ embedded: 0, total: 0 });
+
+  const label = isSelective ? `${articleIds.length} artikel yang dipilih` : `${articleIds.length} artikel approved`;
+  res.json({ message: `Embedding ${label} di background...`, total: articleIds.length });
 
   // Fire-and-forget: embed each article with a short delay to avoid rate limits
   (async () => {
     let embedded = 0;
-    for (const { id } of articles) {
+    for (const id of articleIds) {
       try {
         await embedKBArticle(id);
         embedded++;
         await new Promise(r => setTimeout(r, 200)); // 200ms between calls → ~5 req/s
       } catch { /* embedKBArticle already logs failures */ }
     }
-    console.log(`[RAG] Batch embedding complete: ${embedded}/${articles.length} embedded`);
+    console.log(`[RAG] Batch embedding complete: ${embedded}/${articleIds.length} embedded`);
   })();
 });
 

@@ -1848,6 +1848,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const autoCatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [embedLoading, setEmbedLoading] = useState(false);
+  const [selectionEmbedLoading, setSelectionEmbedLoading] = useState(false);
 
   const [bulkHideLoading, setBulkHideLoading] = useState(false);
   const [selectionAutoCatLoading, setSelectionAutoCatLoading] = useState(false);
@@ -2083,6 +2084,22 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       toast.success(result.message || `Embedding ${result.total} artikel dimulai di background.`);
     } catch (e: any) { toast.error(e.message); }
     finally { setTimeout(() => setEmbedLoading(false), 3000); }
+  };
+
+  const handleSelectionEmbed = async () => {
+    if (selected.size === 0 || selectionEmbedLoading) return;
+    const ids = [...selected];
+    if (!confirm(`Generate RAG embedding untuk ${ids.length} artikel yang dipilih?\nProses berjalan di background (~${Math.ceil(ids.length * 0.2 / 60) || 1} menit).`)) return;
+    setSelectionEmbedLoading(true);
+    try {
+      const result = await adminFetch("/api/admin/articles/generate-embeddings", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      });
+      toast.success(result.message || `Embedding ${ids.length} artikel dimulai di background.`);
+      setSelected(new Set());
+    } catch (e: any) { toast.error(e.message); }
+    finally { setTimeout(() => setSelectionEmbedLoading(false), 3000); }
   };
 
   const handleAutoTitleOne = async (art: Article) => {
@@ -2555,6 +2572,18 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                     {selectionAutoTitleLoading
                       ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" /> Menggenerate judul...</>
                       : <><Heading className="h-3 w-3" /> Auto-Judul {selected.size}</>
+                    }
+                  </Button>
+                  <Button
+                    size="sm" disabled={selectionEmbedLoading || bulkLoading}
+                    className="h-7 gap-1.5 bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 text-xs"
+                    variant="outline"
+                    onClick={handleSelectionEmbed}
+                    title="Generate RAG embedding untuk artikel yang dipilih — aktifkan pencarian semantik untuk artikel ini"
+                  >
+                    {selectionEmbedLoading
+                      ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Embedding...</>
+                      : <><Zap className="h-3 w-3" /> Gen RAG {selected.size}</>
                     }
                   </Button>
                 </>
