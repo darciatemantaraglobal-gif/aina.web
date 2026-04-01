@@ -46,8 +46,24 @@ Modular architecture for AI response generation. Each module is a pure-function 
 
 **Response style default**: `step_by_step` (user-selectable via profile settings)
 
-### API Response Shape (`/api/chat`)
+### API Response Shape (`/api/chat`) — SSE Streaming
 
+`/api/chat` uses **Server-Sent Events (SSE)**. Response is `Content-Type: text/event-stream`.
+
+Events emitted:
+1. `data: {"type":"chunk","content":"..."}` — one or more token chunks
+2. `data: {"type":"done","reply":"...","model":"...","intent":"...","confidence":"...","sources":[...],"sourceMetadata":{...},"clarification_pending":bool}` — final metadata
+3. `data: {"type":"error","error":"..."}` — only if all models fail
+
+Frontend (`ChatArea.tsx`) reads the stream with `ReadableStream`, updates `streamingMsg.displayed` per chunk, then finalizes on `done`. Pre-flight errors (auth, rate limit) are still returned as JSON with HTTP status codes before SSE headers are flushed.
+
+**Model tiering (fixed):**
+- Tier A (lightweight — casual/KB-strong queries): primary `gemini-2.0-flash-001`, fallback `gemini-2.5-flash`
+- Tier B (standard — complex/procedural/fiqh/dynamic): primary `gemini-2.5-flash`, fallback `gemini-2.0-flash-001`
+
+**Dynamic max_tokens:** casual=1500, factual=2500, procedural/fiqh/arabic=4000, default=3000 (was always 8000)
+
+Legacy JSON shape (pre-streaming):
 ```json
 {
   "reply":      "...",

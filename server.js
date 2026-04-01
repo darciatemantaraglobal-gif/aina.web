@@ -2756,15 +2756,15 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
   // ──────────────────────────────────────────────────────────────────────────────
   const MODEL_TIERS = {
-    // Tier A — main model for simple/casual queries
+    // Tier A — fast + cost-efficient for simple/casual/KB-covered queries
     lightweight: {
-      primary:   "google/gemini-2.5-flash",        // upgraded: smarter reasoning, better instruction-following (~$0.15/1M in)
-      fallback:  "google/gemini-2.0-flash-001",            // paid fallback if 2.5 unavailable
+      primary:   "google/gemini-2.0-flash-001",            // fast, affordable, great for simple queries
+      fallback:  "google/gemini-2.5-flash",                // stronger fallback if 2.0 unavailable
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
     },
-    // Tier B — main model for complex, procedural, and dynamic queries
+    // Tier B — strongest model for complex, procedural, and dynamic queries
     standard: {
-      primary:   "google/gemini-2.5-flash",        // upgraded: handles complex context, long threads, nuanced answers
+      primary:   "google/gemini-2.5-flash",                // best reasoning for nuanced answers
       fallback:  "google/gemini-2.0-flash-001",            // reliable paid fallback
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
     },
@@ -3127,133 +3127,232 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     throw new Error(`All models in tier '${tier}' failed`);
   };
 
-  try {
-    let result;
-    if (useVisionModel) {
-      result = await tryModel(VISION_MODEL, false, 20000);
-    } else {
-      const tier = selectModelTier(intent.primary, kbStrength, lastUserMessage);
-      console.log(`[Routing] tier=${tier} intent=${intent.primary} kb=${kbStrength} qlen=${lastUserMessage.length}`);
-      try {
-        result = await runTieredWaterfall(tier);
-      } catch {
-        // Last resort: try standard tier if lightweight failed, or vice versa
-        const fallbackTier = tier === "lightweight" ? "standard" : "lightweight";
-        console.warn(`[Routing] tier ${tier} exhausted, trying ${fallbackTier}`);
-        result = await runTieredWaterfall(fallbackTier);
-      }
-    }
-    const reply = postProcessResponse(cleanReply(result.reply));
-    console.log(`Responded using model: ${result.model}`);
+  // ── Dynamic max_tokens based on intent ──────────────────────────────────────
+  // Avoids over-generating for simple queries while keeping full budget for complex ones.
+  const dynamicMaxTokens = (() => {
+    const i = intent.primary;
+    if (i === "casual") return 1500;
+    if (i === "factual" || i === "confused") return 2500;
+    if (i === "arabic_writing" || i === "fiqh") return 4000;
+    if (i === "procedural" || i === "confused_procedural") return 4000;
+    return 3000;
+  })();
 
-    // Quality gate: log any detected anti-patterns without blocking the response
-    const qualityIssues = validateResponse(reply, { hasExchangeContext: !!exchangeContext });
-    if (qualityIssues.length > 0) {
-      console.warn(`[ResponseQuality] ${qualityIssues.length} issue(s):`, qualityIssues.map(i => `${i.type}(${i.severity})`).join(", "));
-    }
+  // ── Set SSE headers before model calls ─────────────────────────────────────
+  // Must be set before any res.write() calls; once flushed, headers are committed.
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
 
-    // Build source badge list — labels show WHERE info came from, not article titles.
-    // Do NOT push article titles here — frontend renders source type, not article name.
-    const responseSources = [];
-    if (pinnedUpdates.length > 0)                        responseSources.push("Breaking Update");
-    if (articles.length > 0)                             responseSources.push("Knowledge Base AINA");
-    if (queryType === "currency" && exchangeRates)       responseSources.push("Kurs Real-time");
-    if (dorarResult && dorarResult.hadiths.length > 0)  responseSources.push("Dorar.net");
-    if (perplexityResult)                                responseSources.push("Pencarian Web");
-    if (wikiResult)                                      responseSources.push("Wikipedia");
-    if (ddgResult)                                       responseSources.push("DuckDuckGo");
-    if (responseSources.length === 0)                    responseSources.push("Pengetahuan Umum");
-
-    // ── Normalize confidence label to short form ──────────────────────────
-    // classifyConfidence() returns verbose labels; simplify for the API surface.
-    const CONFIDENCE_LABEL_MAP = {
-      high_confidence:    "high",
-      medium_confidence:  "medium",
-      needs_verification: "needs_verification",
-    };
-    const normalizedConfidence = CONFIDENCE_LABEL_MAP[confidence.level] ?? confidence.level;
-
-    // ── Determine source_used for easy client consumption ─────────────────
-    // Single string: "KB" | "Perplexity" | "Wikipedia" | "DuckDuckGo" | "Model"
-    // Reflects the highest-trust source that was actually injected.
-    const sourceUsed =
-      pinnedUpdates.length > 0     ? "KB"          // pinned treated as KB-tier
-      : articles.length > 0        ? "KB"
-      : perplexityResult           ? "Perplexity"
-      : wikiResult                 ? "Wikipedia"
-      : ddgResult                  ? "DuckDuckGo"
-      : queryType === "currency" && exchangeRates ? "RealTimeAPI"
-      : "Model";
-
-    res.json({
-      reply,
-      model:       result.model,
-      intent:      intent.primary,
-      intent_type: intent.primary,          // alias matching the spec name
-      confidence:  normalizedConfidence,
-      source_used: sourceUsed,              // primary source consumed (spec field)
-      sources:     responseSources,         // display badge list (unchanged)
-      // Self-learning: flag if user correction was detected and draft queued
-      clarification_pending: clarificationDetected || undefined,
-      // ── Structured source metadata (for UI badges + logging) ──────────────
-      sourceMetadata: {
-        confidence:      normalizedConfidence,
-        primary_source:  sourceResult.primary_source,
-        sources_used:    sourceResult.sources_used,
-        may_be_outdated: sourceResult.may_be_outdated,
-        source_summary:  sourceResult.source_summary,
-        retrieved_at:    sourceResult.retrieved_at,
-        source_used:     sourceUsed,
-        intent_type:     intent.primary,
-      },
-    });
-    // Fire-and-forget: extract memories + record intel signals + log query (Phase 6 + Phase 12 + Self-Improvement)
-    setImmediate(() => {
-      extractAndSaveMemories(user.id, [...messages, { role: "assistant", content: reply }], apiKey);
-      // Self-learning: if clarification detected, extract KB draft in background
-      if (clarificationDetected) {
-        incrementClarificationCount(user.id);
-        (async () => {
-          const supabase = getAdminClient();
-          if (!supabase) return;
-          const draft = await extractKBDraftFromClarification(lastUserMessage, prevAiMsg, apiKey);
-          if (!draft) {
-            console.log(`[Clarif] extraction returned null — nothing submitted`);
-            return;
-          }
-          const articleId = await submitClarificationDraft(draft, user.id, supabase);
-          if (articleId) {
-            console.log(`[Clarif] ✓ draft submitted — id=${articleId} title="${draft.title.slice(0, 50)}" user=${user.id}`);
-          }
-        })();
-      }
-      recordIntelSignal({
-        intent,
-        kbStrength,
-        hasKB:           articles.length > 0,
-        hasPinned:       pinnedUpdates.length > 0,
-        hasWiki:         !!wikiContext,
-        hasDDG:          !!ddgContext,
-        hasPerplexity:   !!perplexityContext,
-        confidenceLevel: confidence.level,
-        confidenceHint:  confidence.hint,
-        externalTier:    externalTrust?.tier ?? null,
-        query:           lastUserMessage,
+  // Helper: attempt a single streaming fetch from OpenRouter
+  const tryStreamFetch = async (model, timeoutMs = 20000) => {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://ainalabs.pro",
+          "X-Title": "AINA - Asisten Masisir",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: finalSystemPrompt }, ...finalMessages],
+          max_tokens: dynamicMaxTokens,
+          temperature: 0.5,
+          stream: true,
+        }),
       });
-      // Self-improvement: log every query for pattern analysis
-      logQuery({
-        queryText:   lastUserMessage,
-        intentType:  intent.primary ?? null,
-        sourceUsed,
-        confidence:  normalizedConfidence,
-        userId:      user.id,
-        hasKbResult: articles.length > 0,
-        isTransport: isTransportQuery(lastUserMessage),
-      });
-    });
-  } catch {
-    return res.status(503).json({ error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik." });
+      clearTimeout(tid);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp;
+    } catch (e) {
+      clearTimeout(tid);
+      throw e;
+    }
+  };
+
+  // ── Build ordered model list ─────────────────────────────────────────────────
+  let modelsToTry;
+  if (useVisionModel) {
+    modelsToTry = [{ model: VISION_MODEL, timeoutMs: 20000 }];
+  } else {
+    const tier = selectModelTier(intent.primary, kbStrength, lastUserMessage);
+    console.log(`[Routing] tier=${tier} intent=${intent.primary} kb=${kbStrength} qlen=${lastUserMessage.length}`);
+    const t = MODEL_TIERS[tier];
+    const crossTier = MODEL_TIERS[tier === "lightweight" ? "standard" : "lightweight"];
+    modelsToTry = [
+      { model: t.primary,   timeoutMs: 20000 },
+      ...(t.fallback  ? [{ model: t.fallback,   timeoutMs: t.fallback.includes(":free") ? 45000 : 20000 }] : []),
+      ...(t.emergency ? [{ model: t.emergency,  timeoutMs: 45000 }] : []),
+      { model: crossTier.primary, timeoutMs: 20000 },
+    ];
   }
+
+  // ── Try models in order; grab first 200 streaming response ─────────────────
+  let streamResp = null;
+  let usedModel = null;
+  for (const { model, timeoutMs } of modelsToTry) {
+    try {
+      streamResp = await tryStreamFetch(model, timeoutMs);
+      usedModel = model;
+      console.log(`[Stream] ${model} connected`);
+      break;
+    } catch (e) {
+      console.warn(`[Stream] ${model} failed: ${e.message}`);
+    }
+  }
+
+  if (!streamResp) {
+    res.write(`data: ${JSON.stringify({ type: "error", error: "Semua model AI sedang sibuk. Coba lagi dalam beberapa detik." })}\n\n`);
+    return res.end();
+  }
+
+  // ── Forward chunks to client ─────────────────────────────────────────────────
+  const sseReader = streamResp.body.getReader();
+  const textDecoder = new TextDecoder();
+  let sseBuffer = "";
+  let fullContent = "";
+
+  try {
+    outer: while (true) {
+      const { done, value } = await sseReader.read();
+      if (done) break;
+      sseBuffer += textDecoder.decode(value, { stream: true });
+      const lines = sseBuffer.split("\n");
+      sseBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") break outer;
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { continue; }
+        const delta = parsed.choices?.[0]?.delta?.content;
+        if (delta) {
+          fullContent += delta;
+          res.write(`data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`);
+        }
+      }
+    }
+  } catch (streamErr) {
+    console.error(`[Stream] read error:`, streamErr.message);
+    if (!fullContent) {
+      res.write(`data: ${JSON.stringify({ type: "error", error: "Koneksi ke model AI terputus. Coba lagi." })}\n\n`);
+      return res.end();
+    }
+  }
+
+  if (!fullContent) {
+    res.write(`data: ${JSON.stringify({ type: "error", error: "Model tidak menghasilkan respons." })}\n\n`);
+    return res.end();
+  }
+
+  // ── Post-processing (identical to previous non-streaming path) ───────────────
+  const reply = postProcessResponse(cleanReply(fullContent));
+  console.log(`Responded using model: ${usedModel}`);
+
+  const qualityIssues = validateResponse(reply, { hasExchangeContext: !!exchangeContext });
+  if (qualityIssues.length > 0) {
+    console.warn(`[ResponseQuality] ${qualityIssues.length} issue(s):`, qualityIssues.map(i => `${i.type}(${i.severity})`).join(", "));
+  }
+
+  const responseSources = [];
+  if (pinnedUpdates.length > 0)                        responseSources.push("Breaking Update");
+  if (articles.length > 0)                             responseSources.push("Knowledge Base AINA");
+  if (queryType === "currency" && exchangeRates)       responseSources.push("Kurs Real-time");
+  if (dorarResult && dorarResult.hadiths.length > 0)  responseSources.push("Dorar.net");
+  if (perplexityResult)                                responseSources.push("Pencarian Web");
+  if (wikiResult)                                      responseSources.push("Wikipedia");
+  if (ddgResult)                                       responseSources.push("DuckDuckGo");
+  if (responseSources.length === 0)                    responseSources.push("Pengetahuan Umum");
+
+  const CONFIDENCE_LABEL_MAP = {
+    high_confidence:    "high",
+    medium_confidence:  "medium",
+    needs_verification: "needs_verification",
+  };
+  const normalizedConfidence = CONFIDENCE_LABEL_MAP[confidence.level] ?? confidence.level;
+
+  const sourceUsed =
+    pinnedUpdates.length > 0     ? "KB"
+    : articles.length > 0        ? "KB"
+    : perplexityResult           ? "Perplexity"
+    : wikiResult                 ? "Wikipedia"
+    : ddgResult                  ? "DuckDuckGo"
+    : queryType === "currency" && exchangeRates ? "RealTimeAPI"
+    : "Model";
+
+  // ── Send done event with final metadata ─────────────────────────────────────
+  res.write(`data: ${JSON.stringify({
+    type:        "done",
+    reply,
+    model:       usedModel,
+    intent:      intent.primary,
+    intent_type: intent.primary,
+    confidence:  normalizedConfidence,
+    source_used: sourceUsed,
+    sources:     responseSources,
+    clarification_pending: clarificationDetected || undefined,
+    sourceMetadata: {
+      confidence:      normalizedConfidence,
+      primary_source:  sourceResult.primary_source,
+      sources_used:    sourceResult.sources_used,
+      may_be_outdated: sourceResult.may_be_outdated,
+      source_summary:  sourceResult.source_summary,
+      retrieved_at:    sourceResult.retrieved_at,
+      source_used:     sourceUsed,
+      intent_type:     intent.primary,
+    },
+  })}\n\n`);
+  res.end();
+
+  // ── Fire-and-forget background tasks (unchanged) ─────────────────────────────
+  setImmediate(() => {
+    extractAndSaveMemories(user.id, [...messages, { role: "assistant", content: reply }], apiKey);
+    if (clarificationDetected) {
+      incrementClarificationCount(user.id);
+      (async () => {
+        const supabase = getAdminClient();
+        if (!supabase) return;
+        const draft = await extractKBDraftFromClarification(lastUserMessage, prevAiMsg, apiKey);
+        if (!draft) {
+          console.log(`[Clarif] extraction returned null — nothing submitted`);
+          return;
+        }
+        const articleId = await submitClarificationDraft(draft, user.id, supabase);
+        if (articleId) {
+          console.log(`[Clarif] ✓ draft submitted — id=${articleId} title="${draft.title.slice(0, 50)}" user=${user.id}`);
+        }
+      })();
+    }
+    recordIntelSignal({
+      intent,
+      kbStrength,
+      hasKB:           articles.length > 0,
+      hasPinned:       pinnedUpdates.length > 0,
+      hasWiki:         !!wikiContext,
+      hasDDG:          !!ddgContext,
+      hasPerplexity:   !!perplexityContext,
+      confidenceLevel: confidence.level,
+      confidenceHint:  confidence.hint,
+      externalTier:    externalTrust?.tier ?? null,
+      query:           lastUserMessage,
+    });
+    logQuery({
+      queryText:   lastUserMessage,
+      intentType:  intent.primary ?? null,
+      sourceUsed,
+      confidence:  normalizedConfidence,
+      userId:      user.id,
+      hasKbResult: articles.length > 0,
+      isTransport: isTransportQuery(lastUserMessage),
+    });
+  });
 });
 
 /* ── User Memories CRUD ──────────────────────────────── */

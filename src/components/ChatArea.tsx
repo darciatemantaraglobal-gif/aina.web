@@ -293,6 +293,7 @@ interface StreamingMsg {
   confidence?: string;
   sources?: string[];
   sourceMetadata?: SourceMetadata;
+  isStreaming?: boolean;
 }
 
 const STREAM_CHARS_PER_TICK = 6;
@@ -406,9 +407,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     }
   };
 
-  /* ── Typewriter animation ── */
+  /* ── Typewriter / stream finalizer ── */
   useEffect(() => {
     if (!streamingMsg) return;
+    // While real SSE streaming is active, skip — the stream reader updates displayed directly
+    if (streamingMsg.isStreaming) return;
     if (streamingMsg.displayed.length >= streamingMsg.full.length) {
       setMessages(prev => [...prev, {
         id: streamingMsg.id,
@@ -816,11 +819,57 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         throw new Error(errData.error || `Server error ${res.status}`);
       }
 
-      const data = await res.json();
-      const fullContent = cleanMarkdown(data.reply);
+      // ── Real SSE streaming ────────────────────────────────────────────────
       const msgId = (Date.now() + 1).toString();
+      setIsLoading(false);
+      setStreamingMsg({ id: msgId, full: "", displayed: "", sources: [], isStreaming: true });
 
-      // Save user message to DB only after server confirms success
+      const sseReader = res.body!.getReader();
+      const sseDecoder = new TextDecoder();
+      let sseBuffer = "";
+      let accumulated = "";
+      let doneEvent: Record<string, any> | null = null;
+
+      try {
+        outer: while (true) {
+          const { done, value } = await sseReader.read();
+          if (done) break;
+          sseBuffer += sseDecoder.decode(value, { stream: true });
+          const lines = sseBuffer.split("\n");
+          sseBuffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim();
+            let evt: Record<string, any>;
+            try { evt = JSON.parse(raw); } catch { continue; }
+
+            if (evt.type === "chunk" && evt.content) {
+              accumulated += evt.content;
+              setStreamingMsg(prev => prev
+                ? { ...prev, full: accumulated, displayed: accumulated }
+                : null
+              );
+            } else if (evt.type === "done") {
+              doneEvent = evt;
+              break outer;
+            } else if (evt.type === "error") {
+              throw new Error(evt.error || "Model AI tidak merespons");
+            }
+          }
+        }
+      } catch (streamErr: any) {
+        setStreamingMsg(null);
+        throw streamErr;
+      }
+
+      if (!doneEvent) {
+        setStreamingMsg(null);
+        throw new Error("Respons AI tidak lengkap. Coba lagi.");
+      }
+
+      const finalContent = cleanMarkdown(doneEvent.reply || accumulated);
+
+      // Save user message to DB
       await supabase.from("messages").insert({
         chat_id: currentChatId,
         user_id: userId,
@@ -843,19 +892,28 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         chat_id: currentChatId,
         user_id: userId,
         role: "assistant",
-        content: data.reply,
+        content: doneEvent.reply || accumulated,
       });
 
       // Self-learning: notify user when their clarification was queued for admin review
-      if (data.clarification_pending) {
+      if (doneEvent.clarification_pending) {
         toast.info("Koreksimu sudah dikirim ke admin untuk ditinjau. Terima kasih sudah membantu AINA belajar!", {
           duration: 6000,
           icon: "💬",
         });
       }
 
-      // Start typewriter animation (carry intent, confidence, sources, and sourceMetadata for badge rendering)
-      setStreamingMsg({ id: msgId, full: fullContent, displayed: "", intent: data.intent, confidence: data.confidence, sources: data.sources ?? [], sourceMetadata: data.sourceMetadata ?? undefined });
+      // Finalize streaming message with metadata — typewriter will commit it to messages
+      setStreamingMsg(prev => prev ? {
+        ...prev,
+        full:           finalContent,
+        displayed:      finalContent,
+        intent:         doneEvent!.intent,
+        confidence:     doneEvent!.confidence,
+        sources:        doneEvent!.sources ?? [],
+        sourceMetadata: doneEvent!.sourceMetadata ?? undefined,
+        isStreaming:    false,
+      } : null);
 
       await supabase
         .from("chats")
