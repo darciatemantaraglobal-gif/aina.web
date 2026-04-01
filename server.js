@@ -862,7 +862,10 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     "azhar":      ["al-azhar","universitas azhar"],
     "qaid":       ["shahada","surat aktif","syahadat"],
     "shahada":    ["qaid","syahadat"],
-    "ppmi":       ["organisasi","masisir"],
+    "ppmi":       ["organisasi","masisir","persatuan","perhimpunan"],
+    "lokasi":     ["alamat","kantor","tempat","gedung","letak"],
+    "alamat":     ["lokasi","kantor","tempat","gedung"],
+    "kantor":     ["lokasi","alamat","gedung","tempat"],
     "kost":       ["sewa","apartemen","kontrakan"],
     "kos":        ["sewa","apartemen","kontrakan"],
     "sewa":       ["kost","kos","kontrakan","apartemen"],
@@ -981,11 +984,10 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   // Sort by score descending
   scored.sort((a, b) => b._relevanceScore - a._relevanceScore);
 
-  // Minimum relevance threshold: score < 3 means the article only weakly matches
-  // (e.g. 1 content-only keyword hit). These low-signal articles pollute context
-  // and trick assessKBStrength into saying "strong" when the KB doesn't actually
-  // cover the query → Perplexity gets blocked → AI has nothing real to say.
-  const MIN_SCORE = 3;
+  // Minimum relevance threshold: adaptive based on ORIGINAL query words (before alias expansion).
+  // Short queries (1-2 raw words) → lower bar since fewer signals available.
+  // Longer queries → stricter to avoid noisy results.
+  const MIN_SCORE = rawWords.length <= 1 ? 1 : rawWords.length <= 3 ? 2 : 3;
   const relevant = scored.filter(a => a._relevanceScore >= MIN_SCORE);
 
   if (relevant.length === 0) {
@@ -4326,11 +4328,15 @@ app.get("/api/admin/articles", async (req, res) => {
   const profileMap = {};
   (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
 
-  const result = articles.map(a => ({
-    ...a,
-    author_name: profileMap[a.author_id]?.full_name ?? null,
-    author_email: profileMap[a.author_id]?.email ?? null,
-  }));
+  const result = articles.map(a => {
+    const { embedding, ...rest } = a;
+    return {
+      ...rest,
+      has_embedding: !!embedding,
+      author_name: profileMap[a.author_id]?.full_name ?? null,
+      author_email: profileMap[a.author_id]?.email ?? null,
+    };
+  });
 
   res.json(result);
 });
@@ -5097,7 +5103,7 @@ app.get("/api/admin/articles/generate-embeddings/status", async (req, res) => {
     .from("knowledge_base")
     .select("*", { count: "exact", head: true })
     .eq("status", "approved");
-  res.json({ ..._embedState, withEmbedding: withEmbedding ?? 0, totalArticles: totalApproved ?? 0 });
+  res.json({ ..._embedState, withEmbedding: withEmbedding ?? 0, totalArticles: totalApproved ?? 0, openaiConfigured: !!process.env.OPENAI_API_KEY });
 });
 
 /* POST /api/admin/articles/generate-embeddings — batch re-embed approved articles

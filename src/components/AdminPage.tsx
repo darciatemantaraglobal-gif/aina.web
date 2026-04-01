@@ -41,6 +41,7 @@ interface Article {
   category: string; status: string; created_at: string;
   author_name: string | null; author_email: string | null;
   hidden: boolean; maps_url?: string | null; contact_number?: string | null;
+  has_embedding?: boolean; keywords?: string | null;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -1853,6 +1854,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     running: boolean; total: number; embedded: number; errors: number;
     withEmbedding: number; totalArticles: number;
     startedAt: string | null; completedAt: string | null;
+    openaiConfigured?: boolean;
   } | null>(null);
   const embedPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -2348,13 +2350,21 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
             </Button>
             <Button
               size="sm" variant="ghost"
-              className="h-8 gap-1.5 text-xs text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+              className={`h-8 gap-1.5 text-xs hover:bg-blue-500/10 ${embedProgress?.openaiConfigured === false ? "text-orange-400 hover:text-orange-300" : "text-blue-400 hover:text-blue-300"}`}
               disabled={embedLoading || embedProgress?.running}
               onClick={handleGenerateEmbeddings}
-              title={embedProgress ? `${embedProgress.withEmbedding}/${embedProgress.totalArticles} artikel sudah ter-embed` : "Generate embedding RAG untuk semua artikel KB"}
+              title={
+                embedProgress?.openaiConfigured === false
+                  ? "OPENAI_API_KEY belum dikonfigurasi — vector RAG tidak tersedia. Hanya keyword search yang aktif."
+                  : embedProgress
+                  ? `${embedProgress.withEmbedding}/${embedProgress.totalArticles} artikel sudah ter-embed. Klik untuk re-embed semua.`
+                  : "Generate embedding RAG untuk semua artikel KB"
+              }
             >
               {(embedLoading || embedProgress?.running)
                 ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> {embedProgress?.running ? `${embedProgress.embedded}/${embedProgress.total}...` : "Memulai..."}</>
+                : embedProgress?.openaiConfigured === false
+                ? <><AlertCircle className="h-3.5 w-3.5" /> RAG (No API Key)</>
                 : <><Zap className="h-3.5 w-3.5" /> Gen RAG {embedProgress ? `(${embedProgress.withEmbedding}/${embedProgress.totalArticles})` : ""}</>
               }
             </Button>
@@ -2696,6 +2706,23 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                           <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs text-violet-400 flex items-center gap-1">
                             💬 Klarifikasi User
                           </span>
+                        )}
+                        {art.status === "approved" && (
+                          art.has_embedding
+                            ? (
+                              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-400 flex items-center gap-1" title="Artikel ini sudah ter-index dengan vector search (RAG semantik aktif)">
+                                <Zap className="h-2.5 w-2.5" /> RAG ✓
+                              </span>
+                            ) : art.keywords
+                            ? (
+                              <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2 py-0.5 text-xs text-yellow-400 flex items-center gap-1" title="Hanya keyword search — belum ada vector embedding. Generate RAG untuk pencarian semantik.">
+                                <Search className="h-2.5 w-2.5" /> Keyword
+                              </span>
+                            ) : (
+                              <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400 flex items-center gap-1" title="Belum ter-index sama sekali — artikel mungkin tidak ditemukan AI. Generate keywords atau RAG.">
+                                <AlertCircle className="h-2.5 w-2.5" /> No Index
+                              </span>
+                            )
                         )}
                         <span className="text-xs text-muted-foreground">{fmtDate(art.created_at)}</span>
                       </div>
