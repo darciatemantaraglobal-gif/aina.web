@@ -549,7 +549,7 @@ async function verifyMasterAdmin(authHeader) {
 }
 
 /* ── OpenRouter AI call with primary→fallback ──────── */
-const OR_PRIMARY  = "google/gemini-2.5-flash-preview";
+const OR_PRIMARY  = "google/gemini-2.5-flash";
 const OR_FALLBACK = "google/gemini-2.0-flash-001";
 
 async function callOpenRouter(apiKey, { messages, temperature = 0.0, max_tokens = 200, timeoutMs = 20_000, label = "AI" }) {
@@ -2750,13 +2750,13 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const MODEL_TIERS = {
     // Tier A — main model for simple/casual queries
     lightweight: {
-      primary:   "google/gemini-2.5-flash-preview",        // upgraded: smarter reasoning, better instruction-following (~$0.15/1M in)
+      primary:   "google/gemini-2.5-flash",        // upgraded: smarter reasoning, better instruction-following (~$0.15/1M in)
       fallback:  "google/gemini-2.0-flash-001",            // paid fallback if 2.5 unavailable
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
     },
     // Tier B — main model for complex, procedural, and dynamic queries
     standard: {
-      primary:   "google/gemini-2.5-flash-preview",        // upgraded: handles complex context, long threads, nuanced answers
+      primary:   "google/gemini-2.5-flash",        // upgraded: handles complex context, long threads, nuanced answers
       fallback:  "google/gemini-2.0-flash-001",            // reliable paid fallback
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
     },
@@ -3442,7 +3442,7 @@ async function ocrPdf(buffer) {
           "X-Title": "AINA PDF OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
+          model: "google/gemini-2.5-flash",
           messages: [{
             role: "user",
             content: [
@@ -3547,7 +3547,7 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
           "X-Title": "AINA Image OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
+          model: "google/gemini-2.5-flash",
           messages: [{
             role: "user",
             content: [
@@ -3822,7 +3822,7 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
           "X-Title": "AINA Image OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
+          model: "google/gemini-2.5-flash",
           messages: [{
             role: "user",
             content: [
@@ -4570,7 +4570,7 @@ Jawab HANYA dengan JSON:
           "X-Title": "AINA BulkAutoTitle",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
+          model: "google/gemini-2.5-flash",
           messages: [{ role: "user", content: prompt }],
           temperature: 0.2,
           max_tokens: 100,
@@ -4755,7 +4755,7 @@ Format output: [{"title":"...","content":"...","category":"...","keywords":"..."
         "X-Title": "AINA Admin Bulk Parse",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Parse teks berikut menjadi artikel-artikel knowledge base:\n\n${rawText.slice(0, 40_000)}` },
@@ -4837,7 +4837,7 @@ app.post("/api/admin/articles/image-extract", imageExtractUpload.single("image")
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [{
           role: "user",
           content: [
@@ -5426,7 +5426,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan).
         "X-Title": "AINA Article Reformatter",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 4000,
       }),
@@ -5503,7 +5503,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan a
           "X-Title": "AINA Article Reformatter",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
+          model: "google/gemini-2.5-flash",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 4000,
         }),
@@ -5591,7 +5591,7 @@ Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan a
           "X-Title": "AINA Article Reformatter",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
+          model: "google/gemini-2.5-flash",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 4000,
         }),
@@ -5873,7 +5873,7 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan
         "X-Title": "AINA Article Parser",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 16000,
       }),
@@ -9151,7 +9151,7 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
       lightweight: {
         label: "Tier A — Ringan",
         description: "Pertanyaan kasual, KB kuat + intent sederhana",
-        primary:   "google/gemini-2.5-flash-preview",
+        primary:   "google/gemini-2.5-flash",
         fallback:  "google/gemini-2.0-flash-001",
         emergency: "meta-llama/llama-3.3-70b-instruct:free",
         routes_for: ["casual", "KB kuat + factual/procedural/confused"],
@@ -9159,13 +9159,13 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
       standard: {
         label: "Tier B — Standar",
         description: "Pertanyaan kompleks, time-sensitive, fiqh, Arabic, atau KB lemah/tidak ada",
-        primary:   "google/gemini-2.5-flash-preview",
+        primary:   "google/gemini-2.5-flash",
         fallback:  "google/gemini-2.0-flash-001",
         emergency: "meta-llama/llama-3.3-70b-instruct:free",
         routes_for: ["procedural", "fiqh", "arabic_writing", "dynamic", "time-sensitive", "currency", "KB lemah/tidak ada"],
       },
     },
-    vision_model: "google/gemini-2.5-flash-preview",
+    vision_model: "google/gemini-2.5-flash",
     source_pipeline: [
       { name: "Admin Pinned Updates",  trust: 100, always_checked: true },
       { name: "Knowledge Base (KB)",   trust: 90,  always_checked: true },
