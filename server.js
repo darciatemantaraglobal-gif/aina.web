@@ -10264,7 +10264,7 @@ function verifyCron(req, res) {
    Returns: { flashcards: [{ question, answer }] }
 ──────────────────────────────────────────────────────────── */
 app.post("/api/flashcards/generate", chatLimiter, async (req, res) => {
-  const user = await verifyUser(req.headers.authorization);
+  const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Login diperlukan" });
 
   const { topic, content, count = 8 } = req.body;
