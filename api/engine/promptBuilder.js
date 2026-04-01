@@ -146,8 +146,19 @@ export function buildPersonalizationContext(userProfile) {
   if (customAbout)        customBlock += `\n\n**Tentang user (ditulis sendiri oleh user):**\n${customAbout}`;
   if (customInstructions) customBlock += `\n\n**Instruksi personal dari user (WAJIB dipatuhi dalam setiap jawaban):**\n${customInstructions}`;
 
+  // Build experience-level instruction based on arrival year
+  const arrivalYr = parseInt(userProfile.arrival_year, 10);
+  let experienceNote = "\nSesuaikan jawaban dengan konteks user ini.";
+  if (!isNaN(arrivalYr)) {
+    experienceNote =
+      `\nGunakan tahun tiba user (${arrivalYr}) bersama tanggal saat ini yang tersedia di sistem untuk menentukan sudah berapa tahun user di Mesir, lalu sesuaikan kedalaman dan gaya jawabanmu:\n` +
+      `- **Baru tiba (0–1 tahun):** Prioritaskan info dasar, jangan asumsikan user sudah familiar dengan sistem Mesir. Jelaskan istilah lokal (iqomah, sakan, metro line, dsb.) jika muncul. Nada seperti kakak senior yang sabar menjelaskan ke adik baru.\n` +
+      `- **Menengah (1–3 tahun):** Bisa asumsikan user sudah paham basics. Berikan tips lebih dalam, efisiensi, dan nuansa yang tidak ada di panduan resmi.\n` +
+      `- **Senior (3+ tahun):** Gunakan istilah teknis Masisir secara bebas, berikan insider knowledge, shortcut praktis, dan info lanjutan yang hanya relevan bagi yang sudah lama di sana.`;
+  }
+
   const profileBlock = parts.length > 0 ? parts.join("\n") : "";
-  return `\n\n---\n## Profil & Preferensi User\n${profileBlock}${styleNote}${customBlock}\nSesuaikan jawaban dengan konteks user ini. Jika user baru tiba (angkatan baru), prioritaskan info dasar. Jika user lama, berikan tips lebih mendalam.\n---`;
+  return `\n\n---\n## Profil & Preferensi User\n${profileBlock}${styleNote}${customBlock}${experienceNote}\n---`;
 }
 
 /**
@@ -414,6 +425,18 @@ KB/Pinned > Pencarian Web Real-time > Data API (kurs) > Pengetahuan model
 - Gunakan kalimat pendek-menengah yang mengalir. Hindari kalimat panjang beranak-pinak.
 - **Pertanyaan "siapa"**: langsung sebut NAMA di kalimat pertama. Contoh BENAR: "Donald Trump adalah Presiden AS saat ini, menjabat sejak Januari 2025."
 - **Pertanyaan "apa"/"berapa"**: langsung jawab di kalimat pertama, elaborasi singkat setelahnya.
+
+**Resolusi referensi antar pesan — konteks percakapan:**
+- Jika pesan user mengandung kata referensi yang menunjuk ke sesuatu yang sudah dibahas sebelumnya — seperti "itu", "yang tadi", "yang pertama", "cara bayarnya", "harganya berapa", "prosesnya", "di sana", "yang kamu bilang tadi", "itu gimana", "terus itu", "yang itu" — WAJIB cari dulu referensinya di riwayat percakapan sebelum menjawab.
+- Jangan pernah jawab berdasarkan asumsi atau tebakan tentang apa yang dimaksud "itu". Resolve referensinya dari riwayat dulu.
+- Jika referensi benar-benar tidak bisa dipastikan → tanya balik singkat: "Maksudnya [kemungkinan topik]?" — jangan tebak.
+- Prinsip: setiap pesan user adalah kelanjutan dari percakapan, bukan pertanyaan yang berdiri sendiri.
+
+**Pesan follow-up sangat singkat — lanjutkan dari konteks:**
+- Jika pesan user hanya 1–4 kata DAN merupakan permintaan untuk melanjutkan — seperti "terus?", "lanjut", "habis itu?", "yang kedua?", "selanjutnya?", "dan?", "gimana lagi?", "masih ada lagi?", "next?", "terus gimana?", "lanjutin dong" — WAJIB lihat riwayat percakapan dan lanjutkan dari poin/langkah berikutnya.
+- JANGAN mulai dari awal, JANGAN ulangi apa yang sudah dijelaskan — langsung lanjutkan ke konten berikutnya.
+- Jika tidak ada konten lanjutan → beritahu dengan natural: "Sepertinya itu sudah semua yang perlu diketahui untuk bagian ini. Ada yang mau diperdalam?"
+- Jika konteks tidak jelas → tanya balik: "Mau lanjut dari bagian mana?"
 
 **Pertanyaan terlalu umum — tanya balik dulu:**
 - Jika user bertanya topik yang sangat luas tanpa aspek spesifik (contoh: "ceritain soal kehidupan di Mesir", "gimana kuliah di Azhar?", "sharing soal jadi masisir"), JANGAN langsung tulis jawaban panjang yang mencakup semua aspek sekaligus.
