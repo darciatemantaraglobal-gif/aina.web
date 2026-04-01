@@ -294,16 +294,33 @@ async function initKBKeywordsCol() {
   } else {
     console.log("[KB] ✓ keywords column ready");
   }
-  // Check optional enrichment columns — warn with SQL if missing, don't block startup
+  // Check optional enrichment columns — auto-add via pg if missing
   const checks = [
     { col: "summary",         sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS summary TEXT;" },
     { col: "important_notes", sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS important_notes TEXT;" },
     { col: "last_updated",    sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ;" },
+    { col: "content_ar",      sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS content_ar TEXT;" },
   ];
+  const dbUrl = process.env.DATABASE_URL;
   for (const { col, sql } of checks) {
     const { error: ce } = await supabase.from("knowledge_base").select(col).limit(1);
     if (ce?.message?.includes("does not exist") || ce?.code === "42703") {
-      console.warn(`[KB] ⚠ '${col}' column missing. Add with:\n  ${sql}`);
+      console.warn(`[KB] ⚠ '${col}' column missing — attempting auto-add...`);
+      if (dbUrl) {
+        try {
+          const { Client } = await import("pg");
+          const pgClient = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+          await pgClient.connect();
+          await pgClient.query(sql);
+          await pgClient.end();
+          console.log(`[KB] ✓ '${col}' column added automatically`);
+        } catch (pgErr) {
+          console.warn(`[KB] ⚠ Auto-add '${col}' failed: ${pgErr.message}`);
+          console.warn(`[KB]   Run manually in Supabase SQL Editor:\n  ${sql}`);
+        }
+      } else {
+        console.warn(`[KB]   Run manually in Supabase SQL Editor:\n  ${sql}`);
+      }
     } else {
       console.log(`[KB] ✓ ${col} column ready`);
     }
@@ -5680,12 +5697,16 @@ app.post("/api/admin/articles/:id/translate-arabic", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { data: art } = await supabase
+  const { data: art, error: artErr } = await supabase
     .from("knowledge_base")
-    .select("id, title, content, content_ar")
+    .select("id, title, content")
     .eq("id", req.params.id)
     .single();
 
+  if (artErr) {
+    console.error("[Translate Arabic] DB error:", artErr.message);
+    return res.status(500).json({ error: "Gagal mengambil artikel: " + artErr.message });
+  }
   if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
 
   const apiKey = process.env.OPENAI_API_KEY;

@@ -11,7 +11,7 @@ interface Flashcard {
   answer: string;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 async function apiPost(path: string, body: object) {
   const { data: { session } } = await supabase.auth.getSession();
