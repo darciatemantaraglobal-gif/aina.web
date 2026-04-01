@@ -292,10 +292,10 @@ async function getAuthHeader() {
   return session ? `Bearer ${session.access_token}` : "";
 }
 
-async function adminFetch(path: string, options: RequestInit = {}) {
+async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = 15000) {
   const auth = await getAuthHeader();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(path, {
       ...options,
@@ -5989,7 +5989,7 @@ function LibraryManagementTab() {
       const result = await adminFetch("/api/admin/library/upload-file", {
         method: "POST",
         body: JSON.stringify({ fileBase64: b64, mimeType: file.type, fileName: file.name }),
-      });
+      }, 90000); // 90s timeout — large files need time to encode + upload
       setForm(p => ({ ...p, drive_url: result.url, file_type: result.ext ?? p.file_type }));
       setUploadedFileName(file.name);
       toast.success("File berhasil diupload");

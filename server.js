@@ -91,10 +91,12 @@ app.use(cors({
 }));
 
 /* ── Body parser — default small limit ──────────────── */
-// Avatar upload route overrides this with its own limit (see below)
+// Library upload allows up to 50 MB files; base64 encoding adds ~33% overhead → need ≥70mb
+// Avatar/image uploads are smaller — 20mb is sufficient
 app.use((req, res, next) => {
-  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image", "/api/admin/library/upload-file"];
-  const limit = largeRoutes.includes(req.path) ? "20mb" : "64kb";
+  const xlRoutes   = ["/api/admin/library/upload-file"];
+  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image"];
+  const limit = xlRoutes.includes(req.path) ? "70mb" : largeRoutes.includes(req.path) ? "20mb" : "64kb";
   express.json({ limit })(req, res, next);
 });
 
@@ -7440,18 +7442,39 @@ app.post("/api/admin/library/upload-file", uploadLimiter, async (req, res) => {
 
   const base64Data = fileBase64.replace(/^data:[^;]+;base64,/, "");
   const buffer = Buffer.from(base64Data, "base64");
+  const fileSizeMB = (buffer.length / 1024 / 1024).toFixed(1);
   if (buffer.length > 50 * 1024 * 1024) return res.status(400).json({ error: "Ukuran file maksimal 50MB" });
 
+  console.log(`[Library Upload] admin=${admin.id} file=${fileName} size=${fileSizeMB}MB type=${safeMime}`);
+
   const supabase = getAdminClient();
+
+  // Ensure bucket exists — create on-the-fly if missing (e.g. first deploy)
+  const { data: buckets } = await supabase.storage.listBuckets();
+  const bucketNames = (buckets || []).map(b => b.name);
+  if (!bucketNames.includes("library-files")) {
+    const { error: bucketErr } = await supabase.storage.createBucket("library-files", { public: true, fileSizeLimit: 52428800 });
+    if (bucketErr && !bucketErr.message.includes("already exists")) {
+      console.error("[Library Upload] bucket create error:", bucketErr.message);
+      return res.status(500).json({ error: `Gagal membuat storage bucket: ${bucketErr.message}` });
+    }
+    console.log("[Library Upload] bucket 'library-files' created on-the-fly");
+  }
+
   const safeName = (fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
   const storagePath = `${Date.now()}_${safeName}`;
 
   const { error: uploadErr } = await supabase.storage
     .from("library-files")
     .upload(storagePath, buffer, { contentType: safeMime, upsert: false });
-  if (uploadErr) return res.status(500).json({ error: uploadErr.message });
+
+  if (uploadErr) {
+    console.error(`[Library Upload] storage error: ${uploadErr.message}`);
+    return res.status(500).json({ error: `Gagal upload ke storage: ${uploadErr.message}` });
+  }
 
   const { data: { publicUrl } } = supabase.storage.from("library-files").getPublicUrl(storagePath);
+  console.log(`[Library Upload] ✓ uploaded to ${storagePath}`);
   res.json({ url: publicUrl, ext });
 });
 
@@ -9256,6 +9279,7 @@ async function checkRequiredTables() {
     "system_announcements", "user_announcement_views",
     "masisir_news",
     "daily_focus_items", "admin_tracker_items", "reminder_logs",
+    "library_items",
   ];
 
   const missing = [];
@@ -10001,8 +10025,56 @@ async function syncContributionCounts() {
   }
 }
 
+/* ── Direct table init for Library (no exec_sql dependency) ── */
+async function initLibraryTable() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+
+  // Check if table already exists
+  const { error: checkErr } = await supabase.from("library_items").select("id").limit(0);
+  if (!checkErr) {
+    console.log("[Library] ✓ library_items table ready");
+    return;
+  }
+  if (!checkErr.message?.includes("does not exist") && checkErr.code !== "42P01") {
+    // Some other error (RLS etc) — table might exist, skip
+    console.log("[Library] ✓ library_items table ready");
+    return;
+  }
+
+  // Table missing — try to create via exec_sql RPC
+  console.log("[Library] library_items table missing — attempting to create...");
+  const createSQL = `
+    CREATE TABLE IF NOT EXISTS public.library_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'umum' CHECK (category IN ('muqorror','panduan','referensi','umum')),
+      faculty TEXT,
+      year_level TEXT,
+      drive_url TEXT NOT NULL,
+      file_type TEXT NOT NULL DEFAULT 'pdf',
+      tags TEXT,
+      is_published BOOLEAN NOT NULL DEFAULT true,
+      created_by UUID REFERENCES auth.users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_library_items_cat ON public.library_items(category, is_published);
+  `;
+  try {
+    await supabase.rpc("exec_sql", { sql: createSQL });
+    console.log("[Library] ✓ library_items table created");
+  } catch (e) {
+    console.warn("[Library] ⚠️  Could not auto-create library_items:", e.message);
+    console.warn("[Library] → Run this SQL manually in Supabase SQL editor:");
+    console.warn(createSQL);
+  }
+}
+
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
+  initLibraryTable();
   checkRequiredTables();
   runColumnMigrations().then(() => {
     seedPartnerArticles();
