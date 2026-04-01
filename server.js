@@ -3046,20 +3046,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (isDynamicRole || isTimeSensitive || isCurrency) return "standard";
 
     // ── Safe Tier A routes ────────────────────────────────────────────────────
-    // Casual / small-talk: no KB reasoning needed
+    // Only casual/small-talk goes to Tier A — no substantive knowledge needed.
+    // All other intents (factual, procedural, fiqh, etc.) stay on Tier B regardless
+    // of KB strength, to preserve full answer quality.
     if (intentPrimary === "casual") return "lightweight";
 
-    // Arabic writing always needs the stronger model for quality output
-    if (intentPrimary === "arabic_writing") return "standard";
-
-    // Fiqh / Islamic knowledge — always Tier B for scholarly accuracy
-    if (intentPrimary === "fiqh") return "standard";
-
-    // KB is strong → model only needs to present/format the KB content; no heavy reasoning
-    if (kbStrength === "strong" && ["factual", "procedural", "confused", "confused_procedural"].includes(intentPrimary)) return "lightweight";
-
     // ── Everything else → Tier B ──────────────────────────────────────────────
-    // recommendation, brainstorming, memory-aware, absent KB, weak KB, or unknown intent
     return "standard";
   }
 
