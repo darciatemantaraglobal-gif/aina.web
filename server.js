@@ -16,6 +16,7 @@ import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchest
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { runDailyReminder, runWeeklyRecap } from "./server/services/reminderService.js";
+import { generateEmbedding, buildArticleEmbedText } from "./api/engine/embedder.js";
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
@@ -773,6 +774,31 @@ async function triggerKeywordGen(articleId) {
   } catch { /* silent — keyword gen is best-effort */ }
 }
 
+/**
+ * Generate and store an embedding for a KB article.
+ * Fire-and-forget — never blocks the main response path.
+ * Fetches latest article fields (including keywords/summary if already generated).
+ */
+async function embedKBArticle(articleId) {
+  if (!process.env.OPENAI_API_KEY) return;
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  try {
+    const { data: art } = await supabase
+      .from("knowledge_base")
+      .select("title, content, keywords, summary")
+      .eq("id", articleId)
+      .single();
+    if (!art) return;
+    const embedText = buildArticleEmbedText(art);
+    const embedding = await generateEmbedding(embedText);
+    await supabase.from("knowledge_base").update({ embedding: JSON.stringify(embedding) }).eq("id", articleId);
+    console.log(`[RAG] ✓ embedded article ${articleId}`);
+  } catch (e) {
+    console.warn(`[RAG] embedding failed for ${articleId}: ${e.message}`);
+  }
+}
+
 /* ── Fetch relevant knowledge base articles ──────────── */
 async function fetchRelevantArticles(userQuestion, intentType) {
   const supabase = getAdminClient();
@@ -872,7 +898,31 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 
   console.log(`[KB] keywords extracted: [${keywords.join(", ")}] from "${userQuestion.slice(0, 60)}"`);
 
-  // No meaningful keywords → no KB match possible → log as missing topic
+  // ── Vector (semantic) search — try first if OpenAI key is available ─────────
+  let vectorResults = [];
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const queryEmbedding = await generateEmbedding(userQuestion);
+      const { data: vecData, error: vecErr } = await supabase.rpc("match_knowledge_base", {
+        query_embedding: queryEmbedding,
+        match_threshold: 0.40,
+        match_count: 5,
+      });
+      if (!vecErr && vecData && vecData.length > 0) {
+        vectorResults = vecData;
+        console.log(`[RAG] ✓ vector search: ${vectorResults.length} results (top similarity=${vecData[0]?.similarity?.toFixed(3)})`);
+      }
+    } catch (vecE) {
+      console.warn(`[RAG] vector search failed, falling back to keyword: ${vecE.message}`);
+    }
+  }
+
+  // If vector search found solid results, use them directly
+  if (vectorResults.length > 0) {
+    return vectorResults.slice(0, 5).map(({ similarity: _, ...a }) => a);
+  }
+
+  // ── Keyword (ILIKE) search — fallback when vector unavailable/empty ──────────
   if (keywords.length === 0) {
     logMissingTopic(userQuestion, intentType);
     return [];
@@ -4563,10 +4613,11 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
 
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
-  // Fire-and-forget keyword generation and duplicate check when article is approved
+  // Fire-and-forget keyword generation, duplicate check, and embedding when article is approved
   if (status === "approved") {
     triggerKeywordGen(id);
     checkAndArchiveDuplicate(supabase, id, article.title, article.category).catch(() => {});
+    embedKBArticle(id).catch(() => {});
   }
 
   const articleData = article; // alias — already has title
@@ -4932,8 +4983,11 @@ app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
       errors.push(`Gagal: ${art.title?.slice(0, 40)} — ${error.message}`);
     } else {
       imported++;
-      // Fire-and-forget duplicate check (archive old article if similar topic exists)
-      if (inserted?.id) checkAndArchiveDuplicate(supabase, inserted.id, payload.title, category).catch(() => {});
+      // Fire-and-forget duplicate check + embedding
+      if (inserted?.id) {
+        checkAndArchiveDuplicate(supabase, inserted.id, payload.title, category).catch(() => {});
+        embedKBArticle(inserted.id).catch(() => {});
+      }
     }
   }
 
@@ -4967,11 +5021,12 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   const pendingIds = pendingArticles.map(a => a.id);
   await supabase.from("knowledge_base").update({ status }).in("id", pendingIds);
 
-  // Fire-and-forget: keyword generation + duplicate check for all newly approved articles
+  // Fire-and-forget: keyword generation + duplicate check + embedding for all newly approved articles
   if (status === "approved") {
     for (const art of pendingArticles) {
       triggerKeywordGen(art.id);
       checkAndArchiveDuplicate(supabase, art.id, art.title, art.category).catch(() => {});
+      embedKBArticle(art.id).catch(() => {});
     }
   }
 
@@ -5020,6 +5075,36 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
 
 /* ── In-memory tracker for bulk keyword generation progress ── */
 let _kwGenState = { running: false, total: 0, generated: 0, errors: 0, startedAt: null, completedAt: null };
+
+/* POST /api/admin/articles/generate-embeddings — batch re-embed all approved articles */
+app.post("/api/admin/articles/generate-embeddings", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "OPENAI_API_KEY not configured" });
+
+  const supabase = getAdminClient();
+  const { data: articles } = await supabase
+    .from("knowledge_base")
+    .select("id")
+    .eq("status", "approved");
+
+  if (!articles?.length) return res.json({ embedded: 0, total: 0 });
+
+  res.json({ message: `Embedding ${articles.length} articles in background...`, total: articles.length });
+
+  // Fire-and-forget: embed each article with a short delay to avoid rate limits
+  (async () => {
+    let embedded = 0;
+    for (const { id } of articles) {
+      try {
+        await embedKBArticle(id);
+        embedded++;
+        await new Promise(r => setTimeout(r, 200)); // 200ms between calls → ~5 req/s
+      } catch { /* embedKBArticle already logs failures */ }
+    }
+    console.log(`[RAG] Batch embedding complete: ${embedded}/${articles.length} embedded`);
+  })();
+});
 
 /* GET /api/admin/articles/generate-keywords/status */
 app.get("/api/admin/articles/generate-keywords/status", async (req, res) => {
@@ -5182,8 +5267,11 @@ app.post("/api/admin/articles", async (req, res) => {
   const level = newCount >= 10 ? "Senior Contributor" : "Contributor";
   await supabase.from("profiles").update({ contribution_count: newCount, level }).eq("user_id", admin.id);
 
-  // Fire-and-forget duplicate check
-  if (inserted?.id) checkAndArchiveDuplicate(supabase, inserted.id, insertPayload.title, insertPayload.category).catch(() => {});
+  // Fire-and-forget duplicate check + embedding
+  if (inserted?.id) {
+    checkAndArchiveDuplicate(supabase, inserted.id, insertPayload.title, insertPayload.category).catch(() => {});
+    embedKBArticle(inserted.id).catch(() => {});
+  }
 
   res.json({ success: true });
 });
@@ -6932,15 +7020,18 @@ app.post("/api/admin/saved-answers/:id/promote-to-kb", async (req, res) => {
   if (fetchErr || !saved) return res.status(404).json({ error: "Tidak ditemukan" });
 
   // Insert into knowledge_base as approved article
-  const { error: kbErr } = await supabase.from("knowledge_base").insert({
+  const { data: kbInserted, error: kbErr } = await supabase.from("knowledge_base").insert({
     author_id: admin.id,
     title:     title.trim(),
     content:   saved.content,
     category:  category?.trim() || "Umum",
     status:    "approved",
-  });
+  }).select("id").single();
 
   if (kbErr) return res.status(500).json({ error: sanitizeErr(kbErr) });
+
+  // Fire-and-forget embedding for the promoted article
+  if (kbInserted?.id) embedKBArticle(kbInserted.id).catch(() => {});
 
   // Mark the saved answer as promoted (add column if not exists)
   await supabase.from("saved_answers").update({ promoted_to_kb: true }).eq("id", id).catch(() => {});
@@ -9274,6 +9365,54 @@ async function runColumnMigrations() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );`,
     `CREATE INDEX IF NOT EXISTS idx_library_items_cat ON public.library_items(category, is_published);`,
+    // ── RAG (Retrieval-Augmented Generation) — pgvector semantic search ───────
+    // Step 1: enable pgvector extension (pre-installed on all Supabase projects)
+    `CREATE EXTENSION IF NOT EXISTS vector;`,
+    // Step 2: add embedding column to knowledge_base (text-embedding-3-small = 1536 dims)
+    `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding vector(1536);`,
+    // Step 3: IVFFlat index for fast cosine similarity search
+    `CREATE INDEX IF NOT EXISTS idx_kb_embedding ON public.knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 10);`,
+    // Step 4: match_knowledge_base RPC — returns articles sorted by semantic similarity
+    `CREATE OR REPLACE FUNCTION match_knowledge_base(
+      query_embedding vector(1536),
+      match_threshold float DEFAULT 0.40,
+      match_count int DEFAULT 5
+    )
+    RETURNS TABLE (
+      title text,
+      content text,
+      category text,
+      hidden boolean,
+      article_type text,
+      keywords text,
+      maps_url text,
+      summary text,
+      important_notes text,
+      similarity float
+    )
+    LANGUAGE plpgsql
+    AS $func$
+    BEGIN
+      RETURN QUERY
+      SELECT
+        kb.title,
+        kb.content,
+        kb.category,
+        kb.hidden,
+        kb.article_type,
+        kb.keywords,
+        kb.maps_url,
+        kb.summary,
+        kb.important_notes,
+        1 - (kb.embedding <=> query_embedding) AS similarity
+      FROM knowledge_base kb
+      WHERE kb.status = 'approved'
+        AND kb.embedding IS NOT NULL
+        AND 1 - (kb.embedding <=> query_embedding) > match_threshold
+      ORDER BY kb.embedding <=> query_embedding
+      LIMIT match_count;
+    END;
+    $func$;`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

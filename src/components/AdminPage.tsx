@@ -1847,6 +1847,8 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   } | null>(null);
   const autoCatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [embedLoading, setEmbedLoading] = useState(false);
+
   const [bulkHideLoading, setBulkHideLoading] = useState(false);
   const [selectionAutoCatLoading, setSelectionAutoCatLoading] = useState(false);
   const [autoTitleingId, setAutoTitleingId] = useState<string | null>(null);
@@ -2072,6 +2074,17 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); setAutoCatLoading(false); }
   };
 
+  const handleGenerateEmbeddings = async () => {
+    if (embedLoading) return;
+    if (!confirm(`Generate embedding RAG untuk semua artikel KB yang sudah approved?\nProses berjalan di background (estimasi: ~5 menit untuk 100 artikel).`)) return;
+    setEmbedLoading(true);
+    try {
+      const result = await adminFetch("/api/admin/articles/generate-embeddings", { method: "POST" });
+      toast.success(result.message || `Embedding ${result.total} artikel dimulai di background.`);
+    } catch (e: any) { toast.error(e.message); }
+    finally { setTimeout(() => setEmbedLoading(false), 3000); }
+  };
+
   const handleAutoTitleOne = async (art: Article) => {
     if (autoTitleingId) return;
     setAutoTitleingId(art.id);
@@ -2265,6 +2278,18 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                       : "Auto-cat..."}
                   </>
                 : <><Tags className="h-3.5 w-3.5" /> Auto-Kategori</>
+              }
+            </Button>
+            <Button
+              size="sm" variant="ghost"
+              className="h-8 gap-1.5 text-xs text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
+              disabled={embedLoading}
+              onClick={handleGenerateEmbeddings}
+              title="Generate embedding RAG untuk semua artikel KB — aktifkan pencarian semantik (AINA bisa temukan artikel berdasarkan makna, bukan hanya kata kunci)"
+            >
+              {embedLoading
+                ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Embedding...</>
+                : <><Zap className="h-3.5 w-3.5" /> Gen RAG</>
               }
             </Button>
 

@@ -7,7 +7,7 @@ AI-powered assistant platform for Indonesian students in Egypt (Masisir). Featur
 - **Frontend**: React 18 + TypeScript + Vite (port 5000)
 - **Backend**: Express.js API server (port 3001)
 - **Auth & Database**: Supabase (PostgreSQL + GoTrue auth + Storage)
-- **AI**: OpenRouter API (multiple free models with fallback)
+- **AI**: OpenRouter API (multiple free models with fallback); OpenAI API (embeddings only, text-embedding-3-small)
 - **Styling**: Tailwind CSS + shadcn/ui (Radix UI)
 - **State**: TanStack Query (React Query)
 
@@ -30,6 +30,7 @@ Modular architecture for AI response generation. Each module is a pure-function 
 | `api/engine/intentDetector.js` | Intent detection (`detectIntent`), fiqh detection, Arabic writing detection, intent→format hint builder |
 | `api/engine/responseStyles.js` | 5 response styles: `short_direct`, `step_by_step`, `detailed_complete`, `practical_ready_to_use`, `casual_easy_to_understand` |
 | `api/engine/promptBuilder.js` | Context block builders (KB, pinned, personalization, memory, exchange, wiki, ddg, perplexity, dorar) + `buildSystemPrompt()` assembler |
+| `api/engine/embedder.js` | OpenAI embedding utility: `generateEmbedding(text)` → float32[1536], `buildArticleEmbedText(article)` for rich embed input |
 | `api/engine/responseFormatter.js` | Output validation (`validateResponse`), post-processing (`postProcessResponse`), source badge builder (`buildSourceBadges`) |
 | `api/engine/sourceOrchestrator.js` | Source orchestration: `planSourceFetches()` (pre-fetch plan), `buildSourceResult()` (post-fetch rich metadata), `logSourceDecision()` (debug logging), `buildNoSourceResult()` (graceful fallback) |
 
