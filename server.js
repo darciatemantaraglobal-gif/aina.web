@@ -93,8 +93,8 @@ app.use(cors({
 /* ── Body parser — default small limit ──────────────── */
 // Avatar upload route overrides this with its own limit (see below)
 app.use((req, res, next) => {
-  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image"];
-  const limit = largeRoutes.includes(req.path) ? "8mb" : "64kb";
+  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image", "/api/admin/library/upload-file"];
+  const limit = largeRoutes.includes(req.path) ? "20mb" : "64kb";
   express.json({ limit })(req, res, next);
 });
 
@@ -213,6 +213,10 @@ async function initStorage() {
     if (!names.includes("thread-images")) {
       await supabase.storage.createBucket("thread-images", { public: true, fileSizeLimit: 5242880 }); // 5 MB cap
       console.log("Storage bucket 'thread-images' created");
+    }
+    if (!names.includes("library-files")) {
+      await supabase.storage.createBucket("library-files", { public: true, fileSizeLimit: 52428800 }); // 50 MB cap
+      console.log("Storage bucket 'library-files' created");
     }
   } catch (e) {
     console.warn("Storage init warning:", e.message);
@@ -6309,7 +6313,7 @@ app.post("/api/threads/upload-image", uploadLimiter, async (req, res) => {
 
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const buffer = Buffer.from(base64Data, "base64");
-  if (buffer.length > 5 * 1024 * 1024) return res.status(400).json({ error: "Ukuran gambar maksimal 5MB" });
+  if (buffer.length > 10 * 1024 * 1024) return res.status(400).json({ error: "Ukuran gambar maksimal 10MB" });
 
   const supabase = getAdminClient();
   const storagePath = `${user.id}/${Date.now()}.${ext}`;
@@ -7404,6 +7408,45 @@ app.get("/api/library", writeLimiter, async (req, res) => {
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data ?? []);
+});
+
+/* POST /api/admin/library/upload-file — admin, upload file to storage and return public URL */
+app.post("/api/admin/library/upload-file", uploadLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { fileBase64, mimeType, fileName } = req.body;
+  if (!fileBase64) return res.status(400).json({ error: "fileBase64 required" });
+
+  const ALLOWED_LIBRARY_TYPES = new Map([
+    ["application/pdf", "pdf"],
+    ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"],
+    ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"],
+    ["application/msword", "doc"],
+    ["application/vnd.ms-powerpoint", "ppt"],
+    ["image/jpeg", "jpg"],
+    ["image/png", "png"],
+  ]);
+
+  const safeMime = typeof mimeType === "string" ? mimeType.toLowerCase() : "application/pdf";
+  const ext = ALLOWED_LIBRARY_TYPES.get(safeMime);
+  if (!ext) return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan PDF, DOCX, atau PPTX." });
+
+  const base64Data = fileBase64.replace(/^data:[^;]+;base64,/, "");
+  const buffer = Buffer.from(base64Data, "base64");
+  if (buffer.length > 50 * 1024 * 1024) return res.status(400).json({ error: "Ukuran file maksimal 50MB" });
+
+  const supabase = getAdminClient();
+  const safeName = (fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+  const storagePath = `${Date.now()}_${safeName}`;
+
+  const { error: uploadErr } = await supabase.storage
+    .from("library-files")
+    .upload(storagePath, buffer, { contentType: safeMime, upsert: false });
+  if (uploadErr) return res.status(500).json({ error: uploadErr.message });
+
+  const { data: { publicUrl } } = supabase.storage.from("library-files").getPublicUrl(storagePath);
+  res.json({ url: publicUrl, ext });
 });
 
 /* POST /api/admin/library — admin, create item */

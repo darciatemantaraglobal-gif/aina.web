@@ -5869,6 +5869,10 @@ function LibraryManagementTab() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [urlMode, setUrlMode] = useState<"upload" | "drive">("upload");
+  const [fileUploading, setFileUploading] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const libFileRef = useRef<HTMLInputElement>(null);
 
   // Import ke KB wizard state
   const [showImport, setShowImport] = useState(false);
@@ -5943,19 +5947,47 @@ function LibraryManagementTab() {
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditing(null); setForm(emptyLib()); setShowForm(true); };
+  const handleLibFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) { toast.error("Ukuran file maksimal 50MB"); return; }
+    setFileUploading(true);
+    try {
+      const reader = new FileReader();
+      const b64: string = await new Promise((res, rej) => {
+        reader.onload = () => res(reader.result as string);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      const result = await adminFetch("/api/admin/library/upload-file", {
+        method: "POST",
+        body: JSON.stringify({ fileBase64: b64, mimeType: file.type, fileName: file.name }),
+      });
+      setForm(p => ({ ...p, drive_url: result.url, file_type: result.ext ?? p.file_type }));
+      setUploadedFileName(file.name);
+      toast.success("File berhasil diupload");
+    } catch (e: any) { toast.error(e.message ?? "Gagal upload file"); }
+    finally { setFileUploading(false); if (libFileRef.current) libFileRef.current.value = ""; }
+  };
+
+  const openAdd = () => {
+    setEditing(null); setForm(emptyLib()); setUrlMode("upload");
+    setUploadedFileName(null); setShowForm(true);
+  };
   const openEdit = (item: LibItem) => {
     setEditing(item);
     setForm({ title: item.title, description: item.description ?? "", category: item.category,
       faculty: item.faculty ?? "", year_level: item.year_level ?? "",
       drive_url: item.drive_url, file_type: item.file_type, tags: item.tags ?? "",
       is_published: item.is_published });
+    setUrlMode("drive");
+    setUploadedFileName(null);
     setShowForm(true);
   };
 
   const save = async () => {
     if (!form.title.trim()) { toast.error("Judul wajib diisi"); return; }
-    if (!form.drive_url.trim()) { toast.error("Link Google Drive wajib diisi"); return; }
+    if (!form.drive_url.trim()) { toast.error(urlMode === "upload" ? "Upload file terlebih dahulu" : "Link wajib diisi"); return; }
     setSaving(true);
     try {
       const payload = { ...form,
@@ -6120,9 +6152,54 @@ function LibraryManagementTab() {
               </div>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-foreground">Link Google Drive *</label>
-              <Input value={form.drive_url} onChange={e => setForm(p => ({ ...p, drive_url: e.target.value }))} placeholder="https://drive.google.com/file/d/..." />
-              <p className="mt-1 text-[11px] text-muted-foreground">Pastikan file sudah di-share "Anyone with the link can view"</p>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">File / URL *</label>
+              {/* Tab toggle */}
+              <div className="mb-2 flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setUrlMode("upload")}
+                  className={`flex-1 py-1.5 transition-colors ${urlMode === "upload" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUrlMode("drive")}
+                  className={`flex-1 py-1.5 transition-colors ${urlMode === "drive" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  URL Drive / Link
+                </button>
+              </div>
+
+              {urlMode === "upload" ? (
+                <div>
+                  <input ref={libFileRef} type="file" accept=".pdf,.docx,.pptx,.doc,.ppt" className="hidden" onChange={handleLibFileChange} />
+                  {uploadedFileName || form.drive_url ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2">
+                      <FileText className="h-4 w-4 text-green-400 shrink-0" />
+                      <span className="flex-1 min-w-0 text-xs text-green-300 truncate">{uploadedFileName ?? "File sudah diupload"}</span>
+                      <button type="button" onClick={() => { setUploadedFileName(null); setForm(p => ({ ...p, drive_url: "" })); }} className="text-muted-foreground hover:text-foreground text-xs shrink-0">Ganti</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => libFileRef.current?.click()}
+                      disabled={fileUploading}
+                      className="w-full flex flex-col items-center gap-1.5 rounded-lg border border-dashed border-white/20 bg-white/[0.02] py-5 text-xs text-muted-foreground hover:border-white/30 hover:bg-white/[0.04] transition-colors disabled:opacity-50"
+                    >
+                      {fileUploading
+                        ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" /> Mengupload...</>
+                        : <><Upload className="h-5 w-5 text-foreground/30" /> Klik untuk pilih file<span className="text-foreground/30">PDF, DOCX, PPTX — maks 50MB</span></>
+                      }
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <Input value={form.drive_url} onChange={e => setForm(p => ({ ...p, drive_url: e.target.value }))} placeholder="https://drive.google.com/file/d/... atau URL lainnya" />
+                  <p className="mt-1 text-[11px] text-muted-foreground">Google Drive: pastikan sudah di-share "Anyone with the link can view"</p>
+                </div>
+              )}
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-foreground">Tags (opsional)</label>
