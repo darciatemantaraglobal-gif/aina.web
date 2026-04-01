@@ -9921,6 +9921,7 @@ async function runColumnMigrations() {
     `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding vector(1536);`,
     `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding_model varchar(80);`,
     `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS summary TEXT;`,
+    `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS content_ar TEXT;`,
     // Step 3: IVFFlat index for fast cosine similarity search
     `CREATE INDEX IF NOT EXISTS idx_kb_embedding ON public.knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 10);`,
     // Step 4: match_knowledge_base RPC — returns articles sorted by semantic similarity
