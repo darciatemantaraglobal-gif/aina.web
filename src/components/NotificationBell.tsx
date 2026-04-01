@@ -39,7 +39,9 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
   const [loading, setLoading] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [panelPos, setPanelPos] = useState<{ bottom: number; left: number }>({ bottom: 0, left: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -162,8 +164,16 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
   };
 
   const handleOpen = () => {
-    setOpen(prev => !prev);
-    if (!open && unreadCount > 0) {
+    const next = !open;
+    if (next && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPanelPos({
+        bottom: window.innerHeight - rect.top + 8,
+        left: rect.left,
+      });
+    }
+    setOpen(next);
+    if (next && unreadCount > 0) {
       setTimeout(markAllRead, 1500);
     }
   };
@@ -171,6 +181,7 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={buttonRef}
         onClick={handleOpen}
         title="Notifikasi"
         className={`relative flex items-center gap-3 w-full rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
@@ -189,7 +200,10 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-80 overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl">
+        <div
+          className="w-80 overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl"
+          style={{ position: "fixed", bottom: panelPos.bottom, left: panelPos.left, zIndex: 9999 }}
+        >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-foreground">Notifikasi</p>
