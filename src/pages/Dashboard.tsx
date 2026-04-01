@@ -99,6 +99,9 @@ class TabErrorBoundary extends Component<
           <div>
             <p className="font-semibold text-foreground">Halaman {this.props.tabName} mengalami error</p>
             <p className="mt-1 text-sm text-muted-foreground">Klik tombol di bawah untuk memuat ulang</p>
+            {this.state.error && (
+              <p className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive font-mono break-all">{this.state.error}</p>
+            )}
           </div>
           <button
             onClick={() => this.setState({ hasError: false, error: "" })}

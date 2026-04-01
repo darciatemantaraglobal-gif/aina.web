@@ -6466,7 +6466,7 @@ function LibraryManagementTab() {
                           <>
                             <p className="text-xs text-muted-foreground leading-relaxed">{art.summary}</p>
                             <div className="flex flex-wrap gap-1">
-                              {art.keywords.split(",").slice(0, 6).map((kw, ki) => (
+                              {(art.keywords ?? "").split(",").slice(0, 6).map((kw, ki) => (
                                 <span key={ki} className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{kw.trim()}</span>
                               ))}
                             </div>
