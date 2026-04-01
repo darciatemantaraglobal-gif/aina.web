@@ -7248,6 +7248,101 @@ app.post("/api/admin/procedures/reorder", writeLimiter, async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── LIBRARY ───────────────────────────────────────────────────────────────
+
+/* GET /api/library — authenticated users, returns published items */
+app.get("/api/library", authLimiter, async (req, res) => {
+  const user = await verifyUser(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server error" });
+
+  const { category, faculty, year_level, q } = req.query;
+
+  let query = supabase
+    .from("library_items")
+    .select("id, title, description, category, faculty, year_level, drive_url, file_type, tags, created_at")
+    .eq("is_published", true)
+    .order("category")
+    .order("created_at", { ascending: false });
+
+  if (category && category !== "semua") query = query.eq("category", category);
+  if (faculty && faculty !== "semua") query = query.eq("faculty", faculty);
+  if (year_level && year_level !== "semua") query = query.eq("year_level", year_level);
+  if (q) {
+    const term = `%${q}%`;
+    query = query.or(`title.ilike.${term},description.ilike.${term},tags.ilike.${term}`);
+  }
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
+});
+
+/* POST /api/admin/library — admin, create item */
+app.post("/api/admin/library", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Akses ditolak" });
+
+  const { title, description, category, faculty, year_level, drive_url, file_type, tags, is_published } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: "Judul wajib diisi" });
+  if (!drive_url?.trim()) return res.status(400).json({ error: "Link Google Drive wajib diisi" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("library_items").insert({
+    title: title.trim(),
+    description: description?.trim() || null,
+    category: category || "umum",
+    faculty: faculty?.trim() || null,
+    year_level: year_level?.trim() || null,
+    drive_url: drive_url.trim(),
+    file_type: file_type || "pdf",
+    tags: tags?.trim() || null,
+    is_published: is_published !== false,
+    created_by: admin.id,
+  }).select().single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+/* PATCH /api/admin/library/:id — admin, update item */
+app.patch("/api/admin/library/:id", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Akses ditolak" });
+
+  const { id } = req.params;
+  const { title, description, category, faculty, year_level, drive_url, file_type, tags, is_published } = req.body;
+
+  const supabase = getAdminClient();
+  const updates = { updated_at: new Date().toISOString() };
+  if (title !== undefined) updates.title = title.trim();
+  if (description !== undefined) updates.description = description?.trim() || null;
+  if (category !== undefined) updates.category = category;
+  if (faculty !== undefined) updates.faculty = faculty?.trim() || null;
+  if (year_level !== undefined) updates.year_level = year_level?.trim() || null;
+  if (drive_url !== undefined) updates.drive_url = drive_url.trim();
+  if (file_type !== undefined) updates.file_type = file_type;
+  if (tags !== undefined) updates.tags = tags?.trim() || null;
+  if (is_published !== undefined) updates.is_published = is_published;
+
+  const { data, error } = await supabase.from("library_items").update(updates).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+/* DELETE /api/admin/library/:id — admin, delete item */
+app.delete("/api/admin/library/:id", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Akses ditolak" });
+
+  const supabase = getAdminClient();
+  const { error } = await supabase.from("library_items").delete().eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 // ─── BADGE SYSTEM ──────────────────────────────────────────────────────────
 
 const BADGE_DEFS = {
@@ -9078,6 +9173,23 @@ async function runColumnMigrations() {
     // Step 3: add updated constraints that include "Bahasa"
     "ALTER TABLE public.knowledge_base ADD CONSTRAINT knowledge_base_category_check CHECK (category IN ('Administrasi', 'Akademik', 'Kehidupan Mesir', 'Transport', 'Tempat Tinggal', 'Kuliner', 'Bahasa'));",
     "ALTER TABLE public.threads ADD CONSTRAINT threads_category_check CHECK (category IN ('Administrasi', 'Akademik', 'Kehidupan Mesir', 'Transport', 'Tempat Tinggal', 'Kuliner', 'Bahasa'));",
+    // Library items table — PDF/doc library with Google Drive links
+    `CREATE TABLE IF NOT EXISTS public.library_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'umum' CHECK (category IN ('muqorror', 'panduan', 'referensi', 'umum')),
+      faculty TEXT,
+      year_level TEXT,
+      drive_url TEXT NOT NULL,
+      file_type TEXT NOT NULL DEFAULT 'pdf',
+      tags TEXT,
+      is_published BOOLEAN NOT NULL DEFAULT true,
+      created_by UUID REFERENCES auth.users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_library_items_cat ON public.library_items(category, is_published);`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

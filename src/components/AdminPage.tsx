@@ -5730,8 +5730,253 @@ function CoverageTab() {
   );
 }
 
+/* ─── Library Management Tab ─────────────────────────── */
+const LIB_CATEGORIES = [
+  { id: "muqorror",  label: "Muqorror" },
+  { id: "panduan",   label: "Panduan" },
+  { id: "referensi", label: "Referensi" },
+  { id: "umum",      label: "Umum" },
+];
+const LIB_FACULTIES = ["", "Ushuluddin", "Syariah wal Qanun", "Dirasah Islamiyah wal Arabiyah", "Bahasa Arab", "Lainnya"];
+const LIB_YEARS    = ["", "Tahun 1", "Tahun 2", "Tahun 3", "Tahun 4", "Semua Tahun"];
+
+interface LibItem {
+  id: string; title: string; description: string | null;
+  category: string; faculty: string | null; year_level: string | null;
+  drive_url: string; file_type: string; tags: string | null;
+  is_published: boolean; created_at: string;
+}
+
+const emptyLib = (): Omit<LibItem, "id" | "created_at"> => ({
+  title: "", description: "", category: "muqorror", faculty: "",
+  year_level: "", drive_url: "", file_type: "pdf", tags: "", is_published: true,
+});
+
+function LibraryManagementTab() {
+  const [items, setItems] = useState<LibItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<LibItem | null>(null);
+  const [form, setForm] = useState<ReturnType<typeof emptyLib>>(emptyLib());
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch("/api/library?category=semua");
+      const data = Array.isArray(res) ? res : [];
+      setItems(data);
+    } catch { setItems([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openAdd = () => { setEditing(null); setForm(emptyLib()); setShowForm(true); };
+  const openEdit = (item: LibItem) => {
+    setEditing(item);
+    setForm({ title: item.title, description: item.description ?? "", category: item.category,
+      faculty: item.faculty ?? "", year_level: item.year_level ?? "",
+      drive_url: item.drive_url, file_type: item.file_type, tags: item.tags ?? "",
+      is_published: item.is_published });
+    setShowForm(true);
+  };
+
+  const save = async () => {
+    if (!form.title.trim()) { toast.error("Judul wajib diisi"); return; }
+    if (!form.drive_url.trim()) { toast.error("Link Google Drive wajib diisi"); return; }
+    setSaving(true);
+    try {
+      const payload = { ...form,
+        faculty: form.faculty || null, year_level: form.year_level || null,
+        description: form.description || null, tags: form.tags || null };
+      if (editing) {
+        await adminFetch(`/api/admin/library/${editing.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        toast.success("Item diperbarui");
+      } else {
+        await adminFetch("/api/admin/library", { method: "POST", body: JSON.stringify(payload) });
+        toast.success("Item ditambahkan");
+      }
+      setShowForm(false);
+      load();
+    } catch (e: any) { toast.error(e.message ?? "Gagal menyimpan"); }
+    finally { setSaving(false); }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Hapus item ini?")) return;
+    setDeleting(id);
+    try {
+      await adminFetch(`/api/admin/library/${id}`, { method: "DELETE" });
+      toast.success("Item dihapus");
+      setItems(prev => prev.filter(i => i.id !== id));
+    } catch (e: any) { toast.error(e.message ?? "Gagal menghapus"); }
+    finally { setDeleting(null); }
+  };
+
+  const togglePublish = async (item: LibItem) => {
+    try {
+      await adminFetch(`/api/admin/library/${item.id}`, { method: "PATCH", body: JSON.stringify({ is_published: !item.is_published }) });
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_published: !i.is_published } : i));
+    } catch { toast.error("Gagal mengubah status"); }
+  };
+
+  const filtered = items.filter(i =>
+    !search || i.title.toLowerCase().includes(search.toLowerCase()) ||
+    (i.faculty ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (i.tags ?? "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const catMeta: Record<string, string> = { muqorror: "Muqorror", panduan: "Panduan", referensi: "Referensi", umum: "Umum" };
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-border px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Library</h2>
+            <p className="text-xs text-muted-foreground">Kelola muqorror, panduan, dan referensi untuk Masisir</p>
+          </div>
+          <Button size="sm" onClick={openAdd} className="gap-1.5 shrink-0">
+            <Plus className="h-4 w-4" /> Tambah Item
+          </Button>
+        </div>
+        <div className="relative mt-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari judul, fakultas, tag..." className="pl-9" />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-5">
+        {loading ? (
+          <div className="flex h-32 items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="flex h-32 flex-col items-center justify-center gap-2 text-center">
+            <BookOpen className="h-8 w-8 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">{search ? "Tidak ada hasil" : "Belum ada item — klik Tambah Item"}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filtered.map(item => (
+              <div key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
+                    <span className="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {catMeta[item.category] ?? item.category}
+                    </span>
+                    {!item.is_published && (
+                      <span className="shrink-0 rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-orange-400">Draft</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-3 flex-wrap">
+                    {item.faculty && <span className="text-xs text-muted-foreground">{item.faculty}</span>}
+                    {item.year_level && <span className="text-xs text-muted-foreground">{item.year_level}</span>}
+                    <a href={item.drive_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-0.5 text-xs text-primary hover:underline">
+                      <ExternalLink className="h-3 w-3" /> Buka Drive
+                    </a>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => togglePublish(item)} title={item.is_published ? "Sembunyikan" : "Publikasikan"}>
+                    {item.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(item)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => remove(item.id)} disabled={deleting === item.id}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editing ? "Edit Item Library" : "Tambah Item Library"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">Judul *</label>
+              <Input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Contoh: Fathul Qarib - Thaharah" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">Deskripsi</label>
+              <Textarea value={form.description ?? ""} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Deskripsi singkat isi dokumen" rows={2} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Kategori *</label>
+                <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{LIB_CATEGORIES.map(c => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Tipe File</label>
+                <Select value={form.file_type} onValueChange={v => setForm(p => ({ ...p, file_type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["pdf", "docx", "pptx", "video", "link"].map(t => <SelectItem key={t} value={t}>{t.toUpperCase()}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Fakultas</label>
+                <Select value={form.faculty ?? ""} onValueChange={v => setForm(p => ({ ...p, faculty: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Semua fakultas" /></SelectTrigger>
+                  <SelectContent>{LIB_FACULTIES.map(f => <SelectItem key={f} value={f}>{f || "Semua fakultas"}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">Tahun</label>
+                <Select value={form.year_level ?? ""} onValueChange={v => setForm(p => ({ ...p, year_level: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Semua tahun" /></SelectTrigger>
+                  <SelectContent>{LIB_YEARS.map(y => <SelectItem key={y} value={y}>{y || "Semua tahun"}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">Link Google Drive *</label>
+              <Input value={form.drive_url} onChange={e => setForm(p => ({ ...p, drive_url: e.target.value }))} placeholder="https://drive.google.com/file/d/..." />
+              <p className="mt-1 text-[11px] text-muted-foreground">Pastikan file sudah di-share "Anyone with the link can view"</p>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">Tags (opsional)</label>
+              <Input value={form.tags ?? ""} onChange={e => setForm(p => ({ ...p, tags: e.target.value }))} placeholder="fiqh, thaharah, semester 1" />
+              <p className="mt-1 text-[11px] text-muted-foreground">Dipisah dengan koma, memudahkan pencarian</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setForm(p => ({ ...p, is_published: !p.is_published }))}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.is_published ? "bg-primary" : "bg-muted"}`}
+              >
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${form.is_published ? "translate-x-4" : "translate-x-0.5"}`} />
+              </button>
+              <span className="text-sm text-foreground">{form.is_published ? "Dipublikasikan" : "Draft (tidak terlihat pengguna)"}</span>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>Batal</Button>
+              <Button className="flex-1" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : editing ? "Simpan Perubahan" : "Tambahkan"}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library";
 
 interface NavItem { id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }
 interface NavGroup { label: string; masterOnly?: boolean; items: NavItem[] }
@@ -5789,6 +6034,7 @@ const AdminPage = () => {
       label: "Konten",
       items: [
         { id: "knowledge",  label: "Knowledge Base",   icon: FileText,  badge: stats.pendingArticles || undefined },
+        { id: "library",    label: "Library",          icon: BookOpen },
         { id: "updates",    label: "Breaking Updates", icon: Zap },
         { id: "news",       label: "Berita",           icon: Newspaper },
         { id: "procedures", label: "Prosedur",         icon: BookOpen,  masterOnly: true },
@@ -5854,6 +6100,7 @@ const AdminPage = () => {
       {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
       {activeTab === "coverage"      && isMasterAdmin && <CoverageTab />}
       {activeTab === "insights"      && isMasterAdmin && <InsightsTab />}
+      {activeTab === "library"       && <LibraryManagementTab />}
     </>
   );
 

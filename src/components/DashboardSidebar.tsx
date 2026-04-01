@@ -30,6 +30,7 @@ import {
   Settings2,
   Bookmark,
   History,
+  BookOpen,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -103,6 +104,7 @@ const NAV_GROUPS = [
     label: "Utama",
     items: [
       { id: "berita", label: "Berita Masisir", icon: Newspaper },
+      { id: "library", label: "Library", icon: BookOpen },
       { id: "productivity", label: "Ruang Produktif", icon: LayoutDashboard },
       { id: "saved", label: "Jawaban Tersimpan", icon: Bookmark },
     ],
