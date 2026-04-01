@@ -5235,18 +5235,35 @@ app.post("/api/admin/articles/generate-embeddings", async (req, res) => {
   if (!articleIds.length) return res.json({ started: false, total: 0 });
 
   _embedState = { running: true, total: articleIds.length, embedded: 0, errors: 0, startedAt: new Date().toISOString(), completedAt: null };
+  vectorSearchDisabled = false; // Reset circuit breaker when admin manually triggers embedding
   res.json({ started: true, total: articleIds.length });
 
-  // Fire-and-forget: embed each article with progress tracking
+  // Fire-and-forget: embed each article with progress tracking + adaptive rate limiting
   (async () => {
+    let delayMs = 1000; // Start at 1 req/s; slows automatically if rate limited
     for (const id of articleIds) {
-      try {
-        await embedKBArticle(id);
-        _embedState.embedded++;
-        await new Promise(r => setTimeout(r, 200)); // ~5 req/s
-      } catch {
-        _embedState.errors++;
+      let retries = 0;
+      let done = false;
+      while (!done && retries < 4) {
+        try {
+          await embedKBArticle(id, { rethrow: true });
+          _embedState.embedded++;
+          done = true;
+        } catch (e) {
+          const isRateLimit = e.message?.includes("429");
+          if (isRateLimit && retries < 3) {
+            delayMs = Math.min(delayMs * 3, 22000); // Ramp up: 1s→3s→9s→22s
+            const waitMs = 20000 * (retries + 1);
+            console.warn(`[RAG] Admin embed: rate limited — slowing to ${delayMs / 1000}s/req, waiting ${waitMs / 1000}s...`);
+            await new Promise(r => setTimeout(r, waitMs));
+            retries++;
+          } else {
+            _embedState.errors++;
+            done = true;
+          }
+        }
       }
+      await new Promise(r => setTimeout(r, delayMs));
     }
     _embedState.running = false;
     _embedState.completedAt = new Date().toISOString();
