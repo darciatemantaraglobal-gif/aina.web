@@ -10192,22 +10192,38 @@ async function autoEmbedMissingArticles() {
   }
   console.log(`[RAG] Auto-embedding ${articles.length} article(s) missing embeddings...`);
   let ok = 0, fail = 0;
+  let delayMs = 1000; // Start at 1 req/s; auto-increases if rate limited
   for (const { id } of articles) {
-    try {
-      await embedKBArticle(id, { rethrow: true });
-      ok++;
-      await new Promise(r => setTimeout(r, 250)); // ~4 req/s
-    } catch (e) {
-      // Quota exceeded or no billing — stop immediately, do not waste more API calls
-      if (e.message?.includes("429") || e.message?.includes("quota")) {
-        console.warn("[RAG] ⚠️  OpenAI quota exceeded — auto-embed stopped.");
-        console.warn("[RAG] → Fix: add a payment method at https://platform.openai.com/settings/billing");
-        console.warn(`[RAG] → Progress so far: ${ok} embedded, ${fail + 1} failed out of ${articles.length}`);
-        vectorSearchDisabled = true;
-        return;
+    let retries = 0;
+    let success = false;
+    while (!success && retries < 4) {
+      try {
+        await embedKBArticle(id, { rethrow: true });
+        ok++;
+        success = true;
+      } catch (e) {
+        const isRateLimit = e.message?.includes("429");
+        if (isRateLimit && retries < 3) {
+          // Slow down permanently for remaining articles + wait before retry
+          delayMs = Math.min(delayMs * 3, 22000); // ramp up: 1s→3s→9s→22s
+          const waitMs = 20000 * (retries + 1); // 20s, 40s, 60s cooldown
+          console.warn(`[RAG] Rate limited — slowing to ${delayMs / 1000}s/req, retrying in ${waitMs / 1000}s... (${ok}/${ok + articles.length - ok - 1} done)`);
+          await new Promise(r => setTimeout(r, waitMs));
+          retries++;
+        } else if (isRateLimit) {
+          // Still failing after retries — no billing/quota
+          console.warn("[RAG] ⚠️  OpenAI quota/billing issue — auto-embed stopped.");
+          console.warn("[RAG] → Fix: add a payment method at https://platform.openai.com/settings/billing");
+          console.warn(`[RAG] → Progress so far: ${ok} embedded, ${fail + 1} failed out of ${articles.length}`);
+          vectorSearchDisabled = true;
+          return;
+        } else {
+          fail++;
+          success = true; // non-rate-limit error, skip to next article
+        }
       }
-      fail++;
     }
+    await new Promise(r => setTimeout(r, delayMs));
   }
   console.log(`[RAG] Auto-embed complete: ${ok} embedded, ${fail} failed`);
 }
