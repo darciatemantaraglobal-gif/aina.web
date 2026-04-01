@@ -95,7 +95,7 @@ app.use(cors({
 // Avatar/image uploads are smaller — 20mb is sufficient
 app.use((req, res, next) => {
   const xlRoutes   = ["/api/admin/library/upload-file"];
-  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image"];
+  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image", "/api/whisper", "/api/chat"];
   const limit = xlRoutes.includes(req.path) ? "70mb" : largeRoutes.includes(req.path) ? "20mb" : "64kb";
   express.json({ limit })(req, res, next);
 });
@@ -7938,6 +7938,21 @@ app.post("/api/admin/library/upload-file", uploadLimiter, async (req, res) => {
   const { data: { publicUrl } } = supabase.storage.from("library-files").getPublicUrl(storagePath);
   console.log(`[Library Upload] ✓ uploaded ${storagePath} → ${publicUrl.slice(0, 60)}...`);
   res.json({ url: publicUrl, ext });
+});
+
+/* GET /api/admin/library — admin, list ALL items (including drafts) */
+app.get("/api/admin/library", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { data, error } = await supabase
+    .from("library_items")
+    .select("id, title, description, category, faculty, year_level, drive_url, file_type, tags, is_published, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
 });
 
 /* POST /api/admin/library — admin, create item */

@@ -122,10 +122,8 @@ const ProfilePage = lazy(() => import("@/components/ProfilePage"));
 const AdminPage = lazy(() => import("@/components/AdminPage"));
 const ThreadsPage = lazy(() => import("@/components/ThreadsPage"));
 const LeaderboardPage = lazy(() => import("@/components/LeaderboardPage"));
-const SavedAnswersPage = lazy(() => import("@/components/SavedAnswersPage"));
 const NewsPage = lazy(() => import("@/components/NewsPage"));
 const LibraryPage = lazy(() => import("@/components/LibraryPage"));
-const FlashcardPage = lazy(() => import("@/components/FlashcardPage"));
 
 interface Chat {
   id: string;
@@ -138,13 +136,11 @@ const tabTitles: Record<string, string> = {
   productivity: "Productivity",
   berita: "Berita Masisir",
   library: "Library",
-  flashcard: "Flashcard AI",
   threads: "Threads",
   leaderboard: "Leaderboard",
   contributor: "Contributor",
   profile: "Profile",
   admin: "Admin",
-  saved: "Jawaban Tersimpan",
 };
 
 
@@ -154,7 +150,7 @@ const TabLoader = () => (
   </div>
 );
 
-const VALID_TABS = ["chat", "berita", "productivity", "library", "flashcard", "threads", "leaderboard", "contributor", "profile", "admin", "saved"];
+const VALID_TABS = ["chat", "berita", "productivity", "library", "threads", "leaderboard", "contributor", "profile", "admin"];
 
 const Dashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -517,14 +513,6 @@ const Dashboard = () => {
                 </TabErrorBoundary>
               )}
 
-              {activeTab === "saved" && (
-                <TabErrorBoundary tabName="Jawaban Tersimpan">
-                  <Suspense fallback={<TabLoader />}>
-                    <SavedAnswersPage />
-                  </Suspense>
-                </TabErrorBoundary>
-              )}
-
               {activeTab === "berita" && (
                 <TabErrorBoundary tabName="Berita Masisir">
                   <Suspense fallback={<TabLoader />}>
@@ -541,13 +529,6 @@ const Dashboard = () => {
                 </TabErrorBoundary>
               )}
 
-              {activeTab === "flashcard" && (
-                <TabErrorBoundary tabName="Flashcard AI">
-                  <Suspense fallback={<TabLoader />}>
-                    <FlashcardPage />
-                  </Suspense>
-                </TabErrorBoundary>
-              )}
             </div>
           </div>
         )}

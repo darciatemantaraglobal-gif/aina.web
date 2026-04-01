@@ -28,10 +28,8 @@ import {
   Compass,
   FileText,
   Settings2,
-  Bookmark,
   History,
   BookOpen,
-  Layers,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -106,9 +104,7 @@ const NAV_GROUPS = [
     items: [
       { id: "berita", label: "Berita Masisir", icon: Newspaper },
       { id: "library", label: "Library", icon: BookOpen },
-      { id: "flashcard", label: "Flashcard AI", icon: Layers },
       { id: "productivity", label: "Ruang Produktif", icon: LayoutDashboard },
-      { id: "saved", label: "Jawaban Tersimpan", icon: Bookmark },
     ],
   },
   {

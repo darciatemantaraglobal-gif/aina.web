@@ -7,8 +7,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut, GraduationCap, MapPin, Brain, Trash2 } from "lucide-react";
+import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut, GraduationCap, MapPin, Brain, Trash2, Bookmark, UserCircle } from "lucide-react";
 import { toast } from "sonner";
+import SavedAnswersPage from "./SavedAnswersPage";
 
 function centerAspectCrop(mediaWidth: number, mediaHeight: number, aspect: number): Crop {
   return centerCrop(
@@ -47,6 +48,7 @@ async function getCroppedBlob(image: HTMLImageElement, crop: PixelCrop): Promise
 const EQUIPPED_BADGE_KEY = "aina_equipped_badge";
 
 const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
+  const [profileTab, setProfileTab] = useState<"profil" | "tersimpan">("profil");
   const [profile, setProfile] = useState<any>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [isMasterAdmin, setIsMasterAdmin] = useState(false);
@@ -397,8 +399,41 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const initials = profile?.full_name?.charAt(0)?.toUpperCase() || "U";
 
   return (
-    <>
-      <div className="h-full overflow-y-auto p-4 md:p-6">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Tab toggle */}
+      <div className="shrink-0 flex gap-1 border-b border-border px-4 pt-3">
+        <button
+          onClick={() => setProfileTab("profil")}
+          className={`flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ${
+            profileTab === "profil"
+              ? "border-b-2 border-primary text-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <UserCircle className="h-3.5 w-3.5" />
+          Profil
+        </button>
+        <button
+          onClick={() => setProfileTab("tersimpan")}
+          className={`flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ${
+            profileTab === "tersimpan"
+              ? "border-b-2 border-primary text-primary"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Bookmark className="h-3.5 w-3.5" />
+          Jawaban Tersimpan
+        </button>
+      </div>
+
+      {profileTab === "tersimpan" && (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <SavedAnswersPage />
+        </div>
+      )}
+
+      {profileTab === "profil" && (
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto max-w-md space-y-4">
           <Card className="border-border bg-card overflow-hidden">
             {/* Header — no banner, just ambient glow background */}
@@ -779,6 +814,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
           </Card>
         </div>
       </div>
+      )}
 
       <Dialog open={cropModalOpen} onOpenChange={(open) => { if (!open) handleCropCancel(); }}>
         <DialogContent className="max-w-sm w-full gap-4 p-5">
@@ -853,7 +889,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 };
 

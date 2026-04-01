@@ -6035,7 +6035,7 @@ function LibraryManagementTab() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await adminFetch("/api/library?category=semua");
+      const res = await adminFetch("/api/admin/library");
       const data = Array.isArray(res) ? res : [];
       setItems(data);
     } catch { setItems([]); }

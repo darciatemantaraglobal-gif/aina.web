@@ -8,8 +8,9 @@ import {
   ArrowLeft, Clock, FileText, CreditCard, Building2, Stamp,
   GraduationCap, Sparkles, Brain, Pencil, AlertTriangle, Loader2,
   Target, ClipboardList, BookOpen, RefreshCw, Bell, Mail, Send,
-  CheckCheck, SkipForward, X, Save, StickyNote, ListTodo, ListChecks,
+  CheckCheck, SkipForward, X, Save, StickyNote, ListTodo, ListChecks, Layers,
 } from "lucide-react";
+import FlashcardPage from "./FlashcardPage";
 
 /* ════════════════════════════════════════════════════════
    TYPES
@@ -1799,7 +1800,7 @@ function NotesTab() {
    ════════════════════════════════════════════════════════ */
 const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [userId, setUserId] = useState(userIdProp ?? "");
-  const [tab, setTab] = useState<"fokus" | "dokumen" | "prosedur" | "catatan" | "pengingat">("fokus");
+  const [tab, setTab] = useState<"fokus" | "dokumen" | "flashcard" | "catatan" | "pengingat">("fokus");
 
   useEffect(() => {
     if (userIdProp) { setUserId(userIdProp); return; }
@@ -1811,7 +1812,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const tabs = [
     { id: "fokus"     as const, label: "Fokus Harian",    icon: Target },
     { id: "dokumen"   as const, label: "Dokumen & Admin", icon: ClipboardList },
-    { id: "prosedur"  as const, label: "Prosedur",        icon: BookOpen },
+    { id: "flashcard" as const, label: "Flashcard AI",    icon: Layers },
     { id: "catatan"   as const, label: "Catatan",         icon: StickyNote },
     { id: "pengingat" as const, label: "Pengingat",       icon: Bell },
   ];
@@ -1849,10 +1850,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {tab === "fokus"     && <FocusTab />}
         {tab === "dokumen"   && <TrackerTab />}
-        {tab === "prosedur"  && (userId
-          ? <ProcedureTab userId={userId} />
-          : <div className="flex items-center justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" /></div>
-        )}
+        {tab === "flashcard" && <FlashcardPage />}
         {tab === "catatan"   && <NotesTab />}
         {tab === "pengingat" && <ReminderTab />}
       </div>
