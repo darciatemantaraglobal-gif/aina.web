@@ -5076,12 +5076,33 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
 /* ── In-memory tracker for bulk keyword generation progress ── */
 let _kwGenState = { running: false, total: 0, generated: 0, errors: 0, startedAt: null, completedAt: null };
 
+/* In-memory progress tracker for embedding jobs */
+let _embedState = { running: false, total: 0, embedded: 0, errors: 0, startedAt: null, completedAt: null };
+
+/* GET /api/admin/articles/generate-embeddings/status */
+app.get("/api/admin/articles/generate-embeddings/status", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { count: withEmbedding } = await supabase
+    .from("knowledge_base")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "approved")
+    .not("embedding", "is", null);
+  const { count: totalApproved } = await supabase
+    .from("knowledge_base")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "approved");
+  res.json({ ..._embedState, withEmbedding: withEmbedding ?? 0, totalArticles: totalApproved ?? 0 });
+});
+
 /* POST /api/admin/articles/generate-embeddings — batch re-embed approved articles
    Body: { ids?: string[] } — if provided, only embed those IDs; otherwise embed all approved */
 app.post("/api/admin/articles/generate-embeddings", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "OPENAI_API_KEY not configured" });
+  if (_embedState.running) return res.json({ alreadyRunning: true, ..._embedState });
 
   const supabase = getAdminClient();
   const { ids: requestedIds } = req.body || {};
@@ -5098,22 +5119,25 @@ app.post("/api/admin/articles/generate-embeddings", async (req, res) => {
     articleIds = (articles || []).map(a => a.id);
   }
 
-  if (!articleIds.length) return res.json({ embedded: 0, total: 0 });
+  if (!articleIds.length) return res.json({ started: false, total: 0 });
 
-  const label = isSelective ? `${articleIds.length} artikel yang dipilih` : `${articleIds.length} artikel approved`;
-  res.json({ message: `Embedding ${label} di background...`, total: articleIds.length });
+  _embedState = { running: true, total: articleIds.length, embedded: 0, errors: 0, startedAt: new Date().toISOString(), completedAt: null };
+  res.json({ started: true, total: articleIds.length });
 
-  // Fire-and-forget: embed each article with a short delay to avoid rate limits
+  // Fire-and-forget: embed each article with progress tracking
   (async () => {
-    let embedded = 0;
     for (const id of articleIds) {
       try {
         await embedKBArticle(id);
-        embedded++;
-        await new Promise(r => setTimeout(r, 200)); // 200ms between calls → ~5 req/s
-      } catch { /* embedKBArticle already logs failures */ }
+        _embedState.embedded++;
+        await new Promise(r => setTimeout(r, 200)); // ~5 req/s
+      } catch {
+        _embedState.errors++;
+      }
     }
-    console.log(`[RAG] Batch embedding complete: ${embedded}/${articleIds.length} embedded`);
+    _embedState.running = false;
+    _embedState.completedAt = new Date().toISOString();
+    console.log(`[RAG] Batch embedding complete: ${_embedState.embedded}/${articleIds.length} embedded, ${_embedState.errors} errors`);
   })();
 });
 

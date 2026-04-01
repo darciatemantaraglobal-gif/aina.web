@@ -1849,6 +1849,12 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 
   const [embedLoading, setEmbedLoading] = useState(false);
   const [selectionEmbedLoading, setSelectionEmbedLoading] = useState(false);
+  const [embedProgress, setEmbedProgress] = useState<{
+    running: boolean; total: number; embedded: number; errors: number;
+    withEmbedding: number; totalArticles: number;
+    startedAt: string | null; completedAt: string | null;
+  } | null>(null);
+  const embedPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [bulkHideLoading, setBulkHideLoading] = useState(false);
   const [selectionAutoCatLoading, setSelectionAutoCatLoading] = useState(false);
@@ -2075,31 +2081,74 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); setAutoCatLoading(false); }
   };
 
+  const fetchEmbedStatus = useCallback(async () => {
+    try {
+      const s = await adminFetch("/api/admin/articles/generate-embeddings/status");
+      setEmbedProgress(s);
+      if (!s.running) {
+        setEmbedLoading(false);
+        setSelectionEmbedLoading(false);
+        if (embedPollRef.current) { clearInterval(embedPollRef.current); embedPollRef.current = null; }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    fetchEmbedStatus();
+    return () => { if (embedPollRef.current) clearInterval(embedPollRef.current); };
+  }, [fetchEmbedStatus]);
+
+  const startEmbedPoll = () => {
+    if (!embedPollRef.current) {
+      embedPollRef.current = setInterval(fetchEmbedStatus, 2000);
+      fetchEmbedStatus();
+    }
+  };
+
   const handleGenerateEmbeddings = async () => {
-    if (embedLoading) return;
-    if (!confirm(`Generate embedding RAG untuk semua artikel KB yang sudah approved?\nProses berjalan di background (estimasi: ~5 menit untuk 100 artikel).`)) return;
+    if (embedLoading || embedProgress?.running) return;
+    const total = embedProgress?.totalArticles ?? 0;
+    const mins = Math.max(1, Math.round((total * 0.2) / 60));
+    if (!confirm(`Generate embedding RAG untuk semua ${total} artikel approved?\nEstimasi: ~${mins} menit. Proses berjalan di background.`)) return;
     setEmbedLoading(true);
     try {
       const result = await adminFetch("/api/admin/articles/generate-embeddings", { method: "POST" });
-      toast.success(result.message || `Embedding ${result.total} artikel dimulai di background.`);
-    } catch (e: any) { toast.error(e.message); }
-    finally { setTimeout(() => setEmbedLoading(false), 3000); }
+      if (result.alreadyRunning) {
+        toast.info("Proses embedding sedang berjalan.");
+        startEmbedPoll();
+      } else if (result.started) {
+        toast.success(`Dimulai — ${result.total} artikel sedang di-embed.`);
+        startEmbedPoll();
+      } else {
+        toast.info("Tidak ada artikel yang perlu diproses.");
+        setEmbedLoading(false);
+      }
+    } catch (e: any) { toast.error(e.message); setEmbedLoading(false); }
   };
 
   const handleSelectionEmbed = async () => {
-    if (selected.size === 0 || selectionEmbedLoading) return;
+    if (selected.size === 0 || selectionEmbedLoading || embedProgress?.running) return;
     const ids = [...selected];
-    if (!confirm(`Generate RAG embedding untuk ${ids.length} artikel yang dipilih?\nProses berjalan di background (~${Math.ceil(ids.length * 0.2 / 60) || 1} menit).`)) return;
+    const mins = Math.max(1, Math.round((ids.length * 0.2) / 60));
+    if (!confirm(`Generate RAG embedding untuk ${ids.length} artikel yang dipilih?\nEstimasi: ~${mins} menit.`)) return;
     setSelectionEmbedLoading(true);
     try {
       const result = await adminFetch("/api/admin/articles/generate-embeddings", {
         method: "POST",
         body: JSON.stringify({ ids }),
       });
-      toast.success(result.message || `Embedding ${ids.length} artikel dimulai di background.`);
-      setSelected(new Set());
-    } catch (e: any) { toast.error(e.message); }
-    finally { setTimeout(() => setSelectionEmbedLoading(false), 3000); }
+      if (result.alreadyRunning) {
+        toast.info("Proses embedding sedang berjalan.");
+        startEmbedPoll();
+      } else if (result.started) {
+        toast.success(`Dimulai — ${ids.length} artikel sedang di-embed.`);
+        setSelected(new Set());
+        startEmbedPoll();
+      } else {
+        toast.info("Tidak ada artikel yang perlu diproses.");
+        setSelectionEmbedLoading(false);
+      }
+    } catch (e: any) { toast.error(e.message); setSelectionEmbedLoading(false); }
   };
 
   const handleAutoTitleOne = async (art: Article) => {
@@ -2300,13 +2349,13 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
             <Button
               size="sm" variant="ghost"
               className="h-8 gap-1.5 text-xs text-blue-400 hover:bg-blue-500/10 hover:text-blue-300"
-              disabled={embedLoading}
+              disabled={embedLoading || embedProgress?.running}
               onClick={handleGenerateEmbeddings}
-              title="Generate embedding RAG untuk semua artikel KB — aktifkan pencarian semantik (AINA bisa temukan artikel berdasarkan makna, bukan hanya kata kunci)"
+              title={embedProgress ? `${embedProgress.withEmbedding}/${embedProgress.totalArticles} artikel sudah ter-embed` : "Generate embedding RAG untuk semua artikel KB"}
             >
-              {embedLoading
-                ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Embedding...</>
-                : <><Zap className="h-3.5 w-3.5" /> Gen RAG</>
+              {(embedLoading || embedProgress?.running)
+                ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> {embedProgress?.running ? `${embedProgress.embedded}/${embedProgress.total}...` : "Memulai..."}</>
+                : <><Zap className="h-3.5 w-3.5" /> Gen RAG {embedProgress ? `(${embedProgress.withEmbedding}/${embedProgress.totalArticles})` : ""}</>
               }
             </Button>
 
@@ -2575,14 +2624,14 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                     }
                   </Button>
                   <Button
-                    size="sm" disabled={selectionEmbedLoading || bulkLoading}
+                    size="sm" disabled={selectionEmbedLoading || embedProgress?.running || bulkLoading}
                     className="h-7 gap-1.5 bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 text-xs"
                     variant="outline"
                     onClick={handleSelectionEmbed}
-                    title="Generate RAG embedding untuk artikel yang dipilih — aktifkan pencarian semantik untuk artikel ini"
+                    title="Generate RAG embedding untuk artikel yang dipilih"
                   >
-                    {selectionEmbedLoading
-                      ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> Embedding...</>
+                    {(selectionEmbedLoading || embedProgress?.running)
+                      ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" /> {embedProgress?.running ? `${embedProgress.embedded}/${embedProgress.total}...` : "Memulai..."}</>
                       : <><Zap className="h-3 w-3" /> Gen RAG {selected.size}</>
                     }
                   </Button>
