@@ -7251,7 +7251,7 @@ app.post("/api/admin/procedures/reorder", writeLimiter, async (req, res) => {
 // ─── LIBRARY ───────────────────────────────────────────────────────────────
 
 /* GET /api/library — authenticated users, returns published items */
-app.get("/api/library", authLimiter, async (req, res) => {
+app.get("/api/library", writeLimiter, async (req, res) => {
   const user = await verifyUser(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Login diperlukan" });
 
