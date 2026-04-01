@@ -2385,11 +2385,27 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     };
   }
 
-  // No context at all (no KB, no pinned, no wiki, no DDG) — very weak basis
+  // No context at all (no KB, no pinned, no wiki, no DDG) — model knowledge only.
+  // For procedural/admin topics (iqomah, paspor, visa, kuliah, dll.) this is DANGEROUS:
+  // wrong step-by-step info can mislead the user on real-life decisions.
   if (!hasKB && !hasPinned && !hasWiki && !hasDDG) {
+    const isProceduralOrAdmin = ["procedural", "confused_procedural", "recommendation"].includes(intent?.primary);
+    if (isProceduralOrAdmin) {
+      return {
+        level: "needs_verification",
+        hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL — PROSEDURAL]** " +
+          "Kamu sedang menjawab pertanyaan prosedural/admin TANPA data KB atau sumber eksternal yang terverifikasi. " +
+          "WAJIB sisipkan kalimat peringatan ini di akhir jawaban (kata-kata bisa disesuaikan agar natural): " +
+          "'⚠️ Info ini dari pengetahuan umum saya dan belum diverifikasi oleh tim AINA. Sebelum mengambil langkah, sebaiknya konfirmasi dulu ke senior Masisir, PPMI, atau KBRI setempat ya.' " +
+          "Jangan hanya berikan langkah-langkah seolah pasti benar tanpa disclaimer ini.",
+      };
+    }
     return {
       level: "needs_verification",
-      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI]** Jika jawaban ini mungkin sudah tidak akurat atau butuh konfirmasi, tambahkan 1 kalimat peringatan singkat dan natural di akhir. Jangan terdengar kaku atau defensif.",
+      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL]** " +
+        "Tidak ada KB atau sumber eksternal untuk pertanyaan ini — kamu menjawab dari pengetahuan umum model. " +
+        "WAJIB mulai jawaban dengan frasa seperti 'Sejauh yang aku tahu...' atau 'Berdasarkan pengetahuan umumku...' " +
+        "dan sisipkan 1 kalimat saran cek sumber terbaru di akhir. Jangan terdengar terlalu percaya diri.",
     };
   }
 
@@ -2691,6 +2707,15 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const needsExternal = isLocalMasisir ? false : shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
   const perplexityNeeded = isLocalMasisir ? false : needsPerplexity(intent.primary, kbStrength, lastUserMessage);
   if (isLocalMasisir) console.log(`[Source] local-masisir query detected → blocking all external sources`);
+
+  // ── #5 KB gap detection: log weak-KB Masisir queries ────────────────────────
+  // fetchRelevantArticles() already logs when articles=0 (no match / below threshold).
+  // This catches the "partial match but still weak" case for local-Masisir topics
+  // where external sources won't help — admin should add KB articles for these.
+  if (kbStrength === "weak" && isLocalMasisir) {
+    logMissingTopic(lastUserMessage, intent.primary);
+    console.log(`[MissingTopics] weak-KB local-Masisir query logged for admin review`);
+  }
 
   // ── Classify query type for strict 3-layer routing ──────────────────────────
   // "currency"  → exchange API only (already fetched); NEVER Wikipedia/DDG/Perplexity
