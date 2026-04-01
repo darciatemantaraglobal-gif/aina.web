@@ -177,12 +177,29 @@ export function buildMemoryContext(userMemories) {
   const taskMems  = userMemories.filter(m => (m.memory_type || "context_memory") === "task_memory");
 
   const parts = [];
-  if (prefMems.length > 0)  parts.push(`**Preferensi:** ${prefMems.map(m => m.memory).join("; ")}`);
-  if (ctxMems.length > 0)   parts.push(`**Konteks user:** ${ctxMems.map(m => m.memory).join("; ")}`);
-  if (taskMems.length > 0)  parts.push(`**Sedang aktif:** ${taskMems.map(m => m.memory).join("; ")}`);
+  if (prefMems.length > 0) parts.push(`**Preferensi:** ${prefMems.map(m => m.memory).join("; ")}`);
+  if (ctxMems.length > 0)  parts.push(`**Konteks user:** ${ctxMems.map(m => m.memory).join("; ")}`);
 
-  if (parts.length === 0) return "";
-  return `\n\n---\n## Memori tentang User Ini\nFakta yang diingat dari percakapan sebelumnya. Gunakan HANYA jika relevan dengan pertanyaan ini — jangan diasumsikan atau dipaksakan:\n${parts.join("\n")}\n---`;
+  // Task memory gets special treatment: AINA should proactively acknowledge ongoing tasks
+  let taskBlock = "";
+  if (taskMems.length > 0) {
+    const taskList = taskMems.map(m => `• ${m.memory}`).join("\n");
+    taskBlock =
+      `\n**Tugas/proses yang sedang aktif dikerjakan user:**\n${taskList}\n` +
+      `→ INSTRUKSI TASK TRACKING:\n` +
+      `  1. Jika pertanyaan user TERKAIT salah satu tugas di atas → acknowledge progresnya secara natural di awal jawaban. ` +
+      `Contoh: "Oke lanjut dari [task] ya — kamu tadi sudah [progress], sekarang langkah berikutnya adalah..." atau ` +
+      `"Masih lanjut ngurusin [task] nih? Oke, dari yang kamu ceritain tadi [progress], sekarang tinggal..."\n` +
+      `  2. Jika user belum pernah selesaikan task → tanyakan apakah sudah ada kemajuan sebelum melanjutkan panduan.\n` +
+      `  3. Jika pertanyaan user TIDAK TERKAIT task di atas → abaikan task_memory ini dan jawab pertanyaannya normal.\n` +
+      `  4. JANGAN paksakan menyebut task jika tidak relevan — terasa awkward dan mengganggu.`;
+  }
+
+  if (parts.length === 0 && !taskBlock) return "";
+  const baseBlock = parts.length > 0
+    ? `Fakta yang diingat dari percakapan sebelumnya. Gunakan HANYA jika relevan:\n${parts.join("\n")}`
+    : `Fakta yang diingat dari percakapan sebelumnya:`;
+  return `\n\n---\n## Memori tentang User Ini\n${baseBlock}${taskBlock}\n---`;
 }
 
 /**

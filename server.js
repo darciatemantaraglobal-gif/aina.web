@@ -1610,42 +1610,59 @@ async function fetchUserMemories(userId, query = "", intentPrimary = "factual") 
 /* ── Background: Extract & save memories from conversation ── */
 async function extractAndSaveMemories(userId, conversation, apiKey) {
   try {
-    const MAX_MEMORIES = 20;
+    const MAX_MEMORIES = 25;
     const supabase = getAdminClient();
     if (!supabase) return;
 
-    // Only analyse the last 6 messages to keep cost minimal
-    const recent = conversation.slice(-6);
+    // Analyse last 10 messages for richer context
+    const recent = conversation.slice(-10);
     const convText = recent
-      .map(m => `${m.role === "user" ? "User" : "AINA"}: ${m.content.slice(0, 500)}`)
+      .map(m => `${m.role === "user" ? "User" : "AINA"}: ${m.content.slice(0, 600)}`)
       .join("\n");
 
-    const extractionPrompt = `Dari percakapan berikut, ekstrak fakta penting tentang user untuk diingat di masa depan.
+    // Fetch existing memories for deduplication context
+    const { data: existingMems } = await supabase
+      .from("user_memories")
+      .select("id, memory, memory_type, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(15);
+    const existingText = (existingMems ?? []).map(m => `[${m.memory_type}] ${m.memory}`).join("\n");
 
-Output: JSON array, setiap item: { "memory": "...", "type": "...", "long_term": true/false }
+    const extractionPrompt = `Kamu adalah sistem ekstraksi memori untuk asisten AI bernama AINA (untuk mahasiswa Indonesia di Mesir).
+
+Ekstrak fakta penting tentang user dari percakapan ini untuk diingat di masa depan.
+
+Output: JSON array. Format setiap item: { "memory": "teks singkat", "type": "kategori", "long_term": true/false }
 
 KATEGORI:
-- preference_memory: preferensi eksplisit user tentang gaya/format ("suka jawaban singkat", "prefer langkah-langkah", "prefer bahasa formal"). long_term=true.
-- context_memory: siapa mereka dan situasinya ("tinggal di Hay Asyir", "baru tiba Maret 2026", "jurusan Syariah", "asal Surabaya"). long_term=false.
-- task_memory: tugas/proses aktif saat ini ("sedang urus iqomah", "lagi cari kos", "mau ujian minggu depan", "sedang buat SKCK"). long_term=false.
+- preference_memory: Cara/gaya user ingin berinteraksi ("prefer jawaban singkat", "suka format langkah-langkah", "minta selalu kasih contoh"). long_term=true.
+- context_memory: Fakta permanen/semi-permanen tentang diri user ("tinggal di Hay Asyir", "baru tiba Maret 2026", "jurusan Syariah", "asal Surabaya", "paspor mau habis April"). long_term=false.
+- task_memory: Tugas/proses yang SEDANG AKTIF dikerjakan user. WAJIB sertakan progress jika ada ("sedang urus iqomah — sudah registrasi online, tinggal upload dokumen", "lagi cari kos di Hay Asyir budget 1500 EGP", "mau ujian nahwu minggu ini"). long_term=false.
 
-ATURAN KETAT:
-- Hanya fakta yang EKSPLISIT disebutkan user dalam percakapan ini
-- Maksimal 3 item baru
-- Jangan simpan hal generik seperti "user mahasiswa di Mesir"
-- Tidak ada informasi sensitif (nomor paspor, data pribadi, finansial spesifik)
-- Jika tidak ada fakta baru → kembalikan []
-- Setiap memory max 120 karakter
-- Balas HANYA dengan JSON array, tidak ada teks lain
+ATURAN:
+1. Tangkap FAKTA IMPLISIT juga — jika user jelas berada di tengah suatu proses (bertanya detail langkah 3 dari iqomah, dll.), catat sebagai task_memory meski tidak eksplisit berkata "sedang urus".
+2. Untuk task_memory: jika ada sinyal progress ("sudah", "selesai", "tinggal", "belum sampai", "stuck di"), sertakan info itu dalam teks memory.
+3. Jangan simpan hal generik ("user mahasiswa di Mesir") — harus spesifik dan berguna.
+4. Tidak ada info sensitif (nomor dokumen, kata sandi, PIN, finansial detail).
+5. Maksimal 5 item baru per percakapan.
+6. Setiap memory max 150 karakter.
+7. Jika memory SANGAT MIRIP dengan yang sudah ada, skip (jangan duplikasi).
+8. Jika tidak ada fakta baru → kembalikan [].
+9. Balas HANYA dengan JSON array, tidak ada teks lain.
 
-Percakapan:
+Memori yang sudah tersimpan (jangan duplikasi):
+${existingText || "(belum ada)"}
+
+Percakapan yang dianalisis:
 ${convText}`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     let newMemories = [];
 
     try {
+      // Upgrade from llama-3.2-3b to gemini-2.0-flash-001 for better JSON accuracy
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         signal: controller.signal,
@@ -1656,14 +1673,17 @@ ${convText}`;
           "X-Title": "AINA - Memory Extraction",
         },
         body: JSON.stringify({
-          model: "meta-llama/llama-3.2-3b-instruct:free",
+          model: "google/gemini-2.0-flash-001",
           messages: [{ role: "user", content: extractionPrompt }],
-          max_tokens: 400,
+          max_tokens: 600,
           temperature: 0.1,
         }),
       });
       clearTimeout(timeoutId);
-      if (!response.ok) return;
+      if (!response.ok) {
+        console.warn(`[memory] extraction API error: ${response.status}`);
+        return;
+      }
       const data = await response.json();
       const raw = data.choices?.[0]?.message?.content?.trim() ?? "[]";
       const match = raw.match(/\[[\s\S]*\]/);
@@ -1678,7 +1698,7 @@ ${convText}`;
           memory_type: VALID_TYPES.has(m.type) ? m.type : "context_memory",
           is_long_term: m.type === "preference_memory" ? true : !!m.long_term,
         }))
-        .slice(0, 3);
+        .slice(0, 5);
     } catch {
       clearTimeout(timeoutId);
       return;
@@ -1686,24 +1706,26 @@ ${convText}`;
 
     if (newMemories.length === 0) return;
 
-    // Evict oldest if we'd exceed the cap
+    // Evict oldest non-long-term memories if we'd exceed cap
     const { data: existing } = await supabase
       .from("user_memories")
-      .select("id")
+      .select("id, is_long_term")
       .eq("user_id", userId)
       .order("created_at", { ascending: true });
 
     const currentCount = existing?.length ?? 0;
     const toDelete = currentCount + newMemories.length - MAX_MEMORIES;
     if (toDelete > 0 && existing) {
-      const idsToDelete = existing.slice(0, toDelete).map(m => m.id);
-      await supabase.from("user_memories").delete().in("id", idsToDelete);
+      // Evict oldest non-long-term first, then long-term as last resort
+      const evictable = existing.filter(m => !m.is_long_term);
+      const idsToDelete = evictable.slice(0, toDelete).map(m => m.id);
+      if (idsToDelete.length > 0) await supabase.from("user_memories").delete().in("id", idsToDelete);
     }
 
     await supabase.from("user_memories").insert(
       newMemories.map(m => ({ user_id: userId, memory: m.memory, memory_type: m.memory_type, is_long_term: m.is_long_term }))
     );
-    console.log(`[memory] saved ${newMemories.length} new memories for user ${userId}: ${JSON.stringify(newMemories)}`);
+    console.log(`[memory] saved ${newMemories.length} new memories for ${userId.slice(0, 8)}: ${JSON.stringify(newMemories.map(m => m.memory))}`);
   } catch (e) {
     console.warn("[memory] extraction error:", e.message);
   }
