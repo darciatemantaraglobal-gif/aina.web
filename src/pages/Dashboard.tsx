@@ -75,21 +75,50 @@ const FEATURE_TOURS: Record<string, TourStep[]> = {
   ],
 };
 
+const CHUNK_RELOAD_KEY = "aina_chunk_reload_at";
+
+function isChunkError(msg: string) {
+  return (
+    msg.includes("Failed to fetch dynamically imported") ||
+    msg.includes("ChunkLoadError") ||
+    msg.includes("Loading chunk") ||
+    msg.includes("Importing a module script failed") ||
+    msg.includes("error loading dynamically imported module")
+  );
+}
+
 class TabErrorBoundary extends Component<
   { children: ReactNode; tabName: string },
-  { hasError: boolean; error: string }
+  { hasError: boolean; error: string; reloading: boolean }
 > {
   constructor(props: any) {
     super(props);
-    this.state = { hasError: false, error: "" };
+    this.state = { hasError: false, error: "", reloading: false };
   }
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error: error.message };
   }
   componentDidCatch(error: Error) {
     console.error("Tab error:", error);
+    if (isChunkError(error.message)) {
+      const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+      const now = Date.now();
+      if (now - last > 15_000) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, String(now));
+        this.setState({ reloading: true });
+        window.location.reload();
+      }
+    }
   }
   render() {
+    if (this.state.reloading) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+          <p className="text-sm text-muted-foreground">Memuat versi terbaru...</p>
+        </div>
+      );
+    }
     if (this.state.hasError) {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
@@ -104,7 +133,13 @@ class TabErrorBoundary extends Component<
             )}
           </div>
           <button
-            onClick={() => this.setState({ hasError: false, error: "" })}
+            onClick={() => {
+              if (isChunkError(this.state.error)) {
+                window.location.reload();
+              } else {
+                this.setState({ hasError: false, error: "" });
+              }
+            }}
             className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             Muat Ulang
