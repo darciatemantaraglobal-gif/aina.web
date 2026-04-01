@@ -5937,8 +5937,8 @@ const LIB_CATEGORIES = [
   { id: "referensi", label: "Referensi" },
   { id: "umum",      label: "Umum" },
 ];
-const LIB_FACULTIES = ["", "Ushuluddin", "Syariah wal Qanun", "Dirasah Islamiyah wal Arabiyah", "Bahasa Arab", "Lainnya"];
-const LIB_YEARS    = ["", "Tahun 1", "Tahun 2", "Tahun 3", "Tahun 4", "Semua Tahun"];
+const LIB_FACULTIES = ["__all__", "Ushuluddin", "Syariah wal Qanun", "Dirasah Islamiyah wal Arabiyah", "Bahasa Arab", "Lainnya"];
+const LIB_YEARS    = ["__all__", "Tahun 1", "Tahun 2", "Tahun 3", "Tahun 4", "Semua Tahun"];
 
 interface LibItem {
   id: string; title: string; description: string | null;
@@ -6235,16 +6235,16 @@ function LibraryManagementTab() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-foreground">Fakultas</label>
-                <Select value={form.faculty ?? ""} onValueChange={v => setForm(p => ({ ...p, faculty: v }))}>
+                <Select value={form.faculty || "__all__"} onValueChange={v => setForm(p => ({ ...p, faculty: v === "__all__" ? "" : v }))}>
                   <SelectTrigger><SelectValue placeholder="Semua fakultas" /></SelectTrigger>
-                  <SelectContent>{LIB_FACULTIES.map(f => <SelectItem key={f} value={f}>{f || "Semua fakultas"}</SelectItem>)}</SelectContent>
+                  <SelectContent>{LIB_FACULTIES.map(f => <SelectItem key={f} value={f}>{f === "__all__" ? "Semua fakultas" : f}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-foreground">Tahun</label>
-                <Select value={form.year_level ?? ""} onValueChange={v => setForm(p => ({ ...p, year_level: v }))}>
+                <Select value={form.year_level || "__all__"} onValueChange={v => setForm(p => ({ ...p, year_level: v === "__all__" ? "" : v }))}>
                   <SelectTrigger><SelectValue placeholder="Semua tahun" /></SelectTrigger>
-                  <SelectContent>{LIB_YEARS.map(y => <SelectItem key={y} value={y}>{y || "Semua tahun"}</SelectItem>)}</SelectContent>
+                  <SelectContent>{LIB_YEARS.map(y => <SelectItem key={y} value={y}>{y === "__all__" ? "Semua tahun" : y}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
@@ -6364,9 +6364,9 @@ function LibraryManagementTab() {
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-foreground">Fakultas (opsional)</label>
-                    <Select value={importMeta.faculty} onValueChange={v => setImportMeta(p => ({ ...p, faculty: v }))}>
+                    <Select value={importMeta.faculty || "__all__"} onValueChange={v => setImportMeta(p => ({ ...p, faculty: v === "__all__" ? "" : v }))}>
                       <SelectTrigger><SelectValue placeholder="Semua fakultas" /></SelectTrigger>
-                      <SelectContent>{LIB_FACULTIES.map(f => <SelectItem key={f} value={f}>{f || "Semua fakultas"}</SelectItem>)}</SelectContent>
+                      <SelectContent>{LIB_FACULTIES.map(f => <SelectItem key={f} value={f}>{f === "__all__" ? "Semua fakultas" : f}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                 </div>
