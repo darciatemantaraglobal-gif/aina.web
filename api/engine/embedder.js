@@ -51,9 +51,10 @@ export async function generateEmbedding(text) {
 export function buildArticleEmbedText(article) {
   return [
     article.title,
-    article.keywords ? `Keywords: ${article.keywords}` : null,
-    article.summary  ? `Ringkasan: ${article.summary}`  : null,
+    article.keywords   ? `Keywords: ${article.keywords}`         : null,
+    article.summary    ? `Ringkasan: ${article.summary}`          : null,
     article.content,
+    article.content_ar ? `النص بالعربية: ${article.content_ar}`  : null,
   ]
     .filter(Boolean)
     .join("\n\n")

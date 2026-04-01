@@ -254,6 +254,118 @@ export async function sendWeeklyRecap(userId, { getAdminClient, sendEmail, email
   return { ok: true, sent: true };
 }
 
+/**
+ * Kirim smart expiry alert ke satu user.
+ * Alert dikirim untuk item yang due dalam 30/7/1 hari ke depan,
+ * dengan anti-spam per window yang sesuai.
+ * @returns {{ ok: boolean, skipped?: boolean, reason?: string, sent?: boolean }}
+ */
+export async function sendExpiryAlert(userId, { getAdminClient, sendEmail, emailTemplate, getUserEmail }) {
+  const supabase = getAdminClient();
+  const today = new Date();
+
+  // Definisi window alert: [days_ahead, reminder_type, window_days, label]
+  const WINDOWS = [
+    { days: 1,  type: "expiry_h1",  windowDays: 1,  label: "besok",           emoji: "🔴" },
+    { days: 7,  type: "expiry_h7",  windowDays: 1,  label: "dalam 7 hari",    emoji: "🟠" },
+    { days: 30, type: "expiry_h30", windowDays: 7,  label: "dalam 30 hari",   emoji: "🟡" },
+  ];
+
+  // Kumpulkan items per window
+  const alertGroups = [];
+  for (const win of WINDOWS) {
+    const canSend = await shouldSendReminder(supabase, userId, win.type, "email", win.windowDays);
+    if (!canSend) continue;
+
+    const targetDate = new Date(today.getTime() + win.days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const minDate   = new Date(today.getTime() + (win.days - 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const { data: items } = await supabase
+      .from("admin_tracker_items")
+      .select("id, title, category, due_date")
+      .eq("user_id", userId)
+      .neq("status", "completed")
+      .gte("due_date", minDate)
+      .lte("due_date", targetDate)
+      .order("due_date", { ascending: true });
+
+    if (items && items.length > 0) {
+      alertGroups.push({ ...win, items });
+    }
+  }
+
+  if (!alertGroups.length) return { ok: true, skipped: true, reason: "Tidak ada item yang akan jatuh tempo" };
+
+  const profile = await getUserEmail(userId);
+  if (!profile?.email) return { ok: true, skipped: true, reason: "Email pengguna tidak ditemukan" };
+
+  // Kirim email untuk setiap window yang eligible
+  let sent = false;
+  for (const group of alertGroups) {
+    const itemList = group.items.map(i => {
+      const dueStr = new Date(i.due_date + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
+      return `<li style="margin-bottom:6px">${group.emoji} <b>${i.title}</b> — tenggat ${dueStr} (${i.category})</li>`;
+    }).join("");
+
+    const emailSent = await sendEmail({
+      to:      profile.email,
+      name:    profile.full_name || "Kamu",
+      subject: `AINA: Urusan kamu jatuh tempo ${group.label}! ${group.emoji}`,
+      html:    emailTemplate({
+        title:   `Tenggat ${group.label} mendekat`,
+        body:    `<p>Jangan sampai terlewat — urusan penting kamu jatuh tempo <strong>${group.label}</strong>:</p>
+<ul style="padding-left:20px;margin:12px 0">${itemList}</ul>
+<p>Segera tindak lanjuti supaya tidak ada yang keteteran. ✅</p>`,
+        ctaText: "Buka Dokumen & Admin",
+        ctaUrl:  CLIENT_URL() + "/dashboard?tab=productivity",
+      }),
+    });
+
+    if (emailSent) {
+      await logReminder(supabase, userId, group.type, "email", { item_count: group.items.length, days: group.days });
+      sent = true;
+    }
+  }
+
+  return sent
+    ? { ok: true, sent: true }
+    : { ok: true, skipped: true, reason: "Email tidak dikonfigurasi di server ini" };
+}
+
+/**
+ * Jalankan expiry alert untuk SEMUA user yang punya item due soon.
+ */
+export async function runExpiryAlerts({ getAdminClient, sendEmail, emailTemplate, getUserEmail }) {
+  const supabase = getAdminClient();
+  const limit30  = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const today    = new Date().toISOString().slice(0, 10);
+
+  const { data: rows } = await supabase
+    .from("admin_tracker_items")
+    .select("user_id")
+    .neq("status", "completed")
+    .gte("due_date", today)
+    .lte("due_date", limit30);
+
+  const userIds = [...new Set((rows || []).map(r => r.user_id))];
+  const deps    = { getAdminClient, sendEmail, emailTemplate, getUserEmail };
+
+  let sent = 0, skipped = 0, errors = 0;
+  for (const userId of userIds) {
+    try {
+      const result = await sendExpiryAlert(userId, deps);
+      if (result.sent)    sent++;
+      if (result.skipped) skipped++;
+    } catch (e) {
+      errors++;
+      console.error(`[Scheduler] Expiry alert error for ${userId}:`, e.message);
+    }
+  }
+
+  console.log(`[Scheduler] ExpiryAlerts done — processed:${userIds.length} sent:${sent} skipped:${skipped} errors:${errors}`);
+  return { processed: userIds.length, sent, skipped, errors };
+}
+
 // ── D. Scheduler-ready runners ───────────────────────────────────────────────
 
 /**

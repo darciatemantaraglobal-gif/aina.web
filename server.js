@@ -15,7 +15,7 @@ import { validateResponse, postProcessResponse, buildSourceBadges } from './api/
 import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
-import { runDailyReminder, runWeeklyRecap } from "./server/services/reminderService.js";
+import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./api/engine/embedder.js";
 
 const app = express();
@@ -5674,6 +5674,71 @@ app.delete("/api/admin/articles/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ── Admin: Translate Article to Arabic ───────────────── */
+app.post("/api/admin/articles/:id/translate-arabic", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { data: art } = await supabase
+    .from("knowledge_base")
+    .select("id, title, content, content_ar")
+    .eq("id", req.params.id)
+    .single();
+
+  if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: "OPENAI_API_KEY belum dikonfigurasi" });
+
+  try {
+    const prompt = `Terjemahkan artikel berikut ke dalam Bahasa Arab (فصحى / Modern Standard Arabic).
+Judul: ${art.title}
+
+Konten:
+${art.content}
+
+Kembalikan hanya terjemahan konten dalam Bahasa Arab tanpa judul, tanpa penjelasan tambahan.`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Kamu adalah penerjemah profesional Indonesia-Arab. Terjemahkan teks ke Bahasa Arab Modern (فصحى) yang jelas dan tepat." },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 4000,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("[Translate Arabic] OpenAI error:", err.slice(0, 200));
+      return res.status(502).json({ error: "Terjemahan gagal. Coba lagi." });
+    }
+
+    const data = await response.json();
+    const content_ar = data.choices?.[0]?.message?.content?.trim() || "";
+    if (!content_ar) return res.status(502).json({ error: "Model tidak menghasilkan terjemahan. Coba lagi." });
+
+    const { error: updateErr } = await supabase
+      .from("knowledge_base")
+      .update({ content_ar })
+      .eq("id", req.params.id);
+
+    if (updateErr) return res.status(500).json({ error: updateErr.message });
+
+    console.log(`[Translate Arabic] ✓ article=${req.params.id} len=${content_ar.length}`);
+    res.json({ content_ar });
+  } catch (err) {
+    console.error("[Translate Arabic] error:", err.message);
+    res.status(500).json({ error: "Terjemahan gagal: " + err.message });
+  }
+});
+
 /* ── Admin: Bulk Delete Articles ─────────────────────── */
 app.post("/api/admin/articles/bulk-delete", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
@@ -7754,55 +7819,103 @@ app.post("/api/admin/library/upload-file", uploadLimiter, async (req, res) => {
   const { fileBase64, mimeType, fileName } = req.body;
   if (!fileBase64) return res.status(400).json({ error: "fileBase64 required" });
 
+  // MIME type → extension map (used for BOTH validation and content-type override)
   const ALLOWED_LIBRARY_TYPES = new Map([
-    ["application/pdf", "pdf"],
+    ["application/pdf",  "pdf"],
     ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"],
     ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"],
-    ["application/msword", "doc"],
+    ["application/msword",         "doc"],
     ["application/vnd.ms-powerpoint", "ppt"],
     ["image/jpeg", "jpg"],
-    ["image/png", "png"],
+    ["image/png",  "png"],
+    ["application/octet-stream",   null], // will fallback to ext-detection below
   ]);
 
-  const safeMime = typeof mimeType === "string" ? mimeType.toLowerCase() : "application/pdf";
-  const ext = ALLOWED_LIBRARY_TYPES.get(safeMime);
-  if (!ext) return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan PDF, DOCX, atau PPTX." });
+  // Extension → MIME type fallback (some browsers leave file.type blank)
+  const EXT_MIME = {
+    pdf: "application/pdf",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    doc:  "application/msword",
+    ppt:  "application/vnd.ms-powerpoint",
+    jpg:  "image/jpeg",
+    jpeg: "image/jpeg",
+    png:  "image/png",
+  };
+
+  let safeMime = typeof mimeType === "string" ? mimeType.toLowerCase().trim() : "";
+  let ext = ALLOWED_LIBRARY_TYPES.get(safeMime) ?? null;
+
+  // Fallback: derive ext + MIME from file name if browser didn't supply a useful MIME type
+  if (!ext && fileName) {
+    const fileExt = (fileName.split(".").pop() || "").toLowerCase();
+    if (EXT_MIME[fileExt]) {
+      safeMime = EXT_MIME[fileExt];
+      ext = fileExt;
+    }
+  }
+
+  if (!ext) {
+    return res.status(400).json({ error: "Tipe file tidak didukung. Gunakan PDF, DOCX, atau PPTX." });
+  }
 
   const base64Data = fileBase64.replace(/^data:[^;]+;base64,/, "");
-  const buffer = Buffer.from(base64Data, "base64");
+  let buffer;
+  try {
+    buffer = Buffer.from(base64Data, "base64");
+  } catch {
+    return res.status(400).json({ error: "Format file tidak valid. Coba upload ulang." });
+  }
+
   const fileSizeMB = (buffer.length / 1024 / 1024).toFixed(1);
   if (buffer.length > 50 * 1024 * 1024) return res.status(400).json({ error: "Ukuran file maksimal 50MB" });
 
-  console.log(`[Library Upload] admin=${admin.id} file=${fileName} size=${fileSizeMB}MB type=${safeMime}`);
+  console.log(`[Library Upload] admin=${admin.id} file=${fileName} size=${fileSizeMB}MB type=${safeMime} ext=${ext}`);
 
   const supabase = getAdminClient();
 
-  // Ensure bucket exists — create on-the-fly if missing (e.g. first deploy)
-  const { data: buckets } = await supabase.storage.listBuckets();
-  const bucketNames = (buckets || []).map(b => b.name);
-  if (!bucketNames.includes("library-files")) {
-    const { error: bucketErr } = await supabase.storage.createBucket("library-files", { public: true, fileSizeLimit: 52428800 });
-    if (bucketErr && !bucketErr.message.includes("already exists")) {
-      console.error("[Library Upload] bucket create error:", bucketErr.message);
-      return res.status(500).json({ error: `Gagal membuat storage bucket: ${bucketErr.message}` });
+  // Ensure bucket exists — create on-the-fly if missing
+  try {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const bucketNames = (buckets || []).map((b) => b.name);
+    if (!bucketNames.includes("library-files")) {
+      // No fileSizeLimit here — let Supabase project defaults handle it
+      const { error: bucketErr } = await supabase.storage.createBucket("library-files", { public: true });
+      if (bucketErr && !bucketErr.message?.includes("already exists") && !bucketErr.message?.includes("Duplicate")) {
+        console.error("[Library Upload] bucket create error:", bucketErr.message);
+        return res.status(500).json({ error: `Gagal membuat storage bucket: ${bucketErr.message}` });
+      }
+      console.log("[Library Upload] bucket 'library-files' created on-the-fly");
     }
-    console.log("[Library Upload] bucket 'library-files' created on-the-fly");
+  } catch (bucketEx) {
+    console.warn("[Library Upload] bucket check failed, attempting upload anyway:", bucketEx.message);
   }
 
   const safeName = (fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
   const storagePath = `${Date.now()}_${safeName}`;
 
+  // Use Uint8Array for maximum Supabase SDK compatibility (Buffer is a subclass but explicit is safer)
+  const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+
   const { error: uploadErr } = await supabase.storage
     .from("library-files")
-    .upload(storagePath, buffer, { contentType: safeMime, upsert: false });
+    .upload(storagePath, uint8, { contentType: safeMime, upsert: false });
 
   if (uploadErr) {
     console.error(`[Library Upload] storage error: ${uploadErr.message}`);
+    // Friendly message for common errors
+    const msg = uploadErr.message?.toLowerCase() ?? "";
+    if (msg.includes("policy") || msg.includes("unauthorized") || msg.includes("403")) {
+      return res.status(403).json({ error: "Upload ditolak oleh storage. Pastikan bucket 'library-files' bersifat public dan service role key aktif." });
+    }
+    if (msg.includes("size") || msg.includes("large") || msg.includes("413")) {
+      return res.status(413).json({ error: "File terlalu besar untuk storage. Coba kurangi ukuran file." });
+    }
     return res.status(500).json({ error: `Gagal upload ke storage: ${uploadErr.message}` });
   }
 
   const { data: { publicUrl } } = supabase.storage.from("library-files").getPublicUrl(storagePath);
-  console.log(`[Library Upload] ✓ uploaded to ${storagePath}`);
+  console.log(`[Library Upload] ✓ uploaded ${storagePath} → ${publicUrl.slice(0, 60)}...`);
   res.json({ url: publicUrl, ext });
 });
 
@@ -10123,12 +10236,89 @@ function verifyCron(req, res) {
   return true;
 }
 
+/* ── AI Flashcard Generator ────────────────────────────────────
+   POST /api/flashcards/generate
+   Body: { topic: string, content?: string, count?: number }
+   Returns: { flashcards: [{ question, answer }] }
+──────────────────────────────────────────────────────────── */
+app.post("/api/flashcards/generate", chatLimiter, async (req, res) => {
+  const user = await verifyUser(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const { topic, content, count = 8 } = req.body;
+  if (!topic && !content) return res.status(400).json({ error: "topic atau content harus diisi" });
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: "OPENAI_API_KEY belum dikonfigurasi" });
+
+  const safeCount = Math.max(3, Math.min(20, Number(count) || 8));
+
+  const systemPrompt = `Kamu adalah asisten belajar untuk mahasiswa Indonesia di Mesir (Masisir).
+Tugasmu membuat flashcard belajar berkualitas tinggi dalam format JSON.
+Setiap flashcard berisi pertanyaan (question) dan jawaban singkat-padat (answer).
+Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia.`;
+
+  const userPrompt = content
+    ? `Buat tepat ${safeCount} flashcard dari teks berikut:\n\n${content.slice(0, 6000)}`
+    : `Buat tepat ${safeCount} flashcard tentang topik: "${topic}"`;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: userPrompt + `\n\nKembalikan HANYA JSON array dengan format:\n[{"question":"...","answer":"..."}]` },
+        ],
+        max_tokens: 2000,
+        temperature: 0.5,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("[Flashcard] OpenAI error:", err.slice(0, 200));
+      return res.status(502).json({ error: "Gagal menghubungi AI. Coba lagi." });
+    }
+
+    const data = await response.json();
+    const raw  = data.choices?.[0]?.message?.content || "{}";
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { return res.status(502).json({ error: "Format flashcard tidak valid dari AI." }); }
+
+    // Accept { flashcards: [...] } or { cards: [...] } or a bare array
+    const cards = Array.isArray(parsed) ? parsed
+      : Array.isArray(parsed.flashcards) ? parsed.flashcards
+      : Array.isArray(parsed.cards) ? parsed.cards
+      : [];
+
+    if (!cards.length) return res.status(502).json({ error: "AI tidak menghasilkan flashcard. Coba topik yang lebih spesifik." });
+
+    const flashcards = cards
+      .filter(c => c.question && c.answer)
+      .map(c => ({ question: String(c.question).trim(), answer: String(c.answer).trim() }));
+
+    console.log(`[Flashcard] user=${user.id} topic="${topic || "(content)"}" cards=${flashcards.length}`);
+    res.json({ flashcards });
+  } catch (err) {
+    console.error("[Flashcard] error:", err.message);
+    res.status(500).json({ error: "Gagal membuat flashcard: " + err.message });
+  }
+});
+
 // GET /api/cron/daily — runs every day at 17:00 UTC (00:00 WIB)
 app.get("/api/cron/daily", async (req, res) => {
   if (!verifyCron(req, res)) return;
   try {
-    const result = await runDailyReminder({ getAdminClient, sendEmail, emailTemplate, getUserEmail });
-    res.json({ ok: true, ...result });
+    const deps = { getAdminClient, sendEmail, emailTemplate, getUserEmail };
+    const [dailyResult, expiryResult] = await Promise.all([
+      runDailyReminder(deps),
+      runExpiryAlerts(deps),
+    ]);
+    res.json({ ok: true, daily: dailyResult, expiry: expiryResult });
   } catch (e) {
     console.error("[Cron/daily]", e.message);
     res.status(500).json({ error: e.message });

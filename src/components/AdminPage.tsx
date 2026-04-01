@@ -18,6 +18,7 @@ import {
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
   Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags, Heading,
+  Loader2,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -42,6 +43,7 @@ interface Article {
   author_name: string | null; author_email: string | null;
   hidden: boolean; maps_url?: string | null; contact_number?: string | null;
   has_embedding?: boolean; keywords?: string | null;
+  content_ar?: string | null;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -1716,11 +1718,12 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
 }
 
 function ArticleFormDialog({
-  open, onClose, onSave, initial,
+  open, onClose, onSave, initial, articleId,
 }: {
   open: boolean; onClose: () => void;
   onSave: (data: { title: string; content: string; category: string; maps_url?: string; contact_number?: string }) => Promise<void>;
   initial?: { title: string; content: string; category: string; maps_url?: string; contact_number?: string };
+  articleId?: string;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [content, setContent] = useState(initial?.content ?? "");
@@ -1728,6 +1731,9 @@ function ArticleFormDialog({
   const [mapsUrl, setMapsUrl] = useState(initial?.maps_url ?? "");
   const [contactNumber, setContactNumber] = useState(initial?.contact_number ?? "");
   const [saving, setSaving] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [contentAr, setContentAr] = useState<string | null>(null);
+  const [showAr, setShowAr] = useState(false);
   const prevOpenRef = useRef(false);
 
   useEffect(() => {
@@ -1740,6 +1746,8 @@ function ArticleFormDialog({
       setCategory(initial?.category ?? "");
       setMapsUrl(initial?.maps_url ?? "");
       setContactNumber(initial?.contact_number ?? "");
+      setContentAr(null);
+      setShowAr(false);
     }
     prevOpenRef.current = open;
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1751,9 +1759,23 @@ function ArticleFormDialog({
     setSaving(false);
   };
 
+  const handleTranslateArabic = async () => {
+    if (!articleId) return;
+    setTranslating(true);
+    try {
+      const data = await adminFetch(`/api/admin/articles/${articleId}/translate-arabic`, { method: "POST" });
+      setContentAr(data.content_ar);
+      setShowAr(true);
+      toast.success("Terjemahan Arab berhasil dibuat");
+    } catch (e: any) {
+      toast.error(e.message || "Terjemahan gagal");
+    }
+    setTranslating(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="bg-card border-border max-w-lg">
+      <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display">{initial ? "Edit Artikel" : "Tambah Artikel Baru"}</DialogTitle>
         </DialogHeader>
@@ -1775,6 +1797,53 @@ function ArticleFormDialog({
             <label className="text-xs font-medium text-muted-foreground">Konten</label>
             <Textarea placeholder="Tulis isi artikel..." value={content} onChange={e => setContent(e.target.value)} className="min-h-[180px] bg-secondary resize-none" />
           </div>
+
+          {/* Arabic translation — only shown when editing an existing article */}
+          {articleId && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  🌙 Terjemahan Bahasa Arab
+                  <span className="text-[11px] font-normal text-muted-foreground/60">(opsional)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  {contentAr && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAr(v => !v)}
+                      className="text-[11px] text-primary hover:underline"
+                    >
+                      {showAr ? "Sembunyikan" : "Lihat"}
+                    </button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTranslateArabic}
+                    disabled={translating}
+                    className="h-7 text-[11px] gap-1.5 border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                  >
+                    {translating ? (
+                      <><Loader2 className="h-3 w-3 animate-spin" />Menerjemahkan...</>
+                    ) : (
+                      <>✨ {contentAr ? "Terjemahkan Ulang" : "Terjemahkan ke Arab"}</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {showAr && contentAr && (
+                <div className="rounded-xl border border-border bg-secondary/50 px-3.5 py-3">
+                  <p className="text-xs text-muted-foreground/60 mb-2 text-right" dir="rtl">المحتوى بالعربية</p>
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap text-right" dir="rtl">{contentAr}</p>
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground/60">
+                AINA akan menggunakan terjemahan ini untuk menjawab pertanyaan dalam Bahasa Arab dan meningkatkan pencarian multibahasa.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
               🗺️ Link Google Maps <span className="text-[11px] font-normal text-muted-foreground/60">(opsional)</span>
@@ -2840,6 +2909,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       <ArticleFormDialog open={addOpen} onClose={() => setAddOpen(false)} onSave={handleAdd} />
       <ArticleFormDialog
         open={!!editArticle} onClose={() => setEditArticle(null)} onSave={handleEdit}
+        articleId={editArticle?.id}
         initial={editArticle ? { title: editArticle.title, content: editArticle.content, category: editArticle.category, maps_url: editArticle.maps_url ?? "", contact_number: editArticle.contact_number ?? "" } : undefined}
       />
       <BulkImportDialog

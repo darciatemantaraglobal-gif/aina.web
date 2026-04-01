@@ -614,8 +614,78 @@ function TrackerTab() {
   const urgentCount = items.filter(i => i.is_urgent && i.status !== "completed").length;
   const pendingCount = items.filter(i => i.status !== "completed").length;
 
+  // Smart expiry alerts — compute days remaining for items with due_date
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const expiryAlerts = items
+    .filter(i => i.status !== "completed" && i.due_date)
+    .map(i => {
+      const due  = new Date(i.due_date + "T00:00:00");
+      const days = Math.round((due.getTime() - now.getTime()) / 86400000);
+      return { ...i, daysLeft: days };
+    })
+    .filter(i => i.daysLeft >= 0 && i.daysLeft <= 30)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+
+  const criticalAlerts = expiryAlerts.filter(i => i.daysLeft <= 1);
+  const warnAlerts     = expiryAlerts.filter(i => i.daysLeft > 1 && i.daysLeft <= 7);
+  const noticeAlerts   = expiryAlerts.filter(i => i.daysLeft > 7 && i.daysLeft <= 30);
+
   return (
     <div className="space-y-4">
+      {/* Smart Expiry Alert Banners */}
+      {criticalAlerts.length > 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/8 px-3.5 py-3">
+          <span className="text-base shrink-0 mt-0.5">🔴</span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-red-400 mb-1">Jatuh tempo hari ini / besok!</p>
+            <ul className="space-y-0.5">
+              {criticalAlerts.map(i => (
+                <li key={i.id} className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{i.title}</span>
+                  {" — "}
+                  {i.daysLeft === 0 ? "hari ini" : "besok"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {warnAlerts.length > 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-orange-500/30 bg-orange-500/8 px-3.5 py-3">
+          <span className="text-base shrink-0 mt-0.5">🟠</span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-orange-400 mb-1">Jatuh tempo dalam 7 hari</p>
+            <ul className="space-y-0.5">
+              {warnAlerts.map(i => (
+                <li key={i.id} className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{i.title}</span>
+                  {" — "}{i.daysLeft} hari lagi
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {noticeAlerts.length > 0 && criticalAlerts.length === 0 && warnAlerts.length === 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-3.5 py-3">
+          <span className="text-base shrink-0 mt-0.5">🟡</span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-yellow-400 mb-1">Tenggat dalam 30 hari</p>
+            <ul className="space-y-0.5">
+              {noticeAlerts.slice(0, 3).map(i => (
+                <li key={i.id} className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{i.title}</span>
+                  {" — "}{i.daysLeft} hari lagi
+                </li>
+              ))}
+              {noticeAlerts.length > 3 && (
+                <li className="text-xs text-muted-foreground/60">+{noticeAlerts.length - 3} lainnya...</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Panel description */}
       <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-3">
         <ClipboardList className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
