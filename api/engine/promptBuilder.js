@@ -28,9 +28,14 @@ export function buildKnowledgeContext(articles) {
   if (!articles || articles.length === 0) return "";
 
   const articlesText = articles.map((a, i) => {
-    const typeHint = a.article_type === "step_by_step"
-      ? " [FORMAT: Panduan Langkah-langkah — WAJIB jawab dalam format langkah bernomor: **Langkah 1**, **Langkah 2**, dst.]"
-      : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
+    // Detect muqorror/kitab articles by presence of substantial Arabic text
+    const hasArabicText = /[\u0600-\u06FF]{15,}/.test(a.content);
+
+    const typeHint = hasArabicText
+      ? " [FORMAT: Muqorror/Kitab Arab — ATURAN WAJIB: (1) Kutip paragraf Arab yang relevan persis dari artikel sebagai blockquote (awali dengan '>'), (2) Tulis terjemahan/maknanya dalam Bahasa Indonesia di bawah kutipan, (3) Jelaskan maksud dan poin-poin pentingnya. DILARANG menjelaskan tanpa menampilkan teks Arabnya terlebih dahulu.]"
+      : a.article_type === "step_by_step"
+        ? " [FORMAT: Panduan Langkah-langkah — WAJIB jawab dalam format langkah bernomor: **Langkah 1**, **Langkah 2**, dst.]"
+        : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
 
     const cleanedContent = trimToSentence(a.content, 2000);
     if (cleanedContent.length < a.content.length) {
@@ -63,6 +68,11 @@ export function buildKnowledgeContext(articles) {
 
   // KB hard-enforcement instruction — must not be softened or hedged.
   // The phrase "jika topiknya relevan" was an escape hatch removed intentionally.
+  const hasAnyArabicArticle = articles.some(a => /[\u0600-\u06FF]{15,}/.test(a.content));
+  const arabicKbRule = hasAnyArabicArticle
+    ? "\n8. 📖 ATURAN MUQORROR/KITAB: Artikel di bawah mengandung teks Arab dari kitab. Saat menjelaskan, WAJIB kutip dulu potongan teks Arab yang relevan sebagai blockquote (baris dimulai dengan '>'), diikuti terjemahan, lalu penjelasan. Ini seperti seorang ustaz yang menjelaskan dengan berpedoman pada kitabnya — teks Arabnya HARUS terlihat, bukan hanya penjelasannya saja."
+    : "";
+
   const kbHardRule =
     "## 🔒 ATURAN KERAS KB — WAJIB DIBACA SEBELUM MENJAWAB\n" +
     "Sistem telah menemukan artikel Knowledge Base yang relevan untuk pertanyaan ini.\n\n" +
@@ -73,7 +83,8 @@ export function buildKnowledgeContext(articles) {
     "4. DILARANG mengabaikan KB dan menjawab dari memori model jika KB tersedia.\n" +
     "5. DILARANG menambahkan informasi yang bertentangan dengan KB tanpa menyatakan perbedaannya.\n" +
     "6. Jika ada info KB yang kamu anggap tidak lengkap → boleh tambahkan 1–2 kalimat pelengkap dari pengetahuanmu, tapi KB tetap harus menjadi pondasi utama jawaban.\n" +
-    "7. Jika user bertanya hal yang SPESIFIK dan artikel KB membahas topik yang SAMA → WAJIB ekstrak dan sampaikan informasi spesifik itu, jangan lewati.\n\n" +
+    "7. Jika user bertanya hal yang SPESIFIK dan artikel KB membahas topik yang SAMA → WAJIB ekstrak dan sampaikan informasi spesifik itu, jangan lewati." +
+    arabicKbRule + "\n\n" +
     "**Ingat:** Artikel ini sudah diverifikasi oleh admin AINA. Kepercayaannya lebih tinggi dari training data model.\n" +
     "**Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat.**\n" +
     "---";
