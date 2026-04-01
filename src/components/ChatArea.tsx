@@ -531,34 +531,81 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
   };
 
-  const toggleVoice = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast.error("Browser kamu tidak mendukung input suara. Coba Chrome atau Edge.");
-      return;
-    }
+  const toggleVoice = async () => {
+    // Stop recording if already active
     if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
+      (recognitionRef.current as MediaRecorder | null)?.stop();
       return;
     }
-    const rec = new SpeechRecognition();
-    rec.lang = "id-ID";
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onstart = () => setIsListening(true);
-    rec.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript;
-      setInput(prev => (prev ? prev + " " + transcript : transcript));
-      setTimeout(autoResize, 50);
-    };
-    rec.onerror = () => {
+
+    // Request microphone access
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      toast.error("Izin mikrofon ditolak. Aktifkan akses mikrofon di browser.");
+      return;
+    }
+
+    const chunks: BlobPart[] = [];
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/ogg";
+    const recorder = new MediaRecorder(stream, { mimeType });
+
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstart = () => setIsListening(true);
+    recorder.onstop = async () => {
       setIsListening(false);
-      toast.error("Gagal mendengarkan suara. Coba lagi.");
+      stream.getTracks().forEach(t => t.stop());
+
+      const blob = new Blob(chunks, { type: mimeType });
+      if (blob.size < 1000) {
+        toast.error("Rekaman terlalu pendek. Tahan tombol mic dan bicara.");
+        return;
+      }
+
+      // Convert to base64 and send to Whisper
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(",")[1];
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const resp = await fetch("/api/whisper", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session?.access_token ?? ""}`,
+            },
+            body: JSON.stringify({ audio: base64, mimeType: mimeType.split(";")[0] }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || "Transkripsi gagal");
+          }
+          const { transcript } = await resp.json();
+          if (transcript) {
+            setInput(prev => (prev ? prev + " " + transcript : transcript));
+            setTimeout(autoResize, 50);
+          } else {
+            toast.error("Tidak ada suara yang terdeteksi. Coba lagi.");
+          }
+        } catch (e: any) {
+          toast.error(e.message || "Gagal memproses suara. Coba lagi.");
+        }
+      };
+      reader.readAsDataURL(blob);
     };
-    rec.onend = () => setIsListening(false);
-    recognitionRef.current = rec;
-    rec.start();
+    recorder.onerror = () => {
+      setIsListening(false);
+      stream.getTracks().forEach(t => t.stop());
+      toast.error("Gagal merekam suara. Coba lagi.");
+    };
+
+    recognitionRef.current = recorder as any;
+    recorder.start();
   };
 
   const submitReport = async (msgId: string, msgContent: string) => {
@@ -1511,7 +1558,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     ? "text-red-400 animate-pulse hover:bg-red-500/10"
                     : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                 }`}
-                title={isListening ? "Berhenti mendengarkan" : "Input suara (Bahasa Indonesia)"}
+                title={isListening ? "Berhenti merekam (kirim ke Whisper AI)" : "Input suara via Whisper AI (Indonesia / Arabic / lainnya)"}
               >
                 {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </button>

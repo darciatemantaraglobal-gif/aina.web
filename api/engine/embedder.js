@@ -1,12 +1,16 @@
 /**
  * api/engine/embedder.js
- * Generates text embeddings via OpenAI text-embedding-3-small.
+ * Generates text embeddings via OpenAI text-embedding-3-large.
  * Used for RAG (semantic search) in AINA's Knowledge Base.
+ *
+ * Uses dimensions:1536 to keep the same DB column size while benefiting from
+ * the higher-quality model (OpenAI MRL — truncated dims still outperform 3-small).
  */
 
-const OPENAI_EMBED_URL = "https://api.openai.com/v1/embeddings";
-const EMBED_MODEL      = "text-embedding-3-small";
-const MAX_INPUT_CHARS  = 8000; // safe limit (~6k tokens for this model)
+const OPENAI_EMBED_URL  = "https://api.openai.com/v1/embeddings";
+export const CURRENT_EMBED_MODEL = "text-embedding-3-large";
+const EMBED_DIMENSIONS  = 1536;  // Keep existing vector(1536) column — no DB migration needed
+const MAX_INPUT_CHARS   = 8000;
 
 /**
  * Generate a 1536-dimension embedding vector for the given text.
@@ -26,7 +30,7 @@ export async function generateEmbedding(text) {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model: EMBED_MODEL, input }),
+    body: JSON.stringify({ model: CURRENT_EMBED_MODEL, input, dimensions: EMBED_DIMENSIONS }),
   });
 
   if (!res.ok) {

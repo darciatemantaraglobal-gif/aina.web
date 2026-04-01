@@ -16,7 +16,7 @@ import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchest
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { runDailyReminder, runWeeklyRecap } from "./server/services/reminderService.js";
-import { generateEmbedding, buildArticleEmbedText } from "./api/engine/embedder.js";
+import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./api/engine/embedder.js";
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
@@ -781,6 +781,138 @@ async function triggerKeywordGen(articleId) {
   } catch { /* silent — keyword gen is best-effort */ }
 }
 
+/* ── OpenAI Content Moderation ──────────────────────────────────────────────
+   Uses the free OpenAI Moderation API to screen user messages before processing.
+   Fail-safe: if moderation API is down, always returns { flagged: false }.        */
+async function checkModeration(text) {
+  if (!process.env.OPENAI_API_KEY) return { flagged: false };
+  try {
+    const res = await fetch("https://api.openai.com/v1/moderations", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ input: text }),
+    });
+    if (!res.ok) return { flagged: false };
+    const data = await res.json();
+    const result = data.results?.[0];
+    if (result?.flagged) {
+      const categories = Object.entries(result.categories || {})
+        .filter(([, v]) => v).map(([k]) => k).join(", ");
+      console.warn(`[Moderation] ⚠️  flagged categories: ${categories || "unknown"}`);
+    }
+    return { flagged: result?.flagged ?? false };
+  } catch {
+    return { flagged: false }; // never block on moderation API failure
+  }
+}
+
+/* ── Article Summary Generator (gpt-4o-mini) ────────────────────────────────
+   Generates a 2-3 sentence Indonesian summary for KB articles using gpt-4o-mini.
+   Much cheaper than GPT-4o ($0.15/1M tokens) — $5 covers ~30k article summaries. */
+async function generateArticleSummary(title, content, category) {
+  if (!process.env.OPENAI_API_KEY) return null;
+  try {
+    const snippet = content?.slice(0, 2500) || "";
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{
+          role: "user",
+          content: `Buat ringkasan 2-3 kalimat dalam Bahasa Indonesia untuk artikel knowledge base berikut. Ringkasan harus padat, informatif, dan langsung ke poin — berguna untuk mahasiswa Indonesia di Mesir (Masisir).
+
+Judul: ${title}
+Kategori: ${category}
+Isi: ${snippet}
+
+Tulis hanya ringkasannya, tanpa kalimat pembuka seperti "Artikel ini membahas..." atau "Ringkasan:".`,
+        }],
+        max_tokens: 250,
+        temperature: 0.3,
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/* Trigger summary generation for one article (fire-and-forget) */
+async function triggerSummaryGen(articleId) {
+  if (!process.env.OPENAI_API_KEY) return;
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  try {
+    const { data: art } = await supabase
+      .from("knowledge_base")
+      .select("title, content, category, summary")
+      .eq("id", articleId)
+      .single();
+    if (!art || art.summary) return; // skip if already has summary
+    const summary = await generateArticleSummary(art.title, art.content, art.category);
+    if (summary) {
+      await supabase.from("knowledge_base").update({ summary }).eq("id", articleId);
+      console.log(`[Summary] ✓ generated summary for article ${articleId}`);
+    }
+  } catch { /* silent — summary gen is best-effort */ }
+}
+
+/* ── OpenAI GPT-4o Vision — Arabic document analysis ───────────────────────
+   Analyses an image using GPT-4o Vision, specialised for Arabic documents.
+   Returns a string with extracted text and explanation, or null on failure.
+   Used as pre-analysis context in the main chat pipeline.                    */
+async function analyzeImageWithVision(dataUrl, userQuestion) {
+  if (!process.env.OPENAI_API_KEY) return null;
+  try {
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Kamu adalah asisten yang membantu mahasiswa Indonesia di Mesir (Masisir) memahami dokumen. Analisis gambar ini:
+
+1. Jika gambar berisi teks Arab: transkripsi teks tersebut, lalu terjemahkan ke Bahasa Indonesia.
+2. Jika ini dokumen resmi (surat, formulir, KTP, visa, ijazah, dll): jelaskan jenis dokumen, isi utamanya, dan langkah yang perlu diambil.
+3. Jika ini foto biasa: deskripsikan isinya secara detail.
+
+Pertanyaan user: "${userQuestion || "Apa isi gambar ini?"}"
+
+Berikan analisis lengkap dalam Bahasa Indonesia.`,
+            },
+            {
+              type: "image_url",
+              image_url: { url: dataUrl, detail: "high" },
+            },
+          ],
+        }],
+        max_tokens: 1500,
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Generate and store an embedding for a KB article.
  * Fire-and-forget — never blocks the main response path.
@@ -799,8 +931,10 @@ async function embedKBArticle(articleId, { rethrow = false } = {}) {
     if (!art) return;
     const embedText = buildArticleEmbedText(art);
     const embedding = await generateEmbedding(embedText);
-    await supabase.from("knowledge_base").update({ embedding: JSON.stringify(embedding) }).eq("id", articleId);
-    console.log(`[RAG] ✓ embedded article ${articleId}`);
+    await supabase.from("knowledge_base")
+      .update({ embedding: JSON.stringify(embedding), embedding_model: CURRENT_EMBED_MODEL })
+      .eq("id", articleId);
+    console.log(`[RAG] ✓ embedded article ${articleId} [${CURRENT_EMBED_MODEL}]`);
   } catch (e) {
     console.warn(`[RAG] embedding failed for ${articleId}: ${e.message}`);
     if (rethrow) throw e;
@@ -2713,6 +2847,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
     : rawLastContent;
 
+  // Content moderation — screen for harmful content before any processing (free OpenAI API)
+  if (lastUserMessage.length > 5) {
+    const modResult = await checkModeration(lastUserMessage);
+    if (modResult.flagged) {
+      return res.status(451).json({
+        error: "Pesan mengandung konten yang tidak sesuai. Tolong ubah pertanyaanmu agar AINA bisa membantu.",
+      });
+    }
+  }
+
   // Extract previous assistant message (needed for clarification detection + extraction)
   const prevAiContent = [...messages].reverse().find(m => m.role === "assistant")?.content ?? null;
   const prevAiMsg = typeof prevAiContent === "string" ? prevAiContent : null;
@@ -2988,7 +3132,23 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   if (attachedFile?.type === "image" && attachedFile.dataUrl) {
-    // Replace the last user message with multimodal content
+    // Pre-analysis with GPT-4o Vision for Arabic document understanding
+    // This runs alongside the existing multimodal model for richer context
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        console.log("[Vision] Analysing image with GPT-4o Vision...");
+        const visionAnalysis = await analyzeImageWithVision(attachedFile.dataUrl, lastUserMessage);
+        if (visionAnalysis) {
+          finalSystemPrompt = finalSystemPrompt +
+            `\n\n---\n## Analisis Gambar (GPT-4o Vision)\nBerikut adalah analisis mendalam dari gambar yang diupload user — gunakan ini sebagai konteks utama:\n\n${visionAnalysis}\n---`;
+          console.log(`[Vision] ✓ analysis complete (${visionAnalysis.length} chars)`);
+        }
+      } catch (visionErr) {
+        console.warn(`[Vision] analysis failed: ${visionErr.message}`);
+      }
+    }
+
+    // Also send image to the main multimodal model (OpenRouter) so it can see it too
     useVisionModel = true;
     const lastUserIdx = [...finalMessages].map((m, i) => ({ m, i })).reverse().find(({ m }) => m.role === "user")?.i;
     if (lastUserIdx !== undefined) {
@@ -3713,6 +3873,54 @@ const chatFileUpload = multer({
     if (allowed.includes(file.mimetype)) cb(null, true);
     else cb(new Error("Hanya PDF atau TXT yang didukung untuk chat"));
   },
+});
+
+/* POST /api/whisper — transcribe audio using OpenAI Whisper
+   Body: { audio: base64String, mimeType?: string }
+   Returns: { transcript: string }                                            */
+app.post("/api/whisper", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
+  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "OpenAI belum dikonfigurasi" });
+
+  const { audio, mimeType = "audio/webm" } = req.body || {};
+  if (!audio || typeof audio !== "string") return res.status(400).json({ error: "audio (base64) diperlukan" });
+  if (audio.length > 10 * 1024 * 1024) return res.status(413).json({ error: "File audio terlalu besar (maks ~7 MB)" });
+
+  const token = authHeader.replace("Bearer ", "");
+  const supabase = getAdminClient();
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
+
+  try {
+    const buffer = Buffer.from(audio, "base64");
+    const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
+    const audioBlob = new Blob([buffer], { type: mimeType });
+    const formData = new FormData();
+    formData.append("model", "whisper-1");
+    formData.append("file", audioBlob, `audio.${ext}`);
+    // Don't force language — let Whisper auto-detect (supports Indonesian + Arabic + mixed)
+
+    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.warn(`[Whisper] API error ${resp.status}: ${err.slice(0, 200)}`);
+      return res.status(resp.status).json({ error: "Gagal mentranskrip audio. Coba lagi." });
+    }
+
+    const data = await resp.json();
+    const transcript = data.text?.trim() || "";
+    console.log(`[Whisper] ✓ transcript: "${transcript.slice(0, 80)}"`);
+    res.json({ transcript });
+  } catch (e) {
+    console.error("[Whisper] error:", e.message);
+    res.status(500).json({ error: "Gagal memproses audio" });
+  }
 });
 
 app.post("/api/chat/extract-pdf", uploadLimiter, (req, res, next) => {
@@ -4723,9 +4931,10 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
 
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
-  // Fire-and-forget keyword generation, duplicate check, and embedding when article is approved
+  // Fire-and-forget keyword generation, summary, duplicate check, and embedding when article is approved
   if (status === "approved") {
     triggerKeywordGen(id);
+    triggerSummaryGen(id);
     checkAndArchiveDuplicate(supabase, id, article.title, article.category).catch(() => {});
     embedKBArticle(id).catch(() => {});
   }
@@ -5131,10 +5340,11 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   const pendingIds = pendingArticles.map(a => a.id);
   await supabase.from("knowledge_base").update({ status }).in("id", pendingIds);
 
-  // Fire-and-forget: keyword generation + duplicate check + embedding for all newly approved articles
+  // Fire-and-forget: keyword generation + summary + duplicate check + embedding for all newly approved articles
   if (status === "approved") {
     for (const art of pendingArticles) {
       triggerKeywordGen(art.id);
+      triggerSummaryGen(art.id);
       checkAndArchiveDuplicate(supabase, art.id, art.title, art.category).catch(() => {});
       embedKBArticle(art.id).catch(() => {});
     }
@@ -9594,8 +9804,10 @@ async function runColumnMigrations() {
     // ── RAG (Retrieval-Augmented Generation) — pgvector semantic search ───────
     // Step 1: enable pgvector extension (pre-installed on all Supabase projects)
     `CREATE EXTENSION IF NOT EXISTS vector;`,
-    // Step 2: add embedding column to knowledge_base (text-embedding-3-small = 1536 dims)
+    // Step 2: add embedding column to knowledge_base (text-embedding-3-large = 1536 dims)
     `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding vector(1536);`,
+    `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding_model varchar(80);`,
+    `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS summary TEXT;`,
     // Step 3: IVFFlat index for fast cosine similarity search
     `CREATE INDEX IF NOT EXISTS idx_kb_embedding ON public.knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 10);`,
     // Step 4: match_knowledge_base RPC — returns articles sorted by semantic similarity
@@ -10190,24 +10402,27 @@ async function initLibraryTable() {
   }
 }
 
-// Auto-embed approved KB articles that are missing embeddings.
+// Auto-embed approved KB articles that are missing embeddings OR have a stale model.
 // Runs at startup when OPENAI_API_KEY is configured.
-// New articles get embedded on approval; this catches existing ones.
+// New articles get embedded on approval; this catches existing ones and model upgrades.
 // Aborts early on quota/billing errors (429) to avoid wasting API calls.
 async function autoEmbedMissingArticles() {
   if (!process.env.OPENAI_API_KEY) return;
   const supabase = getAdminClient();
   if (!supabase) return;
+  // Fetch articles missing embeddings OR embedded with an old model
   const { data: articles, error } = await supabase
     .from("knowledge_base")
-    .select("id")
+    .select("id, embedding_model")
     .eq("status", "approved")
-    .is("embedding", null);
+    .or(`embedding.is.null,embedding_model.is.null,embedding_model.neq.${CURRENT_EMBED_MODEL}`);
   if (error || !articles || articles.length === 0) {
-    if (!error) console.log("[RAG] ✓ All approved articles already have embeddings");
+    if (!error) console.log(`[RAG] ✓ All approved articles are embedded with current model (${CURRENT_EMBED_MODEL})`);
     return;
   }
-  console.log(`[RAG] Auto-embedding ${articles.length} article(s) missing embeddings...`);
+  const needUpgrade = articles.filter(a => a.embedding_model && a.embedding_model !== CURRENT_EMBED_MODEL).length;
+  const needEmbed = articles.length - needUpgrade;
+  console.log(`[RAG] Auto-embedding ${articles.length} article(s): ${needEmbed} missing, ${needUpgrade} model upgrade (→${CURRENT_EMBED_MODEL})`);
   let ok = 0, fail = 0;
   let delayMs = 1000; // Start at 1 req/s; auto-increases if rate limited
   for (const { id } of articles) {
@@ -10245,6 +10460,37 @@ async function autoEmbedMissingArticles() {
   console.log(`[RAG] Auto-embed complete: ${ok} embedded, ${fail} failed`);
 }
 
+// Auto-generate summaries for approved KB articles that are missing them.
+// Runs at startup when OPENAI_API_KEY is configured.
+// New articles get summaries on approval; this catches existing ones.
+async function autoSummarizeMissingArticles() {
+  if (!process.env.OPENAI_API_KEY) return;
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const { data: articles, error } = await supabase
+    .from("knowledge_base")
+    .select("id")
+    .eq("status", "approved")
+    .is("summary", null);
+  if (error || !articles || articles.length === 0) {
+    if (!error) console.log("[Summary] ✓ All approved articles already have summaries");
+    return;
+  }
+  console.log(`[Summary] Auto-generating summaries for ${articles.length} article(s)...`);
+  let ok = 0, fail = 0;
+  for (const { id } of articles) {
+    try {
+      await triggerSummaryGen(id);
+      ok++;
+      await new Promise(r => setTimeout(r, 500)); // gentle rate limit: 2 req/s
+    } catch (e) {
+      fail++;
+      console.warn(`[Summary] Failed for ${id}: ${e.message}`);
+    }
+  }
+  console.log(`[Summary] Auto-summarize complete: ${ok} done, ${fail} failed`);
+}
+
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
   initLibraryTable();
@@ -10253,6 +10499,7 @@ if (!process.env.VERCEL) {
     seedPartnerArticles();
     syncContributionCounts();
     autoEmbedMissingArticles();
+    autoSummarizeMissingArticles();
   });
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AINA API server running on port ${PORT}`);

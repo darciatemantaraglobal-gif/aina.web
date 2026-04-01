@@ -7,7 +7,7 @@ AI-powered assistant platform for Indonesian students in Egypt (Masisir). Featur
 - **Frontend**: React 18 + TypeScript + Vite (port 5000)
 - **Backend**: Express.js API server (port 3001)
 - **Auth & Database**: Supabase (PostgreSQL + GoTrue auth + Storage)
-- **AI**: OpenRouter API (multiple free models with fallback); OpenAI API (embeddings only, text-embedding-3-small)
+- **AI**: OpenRouter API (multiple free models with fallback); OpenAI API (text-embedding-3-large embeddings, Whisper voice transcription, GPT-4o Vision for image/Arabic docs, GPT-4o-mini content moderation + article summaries)
 - **Styling**: Tailwind CSS + shadcn/ui (Radix UI)
 - **State**: TanStack Query (React Query)
 
