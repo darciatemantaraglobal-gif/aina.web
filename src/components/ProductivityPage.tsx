@@ -1846,14 +1846,19 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
         </div>
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {tab === "fokus"     && <FocusTab />}
-        {tab === "dokumen"   && <TrackerTab />}
-        {tab === "flashcard" && <FlashcardPage />}
-        {tab === "catatan"   && <NotesTab />}
-        {tab === "pengingat" && <ReminderTab />}
-      </div>
+      {/* Tab content — Flashcard gets its own flex-1 container; others share a scrollable padded area */}
+      {tab === "flashcard" ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <FlashcardPage />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {tab === "fokus"     && <FocusTab />}
+          {tab === "dokumen"   && <TrackerTab />}
+          {tab === "catatan"   && <NotesTab />}
+          {tab === "pengingat" && <ReminderTab />}
+        </div>
+      )}
     </div>
   );
 };
