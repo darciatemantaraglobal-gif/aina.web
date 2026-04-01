@@ -7343,6 +7343,90 @@ app.delete("/api/admin/library/:id", writeLimiter, async (req, res) => {
   res.json({ success: true });
 });
 
+/* POST /api/admin/library/analyze-text
+   Gemini reads raw Arabic text → returns structured KB article previews */
+app.post("/api/admin/library/analyze-text", strictLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Akses ditolak" });
+
+  const { text, kitab_name, faculty, year_level } = req.body;
+  if (!text?.trim())       return res.status(400).json({ error: "Teks wajib diisi" });
+  if (!kitab_name?.trim()) return res.status(400).json({ error: "Nama kitab wajib diisi" });
+  if (text.length > 20_000) return res.status(400).json({ error: "Teks terlalu panjang (maks 20.000 karakter)" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "OpenRouter tidak dikonfigurasi" });
+
+  const meta = [
+    `Nama kitab: ${kitab_name.trim()}`,
+    faculty    ? `Fakultas: ${faculty}`    : null,
+    year_level ? `Tahun: ${year_level}` : null,
+  ].filter(Boolean).join("\n");
+
+  const systemPrompt = `Kamu adalah spesialis teks Islam klasik berbahasa Arab. Tugasmu menganalisis teks dari sebuah kitab dan memisahkannya menjadi bab/fasl/bagian logis.
+
+Untuk setiap bagian, hasilkan objek JSON dengan field berikut:
+- "title": Judul dalam format "[Nama Kitab] - [Nama Bab/Fasl]" (gunakan nama bab asli dari teks jika ada)
+- "content": Teks Arab asli bagian ini secara lengkap dan persis
+- "summary": 2-3 kalimat ringkasan dalam Bahasa Indonesia yang menjelaskan isi dan hukum-hukum penting di bagian ini
+- "keywords": keyword Bahasa Indonesia dipisah koma, contoh: "fathul qarib, thaharah, bersuci, air najis, fiqh syafi'i"
+- "article_type": selalu isi "narrative"
+
+Aturan penting:
+- Pertahankan seluruh teks Arab persis apa adanya
+- Title dan keywords HARUS menyebut nama kitab: ${kitab_name.trim()}
+- Summary HARUS dalam Bahasa Indonesia
+- Maksimal 15 bagian (gabungkan bagian kecil bila perlu)
+- Kembalikan HANYA JSON array yang valid, tanpa teks atau markdown apapun di luar array`;
+
+  const userMsg = `${meta}\n\nTeks kitab:\n${text.trim()}`;
+
+  try {
+    const data = await callOpenRouter(apiKey, {
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user",   content: userMsg },
+      ],
+      temperature: 0.1,
+      max_tokens:  8000,
+      timeoutMs:   60_000,
+      label:       "MuqorrorAnalyze",
+    });
+
+    const raw = data?.choices?.[0]?.message?.content ?? "";
+
+    // Extract JSON array from response (model might wrap in markdown)
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return res.status(422).json({ error: "AI tidak menghasilkan format JSON yang valid. Coba lagi atau sederhanakan teks." });
+
+    let articles;
+    try {
+      articles = JSON.parse(jsonMatch[0]);
+    } catch {
+      return res.status(422).json({ error: "Gagal parse JSON dari AI. Coba lagi." });
+    }
+
+    if (!Array.isArray(articles) || articles.length === 0) {
+      return res.status(422).json({ error: "AI tidak menghasilkan artikel. Pastikan teks berisi konten Arab yang valid." });
+    }
+
+    // Sanitize and cap
+    const sanitized = articles.slice(0, 15).map((a, i) => ({
+      title:        String(a.title   || `${kitab_name} - Bagian ${i + 1}`).slice(0, 120),
+      content:      String(a.content || "").trim(),
+      summary:      String(a.summary || "").trim(),
+      keywords:     String(a.keywords || kitab_name).slice(0, 300),
+      article_type: "narrative",
+      category:     "Akademik",
+    })).filter(a => a.content.length > 10);
+
+    res.json({ articles: sanitized, count: sanitized.length });
+  } catch (err) {
+    console.error("[MuqorrorAnalyze] error:", err.message);
+    res.status(500).json({ error: "AI gagal memproses teks. Coba lagi." });
+  }
+});
+
 // ─── BADGE SYSTEM ──────────────────────────────────────────────────────────
 
 const BADGE_DEFS = {

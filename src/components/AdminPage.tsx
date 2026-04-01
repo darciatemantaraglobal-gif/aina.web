@@ -5752,6 +5752,11 @@ const emptyLib = (): Omit<LibItem, "id" | "created_at"> => ({
   year_level: "", drive_url: "", file_type: "pdf", tags: "", is_published: true,
 });
 
+interface MuqArticle {
+  title: string; content: string; summary: string;
+  keywords: string; article_type: string; category: string;
+}
+
 function LibraryManagementTab() {
   const [items, setItems] = useState<LibItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -5761,6 +5766,67 @@ function LibraryManagementTab() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  // Import ke KB wizard state
+  const [showImport, setShowImport] = useState(false);
+  const [importStep, setImportStep] = useState<1 | 2 | 3>(1);
+  const [importMeta, setImportMeta] = useState({ kitab_name: "", faculty: "", year_level: "" });
+  const [importText, setImportText] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [previewArticles, setPreviewArticles] = useState<MuqArticle[]>([]);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const openImport = () => {
+    setImportStep(1);
+    setImportMeta({ kitab_name: "", faculty: "", year_level: "" });
+    setImportText("");
+    setPreviewArticles([]);
+    setEditingIdx(null);
+    setShowImport(true);
+  };
+
+  const analyzeText = async () => {
+    if (!importMeta.kitab_name.trim()) { toast.error("Nama kitab wajib diisi"); return; }
+    if (!importText.trim()) { toast.error("Teks wajib diisi"); return; }
+    if (importText.length > 20_000) { toast.error("Teks terlalu panjang (maks 20.000 karakter)"); return; }
+    setAnalyzing(true);
+    try {
+      const res = await adminFetch("/api/admin/library/analyze-text", {
+        method: "POST",
+        body: JSON.stringify({ ...importMeta, text: importText }),
+      });
+      if (!res.articles?.length) { toast.error("AI tidak berhasil menganalisis teks. Coba sederhanakan."); return; }
+      setPreviewArticles(res.articles);
+      setImportStep(2);
+    } catch (e: any) {
+      toast.error(e.message ?? "Gagal menganalisis teks");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const removePreview = (idx: number) => setPreviewArticles(p => p.filter((_, i) => i !== idx));
+  const updatePreview = (idx: number, field: keyof MuqArticle, val: string) =>
+    setPreviewArticles(p => p.map((a, i) => i === idx ? { ...a, [field]: val } : a));
+
+  const doImport = async () => {
+    if (previewArticles.length === 0) { toast.error("Tidak ada artikel untuk diimport"); return; }
+    setImporting(true);
+    try {
+      const res = await adminFetch("/api/admin/articles/bulk-import", {
+        method: "POST",
+        body: JSON.stringify({ articles: previewArticles }),
+      });
+      toast.success(`${res.imported ?? previewArticles.length} artikel berhasil masuk ke Knowledge Base`);
+      setShowImport(false);
+      setImportStep(1);
+    } catch (e: any) {
+      toast.error(e.message ?? "Gagal import ke KB");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -5839,9 +5905,14 @@ function LibraryManagementTab() {
             <h2 className="text-base font-semibold text-foreground">Library</h2>
             <p className="text-xs text-muted-foreground">Kelola muqorror, panduan, dan referensi untuk Masisir</p>
           </div>
-          <Button size="sm" onClick={openAdd} className="gap-1.5 shrink-0">
-            <Plus className="h-4 w-4" /> Tambah Item
-          </Button>
+          <div className="flex gap-2 shrink-0">
+            <Button size="sm" variant="outline" onClick={openImport} className="gap-1.5">
+              <Sparkles className="h-4 w-4 text-violet-400" /> Import ke KB
+            </Button>
+            <Button size="sm" onClick={openAdd} className="gap-1.5">
+              <Plus className="h-4 w-4" /> Tambah Item
+            </Button>
+          </div>
         </div>
         <div className="relative mt-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -5968,6 +6039,186 @@ function LibraryManagementTab() {
               <Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>Batal</Button>
               <Button className="flex-1" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : editing ? "Simpan Perubahan" : "Tambahkan"}</Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Import ke KB Wizard ── */}
+      <Dialog open={showImport} onOpenChange={open => { if (!analyzing && !importing) setShowImport(open); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-violet-400" />
+              Import Muqorror ke Knowledge Base
+            </DialogTitle>
+            {/* Step indicator */}
+            <div className="flex items-center gap-2 mt-3">
+              {([1, 2] as const).map(s => (
+                <div key={s} className="flex items-center gap-2">
+                  {s > 1 && <div className={`h-px w-8 ${importStep >= s ? "bg-primary" : "bg-border"}`} />}
+                  <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-colors ${importStep >= s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{s}</div>
+                  <span className={`text-xs ${importStep >= s ? "text-foreground" : "text-muted-foreground"}`}>
+                    {s === 1 ? "Input Teks" : "Review & Import"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+
+            {/* Step 1: Input */}
+            {importStep === 1 && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+                  <p className="text-xs text-violet-300 leading-relaxed">
+                    Paste teks Arab dari kitab (copy dari PDF atau web). AI akan otomatis memisahkan per bab/fasl dan membuat ringkasan Indonesia untuk setiap bagian.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-foreground">Nama Kitab *</label>
+                    <Input
+                      value={importMeta.kitab_name}
+                      onChange={e => setImportMeta(p => ({ ...p, kitab_name: e.target.value }))}
+                      placeholder="Contoh: Fathul Qarib"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-foreground">Fakultas (opsional)</label>
+                    <Select value={importMeta.faculty} onValueChange={v => setImportMeta(p => ({ ...p, faculty: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Semua fakultas" /></SelectTrigger>
+                      <SelectContent>{LIB_FACULTIES.map(f => <SelectItem key={f} value={f}>{f || "Semua fakultas"}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-foreground">Teks Arab *</label>
+                  <div className="relative">
+                    <Textarea
+                      value={importText}
+                      onChange={e => setImportText(e.target.value)}
+                      placeholder="بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ&#10;&#10;كِتَابُ الطَّهَارَةِ&#10;&#10;الطَّهَارَةُ لُغَةً: النَّظَافَةُ وَالنَّزَاهَةُ..."
+                      rows={12}
+                      className="resize-none font-mono text-sm"
+                      dir="auto"
+                    />
+                    <div className={`absolute bottom-2 right-2 text-[10px] ${importText.length > 18000 ? "text-red-400" : "text-muted-foreground"}`}>
+                      {importText.length.toLocaleString()} / 20.000
+                    </div>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Tips: Paste satu bab atau beberapa bab sekaligus. Maksimal ~5–10 halaman per analisis.
+                  </p>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowImport(false)}>Batal</Button>
+                  <Button className="flex-1 gap-2" onClick={analyzeText} disabled={analyzing}>
+                    {analyzing ? (
+                      <><div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" /> Menganalisis...</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4" /> Analisis dengan AI</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Preview & Edit */}
+            {importStep === 2 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    AI menemukan <span className="font-semibold text-foreground">{previewArticles.length} bagian</span> — review sebelum import ke KB
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => setImportStep(1)} className="text-xs gap-1">
+                    ← Kembali
+                  </Button>
+                </div>
+
+                {previewArticles.length === 0 ? (
+                  <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">Semua artikel dihapus</div>
+                ) : (
+                  previewArticles.map((art, idx) => (
+                    <div key={idx} className="rounded-xl border border-border bg-card overflow-hidden">
+                      {/* Card header */}
+                      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border bg-muted/30">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary">{idx + 1}</span>
+                          {editingIdx === idx ? (
+                            <Input
+                              value={art.title}
+                              onChange={e => updatePreview(idx, "title", e.target.value)}
+                              className="h-7 text-sm py-0"
+                            />
+                          ) : (
+                            <p className="text-sm font-medium text-foreground truncate">{art.title}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingIdx(editingIdx === idx ? null : idx)}>
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => removePreview(idx)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Card body */}
+                      <div className="p-4 space-y-3">
+                        {editingIdx === idx ? (
+                          <>
+                            <div>
+                              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Ringkasan</label>
+                              <Textarea value={art.summary} onChange={e => updatePreview(idx, "summary", e.target.value)} rows={2} className="mt-1 text-xs resize-none" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Keywords</label>
+                              <Input value={art.keywords} onChange={e => updatePreview(idx, "keywords", e.target.value)} className="mt-1 text-xs" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Konten Arab</label>
+                              <Textarea value={art.content} onChange={e => updatePreview(idx, "content", e.target.value)} rows={4} className="mt-1 text-xs resize-none font-mono" dir="rtl" />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground leading-relaxed">{art.summary}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {art.keywords.split(",").slice(0, 6).map((kw, ki) => (
+                                <span key={ki} className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{kw.trim()}</span>
+                              ))}
+                            </div>
+                            <div className="rounded-lg bg-muted/30 px-3 py-2 text-xs font-mono text-foreground/60 line-clamp-2" dir="rtl">
+                              {art.content.slice(0, 120)}...
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                <div className="flex gap-2 pt-2 sticky bottom-0 bg-background pb-1">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowImport(false)} disabled={importing}>Batal</Button>
+                  <Button
+                    className="flex-1 gap-2"
+                    onClick={doImport}
+                    disabled={importing || previewArticles.length === 0}
+                  >
+                    {importing ? (
+                      <><div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" /> Mengimport...</>
+                    ) : (
+                      <><CheckCircle2 className="h-4 w-4" /> Import {previewArticles.length} Artikel ke KB</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
