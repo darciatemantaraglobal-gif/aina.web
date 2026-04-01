@@ -437,6 +437,7 @@ console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPA
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
 console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured" : "✗ not configured — Perplexity fallback disabled"}`);
+console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 
 /* ── Email via Resend ─────────────────────────────────── */
@@ -785,7 +786,7 @@ async function triggerKeywordGen(articleId) {
  * Fire-and-forget — never blocks the main response path.
  * Fetches latest article fields (including keywords/summary if already generated).
  */
-async function embedKBArticle(articleId) {
+async function embedKBArticle(articleId, { rethrow = false } = {}) {
   if (!process.env.OPENAI_API_KEY) return;
   const supabase = getAdminClient();
   if (!supabase) return;
@@ -802,6 +803,7 @@ async function embedKBArticle(articleId) {
     console.log(`[RAG] ✓ embedded article ${articleId}`);
   } catch (e) {
     console.warn(`[RAG] embedding failed for ${articleId}: ${e.message}`);
+    if (rethrow) throw e;
   }
 }
 
@@ -909,7 +911,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 
   // ── Vector (semantic) search — try first if OpenAI key is available ─────────
   let vectorResults = [];
-  if (process.env.OPENAI_API_KEY) {
+  if (process.env.OPENAI_API_KEY && !vectorSearchDisabled) {
     try {
       const queryEmbedding = await generateEmbedding(userQuestion);
       const { data: vecData, error: vecErr } = await supabase.rpc("match_knowledge_base", {
@@ -922,7 +924,12 @@ async function fetchRelevantArticles(userQuestion, intentType) {
         console.log(`[RAG] ✓ vector search: ${vectorResults.length} results (top similarity=${vecData[0]?.similarity?.toFixed(3)})`);
       }
     } catch (vecE) {
-      console.warn(`[RAG] vector search failed, falling back to keyword: ${vecE.message}`);
+      if (vecE.message?.includes("429") || vecE.message?.includes("quota")) {
+        vectorSearchDisabled = true;
+        console.warn("[RAG] ⚠️  Vector search disabled — OpenAI quota exceeded. Falling back to keyword search.");
+      } else {
+        console.warn(`[RAG] vector search failed, falling back to keyword: ${vecE.message}`);
+      }
     }
   }
 
@@ -5181,6 +5188,9 @@ let _kwGenState = { running: false, total: 0, generated: 0, errors: 0, startedAt
 
 /* In-memory progress tracker for embedding jobs */
 let _embedState = { running: false, total: 0, embedded: 0, errors: 0, startedAt: null, completedAt: null };
+// Circuit breaker: set true when OpenAI quota is exceeded, so queries skip vector search
+// and fall through immediately to keyword search without latency penalty.
+let vectorSearchDisabled = false;
 
 /* GET /api/admin/articles/generate-embeddings/status */
 app.get("/api/admin/articles/generate-embeddings/status", async (req, res) => {
@@ -10163,6 +10173,45 @@ async function initLibraryTable() {
   }
 }
 
+// Auto-embed approved KB articles that are missing embeddings.
+// Runs at startup when OPENAI_API_KEY is configured.
+// New articles get embedded on approval; this catches existing ones.
+// Aborts early on quota/billing errors (429) to avoid wasting API calls.
+async function autoEmbedMissingArticles() {
+  if (!process.env.OPENAI_API_KEY) return;
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const { data: articles, error } = await supabase
+    .from("knowledge_base")
+    .select("id")
+    .eq("status", "approved")
+    .is("embedding", null);
+  if (error || !articles || articles.length === 0) {
+    if (!error) console.log("[RAG] ✓ All approved articles already have embeddings");
+    return;
+  }
+  console.log(`[RAG] Auto-embedding ${articles.length} article(s) missing embeddings...`);
+  let ok = 0, fail = 0;
+  for (const { id } of articles) {
+    try {
+      await embedKBArticle(id, { rethrow: true });
+      ok++;
+      await new Promise(r => setTimeout(r, 250)); // ~4 req/s
+    } catch (e) {
+      // Quota exceeded or no billing — stop immediately, do not waste more API calls
+      if (e.message?.includes("429") || e.message?.includes("quota")) {
+        console.warn("[RAG] ⚠️  OpenAI quota exceeded — auto-embed stopped.");
+        console.warn("[RAG] → Fix: add a payment method at https://platform.openai.com/settings/billing");
+        console.warn(`[RAG] → Progress so far: ${ok} embedded, ${fail + 1} failed out of ${articles.length}`);
+        vectorSearchDisabled = true;
+        return;
+      }
+      fail++;
+    }
+  }
+  console.log(`[RAG] Auto-embed complete: ${ok} embedded, ${fail} failed`);
+}
+
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
   initLibraryTable();
@@ -10170,6 +10219,7 @@ if (!process.env.VERCEL) {
   runColumnMigrations().then(() => {
     seedPartnerArticles();
     syncContributionCounts();
+    autoEmbedMissingArticles();
   });
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AINA API server running on port ${PORT}`);
