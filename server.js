@@ -2069,19 +2069,24 @@ function isLocalMasisirQuery(text) {
  */
 function isTransportQuery(text) {
   const t = text.toLowerCase();
+  // Cairo district names that almost always imply a transport question
+  const hasMasisirArea = /\b(hay\s*(asyir|asher|'asher|sabi|sabe[3e]|sabe|thamin|tamine|tasi[e']?|tasi|sadis|sadess|awwal|sani|kamil|khamis|sads|rabi'|tasi'|sabe3|thamane|tamane|'ashir|'asyir|sabea|thamanya|alf\s*maskan|alif\s*maskan)|nasr\s*city|madinah?\s*nasr|bawwabat|darrasah|abbasiyya|abbasyia|hay\s*(10|7|8|9|6|5|4|3|2|1))\b/.test(t);
+  if (hasMasisirArea && /\b(ke|dari|rute|naik|gimana|cara|transportasi|bis|bus|mikrobus|metro|taksi|uber|careem|tuktuk)\b/.test(t)) return true;
   return (
     // Direct "how to get there" follow-up
-    /\b(ke\s*sana|kesana|ke\s*situ|ke\s*sini|ke\s*sana\s*nya|ke\s*sana\s*gimana|ke\s*sana\s*caranya)\b/.test(t) ||
+    /\b(ke\s*sana|kesana|ke\s*situ|ke\s*sini|ke\s*sananya|ke\s*sana\s*gimana|ke\s*sana\s*caranya)\b/.test(t) ||
     // Route/transport question with destination
-    /\b(naik\s*apa|rute\s*(ke|menuju)|gimana\s*(ke|ke\s*sana|transportasi)|cara\s*(ke|menuju|kesana)|transportasi\s*(ke|menuju)|transport\s*(ke|menuju))\b/.test(t) ||
+    /\b(naik\s*apa|rute\s*(ke|menuju|dari)|gimana\s*(ke|ke\s*sana|transportasi)|cara\s*(ke|menuju|kesana)|transportasi\s*(ke|menuju)|transport\s*(ke|menuju))\b/.test(t) ||
     // Bus/microbus specific
-    /\b(bis\s*(ke|nomor|jurusan)|bus\s*(ke|nomor)|microbus\s*(ke|jurusan)|minibus\s*ke|angkutan\s*ke)\b/.test(t) ||
+    /\b(bis\s*(ke|nomor|jurusan|berapa)|bus\s*(ke|nomor|jurusan)|mikrobus\s*(ke|jurusan|dari|ke\s*mana)|microbus\s*(ke|jurusan)|minibus\s*ke|angkutan\s*(ke|dari))\b/.test(t) ||
     // Metro specific
-    /\b(metro\s*(ke|sampai|stasiun)|kereta\s*(ke|ke\s*sana)|subway\s*ke)\b/.test(t) ||
+    /\b(metro\s*(ke|sampai|stasiun)|kereta\s*(ke|ke\s*sana)|subway\s*ke|stasiun\s*metro)\b/.test(t) ||
     // Directions question
-    /\b(dari\s*mana\s*(naik|berangkat)|berangkat\s*dari|start\s*dari|titik\s*awal)\b/.test(t) ||
-    // Duration question for transport
-    /\b(berapa\s*lama\s*(ke|menuju|sampai)|jarak\s*(ke|dari))\b/.test(t) && /\b(ke|dari|menuju)\b/.test(t)
+    /\b(dari\s*mana\s*(naik|berangkat)|berangkat\s*dari|start\s*dari|titik\s*awal|turun\s*di\s*mana|turunnya\s*di)\b/.test(t) ||
+    // Duration/distance for transport
+    (/\b(berapa\s*lama\s*(ke|menuju|sampai)|jarak\s*(ke|dari)|estimasi\s*(waktu|perjalanan))\b/.test(t) && /\b(ke|dari|menuju)\b/.test(t)) ||
+    // Taxi/ride-hailing specific
+    /\b(uber\s*(ke|dari)|careem\s*(ke|dari)|order\s*uber|order\s*careem|pesan\s*(ojek|taksi)|grab\s*ke)\b/.test(t)
   );
 }
 
@@ -2137,14 +2142,22 @@ function extractLocationFromHistory(messages) {
     }
   }
 
-  // Pattern 5: look in recent USER messages for a place already mentioned
+  // Pattern 5: look in recent USER messages — hay/area keywords first, then general place nouns
   for (const msg of recent) {
     if (msg.role !== "user") continue;
     const content = typeof msg.content === "string" ? msg.content : "";
-    // Try to extract a proper noun that looks like a place name (capitalized words after "ke"/"di"/"menuju")
+
+    // 5a. Try CAIRO_AREAS keyword match directly in user message
+    const areaMatch = detectAreasInQuery(content);
+    if (areaMatch.length > 0) {
+      return { name: areaMatch[0].area, area: areaMatch[0].area };
+    }
+
+    // 5b. Proper noun after preposition (capitalised words)
     const placeMatch = content.match(/(?:ke|di|menuju|lokasi|tempat|kantor|sekretariat)\s+([A-Z][A-Za-z\s]{2,40})/);
     if (placeMatch) {
-      return { name: placeMatch[1].trim(), area: null };
+      const rawName = placeMatch[1].trim();
+      return { name: rawName, area: extractCairoArea(rawName, content) };
     }
   }
 
@@ -2152,101 +2165,257 @@ function extractLocationFromHistory(messages) {
 }
 
 /**
+ * Canonical Masisir Cairo area registry.
+ * Each entry has:
+ *  - area  : canonical display name
+ *  - key   : short ID used in transport context lookup
+ *  - kw    : lowercase keyword variants (Indonesian slang, Arabic romanisation, numerals, etc.)
+ */
+const CAIRO_AREAS = [
+  // ─── Nasr City Hay districts (most Masisir) ───────────────────────────────
+  {
+    area: "Hay Asyir (حي العاشر) — Nasr City Distrik 10", key: "hay_asyir",
+    kw: ["hay asyir","hay asher","hay 'asher","hay 'asyir","hay ashir","hay 'ashir","hay عاشر","حي العاشر","hay 10","h10","madinah nasr 10","nasr 10","alf maskan","alif maskan","الف مسكن","ألف مسكن","city stars","carrefour nasr","citystars"],
+  },
+  {
+    area: "Hay Sabi (حي السابع) — Nasr City Distrik 7", key: "hay_sabi",
+    kw: ["hay sabi","hay sabe3","hay sabe'","hay sabe","hay sabea","hay السابع","حي السابع","hay 7","h7","nasr 7","madinah nasr 7","district 7 nasr"],
+  },
+  {
+    area: "Hay Thamin (حي الثامن) — Nasr City Distrik 8", key: "hay_thamin",
+    kw: ["hay thamin","hay thamane","hay tamane","hay thamanya","hay الثامن","حي الثامن","hay 8","h8","nasr 8","madinah nasr 8","district 8","hay thmn"],
+  },
+  {
+    area: "Hay Tasi (حي التاسع) — Nasr City Distrik 9", key: "hay_tasi",
+    kw: ["hay tasi","hay tasi'","hay tase","hay التاسع","حي التاسع","hay 9","h9","nasr 9","madinah nasr 9","district 9","ninth district nasr"],
+  },
+  {
+    area: "Hay Sadis (حي السادس) — Nasr City Distrik 6", key: "hay_sadis",
+    kw: ["hay sadis","hay sadess","hay السادس","حي السادس","hay 6","h6","nasr 6","madinah nasr 6","district 6 nasr"],
+  },
+  {
+    area: "Hay Khamis (حي الخامس) — Nasr City Distrik 5", key: "hay_khamis",
+    kw: ["hay khamis","hay الخامس","حي الخامس","hay 5","h5","nasr 5","madinah nasr 5"],
+  },
+  {
+    area: "Nasr City / Madinah Nasr (umum)", key: "nasr_city",
+    kw: ["nasr city","madinah nasr","madina nasr","مدينة نصر","hay nasr","nasr"],
+  },
+  // ─── Al-Azhar / Darrasah belt ──────────────────────────────────────────────
+  {
+    area: "Darrasah / Bawwabat / Al-Azhar", key: "darrasah",
+    kw: ["darrasah","drasah","ad-darrasah","الدراسة","bawwabat","البوابات","bab al-futuh","bab alfutuh","hussein","al-husein","al-husain","azhar park","azhar","al-azhar","azhar university","univ azhar","kampus azhar","kuliah azhar","kulliyah","koliyah","darrasah square","midan hussein"],
+  },
+  {
+    area: "Abbasiyya (عباسية) — Hub Transportasi Utama", key: "abbasiyya",
+    kw: ["abbasiyya","abbassia","abbasyia","abbasiyah","abbasiya","عباسية","terminal abbasiyya","stasiun abbasiyya","metro abbasiyya"],
+  },
+  // ─── Other Masisir-relevant areas ─────────────────────────────────────────
+  {
+    area: "Dokki — KBRI Kairo", key: "dokki",
+    kw: ["dokki","doqqi","duqqi","دقي","dukki"],
+  },
+  {
+    area: "Zamalek", key: "zamalek",
+    kw: ["zamalek","zamaalik","الزمالك"],
+  },
+  {
+    area: "Mohandessin / Muhandiseen", key: "mohandessin",
+    kw: ["mohandessin","muhandiseen","muhandissin","المهندسين","mohandissin"],
+  },
+  {
+    area: "Maadi", key: "maadi",
+    kw: ["maadi","ma'adi","المعادي"],
+  },
+  {
+    area: "Heliopolis / Masr el-Gedida", key: "heliopolis",
+    kw: ["heliopolis","masr el gedida","masr al-jadida","مصر الجديدة","nuzha","el-nuzha","sity","heliopolis cairo"],
+  },
+  {
+    area: "Ain Shams", key: "ain_shams",
+    kw: ["ain shams","ayn shams","عين شمس","ein shams"],
+  },
+  {
+    area: "Shubra", key: "shubra",
+    kw: ["shubra","شبرا"],
+  },
+  {
+    area: "Ramsis / Downtown Cairo / Tahrir", key: "downtown",
+    kw: ["ramsis","ramses","رمسيس","downtown","wust al-balad","وسط البلد","tahrir","التحرير","mubarak","مبارك","midan tahrir"],
+  },
+  {
+    area: "Faisal / Giza / Haram", key: "giza",
+    kw: ["faisal","فيصل","giza","الجيزة","al-giza","haram","الهرم","pyramids","piramida","piramid","el-haram"],
+  },
+  {
+    area: "Agouza / Ard el-Lewa", key: "agouza",
+    kw: ["agouza","aguza","عجوزة","ard el-lewa","ard lewa"],
+  },
+  {
+    area: "Hadaiq al-Qubba", key: "hadaiq",
+    kw: ["hadaiq","hadayiq","حدائق القبة","hadaiq al-qubba"],
+  },
+  {
+    area: "KBRI Kairo (Dokki)", key: "kbri",
+    kw: ["kbri","kedutaan indonesia","kedutaan besar","kbri kairo","kbri mesir","konsulat","pbnu","pcinu mesir"],
+  },
+  {
+    area: "Mansoura", key: "mansoura",
+    kw: ["mansoura","mansoorah","mansura","المنصورة"],
+  },
+  {
+    area: "Alexandria / Iskandariyah", key: "alexandria",
+    kw: ["alexandria","alexandria egypt","iskandaria","iskandariyah","الإسكندرية","alex"],
+  },
+];
+
+/**
  * Try to determine the Cairo area/district from a place name or surrounding text.
- * Returns a string like "Darrasah", "Dokki", etc. or null.
+ * Returns the canonical area name string or null.
  */
 function extractCairoArea(name, surroundingText) {
-  const combined = (name + " " + surroundingText).toLowerCase();
-  const AREA_MAP = [
-    { area: "Darrasah / Al-Azhar", keywords: ["darrasah", "al-azhar", "azhar", "bawwabat", "bab al-futuh", "hussein", "azhar park"] },
-    { area: "Abbasiyya", keywords: ["abbasiyya", "abbassia", "abbasyia", "abbasiyah"] },
-    { area: "Dokki", keywords: ["dokki", "doqqi", "duqqi"] },
-    { area: "Zamalek", keywords: ["zamalek", "zamaalik"] },
-    { area: "Nasr City / Madinah Nasr", keywords: ["nasr city", "madinah nasr", "nasr", "hay nasr", "نصر"] },
-    { area: "Faisal / Giza", keywords: ["faisal", "hay faysal", "giza", "gizah", "al-giza"] },
-    { area: "Mohandessin", keywords: ["mohandessin", "muhandiseen", "muhandissin"] },
-    { area: "Agouza", keywords: ["agouza", "aguza", "ag'uza"] },
-    { area: "Maadi", keywords: ["maadi", "ma'adi", "ma'adi"] },
-    { area: "Heliopolis / Masr al-Jadida", keywords: ["heliopolis", "masr el gedida", "masr al-jadida", "nuzha"] },
-    { area: "Shubra", keywords: ["shubra", "shubrâ"] },
-    { area: "Hadaiq al-Qubba", keywords: ["hadaiq", "hadayiq", "hadaiq al-qubba"] },
-    { area: "Ramsis / Downtown Cairo", keywords: ["ramsis", "ramses", "downtown", "wust al-balad", "tahrir", "mubarak"] },
-    { area: "Ain Shams", keywords: ["ain shams", "ayn shams"] },
-    { area: "Hay al-Tasi' / Kesembilan", keywords: ["hay al-tasi", "hay tasi", "hay kesembilan", "ninth district", "تاسع"] },
-    { area: "Haram / Giza Pyramids", keywords: ["haram", "pyramids", "pyramid", "piramida", "piramid"] },
-    { area: "Boulaq", keywords: ["boulaq", "bulaq"] },
-    { area: "KBRI Kairo", keywords: ["kbri", "kedutaan indonesia", "kedutaan besar"] },
-  ];
-  for (const { area, keywords } of AREA_MAP) {
-    if (keywords.some(k => combined.includes(k))) return area;
+  const combined = (name + " " + (surroundingText || "")).toLowerCase();
+  for (const { area, kw } of CAIRO_AREAS) {
+    if (kw.some(k => combined.includes(k))) return area;
   }
   return null;
 }
 
 /**
+ * Detect which specific Cairo area(s) are mentioned directly in a user query.
+ * Returns array of matched area objects (with key + area name).
+ */
+function detectAreasInQuery(text) {
+  const t = text.toLowerCase();
+  const found = [];
+  for (const entry of CAIRO_AREAS) {
+    if (entry.kw.some(k => t.includes(k))) {
+      if (!found.find(f => f.key === entry.key)) found.push(entry);
+    }
+  }
+  return found;
+}
+
+/**
  * Build a Cairo transportation guide context block.
  * Injected when a transport follow-up query is detected.
+ * @param {object|null} locationHint   - { name, area } from conversation history
+ * @param {Array}       detectedAreas  - areas detected directly in the current query
  */
-function buildCairoTransportContext(locationHint) {
-  const locationSection = locationHint
-    ? `\n\n**Destinasi yang disebutkan dalam percakapan ini:** ${locationHint.name}${locationHint.area ? ` (area: ${locationHint.area})` : ""}\nGunakan info area di atas untuk mencocokkan rute transportasi yang paling relevan dari panduan di bawah.`
-    : "\n\n**Catatan:** Destinasi tidak terdeteksi otomatis — coba gunakan konteks percakapan sebelumnya untuk mengidentifikasi tujuan user.";
+function buildCairoTransportContext(locationHint, detectedAreas = []) {
+  // Build location header
+  let locationSection = "";
+  if (detectedAreas.length > 0) {
+    const names = detectedAreas.map(a => a.area).join(", ");
+    locationSection = `\n\n**Area yang disebutkan dalam pertanyaan ini:** ${names}\nFokuskan panduan transportasi pada rute yang melibatkan area tersebut.`;
+  } else if (locationHint) {
+    locationSection = `\n\n**Destinasi dari konteks percakapan:** ${locationHint.name}${locationHint.area ? ` (area: ${locationHint.area})` : ""}\nGunakan info area ini untuk mencocokkan rute yang paling relevan dari panduan di bawah.`;
+  } else {
+    locationSection = `\n\n**Catatan:** Area tujuan tidak terdeteksi — gunakan konteks percakapan sebelumnya untuk mengidentifikasi tujuan user, atau tanyakan balik.`;
+  }
 
-  return `\n\n---\n## 🚇 Panduan Transportasi Kairo untuk Masisir\n${locationSection}
+  return `\n\n---\n## 🚇 Panduan Transportasi Kairo Lengkap untuk Masisir\n${locationSection}
 
-**INSTRUKSI:** Berikan rute spesifik berdasarkan area destinasi. Selalu sebutkan minimal 2 opsi: (1) Metro jika tersedia, (2) Mikrobus/taksi. Selalu rekomendasikan Uber/Careem sebagai opsi termudah dan terpercaya.
+**INSTRUKSI AINA:** Berikan rute spesifik berdasarkan area yang disebutkan. Prioritaskan rute dari/ke area Masisir (Hay Asyir, Hay Sabi, Darrasah, Abbasiyya). Selalu sebutkan ≥2 opsi. Selalu rekomendasikan Uber/Careem sebagai opsi termudah.
 
-### Metro Kairo (3 Jalur Utama)
-| Jalur | Warna | Rute | Stasiun Penting Masisir |
-|-------|-------|------|------------------------|
-| **Line 1** | Merah | Helwan ↔ New El-Marg | Ramsis/Mubarak, Abbasiyya, Ain Shams |
-| **Line 2** | Kuning | Shubra El-Kheima ↔ El-Mounib | Shubra, Attaba, Sadat/Tahrir, Opera, Dokki, Cairo University |
-| **Line 3** | Biru | Adly Mansour ↔ Kit Kat | Airport, Stadium, Maspero, Imbaba, Kit Kat |
-- **Transfer utama:** Stasiun Sadat (Tahrir) = transfer Line 1 ↔ Line 2. Stasiun Attaba = transfer Line 2 ↔ Line 3.
-- Harga tiket: 8–15 EGP per perjalanan (2025). Jam operasional: 05.00–24.00.
+---
+### 🗺️ Metro Kairo — 3 Jalur Utama
+| Jalur | Nama | Rute | Stasiun Kunci Masisir |
+|-------|------|------|-----------------------|
+| **Line 1** | Merah | Helwan ↔ New El-Marg | **Ramsis/Mubarak**, **Abbasiyya**, Ain Shams, Hadaiq al-Qubba |
+| **Line 2** | Kuning | Shubra ↔ El-Mounib | Shubra, Attaba, **Sadat/Tahrir**, Opera, **Dokki**, Cairo University |
+| **Line 3** | Biru | Adly Mansour ↔ Kit Kat | Airport (Adly Mansour), **Stadium (Hay Asyir terdekat)**, Attaba, Maspero, Imbaba |
+- **Transfer:** Sadat (Tahrir) = Line 1 ↔ 2 · Attaba = Line 2 ↔ 3
+- Tiket: 8–15 EGP · Jam: 05.00–24.00 · Tidak ada AC di Line 1 gerbong lama
 
-### Rute per Area
-**Darrasah / Al-Azhar / Bawwabat:**
-- Metro: Line 1 → Stasiun Abbasiyya → jalan kaki 10-15 menit atau naik tok-tok/tuktuk ke Darrasah
-- Dari Tahrir/Ramsis: Mikrobus langsung ke Darrasah atau arah "Husein / Bab al-Futuh"
-- Patokan: Masjid Al-Husein atau Bab al-Futuh
+---
+### 🏘️ Peta Area Masisir — Nasr City (Madinah Nasr)
 
-**Dokki (KBRI Kairo area):**
-- Metro: Line 2 → Stasiun Dokki (antara Opera dan El-Bohoos)
-- Dari Tahrir: 2 stasiun saja dari Sadat
+Nasr City terbagi menjadi hay (distrik) bernomor. Urutan dari barat ke timur kurang lebih:
+**Abbasiyya** → Hay Sadis (6) → Hay Sabi (7) → Hay Thamin (8) → Hay Tasi (9) → **Hay Asyir (10)** → Alf Maskan / Kasih (pinggiran)
 
-**Nasr City / Madinah Nasr:**
-- Metro: Line 1 → Abbasiyya → lanjut mikrobus ke arah "Nasr City" atau Alf Maskan
-- Alternatif: Taksi/Uber lebih praktis (30-60 EGP dari Darrasah, tergantung titik)
-- Patokan: City Stars Mall, Carrefour
+| Hay | Nama Arab | Nomor | Patokan Populer |
+|-----|-----------|-------|-----------------|
+| Hay Asyir | حي العاشر | Distrik 10 | City Stars Mall, Carrefour Nasr City, Alf Maskan |
+| Hay Tasi | حي التاسع | Distrik 9 | Antara Hay Thamin dan Hay Asyir |
+| Hay Thamin | حي الثامن | Distrik 8 | Asrama putri Al-Azhar, Hay Thamin Mosque |
+| Hay Sabi | حي السابع | Distrik 7 | Hay Sabi Mosque, Sabi Market |
+| Hay Sadis | حي السادس | Distrik 6 | Paling dekat Abbasiyya |
 
-**Mohandessin / Agouza:**
-- Metro: Line 2 → El-Bohoos → jalan kaki atau tuktuk
-- Atau dari Tahrir: Mikrobus ke arah Agouza/Mohandessin melalui 6th October Bridge
+---
+### 🛤️ Rute Spesifik Masisir
 
-**Faisal / Haram / Giza:**
-- Metro: Line 2 → Cairo University atau Giza → mikrobus ke Faisal
-- Atau: Line 2 → El-Mounib (ujung) → angkot/mikrobus ke Haram
+**🔵 Dari Hay Asyir / Alf Maskan → Darrasah / Bawwabat (Kampus Al-Azhar):**
+- **Mikrobus (termurah, 3-5 EGP):** Naik mikrobus dari depan City Stars atau Carrefour Nasr City arah *"Abbasiyya"* → di Abbasiyya pindah mikrobus arah *"Darrasah"* / *"Husein"* / *"Bab al-Futuh"* → turun di Bawwabat atau Midan Husein. Total ~40-60 menit.
+- **Metro Line 3 (35-45 mnt, 10 EGP):** Dari stasiun Stadium (paling dekat Hay Asyir) → Line 3 arah Kit Kat → turun Attaba → jalan kaki 15 menit atau tuktuk ke Darrasah. *(Catatan: tidak ada stasiun metro langsung di Darrasah)*
+- **Uber/Careem (35-55 EGP, 25-40 mnt):** Paling nyaman, khusus jam tidak macet (hindari 08.00-10.00 dan 16.00-19.00).
+- **Tuktuk lokal:** Dari Hay Asyir ke Abbasiyya ~10 EGP, lanjut tuktuk/mikrobus ke Darrasah.
 
-**Heliopolis / Masr al-Jadida:**
-- Metro: Line 3 → Stasiun Heliopolis (Al-Ahram / Nadi el-Shams area)
-- Dari Abbasiyya: Mikrobus langsung
+**🔵 Dari Hay Sabi → Darrasah / Bawwabat:**
+- **Mikrobus:** Dari Hay Sabi → arah *"Abbasiyya"* (lebih dekat dari Hay Asyir, ~20 mnt) → pindah ke mikrobus *"Darrasah/Husein"*.
+- **Metro:** Hay Sabi lebih dekat ke Abbasiyya → Line 1 dari Abbasiyya arah Ramsis/Tahrir.
+- **Uber/Careem:** ~30-45 EGP dari Hay Sabi ke Darrasah.
 
-**Ain Shams:**
-- Metro: Line 1 → Ain Shams Station
-- Dari Abbasiyya: beberapa stasiun ke timur
+**🔵 Dari Hay Thamin → Darrasah:**
+- Rute sama seperti Hay Sabi, jarak ke Abbasiyya sedikit lebih jauh.
+- Mikrobus: arah Abbasiyya → lanjut ke Darrasah. Total ~50 menit.
 
-**Ramsis / Downtown / Tahrir:**
-- Metro: hampir semua jalur lewat sini (Mubarak = Ramsis, Sadat = Tahrir)
-- Hub sentral Kairo
+**🔵 Antar-Hay Nasr City (Hay Asyir ↔ Hay Sabi ↔ Hay Thamin ↔ Hay Tasi):**
+- **Mikrobus internal:** Ada jalur mikrobus yang melintas sepanjang Nasr City (3-4 EGP). Sebutkan nama hay tujuan ke sopir.
+- **Tuktuk:** Antar hay yang berdekatan 5-15 EGP, cepat dan mudah ditemukan.
+- **Jalan kaki:** Hay yang berdekatan (misal Hay Thamin ke Hay Tasi) bisa ditempuh 15-25 menit jalan kaki.
 
-### Tips Praktis Masisir
-1. **Uber/Careem** — paling mudah & aman, tarif transparan. Instal di HP.
-2. **Tokotok / Tuktuk** — jarak pendek dalam satu area, biasanya 5-15 EGP.
-3. **Mikrobus** — paling murah (2-5 EGP), tapi rute tidak ada petunjuknya. Tanya ke pengemudi: sebutkan nama daerah tujuan.
-4. **Taksi putih (al-Urjun)** — tawar harga SEBELUM naik, atau minta pakai argometer.
-5. **Google Maps / Maps.me** — aktifkan mode offline untuk navigasi di Kairo.
-6. **Tanya senior Masisir** — untuk rute mikrobus spesifik ke lokasi komunitas, senior paling tahu jalur exaknya.
+**🔵 Dari Hay Asyir / Nasr City → KBRI Kairo (Dokki):**
+- **Metro Line 1 + 2:** Dari Abbasiyya → Line 1 ke Sadat (Tahrir) → Line 2 ke Stasiun Dokki. Total ~50-60 menit, 10-15 EGP.
+- **Uber/Careem:** 60-90 EGP, 40-60 menit (tergantung macet — hindari jam puncak!).
+- **Rute metro detail:** Abbasiyya (L1) → Ramsis → Sadat → Opera → Dokki.
+
+**🔵 Dari Darrasah / Abbasiyya → Downtown (Ramsis / Tahrir):**
+- **Metro Line 1:** Abbasiyya → Ramsis (Mubarak) = 2 stasiun, ~8 menit, 8 EGP.
+- **Mikrobus:** Dari Darrasah arah *"Ramsis"* atau *"Attaba"* = langsung, 2-3 EGP.
+- **Jalan kaki:** Darrasah ke Attaba ±20-25 menit.
+
+**🔵 Dari Nasr City → Heliopolis / Masr el-Gedida:**
+- **Mikrobus:** Dari Hay Asyir arah *"Heliopolis"* atau *"Nadi el-Shams"*. ~30-40 menit.
+- **Metro Line 3:** Dari Stadium ke arah Adly Mansour, turun di stasiun Heliopolis (Al-Ahram / Cairo Stadium). 15-20 menit.
+
+**🔵 Dari Nasr City → Ain Shams:**
+- **Metro Line 1:** Dari Abbasiyya ke Ain Shams = 3 stasiun, ~12 menit.
+- **Mikrobus:** Dari Hay Asyir arah Abbasiyya → lanjut ke Ain Shams.
+
+**🔵 Dari Nasr City → Giza / Haram / Faisal:**
+- **Metro:** Abbasiyya → Line 1 ke Sadat → Line 2 ke Cairo University atau El-Mounib. Dari El-Mounib naik mikrobus ke Haram. Total ~70-80 menit.
+- **Uber/Careem:** 80-120 EGP, disarankan untuk jarak jauh ini.
+
+---
+### 💡 Panduan Umum Mikrobus Kairo untuk Masisir
+- **Cara naik:** Berdiri di tepi jalan, lambaikan tangan, sebutkan tujuan ke sopir saat ada yang berhenti.
+- **Bayar:** Umumnya 3-6 EGP, bayar langsung ke sopir atau kenek.
+- **Turun:** Bilang *"هنا"* (hena = sini) atau ketuk pintu/dinding.
+- **Kata kunci arah penting:**
+  - Ke Darrasah: *"Darrasah"* / *"Husein"* / *"Bawwabat"*
+  - Ke Abbasiyya: *"Abbasiyya"* / *"عباسية"*
+  - Ke Ramsis: *"Ramsis"* / *"Attaba"*
+  - Ke Tahrir: *"Tahrir"* / *"Sadat"*
+  - Ke Hay Asyir: *"Hay Asyir"* / *"City Stars"* / *"Alf Maskan"*
+
+### 🚖 Tarif Referensi Uber/Careem (2025, perkiraan)
+| Rute | Estimasi Harga | Estimasi Waktu |
+|------|---------------|----------------|
+| Hay Asyir ↔ Darrasah | 35–55 EGP | 25–40 menit |
+| Hay Sabi ↔ Darrasah | 30–45 EGP | 20–35 menit |
+| Nasr City ↔ Dokki (KBRI) | 60–90 EGP | 40–60 menit |
+| Nasr City ↔ Tahrir/Ramsis | 40–65 EGP | 30–50 menit |
+| Nasr City ↔ Heliopolis | 25–40 EGP | 20–30 menit |
+| Nasr City ↔ Giza/Haram | 80–120 EGP | 50–70 menit |
+*Harga naik 1.5–2x saat jam macet (08–10 dan 16–19).*
+
+### ⚠️ Tips Wajib Masisir
+1. **Uber/Careem** — install keduanya, bandingkan harga sebelum order.
+2. **Hindari jam macet Kairo** — 07.30-10.00 dan 15.30-19.30 (bisa 2–3x lebih lama).
+3. **Screenshot peta tujuan** — untuk tunjukkan ke sopir mikrobus/tuktuk yang tidak paham bahasa non-Arab.
+4. **Tanya senior Masisir** — rute mikrobus berubah-ubah, senior yang tinggal di hay yang sama paling tahu.
+5. **Maps.me offline** — download peta Kairo untuk navigasi tanpa internet.
 ---`;
 }
 
@@ -3156,9 +3325,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Cairo transport guide so AINA can give accurate, area-specific routes.
   if (isTransportQuery(lastUserMessage)) {
     const locationHint = extractLocationFromHistory(messages);
-    const transportCtx = buildCairoTransportContext(locationHint);
+    const detectedAreas = detectAreasInQuery(lastUserMessage);
+    const transportCtx = buildCairoTransportContext(locationHint, detectedAreas);
     finalSystemPrompt = finalSystemPrompt + transportCtx;
-    console.log(`[Transport] query detected → location=${locationHint ? locationHint.name + (locationHint.area ? ` (${locationHint.area})` : "") : "not found"}`);
+    const areaNames = detectedAreas.map(a => a.key).join(", ") || "none";
+    console.log(`[Transport] query detected → areas=${areaNames} · location=${locationHint ? locationHint.name + (locationHint.area ? ` (${locationHint.area})` : "") : "not found"}`);
   }
 
   if (attachedFile?.type === "pdf" && attachedFile.text) {
