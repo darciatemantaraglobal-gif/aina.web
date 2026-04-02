@@ -9,13 +9,24 @@ import {
   BookOpen, FileText, Upload, X, FileUp,
 } from "lucide-react";
 
-interface Flashcard {
-  question_ar: string;
-  question_id: string;
-  answer_ar:   string;
-  answer_id:   string;
+/* ── Types ─────────────────────────────────────────────────── */
+interface FlashcardSimple   { question: string; answer: string; }
+interface FlashcardBilingual { question_ar: string; question_id: string; answer_ar: string; answer_id: string; }
+type Flashcard = FlashcardSimple | FlashcardBilingual;
+
+function isBilingual(c: Flashcard): c is FlashcardBilingual {
+  return "question_ar" in c;
 }
 
+/** Returns true when text contains ≥5% Arabic characters */
+function detectArabic(text: string): boolean {
+  if (!text) return false;
+  const sample = text.slice(0, 2000);
+  const arabicChars = (sample.match(/[\u0600-\u06FF]/g) || []).length;
+  return arabicChars / sample.length > 0.05;
+}
+
+/* ── API helpers ────────────────────────────────────────────── */
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
 async function getToken() {
@@ -46,12 +57,13 @@ async function extractPdf(file: File): Promise<string> {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Gagal mengekstrak PDF");
-  return data.text ?? data.extractedText ?? "";
+  return data.text ?? "";
 }
 
 /* ── Flashcard Card ─────────────────────────────────────────── */
 function FlashcardCard({ card, index, total }: { card: Flashcard; index: number; total: number }) {
   const [flipped, setFlipped] = useState(false);
+  const bilingual = isBilingual(card);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -67,7 +79,7 @@ function FlashcardCard({ card, index, total }: { card: Flashcard; index: number;
           style={{
             transformStyle: "preserve-3d",
             transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
-            minHeight: "220px",
+            minHeight: bilingual ? "240px" : "200px",
           }}
         >
           {/* Front — Question */}
@@ -76,17 +88,24 @@ function FlashcardCard({ card, index, total }: { card: Flashcard; index: number;
             style={{ backfaceVisibility: "hidden" }}
           >
             <BookOpen className="h-5 w-5 text-primary/40 shrink-0" />
-            <p
-              className="text-lg font-semibold text-foreground leading-relaxed"
-              dir="rtl"
-              lang="ar"
-              style={{ fontFamily: "'Amiri', 'Scheherazade New', 'Traditional Arabic', serif" }}
-            >
-              {card.question_ar}
-            </p>
-            <p className="text-xs text-muted-foreground italic leading-relaxed border-t border-border/50 pt-2 w-full">
-              {card.question_id}
-            </p>
+            {bilingual ? (
+              <>
+                <p
+                  className="text-lg font-semibold text-foreground leading-relaxed"
+                  dir="rtl" lang="ar"
+                  style={{ fontFamily: "'Amiri','Scheherazade New','Traditional Arabic',serif" }}
+                >
+                  {(card as FlashcardBilingual).question_ar}
+                </p>
+                <p className="text-xs text-muted-foreground italic leading-relaxed border-t border-border/50 pt-2 w-full">
+                  {(card as FlashcardBilingual).question_id}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm font-medium text-foreground leading-relaxed">
+                {(card as FlashcardSimple).question}
+              </p>
+            )}
             <p className="text-[11px] text-muted-foreground/40">Klik untuk lihat jawaban</p>
           </div>
 
@@ -95,18 +114,27 @@ function FlashcardCard({ card, index, total }: { card: Flashcard; index: number;
             className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl border border-primary/20 bg-primary/5 px-6 py-8 text-center gap-3"
             style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
           >
-            <p className="text-[10px] text-primary/60 font-semibold uppercase tracking-widest shrink-0">الجواب — Jawaban</p>
-            <p
-              className="text-base font-medium text-foreground leading-relaxed"
-              dir="rtl"
-              lang="ar"
-              style={{ fontFamily: "'Amiri', 'Scheherazade New', 'Traditional Arabic', serif" }}
-            >
-              {card.answer_ar}
+            <p className="text-[10px] text-primary/60 font-semibold uppercase tracking-widest shrink-0">
+              {bilingual ? "الجواب — Jawaban" : "Jawaban"}
             </p>
-            <p className="text-xs text-muted-foreground leading-relaxed border-t border-primary/10 pt-2 w-full italic">
-              {card.answer_id}
-            </p>
+            {bilingual ? (
+              <>
+                <p
+                  className="text-base font-medium text-foreground leading-relaxed"
+                  dir="rtl" lang="ar"
+                  style={{ fontFamily: "'Amiri','Scheherazade New','Traditional Arabic',serif" }}
+                >
+                  {(card as FlashcardBilingual).answer_ar}
+                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed border-t border-primary/10 pt-2 w-full italic">
+                  {(card as FlashcardBilingual).answer_id}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {(card as FlashcardSimple).answer}
+              </p>
+            )}
             <p className="text-[11px] text-muted-foreground/40">Klik untuk kembali</p>
           </div>
         </div>
@@ -127,8 +155,9 @@ export default function FlashcardPage() {
   const [count, setCount]       = useState(8);
   const [loading, setLoading]   = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
-  const [flashcards, setFlashcards]   = useState<Flashcard[]>([]);
+  const [flashcards, setFlashcards]     = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [wasBilingual, setWasBilingual] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,23 +183,29 @@ export default function FlashcardPage() {
     setLoading(true);
     try {
       let body: Record<string, unknown> = { count };
+      let textForDetection = "";
 
       if (mode === "pdf") {
         setLoadingLabel("Membaca PDF...");
         const extracted = await extractPdf(pdfFile!);
         if (!extracted.trim()) throw new Error("PDF tidak mengandung teks yang bisa dibaca. Coba PDF lain.");
         body.content = extracted;
-        setLoadingLabel("Membuat flashcard...");
+        textForDetection = extracted;
       } else if (mode === "text") {
         body.content = content.trim();
-        setLoadingLabel("Membuat flashcard...");
+        textForDetection = content;
       } else {
         body.topic = topic.trim();
-        setLoadingLabel("Membuat flashcard...");
+        textForDetection = topic;
       }
+
+      const bilingual = detectArabic(textForDetection);
+      body.bilingual = bilingual;
+      setLoadingLabel("Membuat flashcard...");
 
       const data = await apiPost("/api/flashcards/generate", body);
       setFlashcards(data.flashcards);
+      setWasBilingual(bilingual);
       setCurrentIndex(0);
       toast.success(`${data.flashcards.length} flashcard dibuat!`);
     } catch (e: any) {
@@ -192,6 +227,7 @@ export default function FlashcardPage() {
     setCurrentIndex(0);
     setTopic("");
     setContent("");
+    setWasBilingual(false);
     removePdf();
   };
 
@@ -213,7 +249,7 @@ export default function FlashcardPage() {
               Flashcard AI
             </h1>
             <p className="text-xs text-muted-foreground mt-1">
-              Buat flashcard bilingual Arab–Indonesia dari topik, teks, atau file PDF
+              Buat flashcard dari topik, teks, atau file PDF — otomatis bilingual jika kontennya berbahasa Arab
             </p>
           </div>
 
@@ -239,12 +275,11 @@ export default function FlashcardPage() {
                 ))}
               </div>
 
-              {/* Input area */}
               {mode === "topic" && (
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Topik</label>
                   <Input
-                    placeholder="Contoh: Hukum Fikih Zakat, Nahwu Shorof, Ushul Fiqh..."
+                    placeholder="Contoh: Hukum Fikih Zakat, Nahwu Shorof, Sejarah Islam..."
                     value={topic}
                     onChange={e => setTopic(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && generate()}
@@ -261,14 +296,15 @@ export default function FlashcardPage() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Tempel Teks Materi</label>
                   <Textarea
-                    placeholder="Paste catatan kuliah, ringkasan bab, atau teks Arab/Indonesia di sini..."
+                    placeholder="Paste catatan kuliah, teks Arab, atau ringkasan bab di sini..."
                     value={content}
                     onChange={e => setContent(e.target.value)}
                     rows={8}
                     className="bg-secondary resize-none text-sm"
+                    dir={detectArabic(content) ? "rtl" : "ltr"}
                   />
                   <p className="text-[11px] text-muted-foreground/60">
-                    Mendukung teks Arab maupun Indonesia. AI akan membuat versi bilingual.
+                    Jika teks mengandung banyak Arab, flashcard otomatis dibuat bilingual Arab–Indonesia.
                   </p>
                 </div>
               )}
@@ -295,7 +331,9 @@ export default function FlashcardPage() {
                       <Upload className="h-7 w-7 text-muted-foreground/50" />
                       <div>
                         <p className="text-sm font-medium text-foreground">Klik untuk pilih PDF</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">Mendukung muqorror, diktat, atau catatan PDF · Maks 20 MB</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Muqorror Arab → flashcard bilingual · PDF Indonesia → flashcard Indonesia · Maks 20 MB
+                        </p>
                       </div>
                     </button>
                   )}
@@ -349,11 +387,11 @@ export default function FlashcardPage() {
 
               {/* Tips */}
               <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 space-y-1.5">
-                <p className="text-xs font-semibold text-foreground">Format bilingual Arab–Indonesia:</p>
+                <p className="text-xs font-semibold text-foreground">Tips:</p>
                 <ul className="space-y-1 text-[11px] text-muted-foreground">
-                  <li>• Setiap kartu menampilkan pertanyaan Arab + terjemahan Indonesia</li>
-                  <li>• Jawaban juga dalam dua bahasa untuk pemahaman lebih baik</li>
-                  <li>• Upload PDF muqorror atau diktat untuk flashcard dari materi kuliah</li>
+                  <li>• Klik kartu untuk membalik dan lihat jawaban</li>
+                  <li>• Gunakan tombol kocok untuk urutan acak</li>
+                  <li>• PDF muqorror atau teks Arab → flashcard otomatis bilingual Arab–Indonesia</li>
                 </ul>
               </div>
             </div>
@@ -369,11 +407,18 @@ export default function FlashcardPage() {
                   <RotateCcw className="h-3.5 w-3.5" />
                   Buat ulang
                 </button>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {flashcards.length} flashcard
-                  {mode === "topic" && topic && ` · ${topic}`}
-                  {mode === "pdf"   && pdfName && ` · ${pdfName}`}
-                </p>
+                <div className="flex flex-col items-center gap-1">
+                  <p className="text-xs text-muted-foreground font-medium">
+                    {flashcards.length} flashcard
+                    {mode === "topic" && topic && ` · ${topic}`}
+                    {mode === "pdf"   && pdfName && ` · ${pdfName}`}
+                  </p>
+                  {wasBilingual && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                      عربي – Indonesia
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={shuffle}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
