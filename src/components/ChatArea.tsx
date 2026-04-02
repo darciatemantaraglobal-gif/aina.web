@@ -182,11 +182,7 @@ const MD_COMPONENTS = {
   p: ({ children }: any) => {
     const isArabic = containsArabic(children);
     return isArabic ? (
-      <p
-        dir="auto"
-        className="mb-4 last:mb-0 break-words text-foreground/90"
-        style={{ lineHeight: "1.9", fontFamily: "'Scheherazade New', serif" }}
-      >
+      <p dir="auto" className="mb-4 last:mb-0 break-words text-foreground/90" style={{ lineHeight: "1.9" }}>
         {children}
       </p>
     ) : (
@@ -222,11 +218,7 @@ const MD_COMPONENTS = {
   li: ({ children }: any) => {
     const isArabic = containsArabic(children);
     return isArabic ? (
-      <li
-        dir="auto"
-        className="break-words pl-1"
-        style={{ lineHeight: "1.9", fontFamily: "'Scheherazade New', serif" }}
-      >
+      <li dir="auto" className="leading-7 break-words pl-1" style={{ lineHeight: "1.9" }}>
         {children}
       </li>
     ) : (
@@ -235,23 +227,21 @@ const MD_COMPONENTS = {
   },
   h1: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.7" } : undefined}>{children}</h1>;
+    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { lineHeight: "1.7" } : undefined}>{children}</h1>;
   },
   h2: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.7" } : undefined}>{children}</h2>;
+    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { lineHeight: "1.7" } : undefined}>{children}</h2>;
   },
   h3: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.7" } : undefined}>{children}</h3>;
+    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { lineHeight: "1.7" } : undefined}>{children}</h3>;
   },
   h4: ({ children }: any) => {
-    const ar = containsArabic(children);
     return (
       <h4
         dir="auto"
         className="mb-1 mt-5 first:mt-0 flex items-center gap-2 text-sm font-bold tracking-widest uppercase text-primary/60"
-        style={ar ? { fontFamily: "'Scheherazade New', serif" } : undefined}
       >
         <span className="h-px flex-1 bg-primary/15 max-w-[18px] rounded-full shrink-0" />
         {children}
@@ -338,11 +328,11 @@ const MD_COMPONENTS = {
   tr: ({ children }: any) => <tr className="hover:bg-muted/20 transition-colors">{children}</tr>,
   th: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <th dir={ar ? "rtl" : undefined} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap" style={ar ? { fontFamily: "'Scheherazade New', serif" } : undefined}>{children}</th>;
+    return <th dir={ar ? "rtl" : undefined} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{children}</th>;
   },
   td: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <td dir={ar ? "auto" : undefined} className="px-4 py-2.5 text-foreground/90" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.9" } : undefined}>{children}</td>;
+    return <td dir={ar ? "auto" : undefined} className="px-4 py-2.5 text-foreground/90" style={ar ? { lineHeight: "1.9" } : undefined}>{children}</td>;
   },
 };
 
