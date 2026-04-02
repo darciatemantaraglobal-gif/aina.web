@@ -95,7 +95,7 @@ app.use(cors({
 // Avatar/image uploads are smaller — 20mb is sufficient
 app.use((req, res, next) => {
   const xlRoutes   = ["/api/admin/library/upload-file"];
-  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image", "/api/whisper", "/api/chat"];
+  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image", "/api/whisper", "/api/chat", "/api/flashcards/generate"];
   const limit = xlRoutes.includes(req.path) ? "70mb" : largeRoutes.includes(req.path) ? "20mb" : "64kb";
   express.json({ limit })(req, res, next);
 });
@@ -10275,8 +10275,8 @@ function verifyCron(req, res) {
 
 /* ── AI Flashcard Generator ────────────────────────────────────
    POST /api/flashcards/generate
-   Body: { topic: string, content?: string, count?: number }
-   Returns: { flashcards: [{ question, answer }] }
+   Body: { topic?: string, content?: string, count?: number }
+   Returns: { flashcards: [{ question_ar, question_id, answer_ar, answer_id }] }
 ──────────────────────────────────────────────────────────── */
 app.post("/api/flashcards/generate", chatLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
@@ -10290,13 +10290,18 @@ app.post("/api/flashcards/generate", chatLimiter, async (req, res) => {
 
   const safeCount = Math.max(3, Math.min(20, Number(count) || 8));
 
-  const systemPrompt = `Kamu adalah asisten belajar untuk mahasiswa Indonesia di Mesir (Masisir).
-Tugasmu membuat flashcard belajar berkualitas tinggi dalam format JSON.
-Setiap flashcard berisi pertanyaan (question) dan jawaban singkat-padat (answer).
-Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia.`;
+  const systemPrompt = `Kamu adalah asisten belajar untuk mahasiswa Indonesia di Mesir (Masisir) yang belajar di Al-Azhar.
+Tugasmu membuat flashcard belajar bilingual (Arab–Indonesia) berkualitas tinggi dalam format JSON.
+Setiap flashcard memiliki 4 field:
+- question_ar : pertanyaan dalam bahasa Arab (kalimat lengkap, fasih)
+- question_id : terjemahan Indonesia dari pertanyaan
+- answer_ar   : jawaban singkat-padat dalam bahasa Arab (maks 2-3 kalimat)
+- answer_id   : terjemahan Indonesia dari jawaban
+Gunakan bahasa Arab fusha (فصحى) yang sesuai konteks akademik Al-Azhar.
+Jawaban harus singkat, padat, dan akurat. Jika topik bukan berbahasa Arab, tetap buat versi Arabnya.`;
 
   const userPrompt = content
-    ? `Buat tepat ${safeCount} flashcard dari teks berikut:\n\n${content.slice(0, 6000)}`
+    ? `Buat tepat ${safeCount} flashcard dari teks berikut:\n\n${content.slice(0, 8000)}`
     : `Buat tepat ${safeCount} flashcard tentang topik: "${topic}"`;
 
   try {
@@ -10307,10 +10312,10 @@ Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia.`;
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user",   content: userPrompt + `\n\nKembalikan HANYA JSON array dengan format:\n[{"question":"...","answer":"..."}]` },
+          { role: "user",   content: userPrompt + `\n\nKembalikan HANYA JSON dengan format:\n{"flashcards":[{"question_ar":"...","question_id":"...","answer_ar":"...","answer_id":"..."}]}` },
         ],
-        max_tokens: 2000,
-        temperature: 0.5,
+        max_tokens: 3000,
+        temperature: 0.4,
         response_format: { type: "json_object" },
       }),
     });
@@ -10335,8 +10340,15 @@ Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia.`;
     if (!cards.length) return res.status(502).json({ error: "AI tidak menghasilkan flashcard. Coba topik yang lebih spesifik." });
 
     const flashcards = cards
-      .filter(c => c.question && c.answer)
-      .map(c => ({ question: String(c.question).trim(), answer: String(c.answer).trim() }));
+      .filter(c => c.question_ar && c.question_id && c.answer_ar && c.answer_id)
+      .map(c => ({
+        question_ar: String(c.question_ar).trim(),
+        question_id: String(c.question_id).trim(),
+        answer_ar:   String(c.answer_ar).trim(),
+        answer_id:   String(c.answer_id).trim(),
+      }));
+
+    if (!flashcards.length) return res.status(502).json({ error: "AI tidak menghasilkan flashcard. Coba topik yang lebih spesifik." });
 
     console.log(`[Flashcard] user=${user.id} topic="${topic || "(content)"}" cards=${flashcards.length}`);
     res.json({ flashcards });
