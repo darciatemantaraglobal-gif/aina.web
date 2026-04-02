@@ -196,9 +196,21 @@ const MD_COMPONENTS = {
   strong: ({ children }: any) => (
     <strong className="font-semibold text-foreground">{children}</strong>
   ),
-  em: ({ children }: any) => (
-    <em className="italic text-foreground/80">{children}</em>
-  ),
+  em: ({ children }: any) => {
+    const text = [children].flat().map((c: any) => (typeof c === "string" ? c : "")).join("");
+    if (/^\(cara baca:/i.test(text)) {
+      const pronunciation = text.replace(/^\(cara baca:\s*/i, "").replace(/\)$/, "").trim();
+      return (
+        <em
+          className="not-italic text-[12.5px] text-sky-300/80 tracking-wide"
+          style={{ fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", monospace' }}
+        >
+          🔊 {pronunciation}
+        </em>
+      );
+    }
+    return <em className="italic text-foreground/75">{children}</em>;
+  },
   ul: ({ children }: any) => {
     const ar = containsArabic(children);
     return <ul dir={ar ? "auto" : undefined} className="mb-4 last:mb-0 ml-5 list-disc space-y-2 text-foreground/90">{children}</ul>;
@@ -233,6 +245,20 @@ const MD_COMPONENTS = {
     const ar = containsArabic(children);
     return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.7" } : undefined}>{children}</h3>;
   },
+  h4: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return (
+      <h4
+        dir="auto"
+        className="mb-1 mt-5 first:mt-0 flex items-center gap-2 text-[11px] font-bold tracking-widest uppercase text-primary/60"
+        style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',sans-serif" } : undefined}
+      >
+        <span className="h-px flex-1 bg-primary/15 max-w-[18px] rounded-full shrink-0" />
+        {children}
+        <span className="h-px flex-1 bg-primary/15 rounded-full shrink-0" />
+      </h4>
+    );
+  },
   code: ({ children, className }: any) => {
     if (className?.includes("language-")) return <code className={className}>{children}</code>;
     return (
@@ -249,8 +275,8 @@ const MD_COMPONENTS = {
       return (
         <blockquote
           dir="rtl"
-          className="mt-4 mb-6 rounded-xl border border-emerald-500/20 bg-emerald-950/30 px-6 py-5 text-right text-foreground"
-          style={{ fontFamily: "'Amiri', serif", fontSize: "1.25rem", lineHeight: "2.0" }}
+          className="mt-3 mb-3 rounded-xl border border-emerald-500/25 bg-emerald-950/25 px-6 py-4 text-right text-foreground"
+          style={{ fontFamily: "'Amiri', serif", fontSize: "1.3rem", lineHeight: "2.1" }}
         >
           {children}
         </blockquote>
@@ -260,7 +286,13 @@ const MD_COMPONENTS = {
       <blockquote className="mb-4 border-l-[3px] border-primary/40 pl-4 text-foreground/70 italic">{children}</blockquote>
     );
   },
-  hr: () => <hr className="my-5 border-border/60" />,
+  hr: () => (
+    <div className="my-4 flex items-center gap-3">
+      <span className="flex-1 h-px bg-border/40" />
+      <span className="w-1 h-1 rounded-full bg-border/60" />
+      <span className="flex-1 h-px bg-border/40" />
+    </div>
+  ),
   a: ({ href, children }: any) => {
     const isGoogleMaps = href && (
       href.includes("google.com/maps") ||

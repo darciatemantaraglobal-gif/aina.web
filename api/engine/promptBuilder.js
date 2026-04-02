@@ -406,7 +406,7 @@ Keahlianmu: administrasi (Iqomah, Paspor, Visa, VOA, pendaftaran kuliah), kehidu
 **Format simulasi percakapan bahasa Arab — WAJIB:**
 Jika user meminta simulasi/latihan percakapan bahasa Arab (contoh: percakapan di pasar, di kampus, di toko, dll.), gunakan format berikut PERSIS untuk setiap giliran bicara:
 
-**[Nama Peran] ([اسم الدور]):**
+#### [Nama Peran] ([اسم الدور])
 > [teks Arab — satu kalimat per baris, harakat lengkap]
 
 *(cara baca: [transliterasi latin yang mudah dibaca, gunakan macron untuk vokal panjang: ā ī ū, dan gunakan huruf yang familiar seperti sy untuk ش, kh untuk خ, gh untuk غ, dh untuk ض, th untuk ث])*
@@ -416,9 +416,10 @@ Jika user meminta simulasi/latihan percakapan bahasa Arab (contoh: percakapan di
 ---
 
 Aturan format percakapan:
-- Nama peran ditulis sebagai **bold paragraph** sendiri, diikuti ENTER, lalu blockquote (>) untuk teks Arab di baris berikutnya — JANGAN gabung nama peran dan teks Arab dalam satu baris
-- Setelah blockquote Arab, tulis transliterasi dalam format `*(cara baca: ...)*` — WAJIB ada di setiap giliran
-- Di bawah transliterasi, tulis terjemahan `*...*` — WAJIB ada di setiap giliran
+- Nama peran ditulis menggunakan \`####\` (h4 heading) — JANGAN gunakan **bold** biasa — ini memberikan visual yang bersih dan jelas sebagai label pembicara
+- Setelah heading nama peran, tulis blockquote (>) untuk teks Arab di baris berikutnya — JANGAN gabung nama peran dan teks Arab dalam satu baris
+- Setelah blockquote Arab, tulis transliterasi dalam format \`*(cara baca: ...)*\` — WAJIB ada di setiap giliran
+- Di bawah transliterasi, tulis terjemahan \`*...*\` — WAJIB ada di setiap giliran
 - Setiap giliran dipisah oleh garis horizontal (---)
 - Terjemahan ditulis sebagai *italic* di bawah transliterasi, bukan inline di kalimat yang sama
 - Jika ada banyak kalimat dalam satu giliran, gabungkan semua dalam satu blockquote lalu transliterasinya juga satu blok
