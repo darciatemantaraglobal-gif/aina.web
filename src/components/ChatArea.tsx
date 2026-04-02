@@ -185,7 +185,7 @@ const MD_COMPONENTS = {
       <p
         dir="auto"
         className="mb-4 last:mb-0 break-words text-foreground/90"
-        style={{ lineHeight: "2.6", fontSize: "1.08rem", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
+        style={{ lineHeight: "1.9", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
       >
         {children}
       </p>
@@ -211,7 +211,7 @@ const MD_COMPONENTS = {
       <li
         dir="auto"
         className="break-words pl-1"
-        style={{ lineHeight: "2.6", fontSize: "1.08rem", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
+        style={{ lineHeight: "1.9", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
       >
         {children}
       </li>
@@ -248,7 +248,7 @@ const MD_COMPONENTS = {
         <blockquote
           dir="rtl"
           className="mt-4 mb-6 rounded-xl border border-emerald-500/20 bg-emerald-950/30 px-6 py-5 text-right text-foreground"
-          style={{ fontFamily: "'Amiri', serif", fontSize: "1.25rem", lineHeight: "2.4" }}
+          style={{ fontFamily: "'Amiri', serif", fontSize: "1.25rem", lineHeight: "2.0" }}
         >
           {children}
         </blockquote>
