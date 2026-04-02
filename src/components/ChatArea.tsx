@@ -247,8 +247,8 @@ const MD_COMPONENTS = {
       return (
         <blockquote
           dir="rtl"
-          className="my-4 rounded-xl border border-emerald-500/20 bg-emerald-950/30 px-6 py-4 text-right text-foreground"
-          style={{ fontFamily: "'Amiri', serif", fontSize: "1.25rem", lineHeight: "2.2" }}
+          className="mt-4 mb-6 rounded-xl border border-emerald-500/20 bg-emerald-950/30 px-6 py-5 text-right text-foreground"
+          style={{ fontFamily: "'Amiri', serif", fontSize: "1.25rem", lineHeight: "2.4" }}
         >
           {children}
         </blockquote>
