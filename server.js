@@ -6008,9 +6008,9 @@ app.post("/api/admin/articles/:id/reformat", async (req, res) => {
     .single();
   if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
 
-  const prompt = `Kamu adalah editor konten untuk knowledge base mahasiswa Indonesia di Mesir.
+  const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform informasi mahasiswa Indonesia di Mesir (Masisir).
 
-Tugasmu: Rapikan dan format ulang konten artikel berikut menjadi Markdown yang terstruktur, rapi, dan mudah dibaca. JANGAN mengubah informasi — hanya perbaiki format dan struktur tulisan.
+Tugasmu: Format ulang artikel berikut menjadi Markdown yang bersih, terstruktur, dan mudah dibaca. JANGAN mengubah, menambah, atau menghilangkan informasi apapun — tugasmu hanya memperbaiki format dan struktur.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -6020,16 +6020,22 @@ Konten asli:
 ${art.content.slice(0, 10000)}
 </KONTEN>
 
-Aturan format yang WAJIB diikuti:
-- Gunakan ## untuk subjudul/bagian utama (JANGAN gunakan # karena judul sudah terpisah)
+ATURAN FORMAT (wajib diikuti):
+- Gunakan ## untuk subjudul utama, ### untuk sub-bagian (JANGAN gunakan # karena judul artikel sudah ditampilkan terpisah)
 - Pisahkan setiap paragraf dengan satu baris kosong
-- Gunakan - untuk poin-poin dalam list
-- Gunakan 1. 2. 3. untuk langkah berurutan
-- Gunakan **teks** untuk istilah penting
+- Gunakan - untuk poin-poin dalam list yang tidak berurutan
+- Gunakan 1. 2. 3. untuk langkah-langkah yang berurutan
+- Gunakan **teks** untuk istilah penting, nama dokumen, atau hal yang perlu ditekankan
 - Jangan gunakan tabel
-- Tulis dalam bahasa Indonesia yang natural dan mudah dipahami
+- Jika konten sudah terstruktur dengan baik, pertahankan strukturnya — jangan ubah yang tidak perlu
 
-Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan). Langsung isi kontennya saja.`;
+ATURAN KONTEN (wajib diikuti):
+- PERTAHANKAN semua teks Arab (ayat Al-Qur'an, hadits, istilah Arab, nama Arab) PERSIS seperti aslinya — JANGAN diterjemahkan, JANGAN diubah, JANGAN dihapus
+- PERTAHANKAN transliterasi Arab-Latin jika ada (contoh: "Shahada Qaid", "iqomah", "imtihan")
+- JANGAN menambahkan terjemahan baru untuk teks Arab yang tidak ada terjemahannya di konten asli
+- Bahasa Indonesia di artikel tetap ditulis dalam bahasa Indonesia yang natural
+
+Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, tanpa komentar tambahan.`;
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -6084,9 +6090,9 @@ app.post("/api/admin/articles/reformat-all", async (req, res) => {
   let failed = 0;
 
   for (const art of articles) {
-    const prompt = `Kamu adalah editor konten untuk knowledge base mahasiswa Indonesia di Mesir.
+    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform informasi mahasiswa Indonesia di Mesir (Masisir).
 
-Tugasmu: Rapikan dan format ulang konten artikel berikut menjadi Markdown yang terstruktur, rapi, dan mudah dibaca. JANGAN mengubah informasi — hanya perbaiki format dan struktur tulisan.
+Tugasmu: Format ulang artikel berikut menjadi Markdown yang bersih, terstruktur, dan mudah dibaca. JANGAN mengubah, menambah, atau menghilangkan informasi apapun — tugasmu hanya memperbaiki format dan struktur.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -6096,17 +6102,22 @@ Konten asli:
 ${art.content.slice(0, 10000)}
 </KONTEN>
 
-Aturan format yang WAJIB diikuti:
-- Gunakan ## untuk subjudul/bagian utama (JANGAN gunakan # karena judul sudah terpisah)
+ATURAN FORMAT (wajib diikuti):
+- Gunakan ## untuk subjudul utama, ### untuk sub-bagian (JANGAN gunakan # karena judul artikel sudah ditampilkan terpisah)
 - Pisahkan setiap paragraf dengan satu baris kosong
-- Gunakan - untuk poin-poin dalam list
-- Gunakan 1. 2. 3. untuk langkah berurutan
-- Gunakan **teks** untuk istilah penting
+- Gunakan - untuk poin-poin dalam list yang tidak berurutan
+- Gunakan 1. 2. 3. untuk langkah-langkah yang berurutan
+- Gunakan **teks** untuk istilah penting, nama dokumen, atau hal yang perlu ditekankan
 - Jangan gunakan tabel
-- Jika konten sudah cukup bagus, bisa pertahankan sebagian besar strukturnya
-- Tulis dalam bahasa Indonesia yang natural dan mudah dipahami
+- Jika konten sudah terstruktur dengan baik, pertahankan strukturnya — jangan ubah yang tidak perlu
 
-Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan apapun). Langsung isi kontennya saja.`;
+ATURAN KONTEN (wajib diikuti):
+- PERTAHANKAN semua teks Arab (ayat Al-Qur'an, hadits, istilah Arab, nama Arab) PERSIS seperti aslinya — JANGAN diterjemahkan, JANGAN diubah, JANGAN dihapus
+- PERTAHANKAN transliterasi Arab-Latin jika ada (contoh: "Shahada Qaid", "iqomah", "imtihan")
+- JANGAN menambahkan terjemahan baru untuk teks Arab yang tidak ada terjemahannya di konten asli
+- Bahasa Indonesia di artikel tetap ditulis dalam bahasa Indonesia yang natural
+
+Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, tanpa komentar tambahan.`;
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -6172,9 +6183,9 @@ app.post("/api/admin/articles/bulk-reformat", async (req, res) => {
   let failed = 0;
 
   for (const art of articles) {
-    const prompt = `Kamu adalah editor konten untuk knowledge base mahasiswa Indonesia di Mesir.
+    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform informasi mahasiswa Indonesia di Mesir (Masisir).
 
-Tugasmu: Rapikan dan format ulang konten artikel berikut menjadi Markdown yang terstruktur, rapi, dan mudah dibaca. JANGAN mengubah informasi — hanya perbaiki format dan struktur tulisan.
+Tugasmu: Format ulang artikel berikut menjadi Markdown yang bersih, terstruktur, dan mudah dibaca. JANGAN mengubah, menambah, atau menghilangkan informasi apapun — tugasmu hanya memperbaiki format dan struktur.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -6184,17 +6195,22 @@ Konten asli:
 ${art.content.slice(0, 10000)}
 </KONTEN>
 
-Aturan format yang WAJIB diikuti:
-- Gunakan ## untuk subjudul/bagian utama (JANGAN gunakan # karena judul sudah terpisah)
+ATURAN FORMAT (wajib diikuti):
+- Gunakan ## untuk subjudul utama, ### untuk sub-bagian (JANGAN gunakan # karena judul artikel sudah ditampilkan terpisah)
 - Pisahkan setiap paragraf dengan satu baris kosong
-- Gunakan - untuk poin-poin dalam list
-- Gunakan 1. 2. 3. untuk langkah berurutan
-- Gunakan **teks** untuk istilah penting
+- Gunakan - untuk poin-poin dalam list yang tidak berurutan
+- Gunakan 1. 2. 3. untuk langkah-langkah yang berurutan
+- Gunakan **teks** untuk istilah penting, nama dokumen, atau hal yang perlu ditekankan
 - Jangan gunakan tabel
-- Jika konten sudah cukup bagus, bisa pertahankan sebagian besar strukturnya
-- Tulis dalam bahasa Indonesia yang natural dan mudah dipahami
+- Jika konten sudah terstruktur dengan baik, pertahankan strukturnya — jangan ubah yang tidak perlu
 
-Kembalikan HANYA teks konten yang sudah diformat (bukan JSON, bukan penjelasan apapun). Langsung isi kontennya saja.`;
+ATURAN KONTEN (wajib diikuti):
+- PERTAHANKAN semua teks Arab (ayat Al-Qur'an, hadits, istilah Arab, nama Arab) PERSIS seperti aslinya — JANGAN diterjemahkan, JANGAN diubah, JANGAN dihapus
+- PERTAHANKAN transliterasi Arab-Latin jika ada (contoh: "Shahada Qaid", "iqomah", "imtihan")
+- JANGAN menambahkan terjemahan baru untuk teks Arab yang tidak ada terjemahannya di konten asli
+- Bahasa Indonesia di artikel tetap ditulis dalam bahasa Indonesia yang natural
+
+Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, tanpa komentar tambahan.`;
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
