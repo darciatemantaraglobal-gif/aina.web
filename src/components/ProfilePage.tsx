@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { triggerConfetti } from "@/utils/confetti";
+import BadgeCelebrationModal from "@/components/BadgeCelebrationModal";
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,6 +48,7 @@ async function getCroppedBlob(image: HTMLImageElement, crop: PixelCrop): Promise
 }
 
 const EQUIPPED_BADGE_KEY = "aina_equipped_badge";
+const SEEN_BADGES_KEY   = "aina_seen_badges";
 
 const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [profileTab, setProfileTab] = useState<"profil" | "tersimpan">("profil");
@@ -60,6 +62,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [equippedBadge, setEquippedBadge] = useState<string | null>(
     () => localStorage.getItem(EQUIPPED_BADGE_KEY)
   );
+  const [celebrationQueue, setCelebrationQueue] = useState<Array<{badge_type: string; name: string; emoji: string; rare: boolean; awarded_at: string}>>([]);
 
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -129,7 +132,20 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
             fetch("/api/me", { headers: { Authorization: `Bearer ${s.access_token}` } }),
             fetch("/api/memories", { headers: { Authorization: `Bearer ${s.access_token}` } }),
           ]);
-          if (badgeRes.ok) setBadges(await badgeRes.json());
+          if (badgeRes.ok) {
+            const fetchedBadges = await badgeRes.json();
+            setBadges(fetchedBadges);
+            if (!userIdProp) {
+              const seenRaw = localStorage.getItem(SEEN_BADGES_KEY);
+              const seen = new Set(seenRaw ? seenRaw.split(",").filter(Boolean) : []);
+              const newBadges = fetchedBadges.filter((b: any) => !seen.has(b.badge_type));
+              if (newBadges.length > 0) {
+                setCelebrationQueue(newBadges);
+                const allSeen = [...seen, ...newBadges.map((b: any) => b.badge_type)].join(",");
+                localStorage.setItem(SEEN_BADGES_KEY, allSeen);
+              }
+            }
+          }
           if (meRes.ok) {
             const me = await meRes.json();
             setIsMasterAdmin(me.isMasterAdmin ?? false);
@@ -243,6 +259,15 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       localStorage.setItem(EQUIPPED_BADGE_KEY, badgeType);
       triggerConfetti();
     }
+  };
+
+  const handleCelebrationClose = () => {
+    setCelebrationQueue(prev => prev.slice(1));
+  };
+
+  const handleCelebrationEquip = (badgeType: string) => {
+    setEquippedBadge(badgeType);
+    localStorage.setItem(EQUIPPED_BADGE_KEY, badgeType);
   };
 
   const handleAvatarClick = () => {
@@ -891,6 +916,16 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Badge Celebration Modal — queue-driven, one at a time */}
+      {celebrationQueue.length > 0 && (
+        <BadgeCelebrationModal
+          key={celebrationQueue[0].badge_type}
+          badge={celebrationQueue[0]}
+          onClose={handleCelebrationClose}
+          onEquip={handleCelebrationEquip}
+        />
+      )}
     </div>
   );
 };
