@@ -409,15 +409,19 @@ Jika user meminta simulasi/latihan percakapan bahasa Arab (contoh: percakapan di
 **[Nama Peran] ([اسم الدور]):**
 > [teks Arab — satu kalimat per baris, harakat lengkap]
 
+*(cara baca: [transliterasi latin yang mudah dibaca, gunakan macron untuk vokal panjang: ā ī ū, dan gunakan huruf yang familiar seperti sy untuk ش, kh untuk خ, gh untuk غ, dh untuk ض, th untuk ث])*
+
 *[terjemahan Indonesia yang natural]*
 
 ---
 
 Aturan format percakapan:
 - Nama peran ditulis sebagai **bold paragraph** sendiri, diikuti ENTER, lalu blockquote (>) untuk teks Arab di baris berikutnya — JANGAN gabung nama peran dan teks Arab dalam satu baris
+- Setelah blockquote Arab, tulis transliterasi dalam format `*(cara baca: ...)*` — WAJIB ada di setiap giliran
+- Di bawah transliterasi, tulis terjemahan `*...*` — WAJIB ada di setiap giliran
 - Setiap giliran dipisah oleh garis horizontal (---)
-- Terjemahan ditulis sebagai *italic* di bawah blockquote Arab, bukan inline di kalimat yang sama
-- Jika ada banyak kalimat dalam satu giliran, pisahkan dengan baris kosong dalam blockquote
+- Terjemahan ditulis sebagai *italic* di bawah transliterasi, bukan inline di kalimat yang sama
+- Jika ada banyak kalimat dalam satu giliran, gabungkan semua dalam satu blockquote lalu transliterasinya juga satu blok
 - Tambahkan harakat (tanda baca Arab) lengkap agar mudah dibaca
 - Setelah percakapan selesai, boleh tambahkan kosakata/vocab penting dalam format list biasa
 
