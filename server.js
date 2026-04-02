@@ -8962,6 +8962,21 @@ CREATE TABLE IF NOT EXISTS public.eval_edge_cases (
 );
 ALTER TABLE public.eval_edge_cases ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN CREATE POLICY "Master admin manages edge cases" ON public.eval_edge_cases FOR ALL USING (true); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+
+    flashcard_sets: `CREATE TABLE IF NOT EXISTS public.flashcard_sets (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name       TEXT NOT NULL,
+  source     TEXT,
+  bilingual  BOOLEAN NOT NULL DEFAULT false,
+  cards      JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.flashcard_sets ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN CREATE POLICY "Users can view own sets"   ON public.flashcard_sets FOR SELECT USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can create sets"    ON public.flashcard_sets FOR INSERT WITH CHECK (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can delete own sets" ON public.flashcard_sets FOR DELETE USING (auth.uid() = user_id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+CREATE INDEX IF NOT EXISTS idx_flashcard_sets_user ON public.flashcard_sets(user_id, created_at DESC);`,
   };
 
   // Also include profile + article_type columns migration
@@ -9757,6 +9772,7 @@ async function checkRequiredTables() {
     "masisir_news",
     "daily_focus_items", "admin_tracker_items", "reminder_logs",
     "library_items",
+    "flashcard_sets",
   ];
 
   const missing = [];
@@ -10371,6 +10387,66 @@ Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia.`;
   } catch (err) {
     console.error("[Flashcard] error:", err.message);
     res.status(500).json({ error: "Gagal membuat flashcard: " + err.message });
+  }
+});
+
+/* ── Flashcard Sets CRUD ────────────────────────────────────── */
+// GET /api/flashcards/sets — list saved sets for current user (last 30)
+app.get("/api/flashcards/sets", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+  try {
+    const { data, error } = await supabase
+      .from("flashcard_sets")
+      .select("id, name, source, bilingual, cards, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    res.json({ sets: data || [] });
+  } catch (err) {
+    console.error("[FlashcardSets/GET]", err.message);
+    res.status(500).json({ error: "Gagal memuat set flashcard" });
+  }
+});
+
+// POST /api/flashcards/sets — save a new flashcard set
+app.post("/api/flashcards/sets", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+  const { name, source, bilingual, cards } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: "Nama set diperlukan" });
+  if (!Array.isArray(cards) || cards.length === 0) return res.status(400).json({ error: "Kartu diperlukan" });
+  try {
+    const { data, error } = await supabase
+      .from("flashcard_sets")
+      .insert({ user_id: user.id, name: name.trim(), source: source || null, bilingual: !!bilingual, cards })
+      .select("id, name, source, bilingual, cards, created_at")
+      .single();
+    if (error) throw error;
+    res.json({ set: data });
+  } catch (err) {
+    console.error("[FlashcardSets/POST]", err.message);
+    res.status(500).json({ error: "Gagal menyimpan set flashcard" });
+  }
+});
+
+// DELETE /api/flashcards/sets/:id — delete a set (owner only)
+app.delete("/api/flashcards/sets/:id", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+  const { id } = req.params;
+  try {
+    const { error } = await supabase
+      .from("flashcard_sets")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[FlashcardSets/DELETE]", err.message);
+    res.status(500).json({ error: "Gagal menghapus set" });
   }
 });
 

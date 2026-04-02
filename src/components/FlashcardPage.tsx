@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,19 +6,29 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sparkles, RotateCcw, ChevronLeft, ChevronRight, Shuffle,
-  BookOpen, FileText, Upload, X, FileUp,
+  BookOpen, FileText, Upload, X, FileUp, Save, Trash2,
+  Library, CheckCircle, XCircle, RefreshCw,
 } from "lucide-react";
 
 /* ── Types ─────────────────────────────────────────────────── */
 interface FlashcardSimple   { question: string; answer: string; }
 interface FlashcardBilingual { question_ar: string; question_id: string; answer_ar: string; answer_id: string; }
 type Flashcard = FlashcardSimple | FlashcardBilingual;
+type Progress = "known" | "unknown" | null;
+
+interface SavedSet {
+  id: string;
+  name: string;
+  source: string | null;
+  bilingual: boolean;
+  cards: Flashcard[];
+  created_at: string;
+}
 
 function isBilingual(c: Flashcard): c is FlashcardBilingual {
   return "question_ar" in c;
 }
 
-/** Returns true when text contains ≥5% Arabic characters */
 function detectArabic(text: string): boolean {
   if (!text) return false;
   const sample = text.slice(0, 2000);
@@ -34,12 +44,12 @@ async function getToken() {
   return session?.access_token ?? "";
 }
 
-async function apiPost(path: string, body: object) {
+async function apiReq(method: string, path: string, body?: object) {
   const token = await getToken();
   const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Request failed");
@@ -61,9 +71,19 @@ async function extractPdf(file: File): Promise<string> {
 }
 
 /* ── Flashcard Card ─────────────────────────────────────────── */
-function FlashcardCard({ card, index, total }: { card: Flashcard; index: number; total: number }) {
+function FlashcardCard({
+  card, index, total, progress, onProgress,
+}: {
+  card: Flashcard;
+  index: number;
+  total: number;
+  progress: Progress;
+  onProgress: (p: "known" | "unknown") => void;
+}) {
   const [flipped, setFlipped] = useState(false);
   const bilingual = isBilingual(card);
+
+  useEffect(() => { setFlipped(false); }, [index]);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -139,27 +159,88 @@ function FlashcardCard({ card, index, total }: { card: Flashcard; index: number;
           </div>
         </div>
       </div>
+
+      {/* Progress buttons */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => onProgress("unknown")}
+          className={`flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-medium border transition-all ${
+            progress === "unknown"
+              ? "bg-red-500/15 border-red-500/40 text-red-500"
+              : "border-border text-muted-foreground hover:border-red-400/40 hover:text-red-400"
+          }`}
+        >
+          <XCircle className="h-4 w-4" />
+          Ulangi
+        </button>
+        <button
+          onClick={() => onProgress("known")}
+          className={`flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-medium border transition-all ${
+            progress === "known"
+              ? "bg-green-500/15 border-green-500/40 text-green-500"
+              : "border-border text-muted-foreground hover:border-green-400/40 hover:text-green-400"
+          }`}
+        >
+          <CheckCircle className="h-4 w-4" />
+          Paham
+        </button>
+      </div>
     </div>
   );
 }
 
 /* ── Main Page ──────────────────────────────────────────────── */
-type Mode = "topic" | "text" | "pdf";
+type InputMode = "topic" | "text" | "pdf";
+type PageView  = "create" | "saved";
 
 export default function FlashcardPage() {
-  const [mode, setMode]         = useState<Mode>("topic");
-  const [topic, setTopic]       = useState("");
-  const [content, setContent]   = useState("");
-  const [pdfFile, setPdfFile]   = useState<File | null>(null);
-  const [pdfName, setPdfName]   = useState("");
-  const [count, setCount]       = useState(8);
-  const [loading, setLoading]   = useState(false);
+  /* Input state */
+  const [pageView, setPageView]   = useState<PageView>("create");
+  const [inputMode, setInputMode] = useState<InputMode>("topic");
+  const [topic, setTopic]         = useState("");
+  const [content, setContent]     = useState("");
+  const [pdfFile, setPdfFile]     = useState<File | null>(null);
+  const [pdfName, setPdfName]     = useState("");
+  const [count, setCount]         = useState(8);
+  const [loading, setLoading]     = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
+
+  /* Viewer state */
   const [flashcards, setFlashcards]     = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [wasBilingual, setWasBilingual] = useState(false);
+  const [activeSource, setActiveSource] = useState<string>("");
+  const [progress, setProgress]         = useState<Progress[]>([]);
+
+  /* Save state */
+  const [saving, setSaving]       = useState(false);
+  const [saveMode, setSaveMode]   = useState(false);
+  const [saveName, setSaveName]   = useState("");
+
+  /* Saved sets */
+  const [savedSets, setSavedSets]     = useState<SavedSet[]>([]);
+  const [setsLoading, setSetsLoading] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* ── Fetch saved sets ── */
+  const fetchSets = useCallback(async () => {
+    setSetsLoading(true);
+    try {
+      const data = await apiReq("GET", "/api/flashcards/sets");
+      setSavedSets(data.sets || []);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal memuat set");
+    } finally {
+      setSetsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (pageView === "saved") fetchSets();
+  }, [pageView, fetchSets]);
+
+  /* ── File handlers ── */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -175,49 +256,62 @@ export default function FlashcardPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  /* ── Generate ── */
   const generate = useCallback(async () => {
-    if (mode === "topic" && !topic.trim()) { toast.error("Tulis topik dulu"); return; }
-    if (mode === "text"  && !content.trim()) { toast.error("Tempel teks dulu"); return; }
-    if (mode === "pdf"   && !pdfFile) { toast.error("Pilih file PDF dulu"); return; }
+    if (inputMode === "topic" && !topic.trim()) { toast.error("Tulis topik dulu"); return; }
+    if (inputMode === "text"  && !content.trim()) { toast.error("Tempel teks dulu"); return; }
+    if (inputMode === "pdf"   && !pdfFile) { toast.error("Pilih file PDF dulu"); return; }
 
     setLoading(true);
     try {
       let body: Record<string, unknown> = { count };
       let textForDetection = "";
+      let source = "";
 
-      if (mode === "pdf") {
+      if (inputMode === "pdf") {
         setLoadingLabel("Membaca PDF...");
         const extracted = await extractPdf(pdfFile!);
         if (!extracted.trim()) throw new Error("PDF tidak mengandung teks yang bisa dibaca. Coba PDF lain.");
         body.content = extracted;
         textForDetection = extracted;
-      } else if (mode === "text") {
+        source = pdfName;
+      } else if (inputMode === "text") {
         body.content = content.trim();
         textForDetection = content;
+        source = "Teks";
       } else {
         body.topic = topic.trim();
         textForDetection = topic;
+        source = topic.trim();
       }
 
       const bilingual = detectArabic(textForDetection);
       body.bilingual = bilingual;
       setLoadingLabel("Membuat flashcard...");
 
-      const data = await apiPost("/api/flashcards/generate", body);
-      setFlashcards(data.flashcards);
+      const data = await apiReq("POST", "/api/flashcards/generate", body);
+      const cards: Flashcard[] = data.flashcards;
+      setFlashcards(cards);
       setWasBilingual(bilingual);
+      setActiveSource(source);
       setCurrentIndex(0);
-      toast.success(`${data.flashcards.length} flashcard dibuat!`);
+      setProgress(new Array(cards.length).fill(null));
+      setSaveMode(false);
+      setSaveName(source.slice(0, 60));
+      toast.success(`${cards.length} flashcard dibuat!`);
     } catch (e: any) {
       toast.error(e.message || "Gagal membuat flashcard");
     } finally {
       setLoading(false);
       setLoadingLabel("");
     }
-  }, [mode, topic, content, pdfFile, count]);
+  }, [inputMode, topic, content, pdfFile, pdfName, count]);
 
+  /* ── Viewer helpers ── */
   const shuffle = () => {
-    setFlashcards(prev => [...prev].sort(() => Math.random() - 0.5));
+    const shuffled = [...flashcards].sort(() => Math.random() - 0.5);
+    setFlashcards(shuffled);
+    setProgress(new Array(shuffled.length).fill(null));
     setCurrentIndex(0);
     toast.success("Flashcard dikocok!");
   };
@@ -225,13 +319,90 @@ export default function FlashcardPage() {
   const reset = () => {
     setFlashcards([]);
     setCurrentIndex(0);
+    setProgress([]);
     setTopic("");
     setContent("");
     setWasBilingual(false);
+    setActiveSource("");
+    setSaveMode(false);
     removePdf();
   };
 
-  const TABS: { id: Mode; label: string; icon: React.ReactNode }[] = [
+  const handleProgress = (p: "known" | "unknown") => {
+    setProgress(prev => {
+      const next = [...prev];
+      next[currentIndex] = p;
+      return next;
+    });
+    if (currentIndex < flashcards.length - 1) {
+      setTimeout(() => setCurrentIndex(i => i + 1), 300);
+    }
+  };
+
+  const retryUnknown = () => {
+    const unknown = flashcards.filter((_, i) => progress[i] !== "known");
+    if (!unknown.length) return;
+    setFlashcards(unknown);
+    setProgress(new Array(unknown.length).fill(null));
+    setCurrentIndex(0);
+    toast.success(`Mengulang ${unknown.length} kartu`);
+  };
+
+  const retryAll = () => {
+    setProgress(new Array(flashcards.length).fill(null));
+    setCurrentIndex(0);
+  };
+
+  /* ── Save set ── */
+  const saveSet = async () => {
+    if (!saveName.trim()) { toast.error("Tulis nama set dulu"); return; }
+    setSaving(true);
+    try {
+      await apiReq("POST", "/api/flashcards/sets", {
+        name: saveName.trim(),
+        source: activeSource || null,
+        bilingual: wasBilingual,
+        cards: flashcards,
+      });
+      toast.success("Set flashcard disimpan!");
+      setSaveMode(false);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal menyimpan");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ── Load saved set ── */
+  const loadSet = (set: SavedSet) => {
+    setFlashcards(set.cards);
+    setWasBilingual(set.bilingual);
+    setActiveSource(set.name);
+    setCurrentIndex(0);
+    setProgress(new Array(set.cards.length).fill(null));
+    setSaveName(set.name);
+    setSaveMode(false);
+    setPageView("create");
+    toast.success(`Set "${set.name}" dimuat`);
+  };
+
+  /* ── Delete set ── */
+  const deleteSet = async (id: string, name: string) => {
+    try {
+      await apiReq("DELETE", `/api/flashcards/sets/${id}`);
+      setSavedSets(prev => prev.filter(s => s.id !== id));
+      toast.success(`"${name}" dihapus`);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal menghapus");
+    }
+  };
+
+  /* ── Summary helpers ── */
+  const allMarked     = progress.length > 0 && progress.every(p => p !== null);
+  const knownCount    = progress.filter(p => p === "known").length;
+  const unknownCount  = progress.filter(p => p === "unknown").length;
+
+  const INPUT_TABS: { id: InputMode; label: string; icon: React.ReactNode }[] = [
     { id: "topic", label: "Dari Topik", icon: <Sparkles className="h-3.5 w-3.5" /> },
     { id: "text",  label: "Dari Teks",  icon: <FileText  className="h-3.5 w-3.5" /> },
     { id: "pdf",   label: "Dari PDF",   icon: <FileUp    className="h-3.5 w-3.5" /> },
@@ -240,7 +411,7 @@ export default function FlashcardPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-4 py-6 space-y-6">
+        <div className="mx-auto max-w-2xl px-4 py-6 space-y-5">
 
           {/* Header */}
           <div>
@@ -253,152 +424,11 @@ export default function FlashcardPage() {
             </p>
           </div>
 
-          {flashcards.length === 0 ? (
-            <div className="space-y-4">
-              {/* Mode tabs */}
-              <div className="flex rounded-xl border border-border overflow-hidden">
-                {TABS.map((tab, i) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setMode(tab.id)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm transition-colors ${
-                      i > 0 ? "border-l border-border" : ""
-                    } ${
-                      mode === tab.id
-                        ? "bg-primary/15 text-primary font-medium"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {tab.icon}
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+          {/* ── VIEWER MODE ── */}
+          {flashcards.length > 0 ? (
+            <div className="space-y-5">
 
-              {mode === "topic" && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Topik</label>
-                  <Input
-                    placeholder="Contoh: Hukum Fikih Zakat, Nahwu Shorof, Sejarah Islam..."
-                    value={topic}
-                    onChange={e => setTopic(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && generate()}
-                    className="bg-secondary"
-                    autoFocus
-                  />
-                  <p className="text-[11px] text-muted-foreground/60">
-                    Masukkan topik spesifik untuk hasil yang lebih baik.
-                  </p>
-                </div>
-              )}
-
-              {mode === "text" && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Tempel Teks Materi</label>
-                  <Textarea
-                    placeholder="Paste catatan kuliah, teks Arab, atau ringkasan bab di sini..."
-                    value={content}
-                    onChange={e => setContent(e.target.value)}
-                    rows={8}
-                    className="bg-secondary resize-none text-sm"
-                    dir={detectArabic(content) ? "rtl" : "ltr"}
-                  />
-                  <p className="text-[11px] text-muted-foreground/60">
-                    Jika teks mengandung banyak Arab, flashcard otomatis dibuat bilingual Arab–Indonesia.
-                  </p>
-                </div>
-              )}
-
-              {mode === "pdf" && (
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Upload File PDF</label>
-                  {pdfFile ? (
-                    <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
-                      <FileText className="h-5 w-5 text-primary shrink-0" />
-                      <p className="flex-1 text-sm text-foreground truncate">{pdfName}</p>
-                      <button
-                        onClick={removePdf}
-                        className="shrink-0 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border bg-secondary/30 px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
-                    >
-                      <Upload className="h-7 w-7 text-muted-foreground/50" />
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Klik untuk pilih PDF</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          Muqorror Arab → flashcard bilingual · PDF Indonesia → flashcard Indonesia · Maks 20 MB
-                        </p>
-                      </div>
-                    </button>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </div>
-              )}
-
-              {/* Count picker */}
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-medium text-muted-foreground shrink-0">Jumlah flashcard:</label>
-                <div className="flex gap-1.5">
-                  {[5, 8, 10, 15].map(n => (
-                    <button
-                      key={n}
-                      onClick={() => setCount(n)}
-                      className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
-                        count === n
-                          ? "border-primary/40 bg-primary/10 text-primary font-medium"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <Button
-                onClick={generate}
-                disabled={loading}
-                className="w-full bg-gradient-purple text-primary-foreground hover:opacity-90 gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    {loadingLabel || "Membuat flashcard..."}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Buat Flashcard
-                  </>
-                )}
-              </Button>
-
-              {/* Tips */}
-              <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 space-y-1.5">
-                <p className="text-xs font-semibold text-foreground">Tips:</p>
-                <ul className="space-y-1 text-[11px] text-muted-foreground">
-                  <li>• Klik kartu untuk membalik dan lihat jawaban</li>
-                  <li>• Gunakan tombol kocok untuk urutan acak</li>
-                  <li>• PDF muqorror atau teks Arab → flashcard otomatis bilingual Arab–Indonesia</li>
-                </ul>
-              </div>
-            </div>
-          ) : (
-            /* ── Flashcard Viewer ── */
-            <div className="space-y-6">
-              {/* Controls */}
+              {/* Top controls */}
               <div className="flex items-center justify-between">
                 <button
                   onClick={reset}
@@ -407,11 +437,11 @@ export default function FlashcardPage() {
                   <RotateCcw className="h-3.5 w-3.5" />
                   Buat ulang
                 </button>
+
                 <div className="flex flex-col items-center gap-1">
                   <p className="text-xs text-muted-foreground font-medium">
                     {flashcards.length} flashcard
-                    {mode === "topic" && topic && ` · ${topic}`}
-                    {mode === "pdf"   && pdfName && ` · ${pdfName}`}
+                    {activeSource && ` · ${activeSource.length > 30 ? activeSource.slice(0, 30) + "…" : activeSource}`}
                   </p>
                   {wasBilingual && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
@@ -419,58 +449,397 @@ export default function FlashcardPage() {
                     </span>
                   )}
                 </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={shuffle}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Shuffle className="h-3.5 w-3.5" />
+                    Kocok
+                  </button>
+                  <button
+                    onClick={() => { setSaveMode(v => !v); }}
+                    className="flex items-center gap-1.5 text-xs text-primary/70 hover:text-primary transition-colors"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    Simpan
+                  </button>
+                </div>
+              </div>
+
+              {/* Save inline form */}
+              {saveMode && (
+                <div className="flex gap-2 items-center rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+                  <Input
+                    value={saveName}
+                    onChange={e => setSaveName(e.target.value)}
+                    placeholder="Nama set flashcard..."
+                    className="flex-1 h-8 text-xs bg-transparent border-0 focus-visible:ring-0 px-0"
+                    onKeyDown={e => e.key === "Enter" && saveSet()}
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={saveSet} disabled={saving} className="h-7 text-xs px-3">
+                    {saving ? <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : "Simpan"}
+                  </Button>
+                  <button onClick={() => setSaveMode(false)} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Progress bar */}
+              {progress.some(p => p !== null) && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[11px] text-muted-foreground">
+                    <span>{knownCount + unknownCount} / {flashcards.length} ditandai</span>
+                    <span className="flex gap-3">
+                      <span className="text-green-500">{knownCount} paham</span>
+                      <span className="text-red-400">{unknownCount} ulangi</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-border overflow-hidden flex">
+                    <div
+                      className="h-full bg-green-500 transition-all"
+                      style={{ width: `${(knownCount / flashcards.length) * 100}%` }}
+                    />
+                    <div
+                      className="h-full bg-red-400 transition-all"
+                      style={{ width: `${(unknownCount / flashcards.length) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Summary when all marked */}
+              {allMarked ? (
+                <div className="rounded-2xl border border-border bg-card px-6 py-8 text-center space-y-4">
+                  <div className="text-3xl">{knownCount === flashcards.length ? "🎉" : knownCount >= flashcards.length * 0.7 ? "👍" : "📚"}</div>
+                  <div>
+                    <p className="font-semibold text-foreground text-base">Sesi selesai!</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {knownCount}/{flashcards.length} kartu dikuasai
+                      {knownCount === flashcards.length ? " — Sempurna! 🌟" : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 justify-center flex-wrap">
+                    {unknownCount > 0 && (
+                      <Button size="sm" onClick={retryUnknown} className="gap-1.5">
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Ulangi {unknownCount} kartu
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={retryAll} className="gap-1.5">
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Mulai ulang
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={reset}>
+                      Buat baru
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Card */}
+                  <FlashcardCard
+                    card={flashcards[currentIndex]}
+                    index={currentIndex}
+                    total={flashcards.length}
+                    progress={progress[currentIndex]}
+                    onProgress={handleProgress}
+                  />
+
+                  {/* Navigation */}
+                  <div className="flex items-center justify-center gap-4">
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
+                      disabled={currentIndex === 0}
+                      className="gap-1.5"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Sebelumnya
+                    </Button>
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={() => setCurrentIndex(i => Math.min(flashcards.length - 1, i + 1))}
+                      disabled={currentIndex === flashcards.length - 1}
+                      className="gap-1.5"
+                    >
+                      Berikutnya
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* Progress dots */}
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                    {flashcards.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCurrentIndex(i)}
+                        className={`h-2 rounded-full transition-all ${
+                          i === currentIndex
+                            ? "bg-primary w-4"
+                            : progress[i] === "known"
+                            ? "w-2 bg-green-500"
+                            : progress[i] === "unknown"
+                            ? "w-2 bg-red-400"
+                            : "w-2 bg-border hover:bg-muted-foreground"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+          ) : (
+            /* ── INPUT / SAVED VIEW ── */
+            <div className="space-y-4">
+
+              {/* Page view tabs */}
+              <div className="flex rounded-xl border border-border overflow-hidden">
                 <button
-                  onClick={shuffle}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setPageView("create")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm transition-colors border-r border-border ${
+                    pageView === "create"
+                      ? "bg-primary/15 text-primary font-medium"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  <Shuffle className="h-3.5 w-3.5" />
-                  Kocok
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Buat Baru
+                </button>
+                <button
+                  onClick={() => setPageView("saved")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm transition-colors ${
+                    pageView === "saved"
+                      ? "bg-primary/15 text-primary font-medium"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Library className="h-3.5 w-3.5" />
+                  Set Tersimpan
                 </button>
               </div>
 
-              {/* Card */}
-              <FlashcardCard
-                card={flashcards[currentIndex]}
-                index={currentIndex}
-                total={flashcards.length}
-              />
+              {pageView === "create" ? (
+                <div className="space-y-4">
+                  {/* Input mode tabs */}
+                  <div className="flex rounded-xl border border-border overflow-hidden">
+                    {INPUT_TABS.map((tab, i) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setInputMode(tab.id)}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm transition-colors ${
+                          i > 0 ? "border-l border-border" : ""
+                        } ${
+                          inputMode === tab.id
+                            ? "bg-secondary text-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {tab.icon}
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
 
-              {/* Navigation */}
-              <div className="flex items-center justify-center gap-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
-                  disabled={currentIndex === 0}
-                  className="gap-1.5"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Sebelumnya
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentIndex(i => Math.min(flashcards.length - 1, i + 1))}
-                  disabled={currentIndex === flashcards.length - 1}
-                  className="gap-1.5"
-                >
-                  Berikutnya
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+                  {inputMode === "topic" && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Topik</label>
+                      <Input
+                        placeholder="Contoh: Hukum Fikih Zakat, Nahwu Shorof, Sejarah Islam..."
+                        value={topic}
+                        onChange={e => setTopic(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && generate()}
+                        className="bg-secondary"
+                        autoFocus
+                      />
+                      <p className="text-[11px] text-muted-foreground/60">
+                        Masukkan topik spesifik untuk hasil yang lebih baik.
+                      </p>
+                    </div>
+                  )}
 
-              {/* Progress dots */}
-              <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                {flashcards.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setCurrentIndex(i)}
-                    className={`h-2 rounded-full transition-all ${
-                      i === currentIndex ? "bg-primary w-4" : "w-2 bg-border hover:bg-muted-foreground"
-                    }`}
-                  />
-                ))}
-              </div>
+                  {inputMode === "text" && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Tempel Teks Materi</label>
+                      <Textarea
+                        placeholder="Paste catatan kuliah, teks Arab, atau ringkasan bab di sini..."
+                        value={content}
+                        onChange={e => setContent(e.target.value)}
+                        rows={8}
+                        className="bg-secondary resize-none text-sm"
+                        dir={detectArabic(content) ? "rtl" : "ltr"}
+                      />
+                      <p className="text-[11px] text-muted-foreground/60">
+                        Jika teks mengandung banyak Arab, flashcard otomatis dibuat bilingual Arab–Indonesia.
+                      </p>
+                    </div>
+                  )}
+
+                  {inputMode === "pdf" && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">Upload File PDF</label>
+                      {pdfFile ? (
+                        <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+                          <FileText className="h-5 w-5 text-primary shrink-0" />
+                          <p className="flex-1 text-sm text-foreground truncate">{pdfName}</p>
+                          <button
+                            onClick={removePdf}
+                            className="shrink-0 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border bg-secondary/30 px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
+                        >
+                          <Upload className="h-7 w-7 text-muted-foreground/50" />
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Klik untuk pilih PDF</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              Muqorror Arab → flashcard bilingual · PDF Indonesia → flashcard Indonesia · Maks 20 MB
+                            </p>
+                          </div>
+                        </button>
+                      )}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="application/pdf"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                    </div>
+                  )}
+
+                  {/* Count picker */}
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-medium text-muted-foreground shrink-0">Jumlah flashcard:</label>
+                    <div className="flex gap-1.5">
+                      {[5, 8, 10, 15].map(n => (
+                        <button
+                          key={n}
+                          onClick={() => setCount(n)}
+                          className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                            count === n
+                              ? "border-primary/40 bg-primary/10 text-primary font-medium"
+                              : "border-border text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={generate}
+                    disabled={loading}
+                    className="w-full bg-gradient-purple text-primary-foreground hover:opacity-90 gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        {loadingLabel || "Membuat flashcard..."}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Buat Flashcard
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Tips */}
+                  <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 space-y-1.5">
+                    <p className="text-xs font-semibold text-foreground">Tips:</p>
+                    <ul className="space-y-1 text-[11px] text-muted-foreground">
+                      <li>• Klik kartu untuk membalik dan lihat jawaban</li>
+                      <li>• Tandai ✓ Paham / ✗ Ulangi untuk melacak progres belajar</li>
+                      <li>• Simpan set untuk belajar lagi kapan saja</li>
+                      <li>• PDF muqorror atau teks Arab → flashcard otomatis bilingual Arab–Indonesia</li>
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                /* ── SAVED SETS VIEW ── */
+                <div className="space-y-3">
+                  {setsLoading ? (
+                    <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Memuat set tersimpan...
+                    </div>
+                  ) : savedSets.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-secondary/20 px-6 py-12 text-center space-y-2">
+                      <Library className="h-8 w-8 text-muted-foreground/40 mx-auto" />
+                      <p className="text-sm font-medium text-muted-foreground">Belum ada set tersimpan</p>
+                      <p className="text-[11px] text-muted-foreground/60">
+                        Buat flashcard dulu, lalu klik tombol "Simpan" di viewer
+                      </p>
+                      <Button
+                        size="sm" variant="outline" className="mt-2"
+                        onClick={() => setPageView("create")}
+                      >
+                        Buat Flashcard
+                      </Button>
+                    </div>
+                  ) : (
+                    savedSets.map(set => (
+                      <div
+                        key={set.id}
+                        className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-foreground truncate">{set.name}</p>
+                            {set.bilingual && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                                عربي
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {set.cards.length} kartu
+                            {" · "}
+                            {new Date(set.created_at).toLocaleDateString("id-ID", {
+                              day: "numeric", month: "short", year: "numeric",
+                            })}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            size="sm" variant="outline"
+                            onClick={() => loadSet(set)}
+                            className="h-7 text-xs px-3"
+                          >
+                            Mulai
+                          </Button>
+                          <button
+                            onClick={() => deleteSet(set.id, set.name)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/60 hover:bg-red-500/10 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {savedSets.length > 0 && (
+                    <button
+                      onClick={fetchSets}
+                      className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors py-1"
+                    >
+                      Muat ulang
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

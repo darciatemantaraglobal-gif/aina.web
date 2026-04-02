@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download } from "lucide-react";
 import { RESPONSE_STYLES, RESPONSE_STYLE_ORDER, type ResponseStyleKey } from "@/lib/responseStyles";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -980,6 +980,36 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
   const isEmpty = messages.length === 0;
 
+  const exportChat = () => {
+    if (!messages.length) return;
+    const date = new Date().toLocaleDateString("id-ID", { year: "numeric", month: "long", day: "numeric" });
+    const firstUser = messages.find(m => m.role === "user");
+    const title = firstUser ? firstUser.content.slice(0, 60).replace(/\n/g, " ") : "Chat";
+    const lines: string[] = [
+      "AINA — Ekspor Percakapan",
+      `Tanggal : ${date}`,
+      `Topik   : ${title}${firstUser && firstUser.content.length > 60 ? "…" : ""}`,
+      "=".repeat(55),
+      "",
+    ];
+    for (const m of messages) {
+      const speaker = m.role === "user" ? "Kamu" : "AINA";
+      const ts = m.timestamp ? new Date(m.timestamp).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
+      lines.push(`[${speaker}${ts ? "  " + ts : ""}]`);
+      if (m.fileName) lines.push(`📎 ${m.fileName}`);
+      lines.push(m.content || "");
+      lines.push("");
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `aina-chat-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Percakapan berhasil diekspor");
+  };
+
   return (
     <div className="relative flex h-full flex-col bg-background">
       {/* Mobile top header */}
@@ -996,12 +1026,23 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           <span className="font-display text-base font-bold text-foreground">AINA</span>
         </div>
 
-        <button
-          onClick={onNewChat}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-        >
-          <Plus className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          {!isEmpty && (
+            <button
+              onClick={exportChat}
+              title="Ekspor percakapan"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Download className="h-4.5 w-4.5" />
+            </button>
+          )}
+          <button
+            onClick={onNewChat}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       {/* Messages area or empty state */}
@@ -1041,6 +1082,18 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             </div>
           </div>
         ) : (
+          <>
+            {/* Desktop-only export button — sticky at top of messages area */}
+            <div className="sticky top-0 z-10 hidden md:flex justify-end px-4 pt-3 pb-1 pointer-events-none">
+              <button
+                onClick={exportChat}
+                title="Ekspor percakapan ke teks"
+                className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:text-foreground"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Ekspor
+              </button>
+            </div>
           <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
             {messages.map((msg, msgIdx) => {
               const isLastAI = msg.role === "assistant" && msgIdx === messages.length - 1 && !isLoading && !streamingMsg;
@@ -1334,6 +1387,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
             <div ref={messagesEndRef} />
           </div>
+          </>
         )}
       </div>
 
