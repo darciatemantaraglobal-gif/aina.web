@@ -167,11 +167,32 @@ function loadStoredFeedback(): Record<string, "up" | "down"> {
 const DAILY_LIMIT = 5;
 const REMARK_PLUGINS = [remarkGfm];
 
+function extractMdText(node: any): string {
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(extractMdText).join("");
+  if (node?.props?.children) return extractMdText(node.props.children);
+  return "";
+}
+function containsArabic(node: any): boolean {
+  return /[\u0600-\u06FF]/.test(extractMdText(node));
+}
+
 const MD_COMPONENTS = {
   br: () => <br />,
-  p: ({ children }: any) => (
-    <p className="mb-4 last:mb-0 break-words leading-7 text-foreground/90">{children}</p>
-  ),
+  p: ({ children }: any) => {
+    const isArabic = containsArabic(children);
+    return isArabic ? (
+      <p
+        dir="auto"
+        className="mb-4 last:mb-0 break-words text-foreground/90"
+        style={{ lineHeight: "2.4", fontSize: "1.05rem" }}
+      >
+        {children}
+      </p>
+    ) : (
+      <p className="mb-4 last:mb-0 break-words leading-7 text-foreground/90">{children}</p>
+    );
+  },
   strong: ({ children }: any) => (
     <strong className="font-semibold text-foreground">{children}</strong>
   ),
@@ -184,17 +205,28 @@ const MD_COMPONENTS = {
   ol: ({ children }: any) => (
     <ol className="mb-4 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
   ),
-  li: ({ children }: any) => (
-    <li className="leading-7 break-words pl-1">{children}</li>
-  ),
+  li: ({ children }: any) => {
+    const isArabic = containsArabic(children);
+    return isArabic ? (
+      <li
+        dir="auto"
+        className="break-words pl-1"
+        style={{ lineHeight: "2.4", fontSize: "1.05rem" }}
+      >
+        {children}
+      </li>
+    ) : (
+      <li className="leading-7 break-words pl-1">{children}</li>
+    );
+  },
   h1: ({ children }: any) => (
-    <h1 className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight">{children}</h1>
+    <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight">{children}</h1>
   ),
   h2: ({ children }: any) => (
-    <h2 className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight">{children}</h2>
+    <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight">{children}</h2>
   ),
   h3: ({ children }: any) => (
-    <h3 className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground">{children}</h3>
+    <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground">{children}</h3>
   ),
   code: ({ children, className }: any) => {
     if (className?.includes("language-")) return <code className={className}>{children}</code>;
@@ -208,17 +240,7 @@ const MD_COMPONENTS = {
     </div>
   ),
   blockquote: ({ children }: any) => {
-    // Detect if the blockquote contains Arabic text
-    function extractText(node: any): string {
-      if (typeof node === "string") return node;
-      if (Array.isArray(node)) return node.map(extractText).join("");
-      if (node?.props?.children) return extractText(node.props.children);
-      return "";
-    }
-    const text = extractText(children);
-    const isArabic = /[\u0600-\u06FF]/.test(text);
-
-    if (isArabic) {
+    if (containsArabic(children)) {
       return (
         <blockquote
           dir="rtl"
