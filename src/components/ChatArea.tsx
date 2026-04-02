@@ -197,10 +197,7 @@ const MD_COMPONENTS = {
     if (/^\(cara baca:/i.test(text)) {
       const pronunciation = text.replace(/^\(cara baca:\s*/i, "").replace(/\)$/, "").trim();
       return (
-        <em
-          className="not-italic text-sky-300/80 tracking-wide"
-          style={{ fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", monospace' }}
-        >
+        <em className="italic text-sky-300/80">
           🔊 {pronunciation}
         </em>
       );
