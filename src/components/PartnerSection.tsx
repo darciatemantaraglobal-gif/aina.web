@@ -1,16 +1,15 @@
 import { Handshake, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useInView } from "@/hooks/useInView";
 
 const PartnerSection = () => {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => { setVisible(true); }, []);
+  const { ref: sectionRef, inView: visible } = useInView<HTMLElement>();
 
   const waNumber = "6281311506025";
   const waMessage = encodeURIComponent("Halo, saya tertarik untuk menjadi partner AINA. Bisa jelaskan lebih lanjut?");
 
   return (
-    <section className="relative py-20 px-4">
+    <section ref={sectionRef} className="relative py-20 px-4">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/15 to-background" />
       </div>

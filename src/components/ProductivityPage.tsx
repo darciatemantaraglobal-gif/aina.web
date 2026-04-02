@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { triggerConfetti } from "@/utils/confetti";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
@@ -204,7 +205,13 @@ function FocusTab() {
   const updateStatus = async (id: string, status: FocusItem["status"]) => {
     try {
       const { item } = await apiCall("PATCH", `/productivity/focus/${id}`, { status });
-      setItems(prev => prev.map(i => i.id === id ? item : i));
+      setItems(prev => {
+        const updated = prev.map(i => i.id === id ? item : i);
+        if (status === "done" && updated.length > 0 && updated.every(i => i.status === "done")) {
+          setTimeout(() => triggerConfetti(), 200);
+        }
+        return updated;
+      });
     } catch (e: any) { toast.error(e.message); }
   };
 

@@ -909,13 +909,16 @@ const DashboardSidebar = ({
                 key={item.id}
                 data-tour={`nav-${item.id}`}
                 onClick={() => onTabChange(item.id)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
+                className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200 ${
                   activeTab === item.id
                     ? "bg-primary/15 text-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 } ${collapsed ? "justify-center" : ""}`}
                 title={item.label}
               >
+                {activeTab === item.id && !collapsed && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-full animate-indicator-in" />
+                )}
                 <item.icon className="h-4 w-4 shrink-0" />
                 {!collapsed && item.label}
               </button>
@@ -932,13 +935,16 @@ const DashboardSidebar = ({
             <button
               data-tour="nav-admin"
               onClick={() => onTabChange("admin")}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
+              className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200 ${
                 activeTab === "admin"
                   ? "bg-primary/15 text-primary font-medium"
                   : "text-sidebar-foreground hover:bg-sidebar-accent"
               } ${collapsed ? "justify-center" : ""}`}
               title="Admin"
             >
+              {activeTab === "admin" && !collapsed && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-full animate-indicator-in" />
+              )}
               <Shield className="h-4 w-4 shrink-0" />
               {!collapsed && "Admin"}
             </button>

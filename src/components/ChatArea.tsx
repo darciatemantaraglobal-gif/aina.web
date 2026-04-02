@@ -1122,7 +1122,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               return (
               <div
                 key={msg.id}
-                className={`flex gap-3 min-w-0 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex gap-3 min-w-0 animate-msg-in ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
                   <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />

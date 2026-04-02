@@ -171,6 +171,53 @@
     to { width: 100%; }
   }
 
+  /* Page transition — fade + subtle lift */
+  @keyframes fade-page {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-page {
+    animation: fade-page 0.22s ease-out both;
+  }
+
+  /* Chat message entrance — slide up + fade */
+  @keyframes msg-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-msg-in {
+    animation: msg-in 0.28s ease-out both;
+  }
+
+  /* Scroll-reveal — general purpose fade+lift */
+  @keyframes reveal-up {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-reveal-up {
+    animation: reveal-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Stagger delay helpers */
+  .delay-75  { animation-delay: 75ms; }
+  .delay-100 { animation-delay: 100ms; }
+  .delay-150 { animation-delay: 150ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-250 { animation-delay: 250ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+  .delay-600 { animation-delay: 600ms; }
+
+  /* Sidebar active indicator pop */
+  @keyframes indicator-in {
+    from { transform: translateY(-50%) scaleY(0); opacity: 0; }
+    to   { transform: translateY(-50%) scaleY(1); opacity: 1; }
+  }
+  .animate-indicator-in {
+    animation: indicator-in 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
   /* Avatar spinning glow ring — same conic technique, circular */
   .avatar-glow-ring {
     position: relative;

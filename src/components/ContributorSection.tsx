@@ -1,8 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Users, CheckCircle, Star, BookOpen, Award } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useInView } from "@/hooks/useInView";
 
 const benefits = [
   { icon: Star, text: "Dapatkan badge Contributor eksklusif di profil kamu" },
@@ -20,8 +21,7 @@ const requirements = [
 
 const ContributorSection = () => {
   const navigate = useNavigate();
-  const [visible, setVisible] = useState(false);
-  useEffect(() => { setVisible(true); }, []);
+  const { ref: sectionRef, inView: visible } = useInView<HTMLElement>();
 
   const handleGoContributor = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -33,7 +33,7 @@ const ContributorSection = () => {
   }, [navigate]);
 
   return (
-    <section className="relative py-20 px-4">
+    <section ref={sectionRef} className="relative py-20 px-4">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/15 to-background" />
         <div className="absolute left-1/4 top-1/3 h-[300px] w-[300px] rounded-full bg-primary/8 blur-[100px]" />

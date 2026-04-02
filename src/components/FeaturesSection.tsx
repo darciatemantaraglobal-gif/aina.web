@@ -1,5 +1,6 @@
 import { Bot, ListTodo, DollarSign, FileText, ArrowUpRight, Check, MessageSquare, TrendingUp, BookOpen, Shield, Map, Plane } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useInView } from "@/hooks/useInView";
 
 const adminTopics = [
   { icon: Shield, label: "Iqomah & Residensi" },
@@ -23,13 +24,8 @@ const taskItems = [
 ];
 
 const FeaturesSection = () => {
-  const [visible, setVisible] = useState(false);
   const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 100);
-    return () => clearTimeout(t);
-  }, []);
+  const { ref: sectionRef, inView: visible } = useInView<HTMLElement>();
 
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 2000);
@@ -37,7 +33,7 @@ const FeaturesSection = () => {
   }, []);
 
   return (
-    <section className="relative overflow-hidden px-4 py-20">
+    <section ref={sectionRef} className="relative overflow-hidden px-4 py-20">
 
       {/* Dotted grid background */}
       <div

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { triggerConfetti } from "@/utils/confetti";
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import { supabase } from "@/integrations/supabase/client";
@@ -240,6 +241,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
     } else {
       setEquippedBadge(badgeType);
       localStorage.setItem(EQUIPPED_BADGE_KEY, badgeType);
+      triggerConfetti();
     }
   };
 

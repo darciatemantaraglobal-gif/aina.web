@@ -3,7 +3,7 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, lazy, Suspense, useRef } from "react";
 
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Login = lazy(() => import("./pages/Login.tsx"));
@@ -44,6 +44,43 @@ const PageLoader = () => (
   </div>
 );
 
+function AnimatedRoutes() {
+  const location = useLocation();
+  const prevPathRef = useRef(location.pathname);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    prevPathRef.current = location.pathname;
+    isFirstRender.current = false;
+  }, [location.pathname]);
+
+  const shouldAnimate = !isFirstRender.current || prevPathRef.current !== location.pathname;
+
+  return (
+    <div key={location.pathname} className={shouldAnimate ? "animate-fade-page" : undefined}>
+      <Suspense fallback={<PageLoader />}>
+        <Routes location={location}>
+          <Route path="/" element={<Index />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/berita" element={<BeritaPage />} />
+          <Route path="/contributor" element={<ContributorInfoPage />} />
+          <Route path="/partner" element={<PartnerPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/banned" element={<BannedPage />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </div>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -51,25 +88,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ScrollToTop />
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/features" element={<FeaturesPage />} />
-            <Route path="/berita" element={<BeritaPage />} />
-            <Route path="/contributor" element={<ContributorInfoPage />} />
-            <Route path="/partner" element={<PartnerPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/terms" element={<TermsPage />} />
-            <Route path="/privacy" element={<PrivacyPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/banned" element={<BannedPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+        <AnimatedRoutes />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

@@ -1,9 +1,10 @@
 import { Check, Zap, MessageSquare, LayoutDashboard, BookOpen, Star, Users, Shield, Lock, Upload, Infinity, Clock, Sparkles } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import PaymentModal from "./PaymentModal";
 import { usePayment } from "@/hooks/usePayment";
 import { supabase } from "@/integrations/supabase/client";
+import { useInView } from "@/hooks/useInView";
 
 const FREE_FEATURES = [
   { icon: MessageSquare, text: "3 chat dengan AINA per hari" },
@@ -32,12 +33,10 @@ const CONTRIBUTOR_FEATURES = [
 
 const PricingSection = () => {
   const navigate = useNavigate();
-  const [visible, setVisible] = useState(false);
   const [annual, setAnnual] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const { config } = usePayment();
-
-  useEffect(() => { setVisible(true); }, []);
+  const { ref: sectionRef, inView: visible } = useInView<HTMLElement>();
 
   const handleGoContributor = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -50,7 +49,7 @@ const PricingSection = () => {
 
 
   return (
-    <section className="relative py-10 px-4 sm:py-20">
+    <section ref={sectionRef} className="relative py-10 px-4 sm:py-20">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/15 to-background" />
         <div className="absolute left-1/2 top-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-[120px]" />
