@@ -180,13 +180,13 @@
     animation: fade-page 0.22s ease-out both;
   }
 
-  /* Chat message entrance — slide up + fade */
+  /* Chat message entrance — fade only (no transform, preserves Arabic subpixel rendering) */
   @keyframes msg-in {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
   .animate-msg-in {
-    animation: msg-in 0.28s ease-out both;
+    animation: msg-in 0.22s ease both;
   }
 
   /* Scroll-reveal — general purpose fade+lift */

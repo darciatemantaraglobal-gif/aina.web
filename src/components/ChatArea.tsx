@@ -185,7 +185,7 @@ const MD_COMPONENTS = {
       <p
         dir="auto"
         className="mb-4 last:mb-0 break-words text-foreground/90"
-        style={{ lineHeight: "2.4", fontSize: "1.05rem" }}
+        style={{ lineHeight: "2.6", fontSize: "1.08rem", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
       >
         {children}
       </p>
@@ -211,7 +211,7 @@ const MD_COMPONENTS = {
       <li
         dir="auto"
         className="break-words pl-1"
-        style={{ lineHeight: "2.4", fontSize: "1.05rem" }}
+        style={{ lineHeight: "2.6", fontSize: "1.08rem", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
       >
         {children}
       </li>
@@ -219,15 +219,18 @@ const MD_COMPONENTS = {
       <li className="leading-7 break-words pl-1">{children}</li>
     );
   },
-  h1: ({ children }: any) => (
-    <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight">{children}</h1>
-  ),
-  h2: ({ children }: any) => (
-    <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight">{children}</h2>
-  ),
-  h3: ({ children }: any) => (
-    <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground">{children}</h3>
-  ),
+  h1: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "2.2" } : undefined}>{children}</h1>;
+  },
+  h2: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "2.2" } : undefined}>{children}</h2>;
+  },
+  h3: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "2.2" } : undefined}>{children}</h3>;
+  },
   code: ({ children, className }: any) => {
     if (className?.includes("language-")) return <code className={className}>{children}</code>;
     return (
