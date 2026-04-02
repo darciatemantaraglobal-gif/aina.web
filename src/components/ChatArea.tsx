@@ -199,12 +199,14 @@ const MD_COMPONENTS = {
   em: ({ children }: any) => (
     <em className="italic text-foreground/80">{children}</em>
   ),
-  ul: ({ children }: any) => (
-    <ul className="mb-4 last:mb-0 ml-5 list-disc space-y-2 text-foreground/90">{children}</ul>
-  ),
-  ol: ({ children }: any) => (
-    <ol className="mb-4 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
-  ),
+  ul: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return <ul dir={ar ? "auto" : undefined} className="mb-4 last:mb-0 ml-5 list-disc space-y-2 text-foreground/90">{children}</ul>;
+  },
+  ol: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return <ol dir={ar ? "auto" : undefined} className="mb-4 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>;
+  },
   li: ({ children }: any) => {
     const isArabic = containsArabic(children);
     return isArabic ? (
@@ -221,15 +223,15 @@ const MD_COMPONENTS = {
   },
   h1: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "2.2" } : undefined}>{children}</h1>;
+    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.7" } : undefined}>{children}</h1>;
   },
   h2: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "2.2" } : undefined}>{children}</h2>;
+    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.7" } : undefined}>{children}</h2>;
   },
   h3: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "2.2" } : undefined}>{children}</h3>;
+    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.7" } : undefined}>{children}</h3>;
   },
   code: ({ children, className }: any) => {
     if (className?.includes("language-")) return <code className={className}>{children}</code>;
@@ -302,12 +304,14 @@ const MD_COMPONENTS = {
   thead: ({ children }: any) => <thead className="bg-muted/50">{children}</thead>,
   tbody: ({ children }: any) => <tbody className="divide-y divide-border">{children}</tbody>,
   tr: ({ children }: any) => <tr className="hover:bg-muted/20 transition-colors">{children}</tr>,
-  th: ({ children }: any) => (
-    <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{children}</th>
-  ),
-  td: ({ children }: any) => (
-    <td className="px-4 py-2.5 text-foreground/90">{children}</td>
-  ),
+  th: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return <th dir={ar ? "rtl" : undefined} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif" } : undefined}>{children}</th>;
+  },
+  td: ({ children }: any) => {
+    const ar = containsArabic(children);
+    return <td dir={ar ? "auto" : undefined} className="px-4 py-2.5 text-foreground/90" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.9" } : undefined}>{children}</td>;
+  },
 };
 
 interface StreamingMsg {
