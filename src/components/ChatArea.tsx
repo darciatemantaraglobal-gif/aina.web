@@ -185,7 +185,7 @@ const MD_COMPONENTS = {
       <p
         dir="auto"
         className="mb-4 last:mb-0 break-words text-foreground/90"
-        style={{ lineHeight: "1.9", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
+        style={{ lineHeight: "1.9", fontFamily: "'Scheherazade New', serif" }}
       >
         {children}
       </p>
@@ -202,7 +202,7 @@ const MD_COMPONENTS = {
       const pronunciation = text.replace(/^\(cara baca:\s*/i, "").replace(/\)$/, "").trim();
       return (
         <em
-          className="not-italic text-[12.5px] text-sky-300/80 tracking-wide"
+          className="not-italic text-sky-300/80 tracking-wide"
           style={{ fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", monospace' }}
         >
           🔊 {pronunciation}
@@ -225,7 +225,7 @@ const MD_COMPONENTS = {
       <li
         dir="auto"
         className="break-words pl-1"
-        style={{ lineHeight: "1.9", fontFamily: "'Noto Sans Arabic', 'Amiri', 'Traditional Arabic', sans-serif" }}
+        style={{ lineHeight: "1.9", fontFamily: "'Scheherazade New', serif" }}
       >
         {children}
       </li>
@@ -235,23 +235,23 @@ const MD_COMPONENTS = {
   },
   h1: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.7" } : undefined}>{children}</h1>;
+    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.7" } : undefined}>{children}</h1>;
   },
   h2: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.7" } : undefined}>{children}</h2>;
+    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.7" } : undefined}>{children}</h2>;
   },
   h3: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.7" } : undefined}>{children}</h3>;
+    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.7" } : undefined}>{children}</h3>;
   },
   h4: ({ children }: any) => {
     const ar = containsArabic(children);
     return (
       <h4
         dir="auto"
-        className="mb-1 mt-5 first:mt-0 flex items-center gap-2 text-[11px] font-bold tracking-widest uppercase text-primary/60"
-        style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',sans-serif" } : undefined}
+        className="mb-1 mt-5 first:mt-0 flex items-center gap-2 text-sm font-bold tracking-widest uppercase text-primary/60"
+        style={ar ? { fontFamily: "'Scheherazade New', serif" } : undefined}
       >
         <span className="h-px flex-1 bg-primary/15 max-w-[18px] rounded-full shrink-0" />
         {children}
@@ -276,7 +276,7 @@ const MD_COMPONENTS = {
         <blockquote
           dir="rtl"
           className="mt-3 mb-3 rounded-xl border border-emerald-500/25 bg-emerald-950/25 px-6 py-4 text-right text-foreground"
-          style={{ fontFamily: "'Amiri', serif", fontSize: "1.3rem", lineHeight: "2.1" }}
+          style={{ fontFamily: "'Scheherazade New', serif", lineHeight: "2.1" }}
         >
           {children}
         </blockquote>
@@ -338,11 +338,11 @@ const MD_COMPONENTS = {
   tr: ({ children }: any) => <tr className="hover:bg-muted/20 transition-colors">{children}</tr>,
   th: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <th dir={ar ? "rtl" : undefined} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif" } : undefined}>{children}</th>;
+    return <th dir={ar ? "rtl" : undefined} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap" style={ar ? { fontFamily: "'Scheherazade New', serif" } : undefined}>{children}</th>;
   },
   td: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <td dir={ar ? "auto" : undefined} className="px-4 py-2.5 text-foreground/90" style={ar ? { fontFamily: "'Noto Sans Arabic','Amiri',serif", lineHeight: "1.9" } : undefined}>{children}</td>;
+    return <td dir={ar ? "auto" : undefined} className="px-4 py-2.5 text-foreground/90" style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "1.9" } : undefined}>{children}</td>;
   },
 };
 
