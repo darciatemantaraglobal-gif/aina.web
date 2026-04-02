@@ -17,6 +17,7 @@ import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./api/engine/embedder.js";
+import { detectPlacesQuery, buildPlacesContext } from "./api/engine/placesSearch.js";
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
@@ -456,6 +457,7 @@ console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "
 console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured" : "✗ not configured — Perplexity fallback disabled"}`);
 console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
+console.log(`Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? "✓ configured — real-time Places search enabled" : "✗ not configured — Places search disabled"}`);
 
 /* ── Email via Resend ─────────────────────────────────── */
 async function getUserEmail(userId) {
@@ -3130,6 +3132,22 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   if (partnerPromo) {
     console.log(`[PartnerPromo] Triggered for topics: ${partnerPromo.topics.join(", ")}`);
     finalSystemPrompt = finalSystemPrompt + partnerPromo.block;
+  }
+
+  // ── Google Maps Places context injection ─────────────────────────────────
+  // Triggered when user asks about a place, restaurant, clinic, bank, etc.
+  // Calls Google Places API (new) and injects real-time data (address, phone,
+  // opening hours, rating, nearby places) into the system prompt.
+  if (detectPlacesQuery(lastUserMessage)) {
+    try {
+      const placesCtx = await buildPlacesContext(lastUserMessage);
+      if (placesCtx) {
+        finalSystemPrompt = finalSystemPrompt + placesCtx;
+        console.log(`[Places] ✓ context injected into system prompt`);
+      }
+    } catch (placesErr) {
+      console.warn("[Places] context injection failed:", placesErr.message);
+    }
   }
 
   // ── Cairo transport context injection ────────────────────────────────────
@@ -9736,11 +9754,13 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
       { name: "Exchange Rate API",     trust: 85,  condition: "query kurs/currency" },
       { name: "Dorar.net (Hadith)",    trust: 82,  condition: "intent = fiqh" },
       { name: "Perplexity Web Search", trust: 78,  condition: "PERPLEXITY_API_KEY dikonfigurasi", active: !!process.env.PERPLEXITY_API_KEY },
+      { name: "Google Maps Places",    trust: 95,  condition: "query tentang tempat/lokasi, GOOGLE_MAPS_API_KEY dikonfigurasi", active: !!process.env.GOOGLE_MAPS_API_KEY },
       { name: "Wikipedia",             trust: 60,  condition: "fallback jika Perplexity tidak dikonfigurasi", active: !process.env.PERPLEXITY_API_KEY },
       { name: "DuckDuckGo",            trust: 35,  condition: "fallback jika Perplexity tidak dikonfigurasi", active: !process.env.PERPLEXITY_API_KEY },
       { name: "Model Knowledge",       trust: 20,  condition: "tidak ada sumber eksternal yang berhasil" },
     ],
     perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
+    google_maps_configured: !!process.env.GOOGLE_MAPS_API_KEY,
   });
 });
 
