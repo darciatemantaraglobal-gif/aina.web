@@ -338,7 +338,7 @@ export function buildPerplexityContext(perplexityResult, kbStrength, intent) {
     : "";
 
   console.log(`[Perplexity] injected: trust=${SOURCE_TRUST_SCORES.perplexity} tier=high (KB=${kbStrength}, intent=${intent.primary})`);
-  return `\n\n---\n## Informasi Terkini dari Pencarian Web [kepercayaan: tinggi — real-time web search, belum diverifikasi admin]\n\n${cleanedPlex}${citationsText}\n---`;
+  return `\n\n---\n## Informasi Terkini dari Pencarian Web [real-time — prioritas lebih tinggi dari training data model]\n**PENTING:** Gunakan informasi di bawah ini sebagai sumber utama jawaban. Jika ada konflik antara data ini dan pengetahuan training model, SELALU prioritaskan data di bawah ini.\n\n${cleanedPlex}${citationsText}\n---`;
 }
 
 /**

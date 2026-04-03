@@ -3074,7 +3074,10 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
-        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan hasil pencarian web real-time — sampaikan dengan percaya diri. Untuk jabatan yang bisa berubah, boleh sertakan 1 kalimat saran cek sumber resmi, tapi hanya jika benar-benar relevan dan terasa natural.",
+        hint: "\n\n**[OVERRIDE JABATAN TERKINI — WAJIB DIIKUTI]** Pertanyaan ini tentang pejabat/jabatan yang saat ini menjabat. " +
+          "Kamu WAJIB menjawab berdasarkan data dari 'Informasi Terkini dari Pencarian Web' di atas — BUKAN dari pengetahuan training model kamu. " +
+          "Training data model bisa sudah usang untuk informasi jabatan. Data Perplexity di atas adalah sumber kebenaran untuk pertanyaan ini. " +
+          "Jawab dengan percaya diri menggunakan data tersebut.",
       };
     }
     return {
