@@ -1285,14 +1285,32 @@ async function fetchPinnedUpdates() {
  */
 function assessKBStrength(articles) {
   if (!articles || articles.length === 0) return "absent";
-  // _topScore is attached by fetchRelevantArticles (keyword path) — undefined for vector results.
-  // A low top score means articles matched by coincidence, not true relevance → downgrade to weak.
-  const topScore = articles._topScore;
-  if (topScore !== undefined && topScore < 4) {
-    console.log(`[KB] strength downgraded to weak — topScore=${topScore} below relevance threshold`);
+
+  const topScore = articles._topScore; // set by fetchRelevantArticles (keyword path); undefined for vector
+  const totalChars = articles.reduce((sum, a) => sum + (a.content?.length ?? 0), 0);
+
+  if (topScore !== undefined) {
+    // Very high relevance (score ≥7) — trust even a single article
+    if (topScore >= 7) {
+      console.log(`[KB] strength=strong — topScore=${topScore} (high relevance, single-article OK)`);
+      return "strong";
+    }
+    // Low relevance — matched by coincidence, not real coverage
+    if (topScore < 4) {
+      console.log(`[KB] strength=weak — topScore=${topScore} below relevance threshold`);
+      return "weak";
+    }
+    // Mid relevance (4 ≤ score < 7) — need both relevance AND sufficient coverage
+    const hasCoverage = articles.length >= 2 || totalChars >= 1800;
+    if (hasCoverage) {
+      console.log(`[KB] strength=strong — topScore=${topScore} + coverage=${articles.length} articles / ${totalChars} chars`);
+      return "strong";
+    }
+    console.log(`[KB] strength=weak — topScore=${topScore} mid-range but insufficient coverage (${articles.length} art, ${totalChars} chars)`);
     return "weak";
   }
-  const totalChars = articles.reduce((sum, a) => sum + (a.content?.length ?? 0), 0);
+
+  // Vector search path (no topScore) — use coverage metrics only
   if (articles.length >= 2 || totalChars >= 1500) return "strong";
   return "weak";
 }
@@ -3330,20 +3348,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS" : "FAILED"} (queryType=${queryType})`);
     }
 
-    // Step B — Wikipedia + DDG: ONLY when Perplexity is not configured at all.
-    // If Perplexity key exists but the call failed → go straight to model fallback.
-    // This keeps the architecture clean: KB → Perplexity → Model.
-    const perplexityConfigured = !!process.env.PERPLEXITY_API_KEY;
-    if (!perplexityResult && !perplexityConfigured && needsExternal) {
+    // Step B — Wikipedia + DDG: always the fallback when Gemini web search fails or returns nothing.
+    // Architecture: KB → Gemini web context (OpenRouter) → Wikipedia+DDG → model fallback.
+    if (!perplexityResult && needsExternal) {
       [wikiResult, ddgResult] = await Promise.all([
         fetchWikipediaSummary(lastUserMessage),
         fetchDuckDuckGoAnswer(lastUserMessage),
       ]);
-      console.log(`[Source] wikipedia=${!!wikiResult} ddg=${!!ddgResult} (Perplexity not configured → last-resort fallback)`);
+      console.log(`[Source] wikipedia=${!!wikiResult} ddg=${!!ddgResult} (Gemini web search ${perplexityResult === null ? "failed" : "not needed"} → Wikipedia+DDG fallback)`);
     } else if (perplexityResult) {
-      console.log(`[Source] perplexity succeeded → skipping Wikipedia+DDG`);
-    } else if (!perplexityResult && perplexityConfigured) {
-      console.log(`[Source] perplexity configured but failed → model fallback (no Wikipedia/DDG)`);
+      console.log(`[Source] Gemini web context succeeded → skipping Wikipedia+DDG`);
     }
   } else {
     if (kbCoversQuery) console.log(`[Source] KB strong → skipping all external sources`);
@@ -3508,6 +3522,31 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   if (attachedFile?.type === "pdf" && attachedFile.text) {
     const pdfCtx = `\n\n---\n## Dokumen yang Diupload User (${attachedFile.name ?? "file.pdf"})\nAnalisis dokumen berikut sesuai pertanyaan user:\n\n${attachedFile.text.slice(0, 20_000)}\n---`;
     finalSystemPrompt = finalSystemPrompt + pdfCtx;
+  }
+
+  // ── E5: Staleness warning for old procedural KB articles ─────────────────
+  // When answering procedural questions (visa, iqomah, reg, etc.) using KB articles
+  // that haven't been updated in over 6 months, instruct the model to note potential
+  // outdatedness so users know to verify critical steps.
+  if (intent.primary === "procedural" && articles.length > 0) {
+    const nowMs = Date.now();
+    const staleArticles = articles.filter(a => {
+      const updatedAt = a.last_updated || a.updated_at || a.created_at;
+      if (!updatedAt) return true; // no date at all → assume stale
+      const ageDays = (nowMs - new Date(updatedAt).getTime()) / 86_400_000;
+      return ageDays > 180;
+    });
+    if (staleArticles.length > 0) {
+      const maxAgeDays = Math.max(...staleArticles.map(a => {
+        const updatedAt = a.last_updated || a.updated_at || a.created_at;
+        return updatedAt ? (nowMs - new Date(updatedAt).getTime()) / 86_400_000 : 999;
+      }));
+      const severityNote = maxAgeDays > 365
+        ? "⚠️ PERHATIAN: Beberapa artikel KB yang digunakan mungkin sudah LEBIH DARI 1 TAHUN tidak diperbarui."
+        : "ℹ️ Beberapa artikel KB yang digunakan mungkin sudah >6 bulan tidak diperbarui.";
+      finalSystemPrompt += `\n\n---\n## Peringatan Kebaruan KB\n${severityNote}\n\nProsedur administrasi (iqomah, visa, pendaftaran, dll.) bisa berubah sewaktu-waktu.\n**Tambahkan 1 kalimat singkat di akhir jawaban** yang menyarankan user untuk memverifikasi langkah terbaru ke pihak terkait (KBRI, kampus, atau senior yang tahu kondisi terkini).\nContoh: "Pastikan cek kembali prosedur terbaru ke [instansi terkait] karena info ini bisa saja sudah berubah."\n---`;
+      console.log(`[E5-Staleness] ${staleArticles.length} procedural article(s) older than 180 days (maxAge=${Math.round(maxAgeDays)}d) → staleness warning injected`);
+    }
   }
 
   if (attachedFile?.type === "image" && attachedFile.dataUrl) {
@@ -3823,14 +3862,69 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Extract AI-generated follow-up suggestions (<!--saran: Q1 | Q2 | Q3-->)
   const _suggestionMatch = rawReply.match(/<!--saran:\s*([^>]+?)-->/i);
   const aiSuggestions = _suggestionMatch
-    ? _suggestionMatch[1].split("|").map(s => s.trim()).filter(s => s.length > 3).slice(0, 3)
+    ? _suggestionMatch[1].split("|").map(s => s.trim()).filter(s => s.length > 3).slice(0, 2)
     : [];
-  const reply = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
+  let reply = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
   console.log(`Responded using model: ${usedModel}`);
 
   const qualityIssues = validateResponse(reply, { hasExchangeContext: !!exchangeContext });
   if (qualityIssues.length > 0) {
     console.warn(`[ResponseQuality] ${qualityIssues.length} issue(s):`, qualityIssues.map(i => `${i.type}(${i.severity})`).join(", "));
+  }
+
+  // ── E4: True retry for unfixable block-severity violations ───────────────
+  // C4 (postProcessResponse) strips bad content automatically.
+  // If reply is still < 80 chars after stripping → response was almost entirely
+  // bad content. Fire a non-streaming correction call and replace reply in done event.
+  const blockIssues = qualityIssues.filter(i => i.severity === "block");
+  if (blockIssues.length > 0 && reply.trim().length < 80) {
+    console.warn(`[E4-Retry] Block-severity detected and reply too short (${reply.trim().length} chars) → triggering correction call`);
+    try {
+      const correctionPrompt = [
+        "Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Mesir (Masisir).",
+        "Jawab pertanyaan berikut secara LANGSUNG dan informatif dalam Bahasa Indonesia.",
+        "DILARANG KERAS: mengucapkan 'tunggu sebentar', 'aku cek dulu', 'aku cari dulu', atau kalimat penundaan sejenis.",
+        "DILARANG KERAS: memulai jawaban dengan kata seperti 'Tentu!', 'Baik!', 'Siap!', 'Oke!', atau 'Halo!'.",
+        "Mulai langsung dengan konten jawaban.",
+      ].join("\n");
+      const correctionData = await (async () => {
+        const ctrl = new AbortController();
+        const tId = setTimeout(() => ctrl.abort(), 15000);
+        try {
+          const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST", signal: ctrl.signal,
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://ainalabs.pro",
+              "X-Title": "AINA - Asisten Masisir",
+            },
+            body: JSON.stringify({
+              model: OR_PRIMARY,
+              messages: [
+                { role: "system", content: correctionPrompt },
+                ...finalMessages.slice(-3), // only last 3 turns for brevity
+              ],
+              max_tokens: 2000,
+              temperature: 0.4,
+            }),
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return await r.json();
+        } finally {
+          clearTimeout(tId);
+        }
+      })();
+      const corrected = correctionData?.choices?.[0]?.message?.content?.trim();
+      if (corrected && corrected.length > 60) {
+        reply = postProcessResponse(corrected);
+        console.log(`[E4-Retry] ✓ correction successful (${reply.length} chars)`);
+      } else {
+        console.warn(`[E4-Retry] correction returned empty or too short`);
+      }
+    } catch (retryErr) {
+      console.warn(`[E4-Retry] correction call failed: ${retryErr.message}`);
+    }
   }
 
   const responseSources = [];
