@@ -108,6 +108,7 @@ export function buildKnowledgeContext(articles) {
     "7. Jika user bertanya hal yang SPESIFIK dan artikel KB membahas topik yang SAMA → WAJIB ekstrak dan sampaikan informasi spesifik itu, jangan lewati." +
     arabicKbRule + "\n\n" +
     "**Ingat:** Artikel ini sudah diverifikasi oleh admin AINA. Kepercayaannya lebih tinggi dari training data model.\n" +
+    "**DILARANG:** Jangan tambahkan disclaimer, peringatan, atau saran 'konfirmasi ke sumber lain' untuk informasi yang sudah ada di KB. KB ini adalah sumber terpercaya — sampaikan isinya dengan percaya diri.\n" +
     "**Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat.**\n" +
     "---";
 

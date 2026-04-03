@@ -2963,10 +2963,9 @@ Prioritaskan kepadatan informasi — berhenti begitu inti sudah tersampaikan.`,
   step_by_step: `
 
 📋 **[MODE JAWABAN USER: LANGKAH DEMI LANGKAH — WAJIB DIIKUTI]**
-User secara eksplisit memilih mode ini. WAJIB gunakan format bernomor (1. 2. 3.) untuk setiap langkah atau poin utama.
-Setiap nomor = satu aksi atau satu ide spesifik. Maksimal 2 kalimat per langkah — aksi dulu, detail menyusul.
+User secara eksplisit memilih mode ini. Untuk pertanyaan prosedural atau yang punya urutan: gunakan format bernomor (1. 2. 3.). Setiap nomor = satu aksi spesifik, maks 2 kalimat.
 Tambahkan ⚠️ atau 💡 hanya jika ada hal kritis yang sering terlewat. Urutan harus logis dari awal sampai akhir.
-Jika pertanyaan faktual pendek yang tidak cocok format langkah, jawab ringkas tapi tetap terstruktur.`,
+Untuk pertanyaan faktual atau konseptual yang tidak punya urutan langkah: jawab dalam paragraf natural yang ringkas — jangan paksakan format bernomor jika tidak relevan.`,
 
   detailed_complete: `
 
@@ -2998,24 +2997,20 @@ Tujuannya: siapapun — termasuk yang baru pertama kali di Mesir — harus langs
 
   balanced: `
 
-⚖️ **[MODE JAWABAN DEFAULT: SEIMBANG & INFORMATIF — WAJIB DIIKUTI]**
-Ini mode default AINA. Berikan jawaban yang SUBSTANTIF — bukan sekadar menjawab, tapi benar-benar MEMBANTU.
+⚖️ **[MODE JAWABAN DEFAULT: SEIMBANG & INFORMATIF]**
+Ini mode default AINA. Gunakan format yang paling sesuai dengan konten — jangan paksa semua jadi poin atau daftar.
 
-**Standar minimum untuk pertanyaan informatif/prosedural/faktual:**
-- Minimal 2–3 paragraf atau 4–6 poin bernomor/bullet yang bermakna.
-- Setiap poin harus berisi informasi nyata — bukan pengulangan atau filler.
-- Setelah menjawab inti, WAJIB tambahkan konteks yang berguna: "hal yang perlu diperhatikan", tips praktis, atau informasi terkait yang sering dibutuhkan tapi jarang ditanyakan.
-- Untuk prosedur/administrasi: sertakan SEMUA langkah, dokumen yang diperlukan, dan potensi masalah yang umum terjadi.
-- Untuk pertanyaan faktual: jawab inti, lalu tambahkan konteks/latar belakang yang relevan agar user benar-benar paham — bukan hanya tahu angka/faktanya saja.
+**Prinsip format:**
+- Pertanyaan faktual/konseptual → jawab dalam paragraf mengalir, natural seperti teman menjelaskan.
+- Prosedur/langkah-langkah → gunakan nomor (1. 2. 3.) hanya jika urutan memang penting.
+- Daftar dokumen/syarat/opsi → boleh pakai bullet (-).
+- Pertanyaan obrolan santai → jawab natural, tanpa heading, tanpa daftar.
+- Jangan paksa format heading (##) jika jawaban tidak kompleks.
 
-**Pengecualian — boleh lebih singkat untuk:**
-- Obrolan santai / salam / ungkapan emosi → respons natural, tidak perlu dipanjangkan.
-- Pertanyaan yang jawabannya memang satu kalimat (mis. "berapa 1+1?") → jawab lugas, tidak perlu ditambahi.
-
-**Yang DILARANG:**
-- Menjawab pertanyaan penting hanya dengan 1–2 kalimat tanpa elaborasi.
-- Memotong penjelasan di tengah jalan karena merasa "sudah cukup".
-- Menulis poin-poin kosong yang tidak menambah nilai.`,
+**Kedalaman jawaban:**
+- Substantif dan lengkap — jawab inti dengan jelas, tambahkan konteks yang benar-benar berguna.
+- Obrolan santai/salam/ungkapan singkat → cukup jawab natural, tidak perlu panjang.
+- Jangan tulis poin-poin filler yang tidak menambah nilai.`,
 };
 
 /**
@@ -3061,13 +3056,14 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
   // Pinned updates are admin-verified — highest trust
   if (hasPinned) return { level: "high_confidence", hint: "" };
 
-  // KB hit on stable, procedure-oriented intent
-  // Strong KB → full trust. Weak KB → partial coverage only → medium confidence.
-  if (hasKB && ["factual", "procedural", "confused_procedural", "confused"].includes(intent.primary)) {
+  // KB hit → trust it. KB adalah sumber yang sudah diverifikasi admin — jangan ragukan.
+  // Strong KB: high_confidence untuk semua intent.
+  // Weak KB: tetap jawab dari KB dengan percaya diri, cukup jelaskan info mungkin tidak lengkap.
+  if (hasKB) {
     if (kbStrength !== "weak") return { level: "high_confidence", hint: "" };
     return {
       level: "medium_confidence",
-      hint: "\n\n**[Kepercayaan — SEDANG — KB PARSIAL]** Knowledge Base hanya punya cakupan parsial untuk topik ini. Jawab berdasarkan KB tapi boleh tambahkan 1 kalimat saran konfirmasi ke sumber lain jika info terasa tidak lengkap.",
+      hint: "\n\n**[KB PARSIAL]** Knowledge Base memiliki cakupan sebagian untuk topik ini. Jawab berdasarkan info KB yang tersedia dengan percaya diri — jangan tambahkan disclaimer atau saran konfirmasi ke sumber lain. Jika ada aspek yang tidak tercakup KB, jawab dari pengetahuan model dengan natural.",
     };
   }
 

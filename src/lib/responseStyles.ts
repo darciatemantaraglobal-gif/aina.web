@@ -49,7 +49,7 @@ export const RESPONSE_STYLES: Record<string, ResponseStyleConfig> = {
 
 export type ResponseStyleKey = keyof typeof RESPONSE_STYLES;
 
-export const DEFAULT_RESPONSE_STYLE: ResponseStyleKey = "step_by_step";
+export const DEFAULT_RESPONSE_STYLE: ResponseStyleKey = "balanced";
 
 export const RESPONSE_STYLE_ORDER: ResponseStyleKey[] = [
   "short_direct",
