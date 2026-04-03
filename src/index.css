@@ -122,6 +122,14 @@
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+  /* Chat input bar: fixed padding + safe area — never lets content sit under home indicator */
+  .pb-input-safe {
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  }
+  /* Bottom nav aware: float above the 56px nav + safe area */
+  .bottom-nav-safe {
+    bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
   .safe-left {
     padding-left: env(safe-area-inset-left, 0px);
   }

@@ -54,7 +54,7 @@ const FeedbackButton = () => {
       <button
         onClick={() => setOpen(true)}
         title="Kirim Feedback Beta"
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-muted-foreground shadow-lg transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground hover:shadow-xl sm:px-4"
+        className="bottom-nav-safe fixed right-4 z-40 flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2.5 text-sm font-medium text-muted-foreground shadow-lg transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground hover:shadow-xl md:bottom-6 md:right-6 sm:px-4"
       >
         <MessageSquarePlus className="h-4 w-4 text-primary" />
         <span className="hidden sm:inline">Feedback Beta</span>

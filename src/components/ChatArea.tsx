@@ -889,6 +889,9 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     const userText = (text ?? input).trim();
     if ((!userText && !attachedFile) || isLoading) return;
 
+    // Subtle haptic feedback on send — feels native on mobile
+    if (navigator.vibrate) navigator.vibrate(8);
+
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id;
     if (!userId) return;
@@ -1639,7 +1642,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       )}
 
       {/* Input bar — always at bottom */}
-      <div className="safe-bottom shrink-0 px-4 pb-5 pt-2 md:px-6 md:pb-7">
+      <div className="pb-input-safe shrink-0 px-4 pt-2 md:px-6 md:pb-7">
         {limitReached ? (
           <div
             onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}

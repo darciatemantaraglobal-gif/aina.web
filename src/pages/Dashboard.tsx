@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense, Component, ReactNode, useCallback 
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import PwaSplash from "@/components/PwaSplash";
 import ChatArea from "@/components/ChatArea";
 import FeedbackButton from "@/components/FeedbackButton";
 import WelcomeModal from "@/components/WelcomeModal";
@@ -646,6 +647,7 @@ const Dashboard = () => {
         />
       )}
       <MobileBottomNav activeTab={activeTab} onTabChange={handleTabChange} />
+      <PwaSplash />
     </div>
   );
 };

@@ -54,8 +54,8 @@ export default function MobileBottomNav({ activeTab, onTabChange }: MobileBottom
                   active ? "text-primary" : "text-muted-foreground/60"
                 }`} />
               </div>
-              <span className={`text-[9px] font-medium tracking-wide transition-colors duration-200 ${
-                active ? "text-primary" : "text-muted-foreground/50"
+              <span className={`text-[11px] font-medium tracking-wide transition-colors duration-200 ${
+                active ? "text-primary" : "text-muted-foreground/60"
               }`}>
                 {label}
               </span>
