@@ -12,7 +12,7 @@ const BannedPage = () => {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4">
+    <div className="flex h-full flex-col items-center justify-center gap-6 bg-background px-4">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute left-1/2 top-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500/8 blur-[100px]" />
       </div>

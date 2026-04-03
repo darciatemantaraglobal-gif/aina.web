@@ -15,7 +15,7 @@ const TermsPage = () => {
   useEffect(() => { setVisible(true); }, []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full overflow-y-auto bg-background">
       <Navbar />
       <div className="pt-16">
         <section className="relative px-4 py-20">

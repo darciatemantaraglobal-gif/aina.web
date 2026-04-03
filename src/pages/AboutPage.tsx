@@ -117,7 +117,7 @@ const AboutPage = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full overflow-y-auto bg-background">
       <Navbar />
 
       {/* ══════════ HERO ══════════════════════════════════════ */}
