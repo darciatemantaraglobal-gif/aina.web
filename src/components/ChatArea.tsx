@@ -246,15 +246,39 @@ const MD_COMPONENTS = {
   },
   h1: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h1 dir="auto" className="mb-3 mt-6 first:mt-0 text-xl font-bold text-foreground tracking-tight" style={ar ? { lineHeight: "1.7" } : undefined}>{children}</h1>;
+    return (
+      <h1
+        dir="auto"
+        className="mb-3 mt-6 first:mt-0 text-2xl font-bold text-foreground tracking-tight border-b border-border pb-1.5"
+        style={ar ? { lineHeight: "1.8" } : undefined}
+      >
+        {children}
+      </h1>
+    );
   },
   h2: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h2 dir="auto" className="mb-2 mt-5 first:mt-0 text-base font-bold text-foreground tracking-tight" style={ar ? { lineHeight: "1.7" } : undefined}>{children}</h2>;
+    return (
+      <h2
+        dir="auto"
+        className="mb-2 mt-5 first:mt-0 text-xl font-bold text-foreground tracking-tight"
+        style={ar ? { lineHeight: "1.8" } : undefined}
+      >
+        {children}
+      </h2>
+    );
   },
   h3: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <h3 dir="auto" className="mb-2 mt-4 first:mt-0 text-sm font-semibold text-foreground" style={ar ? { lineHeight: "1.7" } : undefined}>{children}</h3>;
+    return (
+      <h3
+        dir="auto"
+        className="mb-2 mt-4 first:mt-0 text-base font-semibold text-foreground/90"
+        style={ar ? { lineHeight: "1.8" } : undefined}
+      >
+        {children}
+      </h3>
+    );
   },
   h4: ({ children }: any) => {
     return (
