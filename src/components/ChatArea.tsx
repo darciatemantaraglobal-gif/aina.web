@@ -179,6 +179,10 @@ function extractMdText(node: any): string {
 function containsArabic(node: any): boolean {
   return /[\u0600-\u06FF]/.test(extractMdText(node));
 }
+function isArabicText(text: string): boolean {
+  const arabicChars = (text.match(/[\u0600-\u06FF]/g) ?? []).length;
+  return arabicChars / Math.max(text.replace(/\s/g, "").length, 1) > 0.35;
+}
 
 const MD_COMPONENTS = {
   br: () => <br />,
@@ -232,9 +236,9 @@ const MD_COMPONENTS = {
 
     if (isArabic) {
       return (
-        <li className="flex gap-2.5 flex-row-reverse items-start" style={{ lineHeight: "1.9" }}>
+        <li dir="rtl" className="flex gap-2.5 items-start" style={{ lineHeight: "1.9" }}>
           <span className="shrink-0 mt-[0.45em] h-[5px] w-[5px] rounded-full bg-foreground/50" aria-hidden />
-          <span dir="rtl" className="flex-1 min-w-0 break-words">{children}</span>
+          <span className="flex-1 min-w-0 break-words">{children}</span>
         </li>
       );
     }
@@ -301,7 +305,7 @@ const MD_COMPONENTS = {
     );
   },
   pre: ({ children }: any) => (
-    <div className="mb-4 overflow-x-auto rounded-xl bg-muted border border-border">
+    <div dir="ltr" className="mb-4 overflow-x-auto rounded-xl bg-muted border border-border">
       <pre className="p-4 font-mono text-sm text-foreground leading-relaxed">{children}</pre>
     </div>
   ),
@@ -1255,6 +1259,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
             {messages.map((msg, msgIdx) => {
               const isLastAI = msg.role === "assistant" && msgIdx === messages.length - 1 && !isLoading && !streamingMsg;
+              const isArabicMsg = isArabicText(msg.content ?? "");
               return (
               <div
                 key={msg.id}
@@ -1280,14 +1285,17 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </div>
                     )}
                     {msg.content && (
-                      <div className="rounded-3xl bg-secondary px-5 py-3.5 text-base text-foreground whitespace-pre-wrap break-words">
+                      <div
+                        className="rounded-3xl bg-secondary px-5 py-3.5 text-base text-foreground whitespace-pre-wrap break-words"
+                        dir={isArabicMsg ? "rtl" : "ltr"}
+                      >
                         {msg.content}
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1 min-h-0">
-                    <div className="py-1" dir="auto">
+                    <div className="py-1" dir={isArabicMsg ? "rtl" : "ltr"}>
                       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                         {cleanMarkdown(msg.content)}
                       </ReactMarkdown>
@@ -1543,7 +1551,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             {streamingMsg && (
               <div className="flex gap-3 min-w-0 justify-start">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
-                <div className="min-w-0 flex-1 py-1">
+                <div className="min-w-0 flex-1 py-1" dir={isArabicText(streamingMsg.displayed) ? "rtl" : "ltr"}>
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                     {streamingMsg.displayed}
                   </ReactMarkdown>
