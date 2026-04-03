@@ -1221,6 +1221,9 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   }
 
   const top = relevant.slice(0, 5).map(({ _relevanceScore, ...a }) => a);
+  // Attach top keyword-match score to the array for assessKBStrength to consume.
+  // This lets strength assessment factor in actual relevance, not just article count/length.
+  top._topScore = scored[0]._relevanceScore;
 
   console.log(`[KB] query="${userQuestion.slice(0, 60)}" → ${matched.length} candidates → ${relevant.length} above threshold → top ${top.length} returned (topScore=${scored[0]._relevanceScore})`);
   if (top.length > 0) {
@@ -1265,6 +1268,13 @@ async function fetchPinnedUpdates() {
  */
 function assessKBStrength(articles) {
   if (!articles || articles.length === 0) return "absent";
+  // _topScore is attached by fetchRelevantArticles (keyword path) — undefined for vector results.
+  // A low top score means articles matched by coincidence, not true relevance → downgrade to weak.
+  const topScore = articles._topScore;
+  if (topScore !== undefined && topScore < 4) {
+    console.log(`[KB] strength downgraded to weak — topScore=${topScore} below relevance threshold`);
+    return "weak";
+  }
   const totalChars = articles.reduce((sum, a) => sum + (a.content?.length ?? 0), 0);
   if (articles.length >= 2 || totalChars >= 1500) return "strong";
   return "weak";
@@ -1588,10 +1598,11 @@ async function fetchDuckDuckGoAnswer(query) {
     );
     if (!res.ok) return null;
     const data = await res.json();
-    const text = data.AbstractText || data.Answer || data.Definition || "";
+    const text = data.AbstractText || data.Answer || data.Definition ||
+      (data.RelatedTopics?.[0]?.Text ?? "") || "";
     if (!text || text.length < 20) return null;
-    const source = data.AbstractSource || "DuckDuckGo";
-    const url = data.AbstractURL || data.DefinitionURL || "";
+    const source = data.AbstractSource || data.RelatedTopics?.[0]?.FirstURL?.split("/")?.[2] || "DuckDuckGo";
+    const url = data.AbstractURL || data.DefinitionURL || data.RelatedTopics?.[0]?.FirstURL || "";
     return { text: text.trim(), source, url };
   } catch {
     return null;
@@ -3520,6 +3531,22 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     return "standard";
   }
 
+  // Intent-based temperature — model creativity vs. accuracy tradeoff.
+  // Casual chat benefits from higher temperature (more expressive).
+  // Fiqh/procedural require precision → lower temperature to reduce hallucination.
+  const intentTemperature = ({
+    casual:              0.70,
+    brainstorming:       0.65,
+    recommendation:      0.55,
+    factual:             0.50,
+    confused:            0.45,
+    arabic_writing:      0.40,
+    procedural:          0.35,
+    confused_procedural: 0.35,
+    fiqh:                0.30,
+  })[intent.primary] ?? 0.50;
+  console.log(`[Temperature] ${intentTemperature} for intent=${intent.primary}`);
+
   // allowTruncated=false: reject if finish_reason==="length"
   // allowTruncated=true: accept truncated as last resort
   // timeoutMs: paid models get 20s (they're fast), free fallback gets 45s
@@ -3540,7 +3567,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
           model,
           messages: [{ role: "system", content: finalSystemPrompt }, ...finalMessages],
           max_tokens: 8000,
-          temperature: 0.5,
+          temperature: intentTemperature,
         }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -3624,7 +3651,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
           model,
           messages: [{ role: "system", content: finalSystemPrompt }, ...finalMessages],
           max_tokens: dynamicMaxTokens,
-          temperature: 0.5,
+          temperature: intentTemperature,
           stream: true,
         }),
       });
