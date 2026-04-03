@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
+import MobileBottomNav from "@/components/MobileBottomNav";
 import ChatArea from "@/components/ChatArea";
 import FeedbackButton from "@/components/FeedbackButton";
 import WelcomeModal from "@/components/WelcomeModal";
@@ -462,7 +463,7 @@ const Dashboard = () => {
         />
       </div>
 
-      <main className="flex-1 overflow-hidden min-w-0 flex flex-col">
+      <main className="flex-1 overflow-hidden min-w-0 flex flex-col pb-14 md:pb-0">
         <BreakingUpdatesBanner />
 
         {/* Chat — always mounted, hidden when not active */}
@@ -584,6 +585,7 @@ const Dashboard = () => {
           onSkip={handleTourComplete}
         />
       )}
+      <MobileBottomNav activeTab={activeTab} onTabChange={handleTabChange} />
     </div>
   );
 };

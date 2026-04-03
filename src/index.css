@@ -78,10 +78,16 @@
 @layer base {
   * {
     @apply border-border;
+    -webkit-tap-highlight-color: transparent;
   }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: "Sk-Modernist", Inter, sans-serif;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  button, a, [role="button"] {
+    touch-action: manipulation;
   }
 
   /* Prevent iOS Safari auto-zoom on input focus.
@@ -116,6 +122,19 @@
   /* PWA safe-area: pads content above the home indicator */
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-left {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .safe-right {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Standalone PWA mode — hide elements that only make sense in browser */
+  @media (display-mode: standalone) {
+    .hide-in-pwa {
+      display: none !important;
+    }
   }
 
   .text-gradient-purple {

@@ -2,11 +2,15 @@
   "name": "AINA — Asisten Pintar Masisir",
   "short_name": "AINA",
   "description": "Asisten AI khusus untuk mahasiswa Indonesia di Mesir",
-  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#09090b",
   "theme_color": "#7c3aed",
   "orientation": "portrait-primary",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/favicon-16.png",
