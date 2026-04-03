@@ -183,10 +183,14 @@ export function buildSourceBadges(sourceLog) {
 
 /**
  * Apply lightweight post-processing to a model response.
- * Does NOT change meaning — only removes clearly prohibited patterns.
+ * Removes prohibited patterns and auto-corrects known BAD_PATTERN violations.
  *
- * Current transformations:
- *   - Strip trailing filler phrases ("Semoga membantu!", "Jangan ragu bertanya!", etc.)
+ * Transformations applied (in order):
+ *   1. Strip sycophantic openers ("Tentu!", "Baik!", "Siap!", etc.)
+ *   2. Remove sentences containing waiting_language ("tunggu sebentar", "aku cek dulu", etc.)
+ *   3. Strip trailing filler phrases ("Semoga membantu!", etc.)
+ *
+ * This is a post-generation correction layer — a zero-cost "retry" for recoverable issues.
  *
  * @param {string} text - Raw model response
  * @returns {string} Cleaned response text
@@ -196,7 +200,35 @@ export function postProcessResponse(text) {
 
   let cleaned = text;
 
-  // Remove trailing filler closings
+  // 1. Strip sycophantic openers at the very start (severity: warn)
+  cleaned = cleaned.replace(
+    /^(tentu!|baik!|siap!|dengan senang hati!|tentu saja!|pastinya!|oke!|ok!|sure!)\s*/i,
+    ""
+  );
+
+  // 2. Remove sentences that contain waiting_language block patterns.
+  // These indicate the model is hallucinating a "searching" state — remove the whole sentence.
+  const WAITING_PHRASES = [
+    /tunggu sebentar/i,
+    /aku cek dulu/i,
+    /aku cari dulu/i,
+    /cek web dulu/i,
+    /sedang mencari/i,
+    /harap tunggu/i,
+    /biar aku cek/i,
+  ];
+  for (const pattern of WAITING_PHRASES) {
+    if (pattern.test(cleaned)) {
+      // Remove the entire sentence containing the bad phrase
+      cleaned = cleaned
+        .split(/(?<=[.!?])\s+/)
+        .filter(sentence => !pattern.test(sentence))
+        .join(" ");
+      console.warn(`[PostProcess] stripped waiting_language sentence matching: ${pattern}`);
+    }
+  }
+
+  // 3. Remove trailing filler closings (severity: warn)
   cleaned = cleaned.replace(
     /\n*(semoga membantu\.?|semoga bisa membantu\.?|jangan ragu (untuk |)bertanya\.?|feel free to ask\.?|hope this helps\.?)\s*[!.]*\s*$/gi,
     ""

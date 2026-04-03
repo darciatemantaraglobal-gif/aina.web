@@ -1036,7 +1036,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   ]);
 
   const selectCols = [
-    "title, content, category, hidden",
+    "title, content, category, hidden, last_updated",
     hasTypeCol    ? ", article_type"     : "",
     hasKwCol      ? ", keywords"         : "",
     hasMapsUrlCol ? ", maps_url"         : "",
@@ -1201,6 +1201,23 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 
     // Bonus: title starts with or exactly matches a keyword → exact topic match
     if (keywords.some(kw => titleL.startsWith(kw) || titleL === kw)) score += 2;
+
+    // C2 — Time-decay: penalise stale articles.
+    // Fresh content (≤30 days) gets full score.
+    // Older content is gradually penalised — most decay happens in 30→180 day window.
+    // null last_updated (legacy articles) → treated as 180 days old (mild penalty).
+    const ageMs = article.last_updated
+      ? Date.now() - new Date(article.last_updated).getTime()
+      : 180 * 86400 * 1000;
+    const ageDays = ageMs / 86400000;
+    const decayFactor =
+      ageDays <= 30   ? 1.00 :
+      ageDays <= 90   ? 0.95 :
+      ageDays <= 180  ? 0.90 :
+      ageDays <= 365  ? 0.80 :
+      ageDays <= 730  ? 0.70 :
+                        0.60;  // 2+ years old: heavy penalty
+    score *= decayFactor;
 
     return { ...article, _relevanceScore: score };
   });
@@ -3423,6 +3440,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const systemPrompt = buildSystemPrompt({
     todayStr,
     intentHint,
+    intentPrimary: intent.primary,
     confidence,
     answerModeHint,
     pinnedContext,

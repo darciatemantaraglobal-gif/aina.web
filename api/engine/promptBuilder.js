@@ -28,8 +28,11 @@ export function buildKnowledgeContext(articles) {
   if (!articles || articles.length === 0) return "";
 
   const articlesText = articles.map((a, i) => {
-    // Detect muqorror/kitab articles by presence of substantial Arabic text
-    const hasArabicText = /[\u0600-\u06FF]{15,}/.test(a.content);
+    // Detect muqorror/kitab articles by Arabic character density.
+    // Require ≥80 total Arabic chars AND ≥12% of content to avoid false-positives
+    // from articles that just quote a short Hadith/Quranic verse inline.
+    const arabicCharCount = (a.content.match(/[\u0600-\u06FF]/g) || []).length;
+    const hasArabicText = arabicCharCount >= 80 && (arabicCharCount / a.content.length) >= 0.12;
 
     const typeHint = hasArabicText
       ? " [FORMAT: Muqorror/Kitab Arab — ATURAN WAJIB: (1) Kutip paragraf Arab yang relevan persis dari artikel sebagai blockquote (awali dengan '>'), (2) Tulis terjemahan/maknanya dalam Bahasa Indonesia di bawah kutipan, (3) Jelaskan maksud dan poin-poin pentingnya. DILARANG menjelaskan tanpa menampilkan teks Arabnya terlebih dahulu.]"
@@ -55,20 +58,39 @@ export function buildKnowledgeContext(articles) {
     return `### Artikel ${i + 1}: ${displayTitle}${typeHint}${summaryLine}\n${cleanedContent}${mapsLine}${notesLine}`;
   }).join("\n\n");
 
-  // Detect potentially conflicting articles (2+ from same category)
-  const categoryCounts = {};
-  for (const a of articles) {
-    const cat = (a.category || "Umum").toLowerCase();
-    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+  // Detect potentially conflicting articles using semantic overlap:
+  // Two articles conflict if they (a) share the same category AND (b) share 3+ content keywords
+  // — indicating they cover the SAME subtopic from different angles (not just same broad category).
+  // Articles in the same category but covering distinct subtopics are treated as complementary.
+  function extractContentKeywords(text) {
+    const stopWords = new Set(["yang","dengan","untuk","dari","pada","atau","dan","ini","itu","dalam","akan","bisa","jika","saat","oleh","setelah","sebelum","juga","sudah","masih","harus","perlu","ada","tidak","bisa"]);
+    return new Set(
+      text.toLowerCase().split(/\W+/).filter(w => w.length > 4 && !stopWords.has(w)).slice(0, 80)
+    );
   }
-  const hasConflict = Object.values(categoryCounts).some(c => c >= 2);
+  let hasConflict = false;
+  // Check each pair of articles from the same category for keyword overlap
+  for (let i = 0; i < articles.length && !hasConflict; i++) {
+    for (let j = i + 1; j < articles.length && !hasConflict; j++) {
+      const catA = (articles[i].category || "Umum").toLowerCase();
+      const catB = (articles[j].category || "Umum").toLowerCase();
+      if (catA !== catB) continue; // Only flag same-category pairs
+      const kwA = extractContentKeywords(articles[i].content || "");
+      const kwB = extractContentKeywords(articles[j].content || "");
+      const overlap = [...kwA].filter(k => kwB.has(k)).length;
+      if (overlap >= 3) hasConflict = true; // 3+ shared keywords → same subtopic → potential conflict
+    }
+  }
   const conflictInstruction = hasConflict
-    ? "\n\n⚠️ INSTRUKSI KONFLIK: Terdapat beberapa artikel dari kategori yang sama. Jika informasi antar artikel SALING MELENGKAPI, gabungkan menjadi jawaban terpadu. Namun jika informasinya BERBEDA atau BERTENTANGAN untuk pertanyaan yang sama, JANGAN pilih salah satu — sajikan kedua opsi secara jelas dengan label:\n**Opsi 1 (berdasarkan [judul artikel pertama]):** ...\n**Opsi 2 (berdasarkan [judul artikel kedua]):** ...\nLalu berikan catatan singkat agar user dapat mempertimbangkan mana yang sesuai kondisinya."
+    ? "\n\n⚠️ INSTRUKSI KONFLIK: Terdapat beberapa artikel yang membahas subtopik yang sama. Jika informasi antar artikel SALING MELENGKAPI, gabungkan menjadi jawaban terpadu. Namun jika informasinya BERBEDA atau BERTENTANGAN untuk pertanyaan yang sama, JANGAN pilih salah satu — sajikan kedua opsi secara jelas dengan label:\n**Opsi 1 (berdasarkan [judul artikel pertama]):** ...\n**Opsi 2 (berdasarkan [judul artikel kedua]):** ...\nLalu berikan catatan singkat agar user dapat mempertimbangkan mana yang sesuai kondisinya."
     : "";
 
   // KB hard-enforcement instruction — must not be softened or hedged.
   // The phrase "jika topiknya relevan" was an escape hatch removed intentionally.
-  const hasAnyArabicArticle = articles.some(a => /[\u0600-\u06FF]{15,}/.test(a.content));
+  const hasAnyArabicArticle = articles.some(a => {
+    const n = (a.content.match(/[\u0600-\u06FF]/g) || []).length;
+    return n >= 80 && (n / a.content.length) >= 0.12;
+  });
   const arabicKbRule = hasAnyArabicArticle
     ? "\n8. 📖 ATURAN MUQORROR/KITAB: Artikel di bawah mengandung teks Arab dari kitab. Saat menjelaskan, WAJIB kutip dulu potongan teks Arab yang relevan sebagai blockquote (baris dimulai dengan '>'), diikuti terjemahan, lalu penjelasan. Ini seperti seorang ustaz yang menjelaskan dengan berpedoman pada kitabnya — teks Arabnya HARUS terlihat, bukan hanya penjelasannya saja."
     : "";
@@ -368,9 +390,35 @@ export function buildDorarContext(dorarResult) {
  * @param {string} params.ddgContext
  * @returns {string}
  */
+// Build schema hint injected at the end of the system prompt as a concrete format reminder.
+// For procedural/fiqh intents: explicit structure guide. For general: concise reminder.
+function buildSchemaHint(intentPrimary) {
+  if (intentPrimary === "procedural" || intentPrimary === "confused_procedural") {
+    return `\n\n**Struktur jawaban WAJIB — panduan langkah-langkah:**\n` +
+      `1. **Ringkasan singkat** — 1 kalimat tentang proses ini.\n` +
+      `2. **Langkah bernomor** (1. 2. 3.) — masing-masing SATU aksi, maks 2 kalimat. Aksi dulu, detail kemudian. JANGAN bundle dua aksi dalam satu langkah.\n` +
+      `3. ⚠️ **Catatan penting** (opsional) — peringatan kritis atau kesalahan umum yang sering terjadi.\n` +
+      `4. 💡 **Tips praktis** (opsional) — tip hemat waktu atau jalan pintas. Lewati jika tidak ada.\n` +
+      `Jangan tambahkan section "Sumber:" — frontend sudah menanganinya.`;
+  }
+  if (intentPrimary === "fiqh") {
+    return `\n\n**Struktur jawaban — pertanyaan fiqh/agama:**\n` +
+      `1. Sebutkan hukumnya terlebih dahulu (halal/haram/makruh/mubah/sunnah/wajib) dalam 1 kalimat tegas.\n` +
+      `2. Cantumkan dalil: kutip teks Arab (blockquote, diawali '>') + terjemahan langsung di bawahnya.\n` +
+      `3. Penjelasan singkat konteks/syarat yang relevan.\n` +
+      `4. Contoh praktis jika membantu (opsional).\n` +
+      `Jika ada perbedaan pendapat ulama, sebutkan secara singkat dan tunjukkan mana yang lebih rajih (kuat).`;
+  }
+  if (intentPrimary === "factual" || intentPrimary === "confused") {
+    return `\n\n**Struktur jawaban — informasi faktual:** Jawab langsung tanpa pembuka. Cantumkan ⚠️ catatan hanya jika benar-benar kritis. Jangan tambahkan "Sumber:" — sudah ditampilkan otomatis.`;
+  }
+  return ""; // casual, arabic_writing, brainstorming, recommendation: no rigid structure needed
+}
+
 export function buildSystemPrompt({
   todayStr,
   intentHint,
+  intentPrimary = "factual",
   confidence,
   answerModeHint,
   pinnedContext,
@@ -523,5 +571,5 @@ ${intentHint}${confidence.hint}
 **Sumber:**
 - JANGAN sebutkan atau mencantumkan sumber dalam teks jawaban — sumber sudah ditampilkan otomatis sebagai badge oleh sistem di bawah setiap pesan. Tidak perlu menulis baris "Sumber: ..." di akhir jawaban, dan tidak perlu menyebut nama sumber secara eksplisit di dalam teks (misalnya "Menurut Wikipedia...", "Berdasarkan Frankfurter...", dll).
 - **PENGECUALIAN — dalil/hadits:** Jika menyertakan hadits atau ayat Al-Qur'an sebagai dalil, WAJIB tampilkan teks Arabnya langsung di jawaban (sebagai blockquote atau paragraf tersendiri), diikuti terjemahan Indonesia di bawahnya. Ini BUKAN atribusi sumber — ini adalah konten yang memang harus ditampilkan agar user bisa membaca teks aslinya.
-- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}`;
+- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}`;
 }
