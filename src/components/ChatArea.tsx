@@ -1595,7 +1595,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       <div className="safe-bottom shrink-0 px-4 pb-5 pt-2 md:px-6 md:pb-7">
         {limitReached ? (
           <div
-            onClick={() => setLimitReached(true)}
+            onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
             className="mx-auto flex max-w-3xl cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400 transition-colors hover:border-amber-500/40"
           >
             <Zap className="h-4 w-4 shrink-0" />

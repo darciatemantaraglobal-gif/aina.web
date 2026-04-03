@@ -33,30 +33,43 @@ const AuthCallback = () => {
   };
 
   useEffect(() => {
+    let navigated = false;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (navigated) return;
       if (event === "SIGNED_IN" && session) {
+        navigated = true;
+        clearTimeout(timeout);
         await syncGoogleAvatar(session);
         navigate("/dashboard", { replace: true });
       } else if (event === "PASSWORD_RECOVERY") {
+        navigated = true;
+        clearTimeout(timeout);
         navigate("/reset-password", { replace: true });
       }
     });
 
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (navigated) return;
       if (error) {
         setStatus("error");
         setErrorMsg(error.message);
+        clearTimeout(timeout);
         return;
       }
       if (session) {
+        navigated = true;
+        clearTimeout(timeout);
         await syncGoogleAvatar(session);
         navigate("/dashboard", { replace: true });
       }
     });
 
     const timeout = setTimeout(() => {
-      setStatus("error");
-      setErrorMsg("Verifikasi membutuhkan waktu terlalu lama. Coba login kembali.");
+      if (!navigated) {
+        setStatus("error");
+        setErrorMsg("Verifikasi membutuhkan waktu terlalu lama. Coba login kembali.");
+      }
     }, 8000);
 
     return () => {

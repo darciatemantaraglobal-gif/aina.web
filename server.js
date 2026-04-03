@@ -1230,7 +1230,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   return top;
 }
 
-const DAILY_FREE_LIMIT = 3;
+const DAILY_FREE_LIMIT = 5;
 
 /* ── Fetch active pinned/breaking updates ────────────── */
 async function fetchPinnedUpdates() {
@@ -10194,6 +10194,7 @@ async function runColumnMigrations() {
 
   const migrations = [
     "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS hidden_from_leaderboard BOOLEAN NOT NULL DEFAULT FALSE;",
+    "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN NOT NULL DEFAULT FALSE;",
     "ALTER TABLE public.threads ADD COLUMN IF NOT EXISTS image_url TEXT;",
     "ALTER TABLE public.thread_replies ADD COLUMN IF NOT EXISTS image_url TEXT;",
     "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;",

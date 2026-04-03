@@ -26,6 +26,9 @@ const Login = () => {
   useEffect(() => {
     const pending = (location.state as any)?.pendingMessage;
     if (pending) sessionStorage.setItem("pendingMessage", pending);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) navigate("/dashboard", { replace: true });
+    });
   }, []);
 
   const [view, setView] = useState<View>("main");
