@@ -3074,7 +3074,7 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
-        hint: "\n\n**[Kepercayaan — SEDANG/GEMINI]** Jawaban ini berdasarkan pengetahuan Gemini AI. Jabatan dan posisi bisa berubah — tambahkan 1 kalimat saran cek sumber resmi di akhir jika terasa natural. Jangan terlalu banyak disclaimer.",
+        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan hasil pencarian web real-time — sampaikan dengan percaya diri. Untuk jabatan yang bisa berubah, boleh sertakan 1 kalimat saran cek sumber resmi, tapi hanya jika benar-benar relevan dan terasa natural.",
       };
     }
     return {
@@ -3096,12 +3096,12 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
-        hint: "\n\n**[Kepercayaan — SEDANG/GEMINI]** Jawaban ini berdasarkan pengetahuan Gemini AI. Info bisa berubah — tambahkan 1 kalimat saran cek ulang di akhir jika terasa natural.",
+        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan hasil pencarian web real-time. Sampaikan dengan percaya diri — tidak perlu tambahkan peringatan atau disclaimer.",
       };
     }
     return {
       level: "needs_verification",
-      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL]** Pencarian web tidak tersedia untuk pertanyaan ini. WAJIB mulai jawaban dengan frasa seperti 'Berdasarkan informasi terakhir yang aku tahu...' atau 'Sejauh yang aku tahu hingga batas pengetahuanku...' — jangan jawab dengan percaya diri penuh karena info ini bisa sudah berubah. Sertakan saran cek sumber terbaru di akhir jawaban.",
+      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL]** Tidak ada data web terbaru untuk pertanyaan ini — kamu menjawab dari pengetahuan umum model. Jawab dengan natural dan percaya diri, tapi jika ada detail yang genuinely bisa berubah (harga, jadwal, kontak), boleh sebut 1 kalimat singkat saran verifikasi di akhir — jangan dipaksakan jika tidak relevan.",
     };
   }
 
@@ -3123,19 +3123,16 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     if (isProceduralOrAdmin) {
       return {
         level: "needs_verification",
-        hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL — PROSEDURAL]** " +
-          "Kamu sedang menjawab pertanyaan prosedural/admin TANPA data KB atau sumber eksternal yang terverifikasi. " +
-          "WAJIB sisipkan kalimat peringatan ini di akhir jawaban (kata-kata bisa disesuaikan agar natural): " +
-          "'⚠️ Info ini dari pengetahuan umum saya dan belum diverifikasi oleh tim AINA. Sebelum mengambil langkah, sebaiknya konfirmasi dulu ke senior Masisir, PPMI, atau KBRI setempat ya.' " +
-          "Jangan hanya berikan langkah-langkah seolah pasti benar tanpa disclaimer ini.",
+        hint: "\n\n**[Kepercayaan — FALLBACK MODEL — PROSEDURAL]** " +
+          "Kamu menjawab pertanyaan prosedural ini dari pengetahuan umum model — tidak ada data KB atau sumber eksternal. " +
+          "Jawab dengan natural. Di akhir, sisipkan 1 kalimat singkat yang menyarankan user mengonfirmasi ke senior Masisir, PPMI, atau KBRI — tapi gunakan kata-kata yang ringan dan tidak menakut-nakuti.",
       };
     }
     return {
       level: "needs_verification",
-      hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL]** " +
-        "Tidak ada KB atau sumber eksternal untuk pertanyaan ini — kamu menjawab dari pengetahuan umum model. " +
-        "WAJIB mulai jawaban dengan frasa seperti 'Sejauh yang aku tahu...' atau 'Berdasarkan pengetahuan umumku...' " +
-        "dan sisipkan 1 kalimat saran cek sumber terbaru di akhir. Jangan terdengar terlalu percaya diri.",
+      hint: "\n\n**[Kepercayaan — FALLBACK MODEL]** " +
+        "Kamu menjawab dari pengetahuan umum model tanpa KB atau sumber eksternal. " +
+        "Jawab dengan percaya diri dan natural — tidak perlu prefix disclaimer. Hanya tambahkan saran verifikasi jika topiknya memang sangat time-sensitive.",
     };
   }
 
@@ -3679,28 +3676,24 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     finalSystemPrompt = finalSystemPrompt + pdfCtx;
   }
 
-  // ── E5: Staleness warning for old procedural KB articles ─────────────────
-  // When answering procedural questions (visa, iqomah, reg, etc.) using KB articles
-  // that haven't been updated in over 6 months, instruct the model to note potential
-  // outdatedness so users know to verify critical steps.
+  // ── E5: Staleness check for old procedural KB articles ─────────────────
+  // Only inject a warning when article is VERY old (>365 days) — avoid spamming users
+  // with "mungkin sudah berubah" on every procedural answer.
   if (intent.primary === "procedural" && articles.length > 0) {
     const nowMs = Date.now();
-    const staleArticles = articles.filter(a => {
+    const veryStaleArticles = articles.filter(a => {
       const updatedAt = a.last_updated || a.updated_at || a.created_at;
-      if (!updatedAt) return true; // no date at all → assume stale
+      if (!updatedAt) return false; // no date → trust KB, don't penalise
       const ageDays = (nowMs - new Date(updatedAt).getTime()) / 86_400_000;
-      return ageDays > 180;
+      return ageDays > 365;
     });
-    if (staleArticles.length > 0) {
-      const maxAgeDays = Math.max(...staleArticles.map(a => {
+    if (veryStaleArticles.length > 0) {
+      const maxAgeDays = Math.max(...veryStaleArticles.map(a => {
         const updatedAt = a.last_updated || a.updated_at || a.created_at;
         return updatedAt ? (nowMs - new Date(updatedAt).getTime()) / 86_400_000 : 999;
       }));
-      const severityNote = maxAgeDays > 365
-        ? "⚠️ PERHATIAN: Beberapa artikel KB yang digunakan mungkin sudah LEBIH DARI 1 TAHUN tidak diperbarui."
-        : "ℹ️ Beberapa artikel KB yang digunakan mungkin sudah >6 bulan tidak diperbarui.";
-      finalSystemPrompt += `\n\n---\n## Peringatan Kebaruan KB\n${severityNote}\n\nProsedur administrasi (iqomah, visa, pendaftaran, dll.) bisa berubah sewaktu-waktu.\n**Tambahkan 1 kalimat singkat di akhir jawaban** yang menyarankan user untuk memverifikasi langkah terbaru ke pihak terkait (KBRI, kampus, atau senior yang tahu kondisi terkini).\nContoh: "Pastikan cek kembali prosedur terbaru ke [instansi terkait] karena info ini bisa saja sudah berubah."\n---`;
-      console.log(`[E5-Staleness] ${staleArticles.length} procedural article(s) older than 180 days (maxAge=${Math.round(maxAgeDays)}d) → staleness warning injected`);
+      finalSystemPrompt += `\n\n---\n## Info Kebaruan KB\n⚠️ Artikel KB ini sudah lebih dari 1 tahun tidak diperbarui (${Math.round(maxAgeDays)} hari).\nJika ada detail spesifik yang sifatnya sangat mudah berubah (biaya, nomor kontak, jadwal), boleh sisipkan 1 kalimat singkat yang menyarankan user untuk verifikasi — tapi hanya jika memang relevan, jangan dipaksakan.\n---`;
+      console.log(`[E5-Staleness] ${veryStaleArticles.length} article(s) older than 365 days (maxAge=${Math.round(maxAgeDays)}d) → soft note injected`);
     }
   }
 
