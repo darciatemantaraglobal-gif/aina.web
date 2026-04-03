@@ -1947,15 +1947,18 @@ async function fetchPerplexityContext(query) {
       ? `Kamu adalah asisten yang paham fiqh Islam. Berikan penjelasan hukum Islam yang singkat dan akurat dalam 3–5 kalimat. Sebutkan dasar hukumnya jika memungkinkan. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`
       : `Kamu adalah asisten untuk mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual terbaru dan akurat dalam 3–5 kalimat atau daftar singkat. Prioritaskan informasi paling relevan dan terkini. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`;
     try {
+      // Use current Perplexity model names (llama-3.1-sonar-* was deprecated → now "sonar" / "sonar-pro")
+      const perplexityModel = "sonar";
+      console.log(`[WebSearch/Perplexity] → calling model=${perplexityModel} query="${query.slice(0, 60)}..."`);
       const res = await fetch("https://api.perplexity.ai/chat/completions", {
         method: "POST",
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(12000),
         headers: {
           "Authorization": `Bearer ${perplexityKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama-3.1-sonar-small-128k-online",
+          model: perplexityModel,
           messages: [
             { role: "system", content: systemMsg },
             { role: "user",   content: query.slice(0, 500) },
@@ -1968,7 +1971,7 @@ async function fetchPerplexityContext(query) {
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        console.warn(`[WebSearch/Perplexity] API error ${res.status} — ${errText.slice(0, 200)}`);
+        console.warn(`[WebSearch/Perplexity] API error ${res.status} — ${errText.slice(0, 300)}`);
         // Fall through to Gemini fallback
       } else {
         const data = await res.json();
@@ -1976,12 +1979,14 @@ async function fetchPerplexityContext(query) {
         if (rawText && rawText.length >= 20) {
           const text = trimToSentence(rawText, 1400);
           const citations = (data.citations ?? []).slice(0, 5);
-          console.log(`[WebSearch/Perplexity] ✓ real-time context fetched (${text.length} chars, ${citations.length} citations)`);
+          console.log(`[WebSearch/Perplexity] ✓ real-time context fetched (${text.length} chars, ${citations.length} citations, model=${perplexityModel})`);
           return { text, citations };
+        } else {
+          console.warn(`[WebSearch/Perplexity] empty/short response (${rawText.length} chars) — falling back`);
         }
       }
     } catch (e) {
-      console.warn("[WebSearch/Perplexity] fetch failed:", e.message);
+      console.warn(`[WebSearch/Perplexity] fetch failed: ${e.message}`);
     }
   }
 
