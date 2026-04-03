@@ -26,6 +26,7 @@ interface Message {
   confidence?: string;
   sources?: string[];
   sourceMetadata?: SourceMetadata;
+  suggestions?: string[];
 }
 
 interface AttachedFile {
@@ -362,6 +363,7 @@ interface StreamingMsg {
   confidence?: string;
   sources?: string[];
   sourceMetadata?: SourceMetadata;
+  suggestions?: string[];
   isStreaming?: boolean;
 }
 
@@ -491,6 +493,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         confidence:     streamingMsg.confidence,
         sources:        streamingMsg.sources,
         sourceMetadata: streamingMsg.sourceMetadata,
+        suggestions:    streamingMsg.suggestions,
       }]);
       setStreamingMsg(null);
       return;
@@ -1028,6 +1031,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         confidence:     doneEvent!.confidence,
         sources:        doneEvent!.sources ?? [],
         sourceMetadata: doneEvent!.sourceMetadata ?? undefined,
+        suggestions:    doneEvent!.suggestions ?? [],
         isStreaming:    false,
       } : null);
 
@@ -1385,20 +1389,17 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     </p>
                   )}
 
-                  {/* Follow-up suggestions — only on last AI message */}
-                  {isLastAI && (() => {
+                  {/* Follow-up suggestions — AI-generated, only on last AI message */}
+                  {isLastAI && msg.suggestions && msg.suggestions.length > 0 && (() => {
                     const arabicRatio = (msg.content.match(/[\u0600-\u06FF]/g)?.length ?? 0) / Math.max(msg.content.length, 1);
                     const isArabicReply = arabicRatio > 0.25;
-                    const suggestions = isArabicReply
-                      ? ["أعطني مثالاً آخر", "وضّح أكثر", "اكتب نسخة أطول"]
-                      : ["Jelaskan lebih detail", "Buat panduan langkah-langkah", "Ada hal lain terkait ini?"];
                     return (
                       <div className="mt-3 flex flex-wrap gap-1.5">
-                        {suggestions.map(s => (
+                        {msg.suggestions.map(s => (
                           <button
                             key={s}
                             onClick={() => handleSend(s)}
-                            className="rounded-full border border-border/50 bg-secondary/30 px-3 py-1 text-[11px] text-muted-foreground/70 transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground"
+                            className="rounded-full border border-border/50 bg-secondary/30 px-3 py-1 text-[11px] text-muted-foreground/70 transition-all hover:border-primary/40 hover:bg-secondary/60 hover:text-foreground"
                             dir={isArabicReply ? "rtl" : "ltr"}
                           >
                             {s}

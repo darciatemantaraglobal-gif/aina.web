@@ -454,7 +454,7 @@ initUserNotes();
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
-console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured" : "✗ not configured — Perplexity fallback disabled"}`);
+console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured (direct)" : process.env.OPENROUTER_API_KEY ? "✓ via OpenRouter/sonar fallback" : "✗ not configured — web search disabled"}`);
 console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 console.log(`Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? "✓ configured — real-time Places search enabled" : "✗ not configured — Places search disabled"}`);
@@ -1695,62 +1695,93 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
  * - citations: up to 3 source URLs
  */
 async function fetchPerplexityContext(query) {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) {
-    console.log("[Perplexity] skipped — PERPLEXITY_API_KEY not set");
+  const perplexityKey = process.env.PERPLEXITY_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+
+  if (!perplexityKey && !openrouterKey) {
+    console.log("[WebSearch] skipped — no usable API key");
     return null;
   }
 
-  const TIMEOUT = 10000;
-  const todayPerplexity = new Date().toLocaleDateString("id-ID", {
+  const TIMEOUT = 12000;
+  const todayStr = new Date().toLocaleDateString("id-ID", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
     timeZone: "Africa/Cairo",
   });
-  try {
-    const res = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      signal: AbortSignal.timeout(TIMEOUT),
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify({
-        model: "sonar",
-        messages: [
-          {
-            role: "system",
-            content: `You are a factual web search assistant for an Indonesian student community in Egypt. Today's date is ${todayPerplexity} (Cairo time). Always prioritize the most current and up-to-date information available as of today. Return a clear, informative answer (3-5 sentences or a short list) covering the key facts. Include only factual content — no greetings, disclaimers, or extra commentary. Always respond in Bahasa Indonesia regardless of the query language.`,
-          },
-          {
-            role: "user",
-            content: query.slice(0, 500),
-          },
-        ],
-        max_tokens: 500,
-        return_citations: true,
-        temperature: 0.1,
-      }),
-    });
+  const systemMsg = `You are a factual web search assistant for an Indonesian student community in Egypt. Today's date is ${todayStr} (Cairo time). Always prioritize the most current and up-to-date information available as of today. Return a clear, informative answer (3-5 sentences or a short list) covering the key facts. Include only factual content — no greetings, disclaimers, or extra commentary. Always respond in Bahasa Indonesia regardless of the query language.`;
 
-    if (!res.ok) {
-      console.warn(`[Perplexity] API error ${res.status}`);
-      return null;
+  try {
+    let rawText = "";
+    let citations = [];
+
+    if (perplexityKey) {
+      // ── Direct Perplexity API (supports explicit citations) ──────────────
+      const res = await fetch("https://api.perplexity.ai/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(TIMEOUT),
+        headers: {
+          "Authorization": `Bearer ${perplexityKey}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          model: "sonar",
+          messages: [
+            { role: "system", content: systemMsg },
+            { role: "user",   content: query.slice(0, 500) },
+          ],
+          max_tokens: 500,
+          return_citations: true,
+          temperature: 0.1,
+        }),
+      });
+
+      if (!res.ok) {
+        console.warn(`[WebSearch/Perplexity] API error ${res.status}`);
+        return null;
+      }
+      const data = await res.json();
+      rawText   = data.choices?.[0]?.message?.content ?? "";
+      citations = (data.citations ?? []).slice(0, 3);
+
+    } else {
+      // ── OpenRouter fallback: perplexity/sonar (web search built-in) ──────
+      console.log("[WebSearch] using OpenRouter/sonar fallback");
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(TIMEOUT),
+        headers: {
+          "Authorization": `Bearer ${openrouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://aina.masisir.com",
+          "X-Title": "AINA",
+        },
+        body: JSON.stringify({
+          model: "perplexity/sonar",
+          messages: [
+            { role: "system", content: systemMsg },
+            { role: "user",   content: query.slice(0, 500) },
+          ],
+          max_tokens: 500,
+          temperature: 0.1,
+        }),
+      });
+
+      if (!res.ok) {
+        console.warn(`[WebSearch/OpenRouter] API error ${res.status}`);
+        return null;
+      }
+      const data = await res.json();
+      rawText   = data.choices?.[0]?.message?.content ?? "";
+      citations = (data.citations ?? []).slice(0, 3);
     }
 
-    const data = await res.json();
-    const rawText = data.choices?.[0]?.message?.content ?? "";
     if (!rawText || rawText.length < 20) return null;
-
-    // Keep only first 1200 chars, cutting at sentence boundary
     const text = trimToSentence(rawText, 1200);
-
-    // Extract up to 3 citations (URLs)
-    const citations = (data.citations ?? []).slice(0, 3);
-
     return { text, citations };
+
   } catch (e) {
-    console.warn("[Perplexity] fetch failed:", e.message);
+    console.warn("[WebSearch] fetch failed:", e.message);
     return null;
   }
 }
@@ -3618,7 +3649,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // ── Post-processing (identical to previous non-streaming path) ───────────────
-  const reply = postProcessResponse(cleanReply(fullContent));
+  const rawReply = postProcessResponse(cleanReply(fullContent));
+
+  // Extract AI-generated follow-up suggestions (<!--saran: Q1 | Q2 | Q3-->)
+  const _suggestionMatch = rawReply.match(/<!--saran:\s*([^>]+?)-->/i);
+  const aiSuggestions = _suggestionMatch
+    ? _suggestionMatch[1].split("|").map(s => s.trim()).filter(s => s.length > 3).slice(0, 3)
+    : [];
+  const reply = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
   console.log(`Responded using model: ${usedModel}`);
 
   const qualityIssues = validateResponse(reply, { hasExchangeContext: !!exchangeContext });
@@ -3662,6 +3700,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     confidence:  normalizedConfidence,
     source_used: sourceUsed,
     sources:     responseSources,
+    suggestions: aiSuggestions.length > 0 ? aiSuggestions : undefined,
     clarification_pending: clarificationDetected || undefined,
     sourceMetadata: {
       confidence:      normalizedConfidence,
