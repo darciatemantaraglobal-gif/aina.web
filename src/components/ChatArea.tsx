@@ -1006,8 +1006,12 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       }
 
       if (!doneEvent) {
-        setStreamingMsg(null);
-        throw new Error("Respons AI tidak lengkap. Coba lagi.");
+        if (accumulated.trim()) {
+          doneEvent = { reply: accumulated, sources: [], partial: true };
+        } else {
+          setStreamingMsg(null);
+          throw new Error("Koneksi ke AI terputus sebelum menerima jawaban. Coba kirim ulang.");
+        }
       }
 
       const finalContent = cleanMarkdown(doneEvent.reply || accumulated);
@@ -1584,7 +1588,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               </div>
 
               <p className="mt-4 text-center text-xs text-muted-foreground/60">
-                Batas akan direset setiap hari pukul 00.00 waktu Kairo
+                Batas direset setiap pukul 00.00 waktu Kairo (UTC+2)
               </p>
             </div>
           </div>

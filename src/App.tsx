@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect, lazy, Suspense, useRef } from "react";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
+import GlobalErrorBoundary from "@/components/GlobalErrorBoundary";
 
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Login = lazy(() => import("./pages/Login.tsx"));
@@ -83,17 +84,19 @@ function AnimatedRoutes() {
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <ScrollToTop />
-        <AnimatedRoutes />
-        <PwaInstallBanner />
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <GlobalErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <ScrollToTop />
+          <AnimatedRoutes />
+          <PwaInstallBanner />
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </GlobalErrorBoundary>
 );
 
 export default App;

@@ -18,6 +18,12 @@ const ResetPasswordPage = () => {
   const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => navigate("/dashboard", { replace: true }), 2500);
+    return () => clearTimeout(t);
+  }, [done, navigate]);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setSessionReady(true);
@@ -43,7 +49,6 @@ const ResetPasswordPage = () => {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
       setDone(true);
-      setTimeout(() => navigate("/dashboard"), 2500);
     } catch (err: any) {
       toast.error(err.message || "Gagal mereset password");
     } finally {

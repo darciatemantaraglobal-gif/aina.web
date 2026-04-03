@@ -3154,14 +3154,20 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
 
   if (!isPaidUser) {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    // Compute midnight in Cairo time (Africa/Cairo = UTC+2, no DST since 2011)
+    const CAIRO_OFFSET_MS = 2 * 60 * 60 * 1000;
+    const nowUtc = Date.now();
+    const nowCairoMs = nowUtc + CAIRO_OFFSET_MS;
+    const nowCairo = new Date(nowCairoMs);
+    const midnightCairo = new Date(
+      Date.UTC(nowCairo.getUTCFullYear(), nowCairo.getUTCMonth(), nowCairo.getUTCDate()) - CAIRO_OFFSET_MS
+    );
     const { count } = await supabaseAdmin
       .from("messages")
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id)
       .eq("role", "user")
-      .gte("created_at", todayStart.toISOString());
+      .gte("created_at", midnightCairo.toISOString());
 
     console.log(`Rate limit check: user ${user.id} used ${count}/${DAILY_FREE_LIMIT} messages today`);
 
