@@ -38,14 +38,8 @@ function getTooltipStyle(rect: DOMRect | null): React.CSSProperties {
   const isMobile = vw < MOBILE_BP;
 
   if (isMobile) {
-    if (!rect) {
-      return { position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: safeW };
-    }
-    const midY = (rect.top + rect.bottom) / 2;
-    if (midY > vh * 0.55) {
-      return { position: "fixed", top: PAD, left: "50%", transform: "translateX(-50%)", width: safeW };
-    }
-    return { position: "fixed", bottom: PAD + 8, left: "50%", transform: "translateX(-50%)", width: safeW };
+    // Always center on mobile so the close button is always reachable in PWA
+    return { position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: safeW };
   }
 
   if (!rect) {

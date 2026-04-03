@@ -518,7 +518,7 @@ const Dashboard = () => {
         />
       </div>
 
-      <main className="flex-1 overflow-hidden min-w-0 flex flex-col pb-14 md:pb-0">
+      <main className="flex-1 overflow-hidden min-w-0 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
         <BreakingUpdatesBanner />
 
         {/* Chat — always mounted, hidden when not active */}
