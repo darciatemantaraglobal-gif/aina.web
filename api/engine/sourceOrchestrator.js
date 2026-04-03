@@ -387,27 +387,16 @@ function deriveMayBeOutdated({ confidence, primarySource, queryType, query, arti
   // Percakapan/kreatif/keagamaan → tidak relevan warning outdated
   if (TIMELESS_INTENTS.has(intentPrimary)) return false;
 
-  // Fallback + query faktual/prosedural = mungkin outdated (training cutoff model)
-  if (confidence === "fallback") return true;
+  // Sumber real-time atau terverifikasi → tidak perlu warning
+  if (["perplexity", "exchange_rate", "kb_article", "pinned_update", "dorar"].includes(primarySource)) return false;
 
-  // Dynamic/time-sensitive queries are always potentially outdated unless from real-time sources
-  const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update)\b/i.test(query);
-  if (timeSensitive && primarySource !== "perplexity" && primarySource !== "exchange_rate") return true;
-
-  // KB articles that haven't been updated in >90 days
-  if (primarySource === "kb_article" && articles.length > 0) {
-    const freshest = articles.reduce((a, b) =>
-      new Date(a.updated_at ?? a.created_at ?? 0) > new Date(b.updated_at ?? b.created_at ?? 0) ? a : b,
-      articles[0]
-    );
-    const freshestDate = new Date(freshest?.updated_at ?? freshest?.created_at ?? 0);
-    const ageMs = Date.now() - freshestDate.getTime();
-    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    if (ageMs > ninetyDaysMs) return true;
+  // Hanya tampilkan warning ketika model menjawab dari pengetahuan sendiri (fallback)
+  // DAN query-nya tentang hal yang genuinely time-sensitive + berisiko jika salah
+  if (confidence === "fallback") {
+    const isRiskyIntent = ["procedural", "confused_procedural"].includes(intentPrimary);
+    const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|kebijakan|prosedur)\b/i.test(query);
+    return isRiskyIntent && timeSensitive;
   }
-
-  // Wikipedia is always potentially outdated for dynamic topics
-  if (primarySource === "wikipedia" && timeSensitive) return true;
 
   return false;
 }
@@ -458,11 +447,20 @@ function buildSourceSummary(confidence, primarySource, totalSources) {
  */
 export function buildNoSourceResult(intent, query) {
   const retrievedAt = new Date().toISOString();
+  // Only show outdated warning for genuinely risky cases (procedural + time-sensitive)
+  const mayBeOutdated = deriveMayBeOutdated({
+    confidence: "fallback",
+    primarySource: "model_knowledge",
+    queryType: "unknown",
+    query: query ?? "",
+    articles: [],
+    intentPrimary: intent?.primary ?? "unknown",
+  });
   return {
     confidence:      "fallback",
     primary_source:  "model_knowledge",
     sources_used:    [makeEntry({ name: "Pengetahuan Model AI", type: "model", key: "model_knowledge", primary: true })],
-    may_be_outdated: true,
+    may_be_outdated: mayBeOutdated,
     source_summary:  "Pengetahuan Umum (perlu verifikasi)",
     retrieved_at:    retrievedAt,
     graceful_mode:   true,
@@ -474,7 +472,7 @@ export function buildNoSourceResult(intent, query) {
       confidence:      "fallback",
       primary_source:  "model_knowledge",
       sources_used:    [],
-      may_be_outdated: true,
+      may_be_outdated: mayBeOutdated,
       intent_primary:  intent?.primary ?? "unknown",
       kb_strength:     "absent",
       retrieved_at:    retrievedAt,
