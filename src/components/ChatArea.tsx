@@ -25,6 +25,7 @@ interface Message {
   intent?: string;
   confidence?: string;
   sources?: string[];
+  citation_urls?: string[];
   sourceMetadata?: SourceMetadata;
   suggestions?: string[];
 }
@@ -1087,6 +1088,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         intent:         doneEvent!.intent,
         confidence:     doneEvent!.confidence,
         sources:        doneEvent!.sources ?? [],
+        citation_urls:  doneEvent!.citation_urls ?? [],
         sourceMetadata: doneEvent!.sourceMetadata ?? undefined,
         suggestions:    doneEvent!.suggestions ?? [],
         isStreaming:    false,
@@ -1325,6 +1327,27 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                             <p className="text-[10px] text-amber-500/70 italic">
                               ⚠️ Info ini mungkin sudah berubah — cek ke sumber terbaru.
                             </p>
+                          )}
+                          {/* A2: Perplexity citation links */}
+                          {msg.citation_urls && msg.citation_urls.length > 0 && (
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              {msg.citation_urls.slice(0, 4).map((url, ci) => {
+                                let hostname = url;
+                                try { hostname = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+                                return (
+                                  <a
+                                    key={ci}
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10px] text-primary/70 underline-offset-2 hover:text-primary hover:underline transition-colors truncate max-w-full"
+                                  >
+                                    <Globe className="h-2.5 w-2.5 shrink-0" />
+                                    <span className="truncate">{hostname}</span>
+                                  </a>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
                       ) : null;

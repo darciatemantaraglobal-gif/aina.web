@@ -66,6 +66,15 @@ This concurrently starts:
 
 Key tables: `profiles`, `user_roles`, `chats`, `messages`, `knowledge_base`, `threads`, `thread_replies`, `thread_votes`, `article_votes`, `tasks`, `user_memories`, `notifications`, `user_badges`, `pinned_updates`, `message_reports`, `beta_feedback`, `contributor_requests`, `subscriptions`, `daily_focus_items`, `admin_tracker_items`, `reminder_logs`, `query_log`, `missing_topics`, `user_notes`
 
+## AI Improvements (A1–A6)
+
+- **A1 — Memory lintas sesi**: `user_memories` table checked at startup via `initUserMemories()`. Cross-session memory extracted after each response via `extractAndSaveMemories()` (fire-and-forget using OpenRouter).
+- **A2 — Perplexity citations**: `citation_urls` array now included in the SSE `done` event from server and rendered as clickable links in ChatArea below source badges.
+- **A3 — Missing topics detection**: `logMissingTopic()` now fires for: (a) weak-KB local-Masisir queries (existing), AND (b) any informational query (factual/procedural/recommendation) answered purely from model knowledge with no KB/external sources.
+- **A4 — Language detection**: Server-side Arabic character ratio detection injected as `[INSTRUKSI BAHASA — SISTEM]` at the top of every system prompt, enforcing Indonesian OR Arabic response based on the user's actual message.
+- **A5 — System prompt Masisir**: Significantly expanded identity section with specific knowledge: Masisir organizations (PPMI, PPI, kekeluargaan), Cairo area names (Hay Asyir, Darrasah, Abbasiyah), Masisir terminology (sakan, Qaid, rasm, mugharrar), local apps (Talabat, Careem), banking, and Mazhab Syafi'i default.
+- **A6 — Feedback loop**: Thumbs-down rating now automatically calls `logMissingTopic()` with the user's query, surfacing it in the admin missing-topics dashboard for KB improvement.
+
 ## Deployment
 
 Uses Replit Autoscale. Build command: `npm run build`. Run command: `node ./dist/index.cjs`.

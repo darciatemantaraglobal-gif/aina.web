@@ -517,6 +517,23 @@ async function initUserNotes() {
 }
 initUserNotes();
 
+// A1: Ensure user_memories table exists and columns are ready
+async function initUserMemories() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const { error } = await supabase.from("user_memories").select("id").limit(1);
+  if (error && (error.code === "42P01" || error.message?.includes("does not exist") || error.code === "PGRST205")) {
+    console.warn("[UserMemories] ⚠ table missing in Supabase — cross-session memory disabled until table is created. Run the migration in server.js.");
+    return;
+  }
+  if (error) {
+    console.warn("[UserMemories] ⚠ table check warning:", error.message);
+    return;
+  }
+  console.log("[UserMemories] ✓ table ready — cross-session memory active");
+}
+initUserMemories();
+
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
@@ -3599,8 +3616,17 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);
 
+  // ── A4: Server-side language detection — reinforce language instruction ─────
+  // Detect if user's message is predominantly Arabic to set explicit language mode
+  const _arabicChars = (lastUserMessage.match(/[\u0600-\u06FF]/g) || []).length;
+  const _cleanLen    = lastUserMessage.replace(/\s/g, "").length || 1;
+  const _arabicRatio = _arabicChars / _cleanLen;
+  const _langNote = _arabicRatio > 0.3
+    ? `[INSTRUKSI BAHASA — SISTEM]: Pesan user terdeteksi dalam Bahasa Arab (${Math.round(_arabicRatio * 100)}% karakter Arab). WAJIB balas seluruh respons dalam Bahasa Arab فصحى yang fasih dan jelas sesuai level akademik Al-Azhar. DILARANG menggunakan Bahasa Indonesia dalam respons ini kecuali untuk catatan terjemahan pendek.`
+    : `[INSTRUKSI BAHASA — SISTEM]: Pesan user dalam Bahasa Indonesia atau non-Arab. WAJIB balas dalam Bahasa Indonesia. DILARANG menggunakan Bahasa Inggris atau bahasa lain dalam respons ini — bahkan sebagai campuran. Pengecualian satu-satunya: kutipan/dalil Arab dengan terjemahan Indonesia-nya.`;
+
   // ── Build final messages array, injecting attachedFile if present ──────────
-  let finalSystemPrompt = systemPrompt;
+  let finalSystemPrompt = _langNote + "\n\n" + systemPrompt;
   let finalMessages = [...messages];
   let useVisionModel = false;
 
@@ -4082,6 +4108,13 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     : queryType === "currency" && exchangeRates ? "RealTimeAPI"
     : "Model";
 
+  // A3: Log to missing_topics when AI answers purely from model knowledge (no KB, no external sources)
+  const INFO_INTENTS = new Set(["factual", "procedural", "confused_procedural", "recommendation", "confused"]);
+  if (sourceUsed === "Model" && articles.length === 0 && INFO_INTENTS.has(intent.primary)) {
+    logMissingTopic(lastUserMessage, intent.primary);
+    console.log(`[MissingTopics] pure-model answer → logged for KB gap analysis (intent=${intent.primary})`);
+  }
+
   // ── Send done event with final metadata ─────────────────────────────────────
   res.write(`data: ${JSON.stringify({
     type:        "done",
@@ -4092,6 +4125,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     confidence:  normalizedConfidence,
     source_used: sourceUsed,
     sources:     responseSources,
+    citation_urls: perplexityResult?.citations ?? [],
     suggestions: aiSuggestions.length > 0 ? aiSuggestions : undefined,
     clarification_pending: clarificationDetected || undefined,
     sourceMetadata: {
@@ -10293,6 +10327,11 @@ app.post("/api/chat/rate", writeLimiter, async (req, res) => {
       isTransport: false,
       rating:     -1,
     }).catch(() => {});
+
+    // A6: Feedback loop — negative feedback triggers KB gap detection
+    // This ensures poorly-answered queries surface in admin's missing-topics dashboard
+    logMissingTopic(query_text.trim(), intent ?? null);
+    console.log(`[A6/FeedbackLoop] 👎 negative rating → "${query_text.trim().slice(0, 60)}" logged to missing_topics for KB improvement`);
   }
 
   console.log(`[Intel/Rating] rating=${rating > 0 ? "+1" : "-1"} intent=${intent} conf=${confidence}`);
