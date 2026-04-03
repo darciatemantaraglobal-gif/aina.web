@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw, Square } from "lucide-react";
 import { RESPONSE_STYLES, RESPONSE_STYLE_ORDER, type ResponseStyleKey } from "@/lib/responseStyles";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -431,7 +431,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const activeChatIdRef = useRef<string | null>(chatId);
+  const activeChatIdRef   = useRef<string | null>(chatId);
+  // Stop-generation refs — exposed so the Stop button can abort the current SSE stream
+  const streamAbortRef  = useRef<AbortController | null>(null);
+  const userStoppedRef  = useRef(false);
+  const accumulatedRef  = useRef("");
 
   const scrollToBottom = useCallback((force = false) => {
     if (!force && !isAtBottomRef.current) return;
@@ -948,6 +952,9 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         : undefined;
 
       const controller = new AbortController();
+      streamAbortRef.current = controller;
+      userStoppedRef.current = false;
+      accumulatedRef.current = "";
       const fetchTimeout = setTimeout(() => controller.abort(), 45000);
       let res: Response;
       try {
@@ -1009,6 +1016,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
             if (evt.type === "chunk" && evt.content) {
               accumulated += evt.content;
+              accumulatedRef.current = accumulated;
               setStreamingMsg(prev => prev
                 ? { ...prev, full: accumulated, displayed: accumulated }
                 : null
@@ -1022,7 +1030,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           }
         }
       } catch (streamErr: any) {
-        setStreamingMsg(null);
+        if (streamErr.name !== "AbortError") setStreamingMsg(null);
         throw streamErr;
       }
 
@@ -1089,11 +1097,32 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         .update({ updated_at: new Date().toISOString() })
         .eq("id", currentChatId);
     } catch (err: any) {
-      setError(err.message || "Gagal menghubungi server. Coba lagi.");
+      if (err.name === "AbortError") {
+        // User manually stopped — commit partial text as final message if any
+        const partial = accumulatedRef.current.trim();
+        if (partial) {
+          setMessages(prev => [...prev, {
+            id: (Date.now() + 2).toString(),
+            role: "assistant",
+            content: cleanMarkdown(partial),
+            timestamp: new Date(),
+            sources: [],
+          }]);
+        }
+        setStreamingMsg(null);
+      } else {
+        setError(err.message || "Gagal menghubungi server. Coba lagi.");
+      }
     } finally {
+      streamAbortRef.current = null;
       setIsLoading(false);
     }
   };
+
+  const handleStopGeneration = useCallback(() => {
+    userStoppedRef.current = true;
+    streamAbortRef.current?.abort();
+  }, []);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1495,7 +1524,21 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
                     {streamingMsg.displayed}
                   </ReactMarkdown>
-                  <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
+                  {streamingMsg.isStreaming && (
+                    <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
+                  )}
+                  {/* Stop button — visible while stream is active */}
+                  {streamingMsg.isStreaming && (
+                    <div className="mt-2">
+                      <button
+                        onClick={handleStopGeneration}
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      >
+                        <Square className="h-2.5 w-2.5 fill-current" />
+                        Hentikan
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

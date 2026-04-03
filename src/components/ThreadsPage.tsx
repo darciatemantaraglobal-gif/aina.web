@@ -875,27 +875,48 @@ interface ThreadsPageProps {
 export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProps) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [votingId, setVotingId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (pageNum = 1) => {
+    if (pageNum === 1) setLoading(true);
+    else setLoadingMore(true);
     try {
       const params = new URLSearchParams();
       if (categoryFilter !== "all") params.set("category", categoryFilter);
+      params.set("page", String(pageNum));
       const data = await threadsFetch(`/api/threads?${params}`);
-      setThreads(data);
+      if (pageNum === 1) {
+        setThreads(data);
+      } else {
+        setThreads(prev => [...prev, ...data]);
+      }
+      setHasMore(data.length === 30);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
-      setLoading(false);
+      if (pageNum === 1) setLoading(false);
+      else setLoadingMore(false);
     }
   }, [categoryFilter]);
 
-  useEffect(() => { load(); }, [load]);
+  // Reset to page 1 whenever category filter changes
+  useEffect(() => {
+    setPage(1);
+    load(1);
+  }, [categoryFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    load(nextPage);
+  };
 
   const filtered = threads.filter(t =>
     !search ||
@@ -1032,10 +1053,11 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between pb-1">
-              <p className="text-xs text-muted-foreground">{filtered.length} thread</p>
+              <p className="text-xs text-muted-foreground">{filtered.length} thread dimuat</p>
               <button
-                onClick={load}
+                onClick={() => { setPage(1); load(1); }}
                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+                title="Muat ulang"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
@@ -1094,6 +1116,29 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
                 </div>
               </div>
             ))}
+
+            {/* Load More */}
+            {hasMore && !search && (
+              <div className="flex justify-center pt-2 pb-4">
+                <button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-secondary disabled:opacity-50"
+                >
+                  {loadingMore ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Memuat...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Muat Lebih Banyak
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
