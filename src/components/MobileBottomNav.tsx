@@ -1,4 +1,4 @@
-import { MessageSquare, Newspaper, BookOpen, Users, User } from "lucide-react";
+import { MessageSquare, Zap, BookOpen, Users, User } from "lucide-react";
 
 interface MobileBottomNavProps {
   activeTab: string;
@@ -6,11 +6,11 @@ interface MobileBottomNavProps {
 }
 
 const NAV_ITEMS = [
-  { id: "chat",     icon: MessageSquare, label: "Chat" },
-  { id: "berita",   icon: Newspaper,     label: "Berita" },
-  { id: "library",  icon: BookOpen,      label: "Library" },
-  { id: "threads",  icon: Users,         label: "Forum" },
-  { id: "profile",  icon: User,          label: "Profil" },
+  { id: "chat",         icon: MessageSquare, label: "Chat" },
+  { id: "productivity", icon: Zap,           label: "Produktif" },
+  { id: "library",      icon: BookOpen,      label: "Library" },
+  { id: "threads",      icon: Users,         label: "Forum" },
+  { id: "profile",      icon: User,          label: "Profil" },
 ];
 
 export default function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps) {
