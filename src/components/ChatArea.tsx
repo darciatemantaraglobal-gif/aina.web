@@ -1110,35 +1110,40 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   return (
     <div className="relative flex h-full flex-col bg-background">
       {/* Mobile top header */}
-      <header className="safe-top flex items-center justify-between border-b border-border px-4 md:hidden shrink-0 min-h-14">
-        <button
-          onClick={onMenuClick}
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-
-        <div className="flex items-center gap-2">
-          <AinaLogo className="h-7 w-7 object-contain" />
-          <span className="font-display text-base font-bold text-foreground">AINA</span>
-        </div>
-
-        <div className="flex items-center gap-1">
-          {!isEmpty && (
-            <button
-              onClick={exportChat}
-              title="Ekspor percakapan"
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              <Download className="h-4.5 w-4.5" />
-            </button>
-          )}
+      <header
+        className="md:hidden shrink-0 border-b border-border bg-background"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
+        <div className="flex h-14 items-center justify-between px-4">
           <button
-            onClick={onNewChat}
+            onClick={onMenuClick}
             className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            <Plus className="h-5 w-5" />
+            <Menu className="h-5 w-5" />
           </button>
+
+          <div className="flex items-center gap-2">
+            <AinaLogo className="h-7 w-7 object-contain" />
+            <span className="font-display text-base font-bold text-foreground">AINA</span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {!isEmpty && (
+              <button
+                onClick={exportChat}
+                title="Ekspor percakapan"
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <Download className="h-4.5 w-4.5" />
+              </button>
+            )}
+            <button
+              onClick={onNewChat}
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </header>
 

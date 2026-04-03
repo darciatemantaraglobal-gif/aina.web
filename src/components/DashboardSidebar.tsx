@@ -838,7 +838,11 @@ const DashboardSidebar = ({
       }`}
     >
       {/* ── Header ─────────────────────────────────────── */}
-      <div className={`safe-top flex shrink-0 items-center border-b border-sidebar-border px-3 min-h-14 ${collapsed ? "justify-center" : "justify-between"}`}>
+      <div
+        className="shrink-0 border-b border-sidebar-border"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
+      <div className={`flex items-center px-3 h-14 ${collapsed ? "justify-center" : "justify-between"}`}>
         {!collapsed && (
           <div className="flex items-center gap-2 pl-1">
             <img src="/aina-icon.png" alt="AINA" className="h-5 w-5 object-contain" />
@@ -862,6 +866,7 @@ const DashboardSidebar = ({
             {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         </div>
+      </div>
       </div>
 
       {/* ── Top: Nav items ──────────────────────────────── */}

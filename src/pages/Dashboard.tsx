@@ -485,18 +485,23 @@ const Dashboard = () => {
         {activeTab !== "chat" && (
           <div className="flex-1 min-h-0 flex flex-col">
             {/* Mobile header */}
-            <header className="safe-top flex items-center gap-3 border-b border-border px-4 md:hidden shrink-0 min-h-14">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              <div className="flex items-center gap-2">
-                <img src="/aina-icon.png" alt="AINA" className="h-5 w-5 object-contain" />
-                <span className="font-display text-base font-bold text-foreground">
-                  {tabTitles[activeTab] ?? "AINA"}
-                </span>
+            <header
+              className="md:hidden shrink-0 border-b border-border bg-background"
+              style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+            >
+              <div className="flex h-14 items-center gap-3 px-4">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <img src="/aina-icon.png" alt="AINA" className="h-5 w-5 object-contain" />
+                  <span className="font-display text-base font-bold text-foreground">
+                    {tabTitles[activeTab] ?? "AINA"}
+                  </span>
+                </div>
               </div>
             </header>
 
