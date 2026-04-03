@@ -691,7 +691,7 @@ function ChatHistoryPopup({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       onClick={onClose}
     >
       {/* Backdrop */}
@@ -699,7 +699,7 @@ function ChatHistoryPopup({
 
       {/* Panel */}
       <div
-        className="relative z-10 w-full max-w-sm rounded-t-2xl sm:rounded-2xl bg-card border border-border shadow-2xl flex flex-col"
+        className="relative z-10 w-full max-w-sm rounded-2xl bg-card border border-border shadow-2xl flex flex-col"
         style={{ maxHeight: "80vh" }}
         onClick={e => e.stopPropagation()}
       >
