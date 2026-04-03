@@ -462,6 +462,20 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  // Sync mode pills when sidebar settings change responseStyle in localStorage
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "aina_personalization" && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.responseStyle) setCurrentStyle(parsed.responseStyle as ResponseStyleKey);
+        } catch {}
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   useEffect(() => {
     if (!isLoading) {
       setLoadingSeconds(0);
@@ -972,7 +986,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           },
           body: JSON.stringify({
             messages: history,
-            userProfile: { ...userProfile, ...getPersonalization() },
+            userProfile: { ...userProfile, ...getPersonalization(), responseStyle: currentStyle },
             ...(attachedFilePayload ? { attachedFile: attachedFilePayload } : {}),
           }),
         });
@@ -1614,15 +1628,15 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         )}
       </div>
 
-      {/* Scroll-to-bottom button */}
+      {/* Scroll-to-bottom button — icon only, pinned bottom-right */}
       {showScrollBtn && (
-        <div className="pointer-events-none absolute bottom-[80px] left-0 right-0 flex justify-center z-10">
+        <div className="pointer-events-none absolute bottom-[88px] right-4 md:right-6 z-10">
           <button
             onClick={forceScrollToBottom}
-            className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border bg-background/95 px-3.5 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-secondary animate-in fade-in slide-in-from-bottom-2 duration-200"
+            title="Lompat ke bawah"
+            className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/95 shadow-md backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-secondary animate-in fade-in slide-in-from-bottom-2 duration-200"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
-            Lompat ke bawah
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
           </button>
         </div>
       )}
@@ -1822,7 +1836,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     handleSend();
                   }
                 }}
-                placeholder="Tanyakan sesuatu kepada AINA..."
+                placeholder="Tanya AINA!"
                 rows={1}
                 className="w-full resize-none rounded-2xl bg-transparent px-5 py-4 pl-12 pr-24 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
               />

@@ -1025,7 +1025,7 @@ const DashboardSidebar = ({
       <div className="flex-1" />
 
       {/* ── Bottom: Notifications + Home + Profile ───────── */}
-      <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-3 space-y-0.5">
+      <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-16 md:pb-3 space-y-0.5">
         <NotificationBell collapsed={collapsed} />
 
         {onStartTour && (
