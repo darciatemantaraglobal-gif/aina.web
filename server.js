@@ -3557,7 +3557,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const dynamicMaxTokens = (() => {
     const i = intent.primary;
     const tableKeywords = /tabel|table|daftar perbandingan|format tabel/i;
-    const needsTable = tableKeywords.test(lastUserMsg);
+    const needsTable = tableKeywords.test(lastUserMessage);
     if (needsTable) return 6000;
     if (i === "casual") return 2000;
     if (i === "factual" || i === "confused") return 4000;
