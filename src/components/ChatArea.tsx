@@ -1128,7 +1128,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
           <div className="flex items-center gap-2">
             <AinaLogo className="h-7 w-7 object-contain" />
-            <span className="font-display text-base font-bold text-foreground">AINA</span>
+            <span className="font-sunspire text-lg tracking-wider text-foreground">AINA</span>
           </div>
 
           <div className="flex items-center gap-1">
