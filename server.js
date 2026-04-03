@@ -454,7 +454,7 @@ initUserNotes();
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
-console.log(`WebSearch: ${process.env.OPENROUTER_API_KEY ? "✓ via Gemini 2.5 Flash (OpenRouter)" : "✗ disabled — OPENROUTER_API_KEY not set"}`);
+console.log(`WebSearch: ${process.env.PERPLEXITY_API_KEY ? "✓ via Perplexity (real-time web)" : process.env.OPENROUTER_API_KEY ? "✓ via Gemini 2.5 Flash (OpenRouter, training data only)" : "✗ disabled — no API key set"}`);
 console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 console.log(`Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? "✓ configured — real-time Places search enabled" : "✗ not configured — Places search disabled"}`);
@@ -1810,7 +1810,7 @@ async function fetchDorarHadith(query) {
   }
 }
 
-/* ── Gemini: Web context fetch (replaces Perplexity) ───── */
+/* ── Web context fetch: Perplexity (real-time) → Gemini (training data fallback) ─── */
 
 /**
  * Decide if a query warrants a Gemini context lookup.
@@ -1843,28 +1843,73 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
  * - citations: [] (Gemini via OpenRouter does not return citation URLs)
  */
 async function fetchPerplexityContext(query) {
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
+  const perplexityKey  = process.env.PERPLEXITY_API_KEY;
+  const openrouterKey  = process.env.OPENROUTER_API_KEY;
 
-  if (!openrouterKey) {
-    console.log("[WebSearch] skipped — no OpenRouter API key");
+  if (!perplexityKey && !openrouterKey) {
+    console.log("[WebSearch] skipped — no API key configured");
     return null;
   }
 
-  const TIMEOUT = 18000;
   const todayStr = new Date().toLocaleDateString("id-ID", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
     timeZone: "Africa/Cairo",
   });
-  // Detect fiqh query to adjust tone
   const isFiqhCtx = isFiqhQuery(query);
-  const systemMsg = isFiqhCtx
-    ? `Kamu adalah asisten yang paham fiqh Islam dan bahasa Arab. Berikan penjelasan hukum Islam yang singkat, akurat, dan bersumber pada ulama terpercaya tentang topik berikut — dalam 3–5 kalimat. Sebutkan dasar hukumnya (Al-Quran/Hadits) jika memungkinkan. Jangan ada salam, disclaimer, atau komentar ekstra. Selalu jawab dalam Bahasa Indonesia.`
-    : `Kamu adalah asisten untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual yang jelas dan informatif dalam 3–5 kalimat atau daftar singkat tentang topik berikut — fokus pada fakta yang paling relevan untuk konteks Mesir/Kairo jika ada. Jangan ada salam, disclaimer, atau komentar ekstra. Selalu jawab dalam Bahasa Indonesia.`;
 
+  // ── Path A: Perplexity (real-time web search) ────────────────────────────
+  if (perplexityKey) {
+    const systemMsg = isFiqhCtx
+      ? `Kamu adalah asisten yang paham fiqh Islam. Berikan penjelasan hukum Islam yang singkat dan akurat dalam 3–5 kalimat. Sebutkan dasar hukumnya jika memungkinkan. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`
+      : `Kamu adalah asisten untuk mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual terbaru dan akurat dalam 3–5 kalimat atau daftar singkat. Prioritaskan informasi paling relevan dan terkini. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`;
+    try {
+      const res = await fetch("https://api.perplexity.ai/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(20000),
+        headers: {
+          "Authorization": `Bearer ${perplexityKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-sonar-small-128k-online",
+          messages: [
+            { role: "system", content: systemMsg },
+            { role: "user",   content: query.slice(0, 500) },
+          ],
+          max_tokens: isFiqhCtx ? 800 : 600,
+          temperature: isFiqhCtx ? 0.15 : 0.10,
+          return_citations: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[WebSearch/Perplexity] API error ${res.status} — ${errText.slice(0, 200)}`);
+        // Fall through to Gemini fallback
+      } else {
+        const data = await res.json();
+        const rawText = data.choices?.[0]?.message?.content ?? "";
+        if (rawText && rawText.length >= 20) {
+          const text = trimToSentence(rawText, 1400);
+          const citations = (data.citations ?? []).slice(0, 5);
+          console.log(`[WebSearch/Perplexity] ✓ real-time context fetched (${text.length} chars, ${citations.length} citations)`);
+          return { text, citations };
+        }
+      }
+    } catch (e) {
+      console.warn("[WebSearch/Perplexity] fetch failed:", e.message);
+    }
+  }
+
+  // ── Path B: Gemini via OpenRouter (training data, no real-time) ─────────
+  if (!openrouterKey) return null;
+  const systemMsgGemini = isFiqhCtx
+    ? `Kamu adalah asisten yang paham fiqh Islam dan bahasa Arab. Berikan penjelasan hukum Islam yang singkat, akurat dalam 3–5 kalimat. Sebutkan dasar hukumnya jika memungkinkan. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`
+    : `Kamu adalah asisten untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual yang jelas dalam 3–5 kalimat atau daftar singkat. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`;
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      signal: AbortSignal.timeout(TIMEOUT),
+      signal: AbortSignal.timeout(18000),
       headers: {
         "Authorization": `Bearer ${openrouterKey}`,
         "Content-Type": "application/json",
@@ -1874,29 +1919,25 @@ async function fetchPerplexityContext(query) {
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: systemMsg },
+          { role: "system", content: systemMsgGemini },
           { role: "user",   content: query.slice(0, 500) },
         ],
         max_tokens: isFiqhCtx ? 800 : 600,
         temperature: isFiqhCtx ? 0.15 : 0.10,
       }),
     });
-
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      console.warn(`[WebSearch/Gemini] API error ${res.status} — ${errText.slice(0, 200)}`);
+      console.warn(`[WebSearch/Gemini-fallback] API error ${res.status}`);
       return null;
     }
-
     const data = await res.json();
     const rawText = data.choices?.[0]?.message?.content ?? "";
     if (!rawText || rawText.length < 20) return null;
     const text = trimToSentence(rawText, 1200);
-    console.log(`[WebSearch/Gemini] context fetched (${text.length} chars)`);
+    console.log(`[WebSearch/Gemini-fallback] context fetched (${text.length} chars) — Perplexity unavailable`);
     return { text, citations: [] };
-
   } catch (e) {
-    console.warn("[WebSearch/Gemini] fetch failed:", e.message);
+    console.warn("[WebSearch/Gemini-fallback] fetch failed:", e.message);
     return null;
   }
 }
