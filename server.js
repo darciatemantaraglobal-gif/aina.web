@@ -891,6 +891,7 @@ async function checkModeration(text) {
   try {
     const res = await fetch("https://api.openai.com/v1/moderations", {
       method: "POST",
+      signal: AbortSignal.timeout(3000),
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
@@ -1948,7 +1949,7 @@ async function fetchPerplexityContext(query) {
     try {
       const res = await fetch("https://api.perplexity.ai/chat/completions", {
         method: "POST",
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(8000),
         headers: {
           "Authorization": `Bearer ${perplexityKey}`,
           "Content-Type": "application/json",
@@ -1992,7 +1993,7 @@ async function fetchPerplexityContext(query) {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(8000),
       headers: {
         "Authorization": `Bearer ${openrouterKey}`,
         "Content-Type": "application/json",
@@ -3439,7 +3440,21 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     },
   };
 
-  // Wave 1 — fast internal fetches (always run in parallel)
+  // ── Early Perplexity pre-fetch (in parallel with Wave 1) ──────────────────
+  // Heuristic: start Perplexity early for queries that are likely to need external context.
+  // If KB turns out to be strong, we discard the result (minor API cost, major latency win).
+  // Skip early-start for: local-Masisir, casual, arabic_writing, brainstorming, currency.
+  const isLocalMasisir = isLocalMasisirQuery(lastUserMessage);
+  const INTENTS_NO_PERPLEXITY = new Set(["casual", "arabic_writing", "brainstorming"]);
+  const earlyPerplexityStart = !isLocalMasisir
+    && !INTENTS_NO_PERPLEXITY.has(intent.primary)
+    && !isCurrencyQuery(lastUserMessage)
+    && (process.env.PERPLEXITY_API_KEY || process.env.OPENROUTER_API_KEY);
+  const earlyPerplexityPromise = earlyPerplexityStart
+    ? fetchPerplexityContext(lastUserMessage)
+    : Promise.resolve(null);
+
+  // Wave 1 — fast internal fetches (always run in parallel with early Perplexity)
   const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage, intent.primary),
     fetchPinnedUpdates(),
@@ -3447,12 +3462,9 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     intent.primary === "fiqh" ? fetchDorarHadith(lastUserMessage) : Promise.resolve(null),
   ]);
 
-  // Assess KB coverage strength before deciding whether to hit external sources
+  // Assess KB coverage strength before deciding whether to use external sources
   const kbStrength = assessKBStrength(articles);
 
-  // Hyper-local Masisir topics (kekeluargaan, orgs, Indonesian spots) — external sources
-  // have no reliable data on these. Block external entirely to prevent hallucination.
-  const isLocalMasisir = isLocalMasisirQuery(lastUserMessage);
   const needsExternal = isLocalMasisir ? false : shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
   // B2 fix: when fiqh intent + Dorar found nothing + no KB → Gemini web fallback
   const fiqhDorarMiss = intent.primary === "fiqh"
@@ -3464,46 +3476,42 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   if (fiqhDorarMiss) console.log(`[Source] fiqh-Dorar miss + no KB → activating Gemini web fallback`);
 
   // ── #5 KB gap detection: log weak-KB Masisir queries ────────────────────────
-  // fetchRelevantArticles() already logs when articles=0 (no match / below threshold).
-  // This catches the "partial match but still weak" case for local-Masisir topics
-  // where external sources won't help — admin should add KB articles for these.
   if (kbStrength === "weak" && isLocalMasisir) {
     logMissingTopic(lastUserMessage, intent.primary);
     console.log(`[MissingTopics] weak-KB local-Masisir query logged for admin review`);
   }
 
   // ── Classify query type for strict 3-layer routing ──────────────────────────
-  // "currency"  → exchange API only (already fetched); NEVER Wikipedia/DDG/Perplexity
-  // "dynamic"   → Perplexity primary; Wikipedia/DDG only if Perplexity unavailable
-  // "general"   → Perplexity primary (if weak/absent KB); Wikipedia/DDG only as fallback
   const queryType = classifyQueryType(intent.primary, kbStrength, lastUserMessage);
   const kbCoversQuery = kbStrength === "strong";
 
   console.log(`[Source] KB=${kbStrength} (${articles.length} art) intent=${intent.primary} queryType=${queryType} kbCovers=${kbCoversQuery}`);
 
-  // ── Wave 2 — strict 3-layer external routing ─────────────────────────────
-  // Rule 1: KB strong  → no external at all
-  // Rule 2: currency   → exchange API only (Wave 1). Skip everything else.
-  // Rule 3: dynamic/general → Perplexity first; Wikipedia+DDG only if Perplexity absent/failed
+  // ── Resolve Perplexity (already running in background since Wave 1 start) ──
   let wikiResult = null, ddgResult = null, perplexityResult = null;
 
-  if (!kbCoversQuery && queryType !== "currency") {
-    // Step A — try Perplexity (primary external intelligence)
-    if (perplexityNeeded) {
+  if (!kbCoversQuery && queryType !== "currency" && perplexityNeeded) {
+    if (earlyPerplexityStart) {
+      // Result is already in-flight — just await the pre-started promise
+      perplexityResult = await earlyPerplexityPromise;
+      console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS (parallel)" : "FAILED"} (queryType=${queryType})`);
+    } else {
+      // Fallback: start now (shouldn't happen often given earlyPerplexityStart conditions)
       perplexityResult = await fetchPerplexityContext(lastUserMessage);
       console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS" : "FAILED"} (queryType=${queryType})`);
     }
+  } else if (earlyPerplexityStart && (kbCoversQuery || !perplexityNeeded)) {
+    // KB was strong or Perplexity not actually needed — discard the early result
+    console.log(`[Source] early Perplexity discarded (KB=${kbStrength}, perplexityNeeded=${perplexityNeeded})`);
+  }
 
-    // Step B — Wikipedia/DDG removed: OpenAI via OpenRouter is now the fallback inside fetchPerplexityContext.
-    // Architecture: Perplexity (real-time) → OpenAI GPT-4o-mini (knowledge) → model fallback.
-    if (perplexityResult) {
-      console.log(`[Source] web context succeeded (Perplexity or OpenAI fallback) → skipping Wikipedia+DDG`);
-    } else {
-      console.log(`[Source] both Perplexity and OpenAI fallback failed → model answers from own knowledge`);
-    }
+  if (perplexityResult) {
+    console.log(`[Source] web context ready → skipping Wikipedia+DDG`);
+  } else if (!kbCoversQuery && queryType !== "currency") {
+    console.log(`[Source] no web context → model answers from own knowledge`);
   } else {
     if (kbCoversQuery) console.log(`[Source] KB strong → skipping all external sources`);
-    if (queryType === "currency") console.log(`[Source] currency query → exchange API only (no Wikipedia/DDG/Perplexity)`);
+    if (queryType === "currency") console.log(`[Source] currency query → exchange API only`);
   }
 
   // ── Response style ────────────────────────────────────────────────────────
