@@ -190,7 +190,9 @@ const VALID_TABS = ["chat", "berita", "productivity", "library", "threads", "lea
 
 const Dashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = VALID_TABS.includes(searchParams.get("tab") ?? "") ? searchParams.get("tab")! : "chat";
+  const initialTab = VALID_TABS.includes(searchParams.get("tab") ?? "")
+    ? searchParams.get("tab")!
+    : (VALID_TABS.includes(localStorage.getItem("aina_active_tab") ?? "") ? localStorage.getItem("aina_active_tab")! : "chat");
   const [activeTab, setActiveTab] = useState(initialTab);
   const [authReady, setAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -399,6 +401,7 @@ const Dashboard = () => {
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
+    localStorage.setItem("aina_active_tab", tab);
     setSidebarOpen(false);
     triggerFeatureTour(tab);
   }, [triggerFeatureTour]);
@@ -477,6 +480,7 @@ const Dashboard = () => {
               onNewChat={handleNewChat}
               initialMessage={pendingMessage}
               onGoContributor={handleGoContributor}
+              isAdmin={isAdmin}
             />
           </div>
         </div>

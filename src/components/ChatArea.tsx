@@ -44,6 +44,7 @@ interface ChatAreaProps {
   onNewChat?: () => void;
   initialMessage?: string;
   onGoContributor?: () => void;
+  isAdmin?: boolean;
 }
 
 const API_URL = "/api/chat";
@@ -394,7 +395,7 @@ interface StreamingMsg {
 const STREAM_CHARS_PER_TICK = 6;
 const STREAM_INTERVAL_MS = 16;
 
-const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage, onGoContributor }: ChatAreaProps) => {
+const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage, onGoContributor, isAdmin }: ChatAreaProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -422,6 +423,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [currentStyle, setCurrentStyle] = useState<ResponseStyleKey>(() => getPersonalization().responseStyle ?? "step_by_step");
   const [welcomeSubtitle] = useState(() => getRandomSubtitle());
   const [timeGreeting] = useState(() => getTimeGreeting());
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
@@ -449,6 +451,18 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     setShowScrollBtn(false);
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingSeconds(0);
+      return;
+    }
+    setLoadingSeconds(0);
+    const interval = setInterval(() => {
+      setLoadingSeconds(s => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   // Smart auto-scroll during streaming — only if user is already at bottom
   useEffect(() => {
@@ -927,7 +941,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         : undefined;
 
       const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 120000);
+      const fetchTimeout = setTimeout(() => controller.abort(), 45000);
       let res: Response;
       try {
         res = await fetch(API_URL, {
@@ -1263,7 +1277,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                                 </span>
                               );
                             })}
-                            {confCfg && ConfIcon && (
+                            {isAdmin && confCfg && ConfIcon && (
                               <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${confCfg.className}`}>
                                 <span className="text-muted-foreground/30">·</span>
                                 <ConfIcon className="h-2.5 w-2.5 shrink-0" />
@@ -1464,10 +1478,17 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             {isLoading && (
               <div className="flex gap-3">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
-                <div className="flex items-center gap-1 py-2">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+                <div className="flex flex-col gap-1 py-2">
+                  <div className="flex items-center gap-1">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+                  </div>
+                  {loadingSeconds >= 8 && (
+                    <span className="text-[11px] text-muted-foreground/60 animate-pulse">
+                      Sedang mencari jawaban... ({loadingSeconds}s)
+                    </span>
+                  )}
                 </div>
               </div>
             )}

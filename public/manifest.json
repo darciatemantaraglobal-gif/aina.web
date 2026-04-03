@@ -57,6 +57,13 @@
       "type": "image/png",
       "form_factor": "wide",
       "label": "AINA Dashboard"
+    },
+    {
+      "src": "/wallpaper-mobile.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "AINA di Mobile"
     }
   ],
   "categories": ["education", "productivity", "utilities"],
