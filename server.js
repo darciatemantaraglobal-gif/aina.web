@@ -3870,9 +3870,14 @@ app.post("/api/upload-avatar", uploadLimiter, async (req, res) => {
 
 /* ── PDF text extraction + OCR ──────────────────────── */
 // ocrPdf: renders each page via pdfjs-dist + @napi-rs/canvas → JPEG base64,
-// then sends all pages in parallel to an OpenRouter vision model for text extraction.
-// Much faster than local Tesseract (no model download, parallelised API calls).
-const MAX_OCR_PAGES = 5; // Cap to stay within Vercel's 60 s timeout
+// then sends pages in batches to an OpenRouter vision model for text extraction.
+const MAX_OCR_PAGES = 10;
+
+// Returns true if the string contains actual readable text (Arabic or Latin words),
+// not just metadata/whitespace/numbers.
+function hasRealText(str) {
+  return /[a-zA-Z\u0600-\u06FF]{3,}/.test(str ?? "");
+}
 
 async function ocrPdf(buffer) {
   const { createCanvas } = await import("@napi-rs/canvas");
@@ -3886,56 +3891,66 @@ async function ocrPdf(buffer) {
   const pdf = await getDocument({ data: new Uint8Array(buffer) }).promise;
   const numPages = Math.min(pdf.numPages, MAX_OCR_PAGES);
 
-  // Render pages to JPEG base64 (JPEG is smaller → faster API transfer)
+  // Render pages to JPEG base64 at 2× scale for sharp Arabic text
   const pageImages = [];
   for (let i = 1; i <= numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 1.5 }); // 1.5× → good quality/size balance
+    const viewport = page.getViewport({ scale: 2.0 }); // 2× for clearer text, especially Arabic
     const canvas = createCanvas(viewport.width, viewport.height);
     const ctx = canvas.getContext("2d");
     await page.render({ canvasContext: ctx, viewport }).promise;
-    const b64 = canvas.toBuffer("image/jpeg", { quality: 80 }).toString("base64");
-    pageImages.push(`data:image/jpeg;base64,${b64}`);
+    const b64 = canvas.toBuffer("image/jpeg", { quality: 90 }).toString("base64");
+    pageImages.push({ url: `data:image/jpeg;base64,${b64}`, pageNum: i });
     page.cleanup();
   }
 
-  // Send all pages to vision model in parallel
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY tidak dikonfigurasi di server");
 
-  const results = await Promise.all(
-    pageImages.map(async (imgUrl) => {
-      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-          "HTTP-Referer": "https://ainalabs.pro",
-          "X-Title": "AINA PDF OCR",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: imgUrl } },
-              {
-                type: "text",
-                text: "Ekstrak semua teks dari gambar dokumen ini. Dokumen mungkin mengandung teks bahasa Arab (tulisan Arab, kanan ke kiri), Indonesia, atau campuran keduanya — ekstrak semuanya dengan akurat dan pertahankan urutan serta strukturnya. Kembalikan HANYA teks yang diekstrak, pertahankan paragraf dan struktur aslinya. Jangan tambahkan komentar atau penjelasan apapun.",
-              },
-            ],
-          }],
-          max_tokens: 2000,
-        }),
-      });
-      const data = await resp.json();
-      return data.choices?.[0]?.message?.content?.trim() || "";
-    })
-  );
+  // Process pages in parallel (batches of 5 to avoid rate limit)
+  const BATCH = 5;
+  const results = [];
+  for (let i = 0; i < pageImages.length; i += BATCH) {
+    const batch = pageImages.slice(i, i + BATCH);
+    const batchResults = await Promise.all(
+      batch.map(async ({ url, pageNum }) => {
+        try {
+          const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`,
+              "HTTP-Referer": "https://ainalabs.pro",
+              "X-Title": "AINA PDF OCR",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "image_url", image_url: { url } },
+                  {
+                    type: "text",
+                    text: `Ini adalah halaman ${pageNum} dari sebuah dokumen (bisa berupa catatan kuliah, mulakhos, kitab, atau dokumen akademik). Dokumen mungkin mengandung teks bahasa Arab (kanan ke kiri), Indonesia, atau campuran keduanya, termasuk ayat Al-Qur'an, hadits, atau istilah ilmu syariah.\n\nTugasmu: ekstrak SEMUA teks dari halaman ini dengan akurat dan lengkap — termasuk teks Arab (dengan harakat jika ada), teks Latin, angka, dan simbol. Pertahankan urutan baca yang benar (untuk Arab: kanan ke kiri, atas ke bawah). Pertahankan paragraf, poin-poin, dan struktur aslinya. Kembalikan HANYA teks yang diekstrak, tanpa komentar atau penjelasan apapun.`,
+                  },
+                ],
+              }],
+              max_tokens: 4000,
+            }),
+          });
+          const data = await resp.json();
+          return data.choices?.[0]?.message?.content?.trim() || "";
+        } catch {
+          return "";
+        }
+      })
+    );
+    results.push(...batchResults);
+  }
 
-  const combined = results.filter(Boolean).join("\n\n");
+  const combined = results.filter(Boolean).join("\n\n---\n\n");
   return numPages < pdf.numPages
-    ? combined + `\n\n[...${pdf.numPages - numPages} halaman berikutnya tidak di-OCR karena batas halaman]`
+    ? combined + `\n\n[...${pdf.numPages - numPages} halaman berikutnya tidak di-OCR — dokumen melebihi batas ${MAX_OCR_PAGES} halaman]`
     : combined;
 }
 
@@ -3995,8 +4010,8 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
       extractedText = result.text;
 
       // Step 2: If no text found, auto-run OCR (handles scanned/image PDFs)
-      if (!extractedText || extractedText.trim().length < 20) {
-        console.log(`[extract-file] No text found in PDF — running OCR on ${originalname}`);
+      if (!hasRealText(extractedText)) {
+        console.log(`[extract-file] No real text in PDF — running OCR on ${originalname}`);
         extractedText = await ocrPdf(buffer);
         if (extractedText) extractedText = "[OCR] " + extractedText;
       }
@@ -4052,11 +4067,11 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
     .replace(/\n{4,}/g, "\n\n\n")
     .trim();
 
-  if (!extractedText || extractedText.trim().length < 20) {
+  if (!hasRealText(extractedText)) {
     const isPdf = mimetype === "application/pdf";
     return res.status(422).json({
       error: isPdf
-        ? "PDF ini tidak mengandung teks yang bisa dibaca bahkan setelah OCR. Coba simpan ulang file PDF-nya atau ketik kontennya secara manual."
+        ? "PDF ini berisi gambar tapi teks tidak bisa dibaca oleh OCR — kemungkinan kualitas scan terlalu rendah, teks tertutup watermark, atau PDF terenkripsi. Coba perbesar resolusi saat scan, atau ketik ulang kontennya."
         : "File tidak mengandung teks yang cukup untuk diekstrak",
     });
   }
@@ -4156,7 +4171,7 @@ app.post("/api/chat/extract-pdf", uploadLimiter, (req, res, next) => {
       const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
       const result = await pdfParse(buffer);
       extractedText = result.text;
-      if (!extractedText || extractedText.trim().length < 20) {
+      if (!hasRealText(extractedText)) {
         extractedText = await ocrPdf(buffer);
         if (extractedText) extractedText = "[OCR] " + extractedText;
       }
@@ -4318,8 +4333,8 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
       const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
       const result = await pdfParse(buffer);
       extractedText = result.text;
-      if (!extractedText || extractedText.trim().length < 20) {
-        console.log(`[extract-from-storage] No text in PDF — running OCR on ${originalname}`);
+      if (!hasRealText(extractedText)) {
+        console.log(`[extract-from-storage] No real text in PDF — running OCR on ${originalname}`);
         extractedText = await ocrPdf(buffer);
         if (extractedText) extractedText = "[OCR] " + extractedText;
       }
@@ -4374,11 +4389,11 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
   extractedText = extractedText
     .replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n{4,}/g, "\n\n\n").trim();
 
-  if (!extractedText || extractedText.trim().length < 20) {
+  if (!hasRealText(extractedText)) {
     const isPdf = mimetype === "application/pdf";
     return res.status(422).json({
       error: isPdf
-        ? "PDF ini tidak mengandung teks yang bisa dibaca bahkan setelah OCR. Coba simpan ulang file PDF-nya atau ketik kontennya secara manual."
+        ? "PDF ini berisi gambar tapi teks tidak bisa dibaca oleh OCR — kemungkinan kualitas scan terlalu rendah, teks tertutup watermark, atau PDF terenkripsi. Coba perbesar resolusi saat scan, atau ketik ulang kontennya."
         : "File tidak mengandung teks yang cukup untuk diekstrak",
     });
   }
