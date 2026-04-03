@@ -1,6 +1,5 @@
 import Navbar from "@/components/Navbar";
 import NewsPage from "@/components/NewsPage";
-import Footer from "@/components/Footer";
 
 const BeritaPage = () => (
   <div className="flex min-h-screen flex-col bg-background">
@@ -10,7 +9,6 @@ const BeritaPage = () => (
         <NewsPage />
       </div>
     </main>
-    <Footer />
   </div>
 );
 

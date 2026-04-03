@@ -232,11 +232,6 @@ const Login = () => {
             </div>
           </div>
 
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Dengan masuk, kamu menyetujui{" "}
-            <Link to="/terms" className="text-primary/80 hover:text-primary underline underline-offset-2">syarat & ketentuan</Link>{" "}
-            AINA.
-          </p>
         </div>
       )}
 
