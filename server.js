@@ -454,7 +454,7 @@ initUserNotes();
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
-console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured (direct)" : process.env.OPENROUTER_API_KEY ? "✓ via OpenRouter/sonar fallback" : "✗ not configured — web search disabled"}`);
+console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured (direct)" : process.env.OPENROUTER_API_KEY ? "✓ via OpenRouter/sonar-online (real-time)" : "✗ not configured — web search disabled"}`);
 console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 console.log(`Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? "✓ configured — real-time Places search enabled" : "✗ not configured — Places search disabled"}`);
@@ -1745,8 +1745,8 @@ async function fetchPerplexityContext(query) {
       citations = (data.citations ?? []).slice(0, 3);
 
     } else {
-      // ── OpenRouter fallback: perplexity/sonar (web search built-in) ──────
-      console.log("[WebSearch] using OpenRouter/sonar fallback");
+      // ── OpenRouter fallback: perplexity/sonar-online (real-time web search) ──────
+      console.log("[WebSearch] using OpenRouter/sonar-online fallback");
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         signal: AbortSignal.timeout(TIMEOUT),
@@ -1757,23 +1757,52 @@ async function fetchPerplexityContext(query) {
           "X-Title": "AINA",
         },
         body: JSON.stringify({
-          model: "perplexity/sonar",
+          model: "perplexity/sonar-online",
           messages: [
             { role: "system", content: systemMsg },
-            { role: "user",   content: query.slice(0, 500) },
+            { role: "user",   content: `[CARI INFO TERBARU HARI INI] ${query.slice(0, 500)}` },
           ],
-          max_tokens: 500,
+          max_tokens: 600,
           temperature: 0.1,
         }),
       });
 
       if (!res.ok) {
-        console.warn(`[WebSearch/OpenRouter] API error ${res.status}`);
-        return null;
+        const errText = await res.text().catch(() => "");
+        console.warn(`[WebSearch/OpenRouter] API error ${res.status} — ${errText.slice(0, 200)}`);
+        // fallback to base sonar if sonar-online not available
+        const res2 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          signal: AbortSignal.timeout(TIMEOUT),
+          headers: {
+            "Authorization": `Bearer ${openrouterKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://aina.masisir.com",
+            "X-Title": "AINA",
+          },
+          body: JSON.stringify({
+            model: "perplexity/sonar",
+            messages: [
+              { role: "system", content: systemMsg },
+              { role: "user",   content: query.slice(0, 500) },
+            ],
+            max_tokens: 600,
+            temperature: 0.1,
+          }),
+        });
+        if (!res2.ok) {
+          console.warn(`[WebSearch/OpenRouter] sonar fallback also failed ${res2.status}`);
+          return null;
+        }
+        const data2 = await res2.json();
+        rawText   = data2.choices?.[0]?.message?.content ?? "";
+        citations = (data2.citations ?? []).slice(0, 3);
+        console.log("[WebSearch] used sonar fallback (sonar-online unavailable)");
+      } else {
+        const data = await res.json();
+        rawText   = data.choices?.[0]?.message?.content ?? "";
+        citations = (data.citations ?? []).slice(0, 3);
       }
-      const data = await res.json();
-      rawText   = data.choices?.[0]?.message?.content ?? "";
-      citations = (data.citations ?? []).slice(0, 3);
     }
 
     if (!rawText || rawText.length < 20) return null;
