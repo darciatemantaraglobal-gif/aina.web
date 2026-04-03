@@ -1645,8 +1645,41 @@ const FIQH_TERM_MAP = {
   "jihad": "جهاد",
   "jual beli": "بيع وشراء",
   "muamalah": "معاملات",
-  "hutang": "دين",
-  "qadha": "قضاء",
+  "hutang": "دين", "utang": "دين", "pinjaman": "قرض",
+  "qadha": "قضاء", "qada": "قضاء",
+  // Shalat spesifik
+  "sholat": "صلاة", "sembahyang": "صلاة", "berpuasa": "صوم",
+  "shalat jumat": "صلاة الجمعة", "jumat": "الجمعة",
+  "shalat tahajud": "صلاة التهجد", "tahajud": "التهجد",
+  "shalat dhuha": "صلاة الضحى", "dhuha": "الضحى",
+  "shalat jenazah": "صلاة الجنازة",
+  "shalat berjamaah": "صلاة الجماعة",
+  "shalat qashar": "صلاة القصر", "qashar": "القصر",
+  "shalat jamak": "الجمع بين الصلاتين",
+  "sujud sahwi": "سجود السهو", "sujud tilawah": "سجود التلاوة",
+  "mandi junub": "غسل الجنابة",
+  // Munakahat lanjut
+  "mahar": "مهر", "mas kawin": "مهر",
+  "iddah": "عدة",
+  "nafkah": "نفقة",
+  "poligami": "تعدد الزوجات",
+  "khul": "خلع", "khuluk": "خلع",
+  // Halal/haram lanjut
+  "hewan sembelihan": "ذبيحة", "sembelih": "ذبح",
+  "babi": "خنزير", "gelatin babi": "خنزير",
+  "asuransi": "تأمين",
+  "gadai": "رهن",
+  // Ibadah umum
+  "doa": "دعاء",
+  "dzikir": "ذكر", "zikir": "ذكر",
+  "taubat": "توبة",
+  "akidah": "عقيدة", "aqidah": "عقيدة",
+  "tauhid": "توحيد",
+  "bidah": "بدعة",
+  "faraid": "فرائض",
+  "infak": "إنفاق",
+  "zakat fitrah": "زكاة الفطر", "zakat mal": "زكاة المال",
+  "udhiyah": "أضحية",
 };
 
 // Detect fiqh-related queries (Arabic or Indonesian)
@@ -1668,15 +1701,22 @@ function extractDorarSearchTerm(query) {
   if (/[\u0600-\u06FF]/.test(query)) {
     const arabicWords = query.match(/[\u0600-\u06FF]{2,}/g) ?? [];
     // Filter out common Arabic stop words
-    const stops = new Set(["في","من","على","إلى","أن","هو","هي","ما","هل","كان","كيف","لا","وما","عن","مع","بعد","قبل","كل","هذا","هذه"]);
+    const stops = new Set(["في","من","على","إلى","أن","هو","هي","ما","هل","كان","كيف","لا","وما","عن","مع","بعد","قبل","كل","هذا","هذه","هل","أو","ثم"]);
     return arabicWords.filter(w => !stops.has(w)).slice(0, 4).join(" ");
   }
-  // Map Indonesian term → Arabic
-  for (const [id, ar] of Object.entries(FIQH_TERM_MAP)) {
-    if (lq.includes(id)) return ar;
+  // Strip common question/framing words first (Indonesian)
+  const stripped = lq
+    .replace(/\b(apakah|boleh tidak|boleh ga|boleh gak|hukumnya|hukum dari|hukum|bagaimana|apa itu|apa yang dimaksud|jelaskan|tolong jelaskan|saya mau tanya|tolong|bisa minta|cari|cariin|gimana|tentang)\b/gi, " ")
+    .replace(/\s+/g, " ").trim();
+  // Multi-word matches first (more specific → higher priority)
+  const sortedKeys = Object.keys(FIQH_TERM_MAP).sort((a, b) => b.length - a.length);
+  for (const id of sortedKeys) {
+    if (stripped.includes(id) || lq.includes(id)) return FIQH_TERM_MAP[id];
   }
-  // Fallback: key content words
-  return query.split(/\s+/).filter(w => w.length > 4).slice(0, 3).join(" ");
+  // Fallback: meaningful content words (>3 chars, skip Indonesian stop words)
+  const stopWords = new Set(["yang","dengan","untuk","dari","pada","atau","dan","ini","itu","dalam","akan","bisa","ada","tidak","harus","bagi","agar","agar","saja","sudah","belum","apa","siapa","mana","kapan","jika","kalau","karena"]);
+  const meaningful = query.split(/\s+/).filter(w => w.length > 3 && !stopWords.has(w.toLowerCase())).slice(0, 4);
+  return meaningful.join(" ") || query.slice(0, 50);
 }
 
 // Strip HTML tags and normalise whitespace
@@ -1775,12 +1815,16 @@ async function fetchPerplexityContext(query) {
     return null;
   }
 
-  const TIMEOUT = 15000;
+  const TIMEOUT = 18000;
   const todayStr = new Date().toLocaleDateString("id-ID", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
     timeZone: "Africa/Cairo",
   });
-  const systemMsg = `You are a knowledgeable assistant for an Indonesian student community in Egypt (Masisir). Today's date is ${todayStr} (Cairo time). Provide a clear, factual, and informative answer (3-5 sentences or a short list) covering key facts about the topic. Focus only on factual content — no greetings, disclaimers, or extra commentary. Always respond in Bahasa Indonesia regardless of the query language.`;
+  // Detect fiqh query to adjust tone
+  const isFiqhCtx = isFiqhQuery(query);
+  const systemMsg = isFiqhCtx
+    ? `Kamu adalah asisten yang paham fiqh Islam dan bahasa Arab. Berikan penjelasan hukum Islam yang singkat, akurat, dan bersumber pada ulama terpercaya tentang topik berikut — dalam 3–5 kalimat. Sebutkan dasar hukumnya (Al-Quran/Hadits) jika memungkinkan. Jangan ada salam, disclaimer, atau komentar ekstra. Selalu jawab dalam Bahasa Indonesia.`
+    : `Kamu adalah asisten untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual yang jelas dan informatif dalam 3–5 kalimat atau daftar singkat tentang topik berikut — fokus pada fakta yang paling relevan untuk konteks Mesir/Kairo jika ada. Jangan ada salam, disclaimer, atau komentar ekstra. Selalu jawab dalam Bahasa Indonesia.`;
 
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -1798,8 +1842,8 @@ async function fetchPerplexityContext(query) {
           { role: "system", content: systemMsg },
           { role: "user",   content: query.slice(0, 500) },
         ],
-        max_tokens: 600,
-        temperature: 0.1,
+        max_tokens: isFiqhCtx ? 800 : 600,
+        temperature: isFiqhCtx ? 0.15 : 0.10,
       }),
     });
 
@@ -2141,8 +2185,6 @@ function isLocalMasisirQuery(text) {
     /kekeluargaan|paguyuban|perhimpunan|komunitas\s*(daerah|mahasiswa|indonesia)|perkumpulan/.test(t) ||
     // Named Indonesian orgs in Egypt
     /\b(ppmi|ppi\s*mesir|imaba|isma|imabi|ikaluin|forkis|kmm|ismafar|ikpm|forsada|gamasi|kpmjb|kpmjt|himdamesi|himalaya|himsatesi|fosimaba|pknm)\b/.test(t) ||
-    // KBRI / Indonesian embassy
-    /kbri|kedutaan\s*besar\s*indonesia|atase|konsulat/.test(t) ||
     // Indonesian-run places in Egypt
     /warung\s*indonesia|kantin\s*indonesia|masakan\s*indonesia|resto(ran)?\s*indonesia|catering\s*indonesia|jajan\s*indonesia/.test(t) ||
     // Masisir-specific housing/area
@@ -2837,10 +2879,14 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
   // Pinned updates are admin-verified — highest trust
   if (hasPinned) return { level: "high_confidence", hint: "" };
 
-  // KB hit on stable, procedure-oriented intent — high trust
-  // (KB takes priority even for role queries — article may have current info)
+  // KB hit on stable, procedure-oriented intent
+  // Strong KB → full trust. Weak KB → partial coverage only → medium confidence.
   if (hasKB && ["factual", "procedural", "confused_procedural", "confused"].includes(intent.primary)) {
-    return { level: "high_confidence", hint: "" };
+    if (kbStrength !== "weak") return { level: "high_confidence", hint: "" };
+    return {
+      level: "medium_confidence",
+      hint: "\n\n**[Kepercayaan — SEDANG — KB PARSIAL]** Knowledge Base hanya punya cakupan parsial untuk topik ini. Jawab berdasarkan KB tapi boleh tambahkan 1 kalimat saran konfirmasi ke sumber lain jika info terasa tidak lengkap.",
+    };
   }
 
   // Current role + NOT historical + no KB/pinned:
@@ -3227,8 +3273,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // have no reliable data on these. Block external entirely to prevent hallucination.
   const isLocalMasisir = isLocalMasisirQuery(lastUserMessage);
   const needsExternal = isLocalMasisir ? false : shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
-  const perplexityNeeded = isLocalMasisir ? false : needsPerplexity(intent.primary, kbStrength, lastUserMessage);
+  // B2 fix: when fiqh intent + Dorar found nothing + no KB → Gemini web fallback
+  const fiqhDorarMiss = intent.primary === "fiqh"
+    && !(dorarResult?.hadiths?.length > 0)
+    && articles.length === 0;
+  const perplexityNeeded = isLocalMasisir ? false
+    : (fiqhDorarMiss || needsPerplexity(intent.primary, kbStrength, lastUserMessage));
   if (isLocalMasisir) console.log(`[Source] local-masisir query detected → blocking all external sources`);
+  if (fiqhDorarMiss) console.log(`[Source] fiqh-Dorar miss + no KB → activating Gemini web fallback`);
 
   // ── #5 KB gap detection: log weak-KB Masisir queries ────────────────────────
   // fetchRelevantArticles() already logs when articles=0 (no match / below threshold).
@@ -3522,10 +3574,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (isDynamicRole || isTimeSensitive || isCurrency) return "standard";
 
     // ── Safe Tier A routes ────────────────────────────────────────────────────
-    // Only casual/small-talk goes to Tier A — no substantive knowledge needed.
-    // All other intents (factual, procedural, fiqh, etc.) stay on Tier B regardless
-    // of KB strength, to preserve full answer quality.
+    // Casual: no substantive knowledge needed → always Tier A.
     if (intentPrimary === "casual") return "lightweight";
+
+    // KB-covered factual/brainstorm/recommendation on stable topic:
+    // Strong KB has the full answer → model just formats it. Tier A is sufficient.
+    // Procedural/fiqh/arabic_writing always stay on Tier B (precision critical).
+    const isKBCoveredStable = kbStrength === "strong"
+      && !isTimeSensitive && !isDynamicRole
+      && ["factual", "recommendation", "brainstorming", "confused"].includes(intentPrimary);
+    if (isKBCoveredStable) return "lightweight";
 
     // ── Everything else → Tier B ──────────────────────────────────────────────
     return "standard";
