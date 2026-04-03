@@ -205,21 +205,42 @@ const MD_COMPONENTS = {
     return <em className="italic text-foreground/75">{children}</em>;
   },
   ul: ({ children }: any) => {
-    const ar = containsArabic(children);
-    return <ul dir={ar ? "auto" : undefined} className="mb-4 last:mb-0 ml-5 list-disc space-y-2 text-foreground/90">{children}</ul>;
+    return <ul className="mb-4 last:mb-0 space-y-1.5 text-foreground/90 list-none">{children}</ul>;
   },
   ol: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <ol dir={ar ? "auto" : undefined} className="mb-4 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>;
+    return <ol dir={ar ? "auto" : undefined} className="mb-4 last:mb-0 ml-5 list-decimal space-y-1.5 text-foreground/90">{children}</ol>;
   },
-  li: ({ children }: any) => {
+  li: ({ children, node }: any) => {
     const isArabic = containsArabic(children);
-    return isArabic ? (
-      <li dir="auto" className="leading-7 break-words pl-1" style={{ lineHeight: "1.9" }}>
-        {children}
+    const isOrdered = node?.parent?.tagName === "ol";
+
+    if (isOrdered) {
+      return (
+        <li
+          dir={isArabic ? "rtl" : undefined}
+          className="leading-7 break-words pl-1"
+          style={{ lineHeight: isArabic ? "1.9" : undefined }}
+        >
+          {children}
+        </li>
+      );
+    }
+
+    if (isArabic) {
+      return (
+        <li className="flex gap-2.5 flex-row-reverse items-start" style={{ lineHeight: "1.9" }}>
+          <span className="shrink-0 mt-[0.45em] h-[5px] w-[5px] rounded-full bg-foreground/50" aria-hidden />
+          <span dir="rtl" className="flex-1 min-w-0 break-words">{children}</span>
+        </li>
+      );
+    }
+
+    return (
+      <li className="flex gap-2.5 items-start leading-7">
+        <span className="shrink-0 mt-[0.45em] h-[5px] w-[5px] rounded-full bg-foreground/50" aria-hidden />
+        <span className="flex-1 min-w-0 break-words">{children}</span>
       </li>
-    ) : (
-      <li className="leading-7 break-words pl-1">{children}</li>
     );
   },
   h1: ({ children }: any) => {
