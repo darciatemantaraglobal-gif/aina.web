@@ -44,6 +44,9 @@ interface Article {
   hidden: boolean; maps_url?: string | null; contact_number?: string | null;
   has_embedding?: boolean; keywords?: string | null;
   content_ar?: string | null;
+  article_type?: string | null;
+  summary?: string | null;
+  important_notes?: string | null;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -318,7 +321,25 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = 1
 }
 
 /* ─── Overview Tab ───────────────────────────────────── */
+type UsageDay = { date: string; label: string; queries: number; dau: number; new_users: number };
+type UsageStats = {
+  today: { queries: number; active_users: number; new_users: number; new_chats: number };
+  daily_14d: UsageDay[];
+  totals: { threads: number; messages: number };
+};
+
 function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
+  const [usage, setUsage] = useState<UsageStats | null>(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [chartMode, setChartMode] = useState<"queries" | "dau">("queries");
+
+  useEffect(() => {
+    adminFetch("/api/admin/usage-stats")
+      .then(d => setUsage(d))
+      .catch(() => {})
+      .finally(() => setUsageLoading(false));
+  }, []);
+
   const cards = [
     { label: "Total User", value: stats.totalUsers, icon: Users, color: "text-violet-400", bg: "bg-violet-500/10" },
     { label: "Total Chat", value: stats.totalChats, icon: MessageSquare, color: "text-blue-400", bg: "bg-blue-500/10" },
@@ -327,12 +348,18 @@ function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
     { label: "Artikel Aktif", value: stats.approvedArticles, icon: BookOpen, color: "text-green-400", bg: "bg-green-500/10" },
     { label: "Total Artikel", value: stats.totalArticles, icon: TrendingUp, color: "text-pink-400", bg: "bg-pink-500/10" },
   ];
+
+  const daily = usage?.daily_14d ?? [];
+  const maxVal = Math.max(...daily.map(d => chartMode === "queries" ? d.queries : d.dau), 1);
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="font-display text-lg font-bold text-foreground">Gambaran Umum</h2>
         <p className="text-sm text-muted-foreground">Statistik platform AINA secara real-time.</p>
       </div>
+
+      {/* Static counters */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {cards.map(c => (
           <div key={c.label} className="rounded-2xl border border-border bg-card p-4">
@@ -348,6 +375,98 @@ function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
           </div>
         ))}
       </div>
+
+      {/* Today's live metrics */}
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <h3 className="mb-4 font-medium text-foreground">Aktivitas Hari Ini</h3>
+        {usageLoading ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[0,1,2,3].map(i => <div key={i} className="h-16 animate-pulse rounded-xl bg-muted" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Query AI", value: usage?.today.queries ?? 0, color: "text-violet-400" },
+              { label: "User Aktif", value: usage?.today.active_users ?? 0, color: "text-green-400" },
+              { label: "User Baru", value: usage?.today.new_users ?? 0, color: "text-blue-400" },
+              { label: "Chat Baru", value: usage?.today.new_chats ?? 0, color: "text-yellow-400" },
+            ].map(m => (
+              <div key={m.label} className="rounded-xl border border-border bg-secondary/40 p-3 text-center">
+                <p className={`font-display text-2xl font-bold ${m.color}`}>{m.value}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{m.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 14-day trend chart */}
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-medium text-foreground">Tren 14 Hari Terakhir</h3>
+          <div className="flex rounded-lg border border-border overflow-hidden text-xs">
+            <button
+              onClick={() => setChartMode("queries")}
+              className={`px-3 py-1 transition-colors ${chartMode === "queries" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              Query AI
+            </button>
+            <button
+              onClick={() => setChartMode("dau")}
+              className={`px-3 py-1 transition-colors ${chartMode === "dau" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              DAU
+            </button>
+          </div>
+        </div>
+        {usageLoading ? (
+          <div className="flex items-end gap-1 h-28">
+            {Array.from({ length: 14 }).map((_, i) => (
+              <div key={i} className="flex-1 animate-pulse rounded-t bg-muted" style={{ height: `${Math.random() * 70 + 20}%` }} />
+            ))}
+          </div>
+        ) : daily.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Belum ada data query.</p>
+        ) : (
+          <div className="flex items-end gap-[3px] h-28">
+            {daily.map(d => {
+              const val = chartMode === "queries" ? d.queries : d.dau;
+              const pct = maxVal > 0 ? Math.max((val / maxVal) * 100, val > 0 ? 4 : 0) : 0;
+              const isToday = d.date === new Date().toISOString().split("T")[0];
+              return (
+                <div key={d.date} className="group relative flex-1 flex flex-col items-center justify-end h-full">
+                  <div
+                    className={`w-full rounded-t transition-opacity ${isToday ? "bg-primary" : "bg-primary/40 group-hover:bg-primary/60"}`}
+                    style={{ height: `${pct}%` }}
+                  />
+                  {/* tooltip */}
+                  <div className="pointer-events-none absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-10 hidden group-hover:flex flex-col items-center">
+                    <div className="rounded-lg bg-popover border border-border px-2 py-1.5 text-[11px] text-center shadow-md whitespace-nowrap">
+                      <p className="font-semibold text-foreground">{val} {chartMode === "queries" ? "query" : "user"}</p>
+                      <p className="text-muted-foreground">{d.label}</p>
+                    </div>
+                    <div className="h-1.5 w-px bg-border" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {!usageLoading && daily.length > 0 && (
+          <div className="mt-2 flex justify-between text-[10px] text-muted-foreground/50">
+            <span>{daily[0]?.label}</span>
+            <span>Hari ini</span>
+          </div>
+        )}
+        {!usageLoading && usage && (
+          <div className="mt-4 flex gap-4 text-xs text-muted-foreground border-t border-border pt-3">
+            <span>Total pesan: <span className="text-foreground font-medium">{usage.totals.messages.toLocaleString("id-ID")}</span></span>
+            <span>Total thread: <span className="text-foreground font-medium">{usage.totals.threads.toLocaleString("id-ID")}</span></span>
+          </div>
+        )}
+      </div>
+
+      {/* Role structure */}
       <div className="rounded-2xl border border-border bg-card p-5">
         <h3 className="mb-3 font-medium text-foreground">Struktur Role</h3>
         <div className="space-y-2 text-sm">
@@ -1717,37 +1836,51 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
   );
 }
 
+type ArticleFormData = {
+  title: string; content: string; category: string;
+  article_type?: string; keywords?: string;
+  summary?: string; important_notes?: string;
+  maps_url?: string; contact_number?: string;
+};
+
 function ArticleFormDialog({
   open, onClose, onSave, initial, articleId,
 }: {
   open: boolean; onClose: () => void;
-  onSave: (data: { title: string; content: string; category: string; maps_url?: string; contact_number?: string }) => Promise<void>;
-  initial?: { title: string; content: string; category: string; maps_url?: string; contact_number?: string };
+  onSave: (data: ArticleFormData) => Promise<void>;
+  initial?: ArticleFormData;
   articleId?: string;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [content, setContent] = useState(initial?.content ?? "");
   const [category, setCategory] = useState(initial?.category ?? "");
+  const [articleType, setArticleType] = useState(initial?.article_type ?? "narrative");
+  const [keywords, setKeywords] = useState(initial?.keywords ?? "");
+  const [summary, setSummary] = useState(initial?.summary ?? "");
+  const [importantNotes, setImportantNotes] = useState(initial?.important_notes ?? "");
   const [mapsUrl, setMapsUrl] = useState(initial?.maps_url ?? "");
   const [contactNumber, setContactNumber] = useState(initial?.contact_number ?? "");
   const [saving, setSaving] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [contentAr, setContentAr] = useState<string | null>(null);
   const [showAr, setShowAr] = useState(false);
+  const [previewContent, setPreviewContent] = useState(false);
   const prevOpenRef = useRef(false);
 
   useEffect(() => {
-    // Only reset form when dialog transitions from closed → open.
-    // Using `initial` as dep causes reset on every parent re-render (new object ref),
-    // which reverts user edits while the dialog is still open.
     if (open && !prevOpenRef.current) {
       setTitle(initial?.title ?? "");
       setContent(initial?.content ?? "");
       setCategory(initial?.category ?? "");
+      setArticleType(initial?.article_type ?? "narrative");
+      setKeywords(initial?.keywords ?? "");
+      setSummary(initial?.summary ?? "");
+      setImportantNotes(initial?.important_notes ?? "");
       setMapsUrl(initial?.maps_url ?? "");
       setContactNumber(initial?.contact_number ?? "");
       setContentAr(null);
       setShowAr(false);
+      setPreviewContent(false);
     }
     prevOpenRef.current = open;
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1755,7 +1888,15 @@ function ArticleFormDialog({
   const handleSave = async () => {
     if (!title.trim() || !content.trim() || !category) { toast.error("Semua field harus diisi"); return; }
     setSaving(true);
-    await onSave({ title: title.trim(), content: content.trim(), category, maps_url: mapsUrl.trim() || undefined, contact_number: contactNumber.trim() || undefined });
+    await onSave({
+      title: title.trim(), content: content.trim(), category,
+      article_type: articleType,
+      keywords: keywords.trim() || undefined,
+      summary: summary.trim() || undefined,
+      important_notes: importantNotes.trim() || undefined,
+      maps_url: mapsUrl.trim() || undefined,
+      contact_number: contactNumber.trim() || undefined,
+    });
     setSaving(false);
   };
 
@@ -1775,27 +1916,129 @@ function ArticleFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="bg-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-card border-border max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display">{initial ? "Edit Artikel" : "Tambah Artikel Baru"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+          {/* Row: Judul */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Judul</label>
             <Input placeholder="Judul artikel" value={title} onChange={e => setTitle(e.target.value)} className="bg-secondary" />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Kategori</label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="bg-secondary"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
+
+          {/* Row: Kategori + Tipe Artikel */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Kategori</label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="bg-secondary"><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Tipe Artikel</label>
+              <Select value={articleType} onValueChange={setArticleType}>
+                <SelectTrigger className="bg-secondary"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="narrative">Narasi (paragraf)</SelectItem>
+                  <SelectItem value="step_by_step">Langkah demi langkah</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {/* Konten + Markdown Preview */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Konten</label>
-            <Textarea placeholder="Tulis isi artikel..." value={content} onChange={e => setContent(e.target.value)} className="min-h-[180px] bg-secondary resize-none" />
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">Konten</label>
+              <div className="flex items-center gap-3">
+                <span className={`text-[11px] ${content.length > 9000 ? "text-red-400" : "text-muted-foreground/60"}`}>
+                  {content.length.toLocaleString("id-ID")} karakter
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewContent(v => !v)}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  {previewContent ? "Edit" : "Preview"}
+                </button>
+              </div>
+            </div>
+            {previewContent ? (
+              <div className="min-h-[200px] max-h-[340px] overflow-y-auto rounded-xl border border-border bg-secondary/50 px-4 py-3 text-sm text-muted-foreground prose prose-sm prose-invert max-w-none
+                prose-headings:text-foreground prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0.5
+                prose-strong:text-foreground prose-code:text-primary prose-code:bg-secondary prose-code:px-1 prose-code:rounded prose-code:text-xs">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_LINK}>{content || "_Konten kosong_"}</ReactMarkdown>
+              </div>
+            ) : (
+              <Textarea
+                placeholder="Tulis isi artikel (mendukung Markdown)..."
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                className="min-h-[200px] max-h-[340px] bg-secondary resize-y font-mono text-xs leading-relaxed"
+              />
+            )}
+          </div>
+
+          {/* Keywords */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">
+                Keywords <span className="font-normal text-muted-foreground/60">(opsional, pisahkan dengan koma)</span>
+              </label>
+              <span className={`text-[11px] ${keywords.length > 450 ? "text-red-400" : "text-muted-foreground/60"}`}>
+                {keywords.length}/500
+              </span>
+            </div>
+            <Input
+              placeholder="visa, imigrasi, dokumen, KBRI, pendaftaran"
+              value={keywords}
+              onChange={e => setKeywords(e.target.value)}
+              maxLength={500}
+              className="bg-secondary text-xs"
+            />
+            <p className="text-[11px] text-muted-foreground/60">
+              Kata kunci meningkatkan akurasi pencarian AINA. Pisahkan dengan koma.
+            </p>
+          </div>
+
+          {/* Summary */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">
+                Ringkasan <span className="font-normal text-muted-foreground/60">(opsional, 2-3 kalimat)</span>
+              </label>
+              <span className={`text-[11px] ${summary.length > 550 ? "text-red-400" : "text-muted-foreground/60"}`}>
+                {summary.length}/600
+              </span>
+            </div>
+            <Textarea
+              placeholder="Ringkasan singkat artikel untuk preview & relevansi pencarian..."
+              value={summary}
+              onChange={e => setSummary(e.target.value)}
+              maxLength={600}
+              className="min-h-[70px] bg-secondary resize-none text-xs"
+            />
+          </div>
+
+          {/* Important Notes */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              Catatan Penting / Peringatan <span className="font-normal text-muted-foreground/60">(opsional)</span>
+            </label>
+            <Textarea
+              placeholder="Peringatan, pengecualian, atau catatan khusus yang perlu disampaikan AINA..."
+              value={importantNotes}
+              onChange={e => setImportantNotes(e.target.value)}
+              maxLength={1000}
+              className="min-h-[70px] bg-secondary resize-none text-xs"
+            />
+            <p className="text-[11px] text-muted-foreground/60">
+              AINA akan menyertakan catatan ini saat menjawab pertanyaan terkait artikel ini (misal: "Perhatian: proses ini bisa memakan waktu 3-4 minggu").
+            </p>
           </div>
 
           {/* Arabic translation — only shown when editing an existing article */}
@@ -1844,36 +2087,34 @@ function ArticleFormDialog({
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              🗺️ Link Google Maps <span className="text-[11px] font-normal text-muted-foreground/60">(opsional)</span>
-            </label>
-            <Input
-              placeholder="https://maps.google.com/?q=..."
-              value={mapsUrl}
-              onChange={e => setMapsUrl(e.target.value)}
-              className="bg-secondary text-xs"
-            />
-            <p className="text-[11px] text-muted-foreground/60">
-              Tambahkan link lokasi jika artikel ini terkait tempat tertentu (KBRI, kampus, masjid, dll). AINA akan otomatis menyertakan peta saat menjawab pertanyaan berbasis artikel ini.
-            </p>
+          {/* Maps & Contact */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                🗺️ Link Google Maps <span className="font-normal text-muted-foreground/60">(opsional)</span>
+              </label>
+              <Input
+                placeholder="https://maps.google.com/?q=..."
+                value={mapsUrl}
+                onChange={e => setMapsUrl(e.target.value)}
+                className="bg-secondary text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                📞 Nomor Telepon / WA <span className="font-normal text-muted-foreground/60">(opsional)</span>
+              </label>
+              <Input
+                type="tel"
+                placeholder="+62 812-3456-7890"
+                value={contactNumber}
+                onChange={e => setContactNumber(e.target.value)}
+                maxLength={50}
+                className="bg-secondary text-xs"
+              />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              📞 Nomor Telepon / WhatsApp <span className="text-[11px] font-normal text-muted-foreground/60">(opsional)</span>
-            </label>
-            <Input
-              type="tel"
-              placeholder="+62 812-3456-7890 atau +20 100-123-4567"
-              value={contactNumber}
-              onChange={e => setContactNumber(e.target.value)}
-              maxLength={50}
-              className="bg-secondary text-xs"
-            />
-            <p className="text-[11px] text-muted-foreground/60">
-              Nomor kontak terkait artikel (KBRI, imigrasi, dll). AINA akan menyebutkan nomor ini saat menjawab pertanyaan soal kontak.
-            </p>
-          </div>
+
           <div className="flex gap-2 pt-1">
             <Button variant="outline" onClick={onClose} className="flex-1">Batal</Button>
             <Button onClick={handleSave} disabled={saving} className="flex-1 bg-gradient-purple text-primary-foreground hover:opacity-90">
@@ -2035,7 +2276,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     setBulkLoading(false);
   };
 
-  const handleAdd = async (data: { title: string; content: string; category: string; maps_url?: string; contact_number?: string }) => {
+  const handleAdd = async (data: ArticleFormData) => {
     try {
       await adminFetch("/api/admin/articles", { method: "POST", body: JSON.stringify(data) });
       toast.success("Artikel ditambahkan!");
@@ -2044,7 +2285,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const handleEdit = async (data: { title: string; content: string; category: string; maps_url?: string; contact_number?: string }) => {
+  const handleEdit = async (data: ArticleFormData) => {
     if (!editArticle) return;
     try {
       await adminFetch(`/api/admin/articles/${editArticle.id}`, { method: "PATCH", body: JSON.stringify(data) });
@@ -2910,7 +3151,17 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       <ArticleFormDialog
         open={!!editArticle} onClose={() => setEditArticle(null)} onSave={handleEdit}
         articleId={editArticle?.id}
-        initial={editArticle ? { title: editArticle.title, content: editArticle.content, category: editArticle.category, maps_url: editArticle.maps_url ?? "", contact_number: editArticle.contact_number ?? "" } : undefined}
+        initial={editArticle ? {
+          title: editArticle.title,
+          content: editArticle.content,
+          category: editArticle.category,
+          article_type: editArticle.article_type ?? "narrative",
+          keywords: editArticle.keywords ?? "",
+          summary: editArticle.summary ?? "",
+          important_notes: editArticle.important_notes ?? "",
+          maps_url: editArticle.maps_url ?? "",
+          contact_number: editArticle.contact_number ?? "",
+        } : undefined}
       />
       <BulkImportDialog
         open={bulkImportOpen}

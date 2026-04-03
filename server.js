@@ -6464,14 +6464,78 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category, keywords, maps_url, contact_number } = req.body;
+  const { title, content, category, keywords, maps_url, contact_number, article_type, summary, important_notes } = req.body;
   const updatePayload = { title, content, category };
   if (typeof keywords === "string") updatePayload.keywords = keywords.trim().slice(0, 500);
   if (typeof maps_url === "string") updatePayload.maps_url = maps_url.trim().slice(0, 1000) || null;
   if (typeof contact_number === "string") updatePayload.contact_number = contact_number.trim().slice(0, 50) || null;
+  const VALID_TYPES = ["step_by_step", "narrative"];
+  if (VALID_TYPES.includes(article_type)) updatePayload.article_type = article_type;
+  if (typeof summary === "string") updatePayload.summary = summary.trim().slice(0, 600) || null;
+  if (typeof important_notes === "string") updatePayload.important_notes = important_notes.trim().slice(0, 1000) || null;
   const { error } = await supabase.from("knowledge_base").update(updatePayload).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });
+});
+
+/* ── P2: Usage analytics endpoint ───────────────────────────────────────────── */
+app.get("/api/admin/usage-stats", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const since14d  = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const todayStr  = new Date().toISOString().split("T")[0];
+  const todayStart = `${todayStr}T00:00:00.000Z`;
+
+  const [
+    { data: queryLogs },
+    { data: newProfiles },
+    { count: todayChats },
+    { count: totalThreads },
+    { count: totalMessages },
+  ] = await Promise.all([
+    supabase.from("query_log").select("user_id, created_at").gte("created_at", since14d).order("created_at"),
+    supabase.from("profiles").select("created_at").gte("created_at", since14d).order("created_at"),
+    supabase.from("chats").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
+    supabase.from("threads").select("*", { count: "exact", head: true }),
+    supabase.from("messages").select("*", { count: "exact", head: true }),
+  ]);
+
+  // Build 14-day buckets
+  const days = {};
+  for (let i = 13; i >= 0; i--) {
+    const d   = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().split("T")[0];
+    const label = d.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Cairo" });
+    days[key] = { date: key, label, queries: 0, users: new Set(), new_users: 0 };
+  }
+  (queryLogs ?? []).forEach(r => {
+    const key = r.created_at.split("T")[0];
+    if (days[key]) { days[key].queries++; if (r.user_id) days[key].users.add(r.user_id); }
+  });
+  (newProfiles ?? []).forEach(r => {
+    const key = r.created_at.split("T")[0];
+    if (days[key]) days[key].new_users++;
+  });
+
+  const daily_14d = Object.values(days).map(d => ({
+    date: d.date, label: d.label,
+    queries: d.queries, dau: d.users.size, new_users: d.new_users,
+  }));
+
+  const today = days[todayStr] || { queries: 0, users: new Set(), new_users: 0 };
+
+  res.json({
+    today: {
+      queries: today.queries,
+      active_users: today.users?.size ?? 0,
+      new_users: today.new_users,
+      new_chats: todayChats ?? 0,
+    },
+    daily_14d,
+    totals: { threads: totalThreads ?? 0, messages: totalMessages ?? 0 },
+  });
 });
 
 /* ── Master Admin: Reformat Single Article ──────────── */
