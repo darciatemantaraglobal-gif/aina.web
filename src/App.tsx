@@ -1,11 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect, lazy, Suspense, useRef } from "react";
+import { toast } from "sonner";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
+import OfflineIndicator from "@/components/OfflineIndicator";
 import GlobalErrorBoundary from "@/components/GlobalErrorBoundary";
+import { initSessionGuard } from "@/lib/sessionGuard";
 
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Login = lazy(() => import("./pages/Login.tsx"));
@@ -37,6 +40,19 @@ const queryClient = new QueryClient({
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
+
+// Initializes the session expiry guard once, inside the Router context
+// so useNavigate is available.
+function SessionGuard() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    initSessionGuard(
+      (path) => navigate(path),
+      ({ title, description }) => toast.error(title, { description }),
+    );
+  }, [navigate]);
   return null;
 }
 
@@ -91,6 +107,8 @@ const App = () => (
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <ScrollToTop />
+          <SessionGuard />
+          <OfflineIndicator />
           <AnimatedRoutes />
           <PwaInstallBanner />
         </BrowserRouter>

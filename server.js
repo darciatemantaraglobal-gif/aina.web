@@ -24,6 +24,45 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
 
+/* ── Process-level crash guards ──────────────────────── */
+// Prevent silent crashes — always log to console so Replit/ops can see it.
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] uncaughtException:", err.message);
+  console.error(err.stack);
+  // Don't exit — let the process keep running; Express is still intact.
+});
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error("[FATAL] unhandledRejection:", msg);
+});
+
+/* ── Supabase retry utility ───────────────────────────── */
+// Wraps a Supabase query function and retries on transient network/timeout errors.
+// Usage: const { data, error } = await withRetry(() => supabase.from("x").select("*"), { label: "fetchX" });
+async function withRetry(fn, { maxAttempts = 3, delayMs = 400, label = "db" } = {}) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await fn();
+      if (result?.error) {
+        const msg = result.error.message || "";
+        const isTransient =
+          msg.includes("timeout") || msg.includes("network") ||
+          msg.includes("ECONNRESET") || msg.includes("ETIMEDOUT") ||
+          result.error.code === "PGRST001";
+        if (!isTransient || attempt === maxAttempts) return result;
+        console.warn(`[withRetry:${label}] attempt ${attempt}/${maxAttempts}: ${msg}`);
+        await new Promise((r) => setTimeout(r, delayMs * attempt));
+        continue;
+      }
+      return result;
+    } catch (e) {
+      if (attempt === maxAttempts) throw e;
+      console.warn(`[withRetry:${label}] attempt ${attempt}/${maxAttempts}: ${e.message}`);
+      await new Promise((r) => setTimeout(r, delayMs * attempt));
+    }
+  }
+}
+
 // Polyfill DOMMatrix for Node.js — older pdfjs-dist versions (used by pdf-parse)
 // may reference DOMMatrix. Stub it so it never throws in a serverless environment.
 if (typeof globalThis.DOMMatrix === "undefined") {
@@ -115,7 +154,28 @@ app.use(rl(60_000, 200, "Terlalu banyak permintaan, coba lagi sebentar."));
 
 // Strict: auth-sensitive & expensive endpoints
 const strictLimiter   = rl(60_000,  10, "Terlalu banyak percobaan, tunggu 1 menit.");
-const chatLimiter     = rl(60_000,  20, "Terlalu banyak pesan, tunggu sebentar.");
+// Chat limiter uses JWT user ID as the rate-limit key when available,
+// so dormitory shared-IP networks don't cause false positives for other users.
+const chatLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak pesan, tunggu sebentar." },
+  // Suppress IPv6 validation: the /api/chat route rejects unauthenticated
+  // requests before the limiter key is ever used as an IP address.
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => {
+    const auth = req.headers.authorization || "";
+    if (auth.startsWith("Bearer ")) {
+      try {
+        const payload = JSON.parse(Buffer.from(auth.split(".")[1], "base64url").toString());
+        if (payload?.sub) return `uid:${payload.sub}`;
+      } catch { /* fall through to IP */ }
+    }
+    return req.ip ?? "unknown";
+  },
+});
 const uploadLimiter   = rl(60_000,   5, "Terlalu banyak upload, tunggu sebentar.");
 const feedbackLimiter = rl(60_000,   5, "Terlalu banyak feedback, tunggu sebentar.");
 const writeLimiter    = rl(60_000,  30, "Terlalu banyak operasi tulis, tunggu sebentar.");
@@ -374,20 +434,23 @@ async function logQuery({ queryText, intentType, sourceUsed, confidence, userId,
   const supabase = getAdminClient();
   if (!supabase || !queryText?.trim()) return null;
   try {
-    const { data, error } = await supabase
-      .from("query_log")
-      .insert({
-        query_text:    queryText.trim().slice(0, 500),
-        intent_type:   intentType  ?? null,
-        source_used:   sourceUsed  ?? null,
-        confidence:    confidence  ?? null,
-        user_id:       userId      ?? null,
-        has_kb_result: hasKbResult ?? false,
-        is_transport:  isTransport ?? false,
-        rating:        rating      ?? null,
-      })
-      .select("id")
-      .single();
+    const { data, error } = await withRetry(
+      () => supabase
+        .from("query_log")
+        .insert({
+          query_text:    queryText.trim().slice(0, 500),
+          intent_type:   intentType  ?? null,
+          source_used:   sourceUsed  ?? null,
+          confidence:    confidence  ?? null,
+          user_id:       userId      ?? null,
+          has_kb_result: hasKbResult ?? false,
+          is_transport:  isTransport ?? false,
+          rating:        rating      ?? null,
+        })
+        .select("id")
+        .single(),
+      { label: "query_log.insert" }
+    );
     if (error) { console.warn("[QueryLog] insert failed (non-critical):", error.message); return null; }
     return data?.id ?? null;
   } catch (e) {
@@ -415,11 +478,14 @@ ensureMissingTopicsTable();
 function logMissingTopic(query, intentType) {
   const supabase = getAdminClient();
   if (!supabase || !query?.trim()) return;
-  supabase
-    .from("missing_topics")
-    .insert({ query: query.trim().slice(0, 500), intent_type: intentType ?? null })
-    .then(({ error }) => { if (error) console.warn("[MissingTopics] insert failed:", error.message); })
-    .catch(() => {});
+  withRetry(
+    () => supabase
+      .from("missing_topics")
+      .insert({ query: query.trim().slice(0, 500), intent_type: intentType ?? null }),
+    { label: "missing_topics.insert" }
+  ).then(({ error } = {}) => {
+    if (error) console.warn("[MissingTopics] insert failed:", error.message);
+  }).catch(() => {});
 }
 
 /* ── User Notes (Supabase) ────────────────────────────────────────────────────
@@ -2167,8 +2233,30 @@ ${convText}`;
 }
 
 /* ── Health check ────────────────────────────────────── */
-app.get("/api/ping", (_req, res) => {
-  res.json({ status: "ok" });
+app.get("/api/ping", (_req, res) => res.json({ status: "ok" }));
+
+// Detailed health — returns uptime, memory, and service config status.
+// Public (no auth needed) so uptime monitors can use it.
+app.get("/api/health", (_req, res) => {
+  const mem = process.memoryUsage();
+  res.json({
+    status: "ok",
+    uptime_seconds: Math.floor(process.uptime()),
+    memory_mb: {
+      rss:       Math.round(mem.rss       / 1024 / 1024),
+      heap_used: Math.round(mem.heapUsed  / 1024 / 1024),
+      heap_total:Math.round(mem.heapTotal / 1024 / 1024),
+    },
+    services: {
+      supabase:   !!process.env.SUPABASE_URL,
+      openrouter: !!process.env.OPENROUTER_API_KEY,
+      perplexity: !!process.env.PERPLEXITY_API_KEY,
+      openai:     !!process.env.OPENAI_API_KEY,
+      resend:     !!process.env.RESEND_API_KEY,
+      google_maps:!!process.env.GOOGLE_MAPS_API_KEY,
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 
@@ -10371,17 +10459,6 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
     ],
     perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
     google_maps_configured: !!process.env.GOOGLE_MAPS_API_KEY,
-  });
-});
-
-/* ── Global JSON error handler ───────────────────────── */
-// Must be registered AFTER all routes. Ensures all unhandled errors
-// return JSON (not Express's default HTML page) so the client never
-// sees "Request failed" due to a non-JSON error body.
-app.use((err, req, res, _next) => {
-  console.error("[UNHANDLED ERROR]", req.method, req.path, err.message);
-  res.status(err.status || err.statusCode || 500).json({
-    error: err.message || "Internal server error",
   });
 });
 
