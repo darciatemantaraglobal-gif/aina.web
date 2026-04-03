@@ -308,6 +308,7 @@ export function buildSourceResult({
     queryType,
     query,
     articles,
+    intentPrimary: intent?.primary ?? "unknown",
   });
 
   // ── Human-readable source summary ─────────────────────────────────────────
@@ -377,8 +378,16 @@ function deriveSourceKey(entry) {
 
 /* ── may_be_outdated deriver ──────────────────────────────────────────────── */
 
-function deriveMayBeOutdated({ confidence, primarySource, queryType, query, articles }) {
-  // Fallback = potentially outdated (model training cutoff)
+// Intents yang tidak perlu peringatan outdated — percakapan, kreatif, agama
+const TIMELESS_INTENTS = new Set([
+  "casual", "greeting", "brainstorming", "arabic_writing", "fiqh",
+]);
+
+function deriveMayBeOutdated({ confidence, primarySource, queryType, query, articles, intentPrimary }) {
+  // Percakapan/kreatif/keagamaan → tidak relevan warning outdated
+  if (TIMELESS_INTENTS.has(intentPrimary)) return false;
+
+  // Fallback + query faktual/prosedural = mungkin outdated (training cutoff model)
   if (confidence === "fallback") return true;
 
   // Dynamic/time-sensitive queries are always potentially outdated unless from real-time sources
