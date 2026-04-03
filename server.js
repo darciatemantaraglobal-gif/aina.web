@@ -865,6 +865,68 @@ Tulis hanya ringkasannya, tanpa kalimat pembuka seperti "Artikel ini membahas...
   }
 }
 
+/* ── Important Notes Generator (gpt-4o-mini) ─────────────────────────────────
+   Generates critical warnings/tips for KB articles. Free-format 1-3 bullet points.
+   Examples: deadlines, requirements, common mistakes, frequently changing info. */
+async function generateImportantNotes(title, content, category) {
+  if (!process.env.OPENAI_API_KEY) return null;
+  try {
+    const snippet = content?.slice(0, 2500) || "";
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{
+          role: "user",
+          content: `Kamu adalah asisten untuk Knowledge Base AINA (mahasiswa Indonesia di Mesir/Masisir).
+
+Artikel:
+- Judul: ${title}
+- Kategori: ${category}
+- Isi: ${snippet}
+
+Tugas: Identifikasi 1-3 catatan penting/peringatan kritis yang WAJIB diketahui mahasiswa terkait topik ini. Fokus pada:
+- Deadline atau batas waktu kritis
+- Persyaratan yang sering terlewat
+- Kesalahan umum yang sering dilakukan
+- Informasi yang sering berubah dan perlu dicek ulang
+- Risiko atau konsekuensi jika salah langkah
+
+Format: Tulis poin-poin singkat (maks 2 kalimat per poin), pisahkan dengan baris baru. TIDAK perlu heading, nomor, atau bullet. Jika tidak ada catatan kritis yang signifikan, tulis hanya: null`,
+        }],
+        max_tokens: 200,
+        temperature: 0.2,
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "";
+    if (!raw || raw === "null" || raw.length < 15) return null;
+    return raw.slice(0, 600);
+  } catch { return null; }
+}
+
+/* Trigger important_notes generation for one article (fire-and-forget) */
+async function triggerImportantNotesGen(articleId) {
+  if (!process.env.OPENAI_API_KEY) return;
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  try {
+    const { data: art } = await supabase
+      .from("knowledge_base")
+      .select("title, content, category, important_notes")
+      .eq("id", articleId)
+      .single();
+    if (!art || art.important_notes) return; // skip if already has notes
+    const notes = await generateImportantNotes(art.title, art.content, art.category);
+    if (notes) {
+      await supabase.from("knowledge_base").update({ important_notes: notes }).eq("id", articleId);
+      console.log(`[Notes] ✓ generated important_notes for article ${articleId}`);
+    }
+  } catch { /* silent — notes gen is best-effort */ }
+}
+
 /* Trigger summary generation for one article (fire-and-forget) */
 async function triggerSummaryGen(articleId) {
   if (!process.env.OPENAI_API_KEY) return;
@@ -1787,7 +1849,38 @@ async function fetchUserMemories(userId, query = "", intentPrimary = "factual") 
     });
     if (active.length === 0) return [];
 
-    // Relevance scoring — type-intent affinity + keyword overlap
+    // ── Semantic reranking (if OpenAI available) ─────────────────────────────
+    // Batch-embed query + all memories in one API call → cosine similarity → rerank
+    if (process.env.OPENAI_API_KEY && query.trim().length > 3 && active.length > 0) {
+      try {
+        const texts = [query.trim().slice(0, 500), ...active.map(m => m.memory.slice(0, 300))];
+        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+          method: "POST",
+          signal: AbortSignal.timeout(5000),
+          headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "text-embedding-3-small", input: texts }),
+        });
+        if (embRes.ok) {
+          const embData = await embRes.json();
+          const queryVec = embData.data[0].embedding;
+          const cosine = (a, b) => {
+            let dot = 0, na = 0, nb = 0;
+            for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+            return dot / (Math.sqrt(na) * Math.sqrt(nb));
+          };
+          const withSim = active.map((m, i) => ({
+            ...m, _semScore: cosine(queryVec, embData.data[i + 1].embedding),
+          }));
+          withSim.sort((a, b) => b._semScore - a._semScore);
+          // Always include top preference_memory if semantically relevant
+          const prefs  = withSim.filter(m => m.memory_type === "preference_memory" && m._semScore > 0.25).slice(0, 1);
+          const others = withSim.filter(m => m.memory_type !== "preference_memory").slice(0, 2);
+          return [...prefs, ...others].slice(0, 3);
+        }
+      } catch { /* fall through to keyword scoring */ }
+    }
+
+    // ── Fallback: keyword overlap + type-intent affinity ────────────────────
     const TYPE_PRIORITY = {
       procedural:          ["task_memory", "context_memory", "preference_memory"],
       confused_procedural: ["task_memory", "context_memory", "preference_memory"],
@@ -1802,14 +1895,13 @@ async function fetchUserMemories(userId, query = "", intentPrimary = "factual") 
     );
     const scored = active.map(m => {
       const type = m.memory_type || "context_memory";
-      const typeScore = (2 - priority.indexOf(type)) * 1.5; // 3, 1.5, 0
+      const typeScore = (2 - priority.indexOf(type)) * 1.5;
       const memWords = m.memory.toLowerCase().split(/\s+/);
       const overlap = Math.min(memWords.filter(w => queryWords.has(w)).length, 2);
       return { ...m, _score: typeScore + overlap };
     });
     scored.sort((a, b) => b._score - a._score);
 
-    // Always include preference_memory if scored, cap total at 3
     const prefs   = scored.filter(m => (m.memory_type || "") === "preference_memory").slice(0, 1);
     const others  = scored.filter(m => (m.memory_type || "") !== "preference_memory").slice(0, 2);
     const result  = [...prefs, ...others].slice(0, 3);
@@ -5159,10 +5251,11 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
 
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
-  // Fire-and-forget keyword generation, summary, duplicate check, and embedding when article is approved
+  // Fire-and-forget keyword generation, summary, important_notes, duplicate check, and embedding when article is approved
   if (status === "approved") {
     triggerKeywordGen(id);
     triggerSummaryGen(id);
+    triggerImportantNotesGen(id);
     checkAndArchiveDuplicate(supabase, id, article.title, article.category).catch(() => {});
     embedKBArticle(id).catch(() => {});
   }
@@ -5568,11 +5661,12 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   const pendingIds = pendingArticles.map(a => a.id);
   await supabase.from("knowledge_base").update({ status }).in("id", pendingIds);
 
-  // Fire-and-forget: keyword generation + summary + duplicate check + embedding for all newly approved articles
+  // Fire-and-forget: keyword + summary + important_notes + duplicate check + embedding for all newly approved articles
   if (status === "approved") {
     for (const art of pendingArticles) {
       triggerKeywordGen(art.id);
       triggerSummaryGen(art.id);
+      triggerImportantNotesGen(art.id);
       checkAndArchiveDuplicate(supabase, art.id, art.title, art.category).catch(() => {});
       embedKBArticle(art.id).catch(() => {});
     }
@@ -7462,7 +7556,70 @@ app.get("/api/admin/missing-topics", async (req, res) => {
     }
 
     const rows = data ?? [];
-    // Group by normalised query text — surface most-asked gaps first
+
+    // ── Semantic clustering (if OpenAI available) ──────────────────────────────
+    // Groups queries by meaning (not exact text) so admin sees topic themes, not duplicates.
+    if (process.env.OPENAI_API_KEY && rows.length > 1) {
+      try {
+        // Deduplicate by normalized text first
+        const uniqueQueries = [...new Set(rows.map(r => r.query.trim().slice(0, 200)))];
+        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+          method: "POST",
+          signal: AbortSignal.timeout(20000),
+          headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "text-embedding-3-small", input: uniqueQueries }),
+        });
+        if (embRes.ok) {
+          const embData = await embRes.json();
+          const vecs = embData.data.map(d => d.embedding);
+
+          const cosine = (a, b) => {
+            let dot = 0, na = 0, nb = 0;
+            for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+            return dot / (Math.sqrt(na) * Math.sqrt(nb));
+          };
+
+          // Greedy clustering: each query joins the first cluster whose seed is similar enough
+          const THRESHOLD = 0.72;
+          const assigned = new Array(uniqueQueries.length).fill(-1);
+          const clusters = [];
+          for (let i = 0; i < uniqueQueries.length; i++) {
+            if (assigned[i] !== -1) continue;
+            const cluster = [i];
+            assigned[i] = clusters.length;
+            for (let j = i + 1; j < uniqueQueries.length; j++) {
+              if (assigned[j] !== -1) continue;
+              if (cosine(vecs[i], vecs[j]) >= THRESHOLD) {
+                cluster.push(j);
+                assigned[j] = clusters.length;
+              }
+            }
+            clusters.push(cluster);
+          }
+
+          // Build output: one item per cluster, sorted by total occurrence count
+          const clusterGroups = clusters.map(idxs => {
+            const queries = idxs.map(i => uniqueQueries[i]);
+            const allRows = rows.filter(r => queries.includes(r.query.trim().slice(0, 200)));
+            const count = allRows.length;
+            const latest = [...allRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+            return {
+              ...latest,
+              query: queries[0], // most representative (seed query)
+              count,
+              cluster_size: queries.length,
+              variants: queries.length > 1 ? queries.slice(1, 4) : [],
+            };
+          }).sort((a, b) => b.count - a.count);
+
+          return res.json({ total: rows.length, topics: clusterGroups, clustered: true });
+        }
+      } catch (e) {
+        console.warn("[MissingTopics/cluster] semantic clustering failed, using text grouping:", e.message);
+      }
+    }
+
+    // ── Fallback: text-based grouping ─────────────────────────────────────────
     const countMap = {};
     for (const row of rows) {
       const key = row.query.toLowerCase().trim().slice(0, 80);
@@ -7471,7 +7628,7 @@ app.get("/api/admin/missing-topics", async (req, res) => {
     }
     const grouped = Object.values(countMap).sort((a, b) => b.count - a.count);
 
-    res.json({ total: rows.length, topics: grouped });
+    res.json({ total: rows.length, topics: grouped, clustered: false });
   } catch (e) {
     res.status(500).json({ error: "Gagal memuat missing topics: " + e.message });
   }
