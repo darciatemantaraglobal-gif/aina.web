@@ -1984,15 +1984,15 @@ async function fetchPerplexityContext(query) {
     }
   }
 
-  // ── Path B: Gemini via OpenRouter (training data, no real-time) ─────────
+  // ── Path B: OpenAI GPT-4o-mini via OpenRouter (reliable fallback when Perplexity fails) ──
   if (!openrouterKey) return null;
-  const systemMsgGemini = isFiqhCtx
+  const systemMsgOpenAI = isFiqhCtx
     ? `Kamu adalah asisten yang paham fiqh Islam dan bahasa Arab. Berikan penjelasan hukum Islam yang singkat, akurat dalam 3–5 kalimat. Sebutkan dasar hukumnya jika memungkinkan. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`
     : `Kamu adalah asisten untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual yang jelas dalam 3–5 kalimat atau daftar singkat. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`;
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      signal: AbortSignal.timeout(18000),
+      signal: AbortSignal.timeout(15000),
       headers: {
         "Authorization": `Bearer ${openrouterKey}`,
         "Content-Type": "application/json",
@@ -2000,9 +2000,9 @@ async function fetchPerplexityContext(query) {
         "X-Title": "AINA - Asisten Masisir",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "openai/gpt-4o-mini",
         messages: [
-          { role: "system", content: systemMsgGemini },
+          { role: "system", content: systemMsgOpenAI },
           { role: "user",   content: query.slice(0, 500) },
         ],
         max_tokens: isFiqhCtx ? 800 : 600,
@@ -2010,17 +2010,17 @@ async function fetchPerplexityContext(query) {
       }),
     });
     if (!res.ok) {
-      console.warn(`[WebSearch/Gemini-fallback] API error ${res.status}`);
+      console.warn(`[WebSearch/OpenAI-fallback] API error ${res.status}`);
       return null;
     }
     const data = await res.json();
     const rawText = data.choices?.[0]?.message?.content ?? "";
     if (!rawText || rawText.length < 20) return null;
     const text = trimToSentence(rawText, 1200);
-    console.log(`[WebSearch/Gemini-fallback] context fetched (${text.length} chars) — Perplexity unavailable`);
+    console.log(`[WebSearch/OpenAI-fallback] ✓ context fetched (${text.length} chars) — Perplexity unavailable, GPT-4o-mini used`);
     return { text, citations: [] };
   } catch (e) {
-    console.warn("[WebSearch/Gemini-fallback] fetch failed:", e.message);
+    console.warn("[WebSearch/OpenAI-fallback] fetch failed:", e.message);
     return null;
   }
 }
@@ -3494,16 +3494,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS" : "FAILED"} (queryType=${queryType})`);
     }
 
-    // Step B — Wikipedia + DDG: always the fallback when Gemini web search fails or returns nothing.
-    // Architecture: KB → Gemini web context (OpenRouter) → Wikipedia+DDG → model fallback.
-    if (!perplexityResult && needsExternal) {
-      [wikiResult, ddgResult] = await Promise.all([
-        fetchWikipediaSummary(lastUserMessage),
-        fetchDuckDuckGoAnswer(lastUserMessage),
-      ]);
-      console.log(`[Source] wikipedia=${!!wikiResult} ddg=${!!ddgResult} (Gemini web search ${perplexityResult === null ? "failed" : "not needed"} → Wikipedia+DDG fallback)`);
-    } else if (perplexityResult) {
-      console.log(`[Source] Gemini web context succeeded → skipping Wikipedia+DDG`);
+    // Step B — Wikipedia/DDG removed: OpenAI via OpenRouter is now the fallback inside fetchPerplexityContext.
+    // Architecture: Perplexity (real-time) → OpenAI GPT-4o-mini (knowledge) → model fallback.
+    if (perplexityResult) {
+      console.log(`[Source] web context succeeded (Perplexity or OpenAI fallback) → skipping Wikipedia+DDG`);
+    } else {
+      console.log(`[Source] both Perplexity and OpenAI fallback failed → model answers from own knowledge`);
     }
   } else {
     if (kbCoversQuery) console.log(`[Source] KB strong → skipping all external sources`);
