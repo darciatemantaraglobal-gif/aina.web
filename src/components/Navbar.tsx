@@ -137,6 +137,22 @@ const Navbar = () => {
                 </Link>
               );
             })}
+            <div className="mt-2 border-t border-border/20 pt-2 flex items-center gap-4 px-3">
+              <Link
+                to="/terms"
+                onClick={() => setMobileOpen(false)}
+                className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+              >
+                Syarat & Ketentuan
+              </Link>
+              <Link
+                to="/privacy"
+                onClick={() => setMobileOpen(false)}
+                className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+              >
+                Kebijakan Privasi
+              </Link>
+            </div>
           </div>
         </div>
       </div>

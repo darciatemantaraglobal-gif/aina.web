@@ -3556,11 +3556,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Avoids over-generating for simple queries while keeping full budget for complex ones.
   const dynamicMaxTokens = (() => {
     const i = intent.primary;
-    if (i === "casual") return 1500;
-    if (i === "factual" || i === "confused") return 2500;
-    if (i === "arabic_writing" || i === "fiqh") return 4000;
-    if (i === "procedural" || i === "confused_procedural") return 4000;
-    return 3000;
+    const tableKeywords = /tabel|table|daftar perbandingan|format tabel/i;
+    const needsTable = tableKeywords.test(lastUserMsg);
+    if (needsTable) return 6000;
+    if (i === "casual") return 2000;
+    if (i === "factual" || i === "confused") return 4000;
+    if (i === "arabic_writing" || i === "fiqh") return 5000;
+    if (i === "procedural" || i === "confused_procedural") return 5000;
+    return 4000;
   })();
 
   // ── Set SSE headers before model calls ─────────────────────────────────────
@@ -3603,19 +3606,21 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   };
 
   // ── Build ordered model list ─────────────────────────────────────────────────
+  // Scale timeout with token budget: large responses (tables, long explanations) need more time.
+  const baseTimeoutMs = dynamicMaxTokens >= 5000 ? 60000 : dynamicMaxTokens >= 3000 ? 40000 : 20000;
   let modelsToTry;
   if (useVisionModel) {
-    modelsToTry = [{ model: VISION_MODEL, timeoutMs: 20000 }];
+    modelsToTry = [{ model: VISION_MODEL, timeoutMs: baseTimeoutMs }];
   } else {
     const tier = selectModelTier(intent.primary, kbStrength, lastUserMessage);
-    console.log(`[Routing] tier=${tier} intent=${intent.primary} kb=${kbStrength} qlen=${lastUserMessage.length}`);
+    console.log(`[Routing] tier=${tier} intent=${intent.primary} kb=${kbStrength} qlen=${lastUserMessage.length} timeout=${baseTimeoutMs}ms`);
     const t = MODEL_TIERS[tier];
     const crossTier = MODEL_TIERS[tier === "lightweight" ? "standard" : "lightweight"];
     modelsToTry = [
-      { model: t.primary,   timeoutMs: 20000 },
-      ...(t.fallback  ? [{ model: t.fallback,   timeoutMs: t.fallback.includes(":free") ? 45000 : 20000 }] : []),
-      ...(t.emergency ? [{ model: t.emergency,  timeoutMs: 45000 }] : []),
-      { model: crossTier.primary, timeoutMs: 20000 },
+      { model: t.primary,   timeoutMs: baseTimeoutMs },
+      ...(t.fallback  ? [{ model: t.fallback,   timeoutMs: t.fallback.includes(":free") ? 60000 : baseTimeoutMs }] : []),
+      ...(t.emergency ? [{ model: t.emergency,  timeoutMs: 60000 }] : []),
+      { model: crossTier.primary, timeoutMs: baseTimeoutMs },
     ];
   }
 
