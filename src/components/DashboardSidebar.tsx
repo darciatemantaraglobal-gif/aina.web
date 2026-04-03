@@ -30,6 +30,7 @@ import {
   Settings2,
   History,
   BookOpen,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -64,6 +65,9 @@ interface DashboardSidebarProps {
   onNewChat?: () => void;
   onSelectChat?: (chatId: string) => void;
   onDeleteChat?: (chatId: string) => void;
+  onRenameChat?: (chatId: string, newTitle: string) => void;
+  onLoadMoreChats?: () => void;
+  hasMoreChats?: boolean;
   onStartTour?: () => void;
 }
 
@@ -672,7 +676,7 @@ function ProfileDropdown({
 
 /* ─── Chat History Popup ─────────────────────────────────────── */
 function ChatHistoryPopup({
-  open, onClose, chats, activeChatId, fadingChatIds, onSelectChat, onDeleteChat,
+  open, onClose, chats, activeChatId, fadingChatIds, onSelectChat, onDeleteChat, onRenameChat, onLoadMoreChats, hasMoreChats,
 }: {
   open: boolean;
   onClose: () => void;
@@ -681,8 +685,13 @@ function ChatHistoryPopup({
   fadingChatIds?: Set<string>;
   onSelectChat?: (id: string) => void;
   onDeleteChat?: (id: string) => void;
+  onRenameChat?: (chatId: string, newTitle: string) => void;
+  onLoadMoreChats?: () => void;
+  hasMoreChats?: boolean;
 }) {
   const [search, setSearch] = useState("");
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
   const filtered = chats.filter(c =>
     !search || c.title.toLowerCase().includes(search.toLowerCase())
   );
@@ -762,22 +771,74 @@ function ChatHistoryPopup({
                 }`}
                 style={fadingChatIds?.has(chat.id) ? { transition: "opacity 0.4s ease, transform 0.4s ease" } : undefined}
               >
-                <button
-                  onClick={() => { onSelectChat?.(chat.id); onClose(); }}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                >
-                  <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                  <span className="truncate text-sm">{chat.title}</span>
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); onDeleteChat?.(chat.id); }}
-                  className="shrink-0 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
-                  title="Hapus chat"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {editingChatId === chat.id ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <input
+                      autoFocus
+                      value={editingTitle}
+                      onChange={e => setEditingTitle(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") { onRenameChat?.(chat.id, editingTitle); setEditingChatId(null); }
+                        if (e.key === "Escape") setEditingChatId(null);
+                      }}
+                      className="min-w-0 flex-1 rounded-lg border border-primary/40 bg-secondary px-2 py-0.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                      maxLength={80}
+                    />
+                    <button
+                      onClick={() => { onRenameChat?.(chat.id, editingTitle); setEditingChatId(null); }}
+                      className="shrink-0 rounded-md p-1 text-green-500 hover:bg-green-500/10"
+                      title="Simpan"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setEditingChatId(null)}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-secondary"
+                      title="Batal"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => { onSelectChat?.(chat.id); onClose(); }}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                      <span className="truncate text-sm">{chat.title}</span>
+                    </button>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={e => { e.stopPropagation(); setEditingChatId(chat.id); setEditingTitle(chat.title); }}
+                        className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        title="Ubah judul"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); onDeleteChat?.(chat.id); }}
+                        className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Hapus chat"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))
+          )}
+          {!search && hasMoreChats && (
+            <div className="px-4 py-3">
+              <button
+                onClick={onLoadMoreChats}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-border/50 bg-secondary/40 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+                Muat lebih banyak
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -798,6 +859,9 @@ const DashboardSidebar = ({
   onNewChat,
   onSelectChat,
   onDeleteChat,
+  onRenameChat,
+  onLoadMoreChats,
+  hasMoreChats = false,
   onStartTour,
 }: DashboardSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -1044,6 +1108,9 @@ const DashboardSidebar = ({
         fadingChatIds={fadingChatIds}
         onSelectChat={onSelectChat}
         onDeleteChat={onDeleteChat}
+        onRenameChat={onRenameChat}
+        onLoadMoreChats={onLoadMoreChats}
+        hasMoreChats={hasMoreChats}
       />
     </aside>
   );

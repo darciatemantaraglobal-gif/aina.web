@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw } from "lucide-react";
 import { RESPONSE_STYLES, RESPONSE_STYLE_ORDER, type ResponseStyleKey } from "@/lib/responseStyles";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -424,6 +424,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [welcomeSubtitle] = useState(() => getRandomSubtitle());
   const [timeGreeting] = useState(() => getTimeGreeting());
   const [loadingSeconds, setLoadingSeconds] = useState(0);
+  const lastUserMsgRef = useRef<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
@@ -894,6 +895,9 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
     // Block immediately if we already know the limit is reached
     if (!isPaidUser && limitReached) return;
+
+    // Track last user message for regenerate
+    if (userText) lastUserMsgRef.current = userText;
 
     const fileToSend = attachedFile;
     setInput("");
@@ -1436,13 +1440,30 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     </p>
                   )}
 
-                  {/* Follow-up suggestions — AI-generated, only on last AI message */}
+                  {/* Regenerate — only on last AI message */}
+                  {isLastAI && lastUserMsgRef.current && !isLoading && (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => handleSend(lastUserMsgRef.current)}
+                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] text-muted-foreground/50 transition-colors hover:bg-secondary hover:text-muted-foreground"
+                        title="Buat ulang jawaban"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Coba lagi
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Follow-up suggestions — AI-generated, only on last AI message, max 2 */}
                   {isLastAI && msg.suggestions && msg.suggestions.length > 0 && (() => {
                     const arabicRatio = (msg.content.match(/[\u0600-\u06FF]/g)?.length ?? 0) / Math.max(msg.content.length, 1);
                     const isArabicReply = arabicRatio > 0.25;
+                    const topSuggestions = msg.suggestions.slice(0, 2);
                     return (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {msg.suggestions.map(s => (
+                      <div className="mt-2 space-y-1.5">
+                        <p className="text-[10px] text-muted-foreground/40 pl-0.5">Pertanyaan lanjutan:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                        {topSuggestions.map(s => (
                           <button
                             key={s}
                             onClick={() => handleSend(s)}
@@ -1452,6 +1473,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                             {s}
                           </button>
                         ))}
+                        </div>
                       </div>
                     );
                   })()}

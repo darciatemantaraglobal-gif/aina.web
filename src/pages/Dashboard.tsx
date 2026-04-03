@@ -208,6 +208,8 @@ const Dashboard = () => {
   const [fadingChatIds, setFadingChatIds] = useState<Set<string>>(new Set());
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | undefined>(undefined);
+  const [hasMoreChats, setHasMoreChats] = useState(false);
+  const [chatOffset, setChatOffset] = useState(0);
   const [showTour, setShowTour] = useState(false);
   const [activeTourSteps, setActiveTourSteps] = useState<TourStep[]>([]);
   const [activeTourKey, setActiveTourKey] = useState<string>("");
@@ -324,6 +326,8 @@ const Dashboard = () => {
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
+  const PAGE_SIZE = 25;
+
   const loadChats = useCallback(async (restoreLast = false) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -333,10 +337,12 @@ const Dashboard = () => {
         .select("id, title, updated_at")
         .eq("user_id", session.user.id)
         .order("updated_at", { ascending: false })
-        .limit(40);
+        .limit(PAGE_SIZE);
       if (error) throw error;
       if (data) {
         setChats(data);
+        setChatOffset(data.length);
+        setHasMoreChats(data.length === PAGE_SIZE);
         if (restoreLast && data.length > 0) {
           const lastId = localStorage.getItem("aina_last_chat_id");
           const found = lastId && data.find((c) => c.id === lastId);
@@ -348,10 +354,51 @@ const Dashboard = () => {
     }
   }, []);
 
+  const loadMoreChats = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { data, error } = await supabase
+        .from("chats")
+        .select("id, title, updated_at")
+        .eq("user_id", session.user.id)
+        .order("updated_at", { ascending: false })
+        .range(chatOffset, chatOffset + PAGE_SIZE - 1);
+      if (error) throw error;
+      if (data) {
+        setChats(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const fresh = data.filter(c => !existingIds.has(c.id));
+          return [...prev, ...fresh];
+        });
+        setChatOffset(prev => prev + data.length);
+        setHasMoreChats(data.length === PAGE_SIZE);
+      }
+    } catch {
+      // Silent
+    }
+  }, [chatOffset]);
+
+  const handleRenameChat = useCallback(async (chatId: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: trimmed } : c));
+    const { error } = await supabase
+      .from("chats")
+      .update({ title: trimmed })
+      .eq("id", chatId);
+    if (error) {
+      toast.error("Gagal mengubah judul chat");
+      // Revert on error
+      loadChats(false);
+    }
+  }, [loadChats]);
+
   const handleNewChat = useCallback(() => {
     setActiveChatId(null);
     localStorage.removeItem("aina_last_chat_id");
     setActiveTab("chat");
+    localStorage.setItem("aina_active_tab", "chat");
     setSidebarOpen(false);
   }, []);
 
@@ -408,6 +455,7 @@ const Dashboard = () => {
 
   const handleGoContributor = useCallback(() => {
     setActiveTab("contributor");
+    localStorage.setItem("aina_active_tab", "contributor");
     setSidebarOpen(false);
     triggerFeatureTour("contributor");
   }, [triggerFeatureTour]);
@@ -462,6 +510,9 @@ const Dashboard = () => {
           onNewChat={handleNewChat}
           onSelectChat={handleSelectChat}
           onDeleteChat={handleDeleteChat}
+          onRenameChat={handleRenameChat}
+          onLoadMoreChats={loadMoreChats}
+          hasMoreChats={hasMoreChats}
           onStartTour={handleStartTour}
         />
       </div>
