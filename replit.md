@@ -31,12 +31,14 @@ This concurrently starts:
 - `RESEND_API_KEY` — Optional: enables email notifications
 - `GOOGLE_MAPS_API_KEY` — Optional: enables Places search
 
-### Env Vars (set in .replit [userenv])
-- `SUPABASE_URL` / `VITE_SUPABASE_URL` — Supabase project URL
+### Env Vars (set in Replit Environment Variables / shared)
+- `SUPABASE_URL` / `VITE_SUPABASE_URL` — Supabase project URL (`https://qyzimrshfcenpwvuownz.supabase.co`)
 - `SUPABASE_ANON_KEY` / `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon key
+- `VITE_SUPABASE_PROJECT_ID` — Supabase project ID (`qyzimrshfcenpwvuownz`)
 - `MASTER_ADMIN_IDS` — Comma-separated Supabase user UUIDs with master admin access
-- `CLIENT_URL` — The Replit dev domain URL (update when domain changes)
+- `EMAIL_FROM` — Email sender name/address for notifications
 - `PORT` — Express server port (3001)
+- `DATABASE_URL` — Replit PostgreSQL URL (auto-managed, used for `masisir_procedures` table)
 
 ## Project Structure
 
