@@ -454,7 +454,7 @@ initUserNotes();
 console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPABASE_URL"}`);
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
-console.log(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? "✓ configured (direct)" : process.env.OPENROUTER_API_KEY ? "✓ via OpenRouter/sonar-online (real-time)" : "✗ not configured — web search disabled"}`);
+console.log(`WebSearch: ${process.env.OPENROUTER_API_KEY ? "✓ via Gemini 2.5 Flash (OpenRouter)" : "✗ disabled — OPENROUTER_API_KEY not set"}`);
 console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 console.log(`Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? "✓ configured — real-time Places search enabled" : "✗ not configured — Places search disabled"}`);
@@ -1359,7 +1359,7 @@ const SOURCE_TRUST_SCORES = {
  * Used to refine confidence classification and emit a log signal.
  */
 function computeExternalTrustLevel(wikiInjected, ddgInjected, perplexityInjected = false) {
-  if (perplexityInjected) return { tier: "high",   score: SOURCE_TRUST_SCORES.perplexity,  label: "Perplexity" };
+  if (perplexityInjected) return { tier: "high",   score: SOURCE_TRUST_SCORES.perplexity,  label: "Gemini" };
   if (wikiInjected)       return { tier: "medium", score: SOURCE_TRUST_SCORES.wikipedia,   label: "Wikipedia" };
   if (ddgInjected)        return { tier: "low",    score: SOURCE_TRUST_SCORES.duckduckgo,  label: "DuckDuckGo" };
   return null;
@@ -1662,13 +1662,13 @@ async function fetchDorarHadith(query) {
   }
 }
 
-/* ── Perplexity: Real-time web search fallback ────────── */
+/* ── Gemini: Web context fetch (replaces Perplexity) ───── */
 
 /**
- * Decide if a query warrants a Perplexity lookup.
+ * Decide if a query warrants a Gemini context lookup.
  *
- * Rule: KB → Perplexity if KB is absent or weak.
- * Perplexity is the primary external intelligence source for ALL non-casual,
+ * Rule: KB → Gemini if KB is absent or weak.
+ * Gemini is the primary external intelligence source for ALL non-casual,
  * non-trivial queries that the KB does not fully cover — regardless of intent type.
  * This covers: factual, procedural, recommendation, brainstorming, confused.
  *
@@ -1681,136 +1681,70 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
-  if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no web search needed
-  if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Perplexity not used for fiqh
+  if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no web context needed
+  if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Gemini not used for fiqh
   if (kbStrength === "strong") return false;
-  // KB is absent or weak → always try Perplexity
+  // KB is absent or weak → always fetch Gemini context
   return true;
 }
 
 /**
- * Fetch a concise, search-grounded answer from Perplexity's sonar model.
- * Returns { text, citations } or null on failure / no API key.
- * - text: filtered, max ~800 chars
- * - citations: up to 3 source URLs
+ * Fetch a concise factual answer from Gemini 2.5 Flash via OpenRouter.
+ * Returns { text, citations } or null on failure.
+ * - text: max ~1200 chars
+ * - citations: [] (Gemini via OpenRouter does not return citation URLs)
  */
 async function fetchPerplexityContext(query) {
-  const perplexityKey = process.env.PERPLEXITY_API_KEY;
   const openrouterKey = process.env.OPENROUTER_API_KEY;
 
-  if (!perplexityKey && !openrouterKey) {
-    console.log("[WebSearch] skipped — no usable API key");
+  if (!openrouterKey) {
+    console.log("[WebSearch] skipped — no OpenRouter API key");
     return null;
   }
 
-  const TIMEOUT = 12000;
+  const TIMEOUT = 15000;
   const todayStr = new Date().toLocaleDateString("id-ID", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
     timeZone: "Africa/Cairo",
   });
-  const systemMsg = `You are a factual web search assistant for an Indonesian student community in Egypt. Today's date is ${todayStr} (Cairo time). Always prioritize the most current and up-to-date information available as of today. Return a clear, informative answer (3-5 sentences or a short list) covering the key facts. Include only factual content — no greetings, disclaimers, or extra commentary. Always respond in Bahasa Indonesia regardless of the query language.`;
+  const systemMsg = `You are a knowledgeable assistant for an Indonesian student community in Egypt (Masisir). Today's date is ${todayStr} (Cairo time). Provide a clear, factual, and informative answer (3-5 sentences or a short list) covering key facts about the topic. Focus only on factual content — no greetings, disclaimers, or extra commentary. Always respond in Bahasa Indonesia regardless of the query language.`;
 
   try {
-    let rawText = "";
-    let citations = [];
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(TIMEOUT),
+      headers: {
+        "Authorization": `Bearer ${openrouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://ainalabs.pro",
+        "X-Title": "AINA - Asisten Masisir",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemMsg },
+          { role: "user",   content: query.slice(0, 500) },
+        ],
+        max_tokens: 600,
+        temperature: 0.1,
+      }),
+    });
 
-    if (perplexityKey) {
-      // ── Direct Perplexity API (supports explicit citations) ──────────────
-      const res = await fetch("https://api.perplexity.ai/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(TIMEOUT),
-        headers: {
-          "Authorization": `Bearer ${perplexityKey}`,
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          model: "sonar",
-          messages: [
-            { role: "system", content: systemMsg },
-            { role: "user",   content: query.slice(0, 500) },
-          ],
-          max_tokens: 500,
-          return_citations: true,
-          temperature: 0.1,
-        }),
-      });
-
-      if (!res.ok) {
-        console.warn(`[WebSearch/Perplexity] API error ${res.status}`);
-        return null;
-      }
-      const data = await res.json();
-      rawText   = data.choices?.[0]?.message?.content ?? "";
-      citations = (data.citations ?? []).slice(0, 3);
-
-    } else {
-      // ── OpenRouter fallback: perplexity/sonar-online (real-time web search) ──────
-      console.log("[WebSearch] using OpenRouter/sonar-online fallback");
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(TIMEOUT),
-        headers: {
-          "Authorization": `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://aina.masisir.com",
-          "X-Title": "AINA",
-        },
-        body: JSON.stringify({
-          model: "perplexity/sonar-online",
-          messages: [
-            { role: "system", content: systemMsg },
-            { role: "user",   content: `[CARI INFO TERBARU HARI INI] ${query.slice(0, 500)}` },
-          ],
-          max_tokens: 600,
-          temperature: 0.1,
-        }),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        console.warn(`[WebSearch/OpenRouter] API error ${res.status} — ${errText.slice(0, 200)}`);
-        // fallback to base sonar if sonar-online not available
-        const res2 = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          signal: AbortSignal.timeout(TIMEOUT),
-          headers: {
-            "Authorization": `Bearer ${openrouterKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://aina.masisir.com",
-            "X-Title": "AINA",
-          },
-          body: JSON.stringify({
-            model: "perplexity/sonar",
-            messages: [
-              { role: "system", content: systemMsg },
-              { role: "user",   content: query.slice(0, 500) },
-            ],
-            max_tokens: 600,
-            temperature: 0.1,
-          }),
-        });
-        if (!res2.ok) {
-          console.warn(`[WebSearch/OpenRouter] sonar fallback also failed ${res2.status}`);
-          return null;
-        }
-        const data2 = await res2.json();
-        rawText   = data2.choices?.[0]?.message?.content ?? "";
-        citations = (data2.citations ?? []).slice(0, 3);
-        console.log("[WebSearch] used sonar fallback (sonar-online unavailable)");
-      } else {
-        const data = await res.json();
-        rawText   = data.choices?.[0]?.message?.content ?? "";
-        citations = (data.citations ?? []).slice(0, 3);
-      }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(`[WebSearch/Gemini] API error ${res.status} — ${errText.slice(0, 200)}`);
+      return null;
     }
 
+    const data = await res.json();
+    const rawText = data.choices?.[0]?.message?.content ?? "";
     if (!rawText || rawText.length < 20) return null;
     const text = trimToSentence(rawText, 1200);
-    return { text, citations };
+    console.log(`[WebSearch/Gemini] context fetched (${text.length} chars)`);
+    return { text, citations: [] };
 
   } catch (e) {
-    console.warn("[WebSearch] fetch failed:", e.message);
+    console.warn("[WebSearch/Gemini] fetch failed:", e.message);
     return null;
   }
 }
@@ -2813,7 +2747,7 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
-        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan pencarian web real-time (Perplexity). Jabatan dan posisi bisa berubah — tambahkan 1 kalimat saran cek sumber resmi di akhir jika terasa natural. Jangan terlalu banyak disclaimer.",
+        hint: "\n\n**[Kepercayaan — SEDANG/GEMINI]** Jawaban ini berdasarkan pengetahuan Gemini AI. Jabatan dan posisi bisa berubah — tambahkan 1 kalimat saran cek sumber resmi di akhir jika terasa natural. Jangan terlalu banyak disclaimer.",
       };
     }
     return {
@@ -2835,7 +2769,7 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
-        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan pencarian web real-time. Info bisa berubah — tambahkan 1 kalimat saran cek ulang di akhir jika terasa natural.",
+        hint: "\n\n**[Kepercayaan — SEDANG/GEMINI]** Jawaban ini berdasarkan pengetahuan Gemini AI. Info bisa berubah — tambahkan 1 kalimat saran cek ulang di akhir jika terasa natural.",
       };
     }
     return {
@@ -10028,10 +9962,10 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
       { name: "Knowledge Base (KB)",   trust: 90,  always_checked: true },
       { name: "Exchange Rate API",     trust: 85,  condition: "query kurs/currency" },
       { name: "Dorar.net (Hadith)",    trust: 82,  condition: "intent = fiqh" },
-      { name: "Perplexity Web Search", trust: 78,  condition: "PERPLEXITY_API_KEY dikonfigurasi", active: !!process.env.PERPLEXITY_API_KEY },
+      { name: "Gemini Web Context",    trust: 78,  condition: "OPENROUTER_API_KEY dikonfigurasi", active: !!process.env.OPENROUTER_API_KEY },
       { name: "Google Maps Places",    trust: 95,  condition: "query tentang tempat/lokasi, GOOGLE_MAPS_API_KEY dikonfigurasi", active: !!process.env.GOOGLE_MAPS_API_KEY },
-      { name: "Wikipedia",             trust: 60,  condition: "fallback jika Perplexity tidak dikonfigurasi", active: !process.env.PERPLEXITY_API_KEY },
-      { name: "DuckDuckGo",            trust: 35,  condition: "fallback jika Perplexity tidak dikonfigurasi", active: !process.env.PERPLEXITY_API_KEY },
+      { name: "Wikipedia",             trust: 60,  condition: "fallback jika Gemini context gagal", active: true },
+      { name: "DuckDuckGo",            trust: 35,  condition: "fallback jika Gemini context gagal", active: true },
       { name: "Model Knowledge",       trust: 20,  condition: "tidak ada sumber eksternal yang berhasil" },
     ],
     perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
