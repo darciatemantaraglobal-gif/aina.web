@@ -1575,25 +1575,6 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     </div>
                   )}
 
-                  {/* Follow-up suggestions — clickable conversational chips */}
-                  {isLastAI && msg.suggestions && msg.suggestions.length > 0 && (() => {
-                    const arabicRatio = (msg.content.match(/[\u0600-\u06FF]/g)?.length ?? 0) / Math.max(msg.content.length, 1);
-                    const isArabicReply = arabicRatio > 0.25;
-                    const topSuggestions = msg.suggestions.slice(0, 2);
-                    return (
-                      <div className="mt-4 flex flex-wrap gap-2" dir={isArabicReply ? "rtl" : "ltr"}>
-                        {topSuggestions.map((s) => (
-                          <button
-                            key={s}
-                            onClick={() => handleSend(s)}
-                            className="rounded-full border border-border bg-secondary/40 px-4 py-1.5 text-sm text-foreground/80 transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground active:scale-95"
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })()}
                   </div>
                 )}
 

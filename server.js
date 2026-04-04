@@ -4102,32 +4102,9 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     return res.end();
   }
 
-  // ── Post-processing (identical to previous non-streaming path) ───────────────
-  // Extract saran from raw fullContent BEFORE cleanReply strips HTML comments
-  const _suggestionMatch = fullContent.match(/<!--saran:\s*([\s\S]+?)-->/i);
-  let aiSuggestions = _suggestionMatch
-    ? _suggestionMatch[1].split("|").map(s => { const t = s.trim(); return t.length > 3 ? t.charAt(0).toUpperCase() + t.slice(1) : t; }).filter(s => s.length > 3).slice(0, 2)
-    : [];
-
+  // ── Post-processing ───────────────────────────────────────────────────────────
   const rawReply = postProcessResponse(cleanReply(fullContent));
-
-  // Fallback: generate context-aware suggestions if AI skipped them
-  if (aiSuggestions.length === 0 && lastUserMessage?.trim().length > 4) {
-    const _fb = {
-      fiqh:          ["Mau tahu perbedaan pendapat ulamanya juga?", "Kalau mau, bisa lanjut ke cara penerapannya sehari-hari."],
-      procedural:    ["Mau tahu estimasi waktunya juga?", "Kalau perlu, bisa bantu soal dokumen yang dibutuhkan."],
-      recommendation:["Mau aku bantu bandingkan kelebihan dan kekurangannya?", "Atau kalau mau, bisa cari alternatif lainnya."],
-      brainstorming: ["Mau kita kembangkan ke arah mana dulu?", "Kalau mau, bisa bahas tantangannya juga."],
-      arabic_writing:["Mau dibuatkan contoh kalimat lainnya?", "Atau kalau penasaran soal perbedaan gaya formalnya, tinggal tanya."],
-      factual:       ["Kalau mau info yang lebih terbaru, bisa ditanyakan.", "Mau aku bantu cari detail lainnya soal topik ini?"],
-      casual:        ["Atau ada yang mau ditanyakan soal lainnya?", "Tinggal bilang kalau butuh sesuatu."],
-      confused:      ["Bagian mana yang masih belum jelas?", "Mau aku coba jelaskan dengan cara yang berbeda?"],
-    };
-    const _fallbackSuggestions = _fb[intent.primary] ?? ["Kalau ada yang mau dilanjutkan, tinggal tanya.", "Mau aku bantu lebih detail soal ini?"];
-    aiSuggestions = _fallbackSuggestions;
-    console.log(`[Saran] AI skipped suggestions → using intent-based fallback (intent:${intent.primary})`);
-  }
-
+  // Strip any residual <!--saran:...--> tags the model might still output
   let reply = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
   console.log(`Responded using model: ${usedModel}`);
 
@@ -4235,7 +4212,6 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     source_used: sourceUsed,
     sources:     responseSources,
     citation_urls: perplexityResult?.citations ?? [],
-    suggestions: aiSuggestions.length > 0 ? aiSuggestions : undefined,
     clarification_pending: clarificationDetected || undefined,
     sourceMetadata: {
       confidence:      normalizedConfidence,
