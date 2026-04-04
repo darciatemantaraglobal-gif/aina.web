@@ -348,28 +348,43 @@ function splitLongParagraphs(text) {
  * @returns {string}
  */
 function normalizeSequentialList(text) {
-  const ORDINALS = [
-    [/(?<!\d)(?:^|\s)pertama[,:]?\s+/gim,   "\n1. "],
-    [/(?<!\d)(?:^|\s)kedua[,:]?\s+/gim,     "\n2. "],
-    [/(?<!\d)(?:^|\s)ketiga[,:]?\s+/gim,    "\n3. "],
-    [/(?<!\d)(?:^|\s)keempat[,:]?\s+/gim,   "\n4. "],
-    [/(?<!\d)(?:^|\s)kelima[,:]?\s+/gim,    "\n5. "],
-    [/(?<!\d)(?:^|\s)keenam[,:]?\s+/gim,    "\n6. "],
-    [/(?<!\d)(?:^|\s)ketujuh[,:]?\s+/gim,   "\n7. "],
-  ];
+  // ── Safety constraints (all three must pass) ──────────────────────────────
+  //
+  // 1. "Pertama" AND "kedua" must both be present (min. two ordinals).
+  // 2. "Pertama" must appear at the START OF A LINE followed by comma or colon
+  //    ("Pertama, ..." or "Pertama: ..."). This prevents false-positives like
+  //    "Pertama kali aku..." or "Yang pertama dia bilang..." being converted.
+  // 3. Response must not already have a numbered or bullet list.
+  //
+  // Only the "line-start + comma/colon" form signals an intentional enumeration.
+  // ─────────────────────────────────────────────────────────────────────────
 
-  // Only trigger when at least "pertama" + "kedua" appear together
+  // Constraint 1: both ordinals must be present
   if (!/\bpertama\b/i.test(text) || !/\bkedua\b/i.test(text)) return text;
 
-  // Don't process if already inside a list block (numbered or bullet)
+  // Constraint 2: "Pertama" must appear at line-start WITH comma/colon
+  // (^pertama, or ^pertama: at the start of any line, case-insensitive)
+  if (!/^pertama[,:]\s+/im.test(text)) return text;
+
+  // Constraint 3: skip if list markers already present
   if (/^\s*[1-9]\.\s/m.test(text) || /^\s*[-*]\s/m.test(text)) return text;
+
+  // Conversion: only replace "ordinal, " or "ordinal: " at LINE START
+  const ORDINALS = [
+    [/^pertama[,:]\s+/gim,  "1. "],
+    [/^kedua[,:]\s+/gim,    "2. "],
+    [/^ketiga[,:]\s+/gim,   "3. "],
+    [/^keempat[,:]\s+/gim,  "4. "],
+    [/^kelima[,:]\s+/gim,   "5. "],
+    [/^keenam[,:]\s+/gim,   "6. "],
+    [/^ketujuh[,:]\s+/gim,  "7. "],
+  ];
 
   let result = text;
   for (const [pattern, replacement] of ORDINALS) {
     result = result.replace(pattern, replacement);
   }
-  // Clean up any leading newline created at the very start
-  return result.replace(/^\n+/, "");
+  return result;
 }
 
 /**
