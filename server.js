@@ -1563,6 +1563,57 @@ function normalizeQuery(q) {
   return q.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// ── Masisir typo normalization ────────────────────────────────────────────────
+// Silently corrects common misspellings BEFORE retrieval (KB + Perplexity).
+// Original user message is always preserved for display & conversation history.
+const MASISIR_TYPO_MAP = [
+  // Dubai variations
+  [/\bdunai\b/gi,           "dubai"],
+  [/\bdubay\b/gi,           "dubai"],
+  // Iqomah (izin tinggal)
+  [/\biqoamah\b/gi,         "iqomah"],
+  [/\bikomah\b/gi,          "iqomah"],
+  [/\bikamah\b/gi,          "iqomah"],
+  [/\biqaamah\b/gi,         "iqomah"],
+  // Tasjil (pendaftaran)
+  [/\btasygil\b/gi,         "tasjil"],
+  [/\btasyghil\b/gi,        "tasjil"],
+  [/\btasjeel\b/gi,         "tasjil"],
+  // Imtihan (ujian)
+  [/\bimtehan\b/gi,         "imtihan"],
+  [/\bimtehaan\b/gi,        "imtihan"],
+  [/\bimtehon\b/gi,         "imtihan"],
+  // Muqarrar (buku wajib)
+  [/\bmuqoror\b/gi,         "muqarrar"],
+  [/\bmuqarror\b/gi,        "muqarrar"],
+  [/\bmuqorror\b/gi,        "muqarrar"],
+  [/\bmughoror\b/gi,        "muqarrar"],
+  [/\bmugorror\b/gi,        "muqarrar"],
+  [/\bmuqorrar\b/gi,        "muqarrar"],
+  // Shahada / Qaid
+  [/\bsyahadah\b/gi,        "shahada"],
+  [/\bsyahada\b/gi,         "shahada"],
+  [/\bqo'id\b/gi,           "qaid"],
+  [/\bqo id\b/gi,           "qaid"],
+  // Wiqayah / other
+  [/\bwiqoyah\b/gi,         "wiqayah"],
+  [/\bwiqoyat\b/gi,         "wiqayah"],
+  // Pendaftaran
+  [/\bpendaptaran\b/gi,     "pendaftaran"],
+  [/\bpendaftran\b/gi,      "pendaftaran"],
+  // Ujian
+  [/\bujiaan\b/gi,          "ujian"],
+];
+
+function applyTypoNormalization(text) {
+  if (!text || text.length > 500) return text;
+  let result = text;
+  for (const [pattern, replacement] of MASISIR_TYPO_MAP) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
 /** One-way SHA-256 hash — used as an anonymized dedup key. Never reversible. */
 function hashText(text) {
   return createHash("sha256").update(text).digest("hex");
@@ -3491,6 +3542,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
     : rawLastContent;
 
+  // Typo-normalized version for retrieval only — original preserved for display & model context
+  const retrievalQuery = applyTypoNormalization(lastUserMessage);
+  if (retrievalQuery !== lastUserMessage) {
+    console.log(`[Typo] normalized: "${lastUserMessage.slice(0, 50)}" → "${retrievalQuery.slice(0, 50)}"`);
+  }
+
   // Content moderation — screen for harmful content before any processing (free OpenAI API)
   if (lastUserMessage.length > 5) {
     const modResult = await checkModeration(lastUserMessage);
@@ -3513,7 +3570,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // Intent detection is synchronous — compute before parallel fetches so memory retrieval is query-aware
   _chatDebugStep = "intent-detection";
-  const intent = detectIntent(lastUserMessage);
+  const intent = detectIntent(retrievalQuery);
   const intentHint = buildIntentHint(intent);
   console.log(`[Intent] ${intent.primary}${intent.casual ? "+casual" : ""} — "${lastUserMessage.slice(0, 60)}"`);
 
@@ -3577,35 +3634,35 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Heuristic: start Perplexity early for queries that are likely to need external context.
   // If KB turns out to be strong, we discard the result (minor API cost, major latency win).
   // Skip early-start for: local-Masisir, casual, arabic_writing, brainstorming, currency.
-  const isLocalMasisir = isLocalMasisirQuery(lastUserMessage);
+  const isLocalMasisir = isLocalMasisirQuery(retrievalQuery);
   const INTENTS_NO_PERPLEXITY = new Set(["casual", "arabic_writing", "arabic_analysis", "brainstorming"]);
   const earlyPerplexityStart = !isLocalMasisir
     && !INTENTS_NO_PERPLEXITY.has(intent.primary)
-    && !isCurrencyQuery(lastUserMessage)
+    && !isCurrencyQuery(retrievalQuery)
     && (process.env.PERPLEXITY_API_KEY || process.env.OPENROUTER_API_KEY);
   const earlyPerplexityPromise = earlyPerplexityStart
-    ? fetchPerplexityContext(lastUserMessage)
+    ? fetchPerplexityContext(retrievalQuery)
     : Promise.resolve(null);
 
   // Wave 1 — fast internal fetches (always run in parallel with early Perplexity)
   _chatDebugStep = "wave1-fetches";
   const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
-    fetchRelevantArticles(lastUserMessage, intent.primary),
+    fetchRelevantArticles(retrievalQuery, intent.primary),
     fetchPinnedUpdates(),
-    isCurrencyQuery(lastUserMessage) ? fetchExchangeRates() : Promise.resolve(null),
-    intent.primary === "fiqh" ? fetchDorarHadith(lastUserMessage) : Promise.resolve(null),
+    isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
+    intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
   ]);
 
   // Assess KB coverage strength before deciding whether to use external sources
   const kbStrength = assessKBStrength(articles);
 
-  const needsExternal = isLocalMasisir ? false : shouldFetchExternal(intent.primary, kbStrength, lastUserMessage);
+  const needsExternal = isLocalMasisir ? false : shouldFetchExternal(intent.primary, kbStrength, retrievalQuery);
   // B2 fix: when fiqh intent + Dorar found nothing + no KB → Gemini web fallback
   const fiqhDorarMiss = intent.primary === "fiqh"
     && !(dorarResult?.hadiths?.length > 0)
     && articles.length === 0;
   const perplexityNeeded = isLocalMasisir ? false
-    : (fiqhDorarMiss || needsPerplexity(intent.primary, kbStrength, lastUserMessage));
+    : (fiqhDorarMiss || needsPerplexity(intent.primary, kbStrength, retrievalQuery));
   if (isLocalMasisir) console.log(`[Source] local-masisir query detected → blocking all external sources`);
   if (fiqhDorarMiss) console.log(`[Source] fiqh-Dorar miss + no KB → activating Gemini web fallback`);
 
@@ -3616,7 +3673,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // ── Classify query type for strict 3-layer routing ──────────────────────────
-  const queryType = classifyQueryType(intent.primary, kbStrength, lastUserMessage);
+  const queryType = classifyQueryType(intent.primary, kbStrength, retrievalQuery);
   // Dynamic (office-holder / time-sensitive) queries: KB data may be stale even when "strong".
   // Always fetch Perplexity for dynamic queries regardless of KB coverage.
   const kbCoversQuery = kbStrength === "strong" && queryType !== "dynamic";
@@ -3633,7 +3690,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS (parallel)" : "FAILED"} (queryType=${queryType})`);
     } else {
       // Fallback: start now (shouldn't happen often given earlyPerplexityStart conditions)
-      perplexityResult = await fetchPerplexityContext(lastUserMessage);
+      perplexityResult = await fetchPerplexityContext(retrievalQuery);
       console.log(`[Source] perplexity=${perplexityResult ? "SUCCESS" : "FAILED"} (queryType=${queryType})`);
     }
   } else if (earlyPerplexityStart && (kbCoversQuery || !perplexityNeeded)) {
@@ -3675,6 +3732,27 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     answer_mode:      answerMode,
   };
   console.log(`[SourceDecision] ${JSON.stringify(sourceLog)}`);
+
+  // ── Trust meta: compute source label + trust level for footer ────────────
+  const _SOURCE_LABEL_MAP = {
+    kb:            "Knowledge Base AINA",
+    perplexity:    "Web (real-time)",
+    currency_api:  "API Kurs Real-time",
+    wiki_ddg:      "Wikipedia / Web",
+    model_fallback: "Pengetahuan umum model",
+  };
+  const _TRUST_LABEL_MAP = {
+    high_confidence:    "Tinggi",
+    medium_confidence:  "Sedang",
+    needs_verification: "Perlu verifikasi",
+  };
+  // Combined source when both KB and external are present
+  const _hasBoth = sourceLog.kb_used && sourceLog.external_success;
+  const _sourceKey = _hasBoth ? "gabungan" : (sourceLog.final_source ?? "model_fallback");
+  const sourceMeta = {
+    label:  _hasBoth ? "Knowledge Base AINA + Web" : (_SOURCE_LABEL_MAP[_sourceKey] ?? "Pengetahuan umum model"),
+    intent: intent.primary,
+  };
 
   // ── Source orchestration: rich metadata + confidence label ────────────────
   const sourceResult = buildSourceResult({
@@ -3746,6 +3824,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // ── Assemble full system prompt via modular builder ───────────────────────
   _chatDebugStep = "build-system-prompt";
+  // Resolve trust label now that confidence is available
+  sourceMeta.trust = _TRUST_LABEL_MAP[confidence.level] ?? "Sedang";
   const systemPrompt = buildSystemPrompt({
     todayStr,
     intentHint,
@@ -3761,6 +3841,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     perplexityContext,
     wikiContext,
     ddgContext,
+    sourceMeta,
   });
 
   console.log(`Chat: found ${articles.length} relevant articles for query: "${lastUserMessage.slice(0, 60)}"`);

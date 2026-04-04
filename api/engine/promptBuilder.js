@@ -461,6 +461,7 @@ export function buildSystemPrompt({
   answerModeHint,
   pinnedContext,
   memoryContext,
+  sourceMeta,
   personalizationContext,
   knowledgeContext,
   exchangeContext,
@@ -643,9 +644,25 @@ Setiap jawaban yang bukan obrolan santai harus mengikuti urutan ini:
 ${intentHint}
 
 **Sumber:**
-- JANGAN sebutkan atau mencantumkan sumber dalam teks jawaban — sumber sudah ditampilkan otomatis sebagai badge oleh sistem di bawah setiap pesan. Tidak perlu menulis baris "Sumber: ..." di akhir jawaban, dan tidak perlu menyebut nama sumber secara eksplisit di dalam teks (misalnya "Menurut Wikipedia...", "Berdasarkan Frankfurter...", dll).
+- JANGAN sebutkan sumber secara eksplisit di dalam BODY teks jawaban (misalnya "Menurut Wikipedia...", "Berdasarkan Knowledge Base...", dll) — sumber cukup di footer yang sudah diinstruksikan di bagian akhir prompt ini.
+- Satu-satunya exception: menyebutkan sumber secara alami dalam narasi ketika memang relevan (misal "Berdasarkan pengumuman PPMI terbaru...") masih boleh jika data perplexity mendukungnya.
 - **PENGECUALIAN — dalil/hadits:** Jika menyertakan hadits atau ayat Al-Qur'an sebagai dalil, WAJIB gunakan FORMAT EMPAT BARIS ini tanpa pengecualian:\n  Baris 1 — > [Teks Arab SAJA — tidak boleh ada terjemahan/Artinya/cara baca di dalam blockquote]\n  Baris 2 — *(cara baca: transliterasi latin)* [di LUAR blockquote]\n  Baris 3 — *Artinya: terjemahan Indonesia* [di LUAR blockquote]\n  Baris 4 — *(HR. perawi, sumber, hukum)* [di LUAR blockquote]\n  ⚠️ DILARANG: menaruh terjemahan atau apapun selain teks Arab di dalam blockquote (baris yang dimulai >). Jangan sekali-kali gabungkan Arab + Artinya dalam satu kotak.
-- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
+- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.
+
+**Format istilah Arab inline — aturan konsistensi:**
+- Saat menyebut istilah Arab di dalam teks Indonesia, gunakan format: **Kata Indonesia** (العربية) — misalnya: **Iqomah** (إقامة), **Tasjil** (تسجيل), **Shahada** (شهادة).
+- Atau format bilingual pendek: إقامة (*Iqāmah*) → izin tinggal — Arab, transliterasi miring, lalu makna.
+- Di dalam bullet list, Indonesian adalah struktur utama; Arab muncul di dalam tanda kurung sebagai keterangan tambahan.
+  - Contoh benar: \`- **Iqomah** (إقامة) — izin tinggal resmi, diperbarui tiap tahun\`
+  - Contoh SALAH: \`- إقامة — iqomah\` (Arab di depan tanpa konteks Indonesia)
+- JANGAN tampilkan teks Arab tanpa terjemahan atau penjelasan Indonesia-nya — kecuali dalil/hadits yang sudah punya format baku sendiri.
+- JANGAN putus struktur list hanya karena ada teks Arab — Arab tetap inline di baris yang sama.${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
+${sourceMeta ? `
+**Footer sumber — WAJIB di akhir setiap jawaban substantif:**
+Setelah selesai menjawab (bukan untuk sapaan, obrolan 1 kalimat, atau tanya balik), tambahkan baris ini PERSIS:
+
+---
+*Sumber: ${sourceMeta.label} · Kepercayaan: ${sourceMeta.trust}*` : ""}
 
 `;
 }
