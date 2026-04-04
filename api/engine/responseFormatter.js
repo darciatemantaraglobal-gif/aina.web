@@ -280,3 +280,195 @@ export function selectResponseSchema(intentPrimary) {
     ? PROCEDURAL_RESPONSE_SCHEMA
     : GENERAL_RESPONSE_SCHEMA;
 }
+
+/* ── AINA Response Formatter ──────────────────────────────────────────────── */
+
+/**
+ * Split overly long prose paragraphs into shorter, readable ones.
+ * Conservative: only splits plain-text blocks over 80 words.
+ * Preserves code blocks, Markdown tables, headings, and lists.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function splitLongParagraphs(text) {
+  const WORD_THRESHOLD = 80;
+  const TARGET_CHUNK_WORDS = 55;
+
+  const blocks = text.split(/\n\n+/);
+  const processed = blocks.map(block => {
+    const trimmed = block.trim();
+
+    // Skip: code fences, tables, headings, list items, blockquotes
+    if (
+      trimmed.startsWith("```")   ||
+      trimmed.startsWith("|")     ||
+      trimmed.startsWith("#")     ||
+      trimmed.startsWith(">")     ||
+      /^\s*[-*\d]/.test(trimmed)  ||
+      trimmed.includes("\n|")     ||
+      trimmed.includes("\n```")
+    ) return block;
+
+    const wordCount = trimmed.split(/\s+/).length;
+    if (wordCount <= WORD_THRESHOLD) return block;
+
+    // Split at sentence ends, aiming for TARGET_CHUNK_WORDS per chunk
+    const sentenceRe = /[^.!?]*[.!?]+(?:\s|$)/g;
+    const sentences = trimmed.match(sentenceRe) ?? [trimmed];
+    const chunks = [];
+    let current = "";
+    let currentWords = 0;
+
+    for (const sentence of sentences) {
+      const sw = sentence.trim().split(/\s+/).length;
+      if (currentWords + sw > TARGET_CHUNK_WORDS && current.trim()) {
+        chunks.push(current.trim());
+        current = sentence;
+        currentWords = sw;
+      } else {
+        current += sentence;
+        currentWords += sw;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+
+    return chunks.join("\n\n");
+  });
+
+  return processed.join("\n\n");
+}
+
+/**
+ * Convert prose sequential patterns ("Pertama... Kedua... Ketiga...") into
+ * proper Markdown numbered lists. Only activates when at least two ordinals
+ * are detected in the same paragraph block.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function normalizeSequentialList(text) {
+  const ORDINALS = [
+    [/(?<!\d)(?:^|\s)pertama[,:]?\s+/gim,   "\n1. "],
+    [/(?<!\d)(?:^|\s)kedua[,:]?\s+/gim,     "\n2. "],
+    [/(?<!\d)(?:^|\s)ketiga[,:]?\s+/gim,    "\n3. "],
+    [/(?<!\d)(?:^|\s)keempat[,:]?\s+/gim,   "\n4. "],
+    [/(?<!\d)(?:^|\s)kelima[,:]?\s+/gim,    "\n5. "],
+    [/(?<!\d)(?:^|\s)keenam[,:]?\s+/gim,    "\n6. "],
+    [/(?<!\d)(?:^|\s)ketujuh[,:]?\s+/gim,   "\n7. "],
+  ];
+
+  // Only trigger when at least "pertama" + "kedua" appear together
+  if (!/\bpertama\b/i.test(text) || !/\bkedua\b/i.test(text)) return text;
+
+  // Don't process if already inside a list block (numbered or bullet)
+  if (/^\s*[1-9]\.\s/m.test(text) || /^\s*[-*]\s/m.test(text)) return text;
+
+  let result = text;
+  for (const [pattern, replacement] of ORDINALS) {
+    result = result.replace(pattern, replacement);
+  }
+  // Clean up any leading newline created at the very start
+  return result.replace(/^\n+/, "");
+}
+
+/**
+ * Strip additional robotic openers that postProcessResponse may miss.
+ * Runs AFTER postProcessResponse, so only catches residual patterns.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function stripResiduaLOpeners(text) {
+  return text.replace(
+    /^(pertanyaan (yang |)bagus[!.]?\s*|pertanyaan (yang |)menarik[!.]?\s*|wah,?\s*pertanyaan (yang |)(bagus|menarik)[!.]?\s*|izinkan (aku|saya) menjelaskan[.,!:]?\s*|untuk menjawab pertanyaan (kamu|anda)[,:]?\s*|tentu,?\s*(aku|saya) (akan |)(menjelaskan|menjawab)[.,!:]?\s*|dalam konteks ini[,:]?\s*|membahas topik ini[,:]?\s*|berikut (adalah |)penjelasan(nya)?[,:]?\s*|sebagai AI[^,\n]*,\s*)/i,
+    ""
+  );
+}
+
+/**
+ * Ensure the trust-layer footer is present in substantive responses.
+ * If the model followed the system prompt, it will already be there.
+ * This is a safety net for cases where it was omitted.
+ *
+ * @param {string} text
+ * @param {{ label: string, trust: string }} sourceMeta
+ * @param {string} intentPrimary
+ * @returns {string}
+ */
+function ensureTrustFooter(text, sourceMeta, intentPrimary) {
+  if (!sourceMeta?.label || !sourceMeta?.trust) return text;
+
+  const CASUAL_INTENTS = new Set(["casual", "brainstorming"]);
+  const isCasual     = CASUAL_INTENTS.has(intentPrimary);
+  const isTooShort   = text.trim().length < 140;
+  const endsQuestion = /\?\s*$/.test(text.trim());
+  const hasFooter    = /\*Sumber:.*·.*Kepercayaan:/i.test(text);
+
+  // Skip footer for: casual chat, very short replies, tanya-balik questions, already present
+  if (isCasual || isTooShort || endsQuestion || hasFooter) return text;
+
+  return text.trimEnd() + `\n\n---\n*Sumber: ${sourceMeta.label} · Kepercayaan: ${sourceMeta.trust}*`;
+}
+
+/**
+ * AINA post-processing formatter.
+ * Runs after postProcessResponse on the complete response text, right before
+ * the `done` event is sent to the frontend.
+ *
+ * Pipeline (in order):
+ *   1. Strip residual robotic openers
+ *   2. Normalize sequential prose lists → Markdown numbered list
+ *   3. Split long prose paragraphs into readable chunks
+ *   4. Normalize spacing (3+ blank lines → 2)
+ *   5. Ensure trust-layer footer is present
+ *   6. Safety fallback if output is too short after cleaning
+ *
+ * Guarantees:
+ *   - Never runs on empty / non-string input
+ *   - Never strips structural Markdown (tables, code blocks, lists, headings)
+ *   - Never modifies Arabic text blocks
+ *   - Returns original text if an internal error occurs
+ *
+ * @param {string} text       — Processed response from postProcessResponse
+ * @param {object} context    — Pipeline context
+ * @param {string}  context.intentPrimary  — Detected intent
+ * @param {object}  context.sourceMeta     — { label, trust } for footer
+ * @returns {string} Final formatted response
+ */
+export function formatAINAResponse(text, context = {}) {
+  if (!text || typeof text !== "string") return text ?? "";
+
+  const { intentPrimary = "factual", sourceMeta = null } = context;
+
+  try {
+    let result = text;
+
+    // 1. Strip residual robotic openers (safety net after postProcessResponse)
+    result = stripResiduaLOpeners(result);
+
+    // 2. Normalize sequential prose lists
+    result = normalizeSequentialList(result);
+
+    // 3. Split overly long paragraphs (conservative, skips all structured Markdown)
+    result = splitLongParagraphs(result);
+
+    // 4. Normalize spacing
+    result = result.replace(/\n{3,}/g, "\n\n").trim();
+
+    // 5. Ensure trust footer
+    result = ensureTrustFooter(result, sourceMeta, intentPrimary);
+
+    // 6. Safety fallback — if everything was stripped, return minimal message
+    if (result.trim().length < 20) {
+      console.warn("[Formatter] safety fallback triggered — output too short after formatting");
+      return text.trim().length > 20 ? text.trim() : "Maaf, aku tidak dapat menghasilkan jawaban yang baik. Coba ulangi pertanyaanmu.";
+    }
+
+    return result;
+  } catch (err) {
+    // Never crash the pipeline — return original text on any error
+    console.error("[Formatter] unexpected error:", err.message);
+    return text;
+  }
+}

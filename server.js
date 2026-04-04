@@ -11,7 +11,7 @@ import {
   buildDDGContext, buildPerplexityContext, buildDorarContext,
   buildSystemPrompt,
 } from './api/engine/promptBuilder.js';
-import { validateResponse, postProcessResponse, buildSourceBadges } from './api/engine/responseFormatter.js';
+import { validateResponse, postProcessResponse, buildSourceBadges, formatAINAResponse } from './api/engine/responseFormatter.js';
 import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
@@ -4242,7 +4242,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // ── Post-processing ───────────────────────────────────────────────────────────
   const rawReply = postProcessResponse(cleanReply(fullContent));
   // Strip any residual <!--saran:...--> tags the model might still output
-  let reply = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
+  const _stripped = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
+  // ── formatAINAResponse: structural formatter — runs on complete response ──
+  // Cleans phrases, normalizes sequential lists, splits long paragraphs,
+  // ensures trust footer. Always safe to call (try/catch inside).
+  let reply = formatAINAResponse(_stripped, {
+    intentPrimary: intent.primary,
+    sourceMeta,
+  });
   console.log(`Responded using model: ${usedModel}`);
 
   const qualityIssues = validateResponse(reply, { hasExchangeContext: !!exchangeContext });
@@ -4295,7 +4302,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       })();
       const corrected = correctionData?.choices?.[0]?.message?.content?.trim();
       if (corrected && corrected.length > 60) {
-        reply = postProcessResponse(corrected);
+        reply = formatAINAResponse(postProcessResponse(corrected), { intentPrimary: intent.primary, sourceMeta });
         console.log(`[E4-Retry] ✓ correction successful (${reply.length} chars)`);
       } else {
         console.warn(`[E4-Retry] correction returned empty or too short`);
