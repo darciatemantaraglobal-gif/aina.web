@@ -40,7 +40,7 @@ export function buildKnowledgeContext(articles) {
         ? " [FORMAT: Panduan Langkah-langkah — WAJIB jawab dalam format langkah bernomor: **Langkah 1**, **Langkah 2**, dst.]"
         : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
 
-    const cleanedContent = trimToSentence(a.content, 1500);
+    const cleanedContent = trimToSentence(a.content, 2000);
     if (cleanedContent.length < a.content.length) {
       console.log(`[CtxClean] Article "${a.title}": ${a.content.length} → ${cleanedContent.length} chars`);
     }
@@ -112,16 +112,7 @@ export function buildKnowledgeContext(articles) {
     "**Perhatikan petunjuk FORMAT di setiap artikel dan ikuti dengan ketat.**\n" +
     "---";
 
-  // Hard cap: total KB injection ≤ 6000 chars to protect token budget
-  const KB_TOTAL_CAP = 6000;
-  const cappedArticlesText = articlesText.length > KB_TOTAL_CAP
-    ? trimToSentence(articlesText, KB_TOTAL_CAP)
-    : articlesText;
-  if (articlesText.length > KB_TOTAL_CAP) {
-    console.log(`[CtxClean] KB total: ${articlesText.length} → ${cappedArticlesText.length} chars (cap=${KB_TOTAL_CAP})`);
-  }
-
-  return `\n\n---\n${kbHardRule}\n\n## Knowledge Base AINA (Data Komunitas Terverifikasi)${conflictInstruction}\n\n${cappedArticlesText}\n---`;
+  return `\n\n---\n${kbHardRule}\n\n## Knowledge Base AINA (Data Komunitas Terverifikasi)${conflictInstruction}\n\n${articlesText}\n---`;
 }
 
 /**
