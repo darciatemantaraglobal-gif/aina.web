@@ -254,9 +254,9 @@ export function postProcessResponse(text) {
     }
   }
 
-  // 5. Strip trailing filler closings
+  // 5. Strip trailing filler closings (broad patterns)
   cleaned = cleaned.replace(
-    /\n*(semoga membantu\.?|semoga bisa membantu\.?|jangan ragu (untuk |)bertanya\.?|feel free to ask\.?|hope this helps\.?|ada (yang |hal )?(bisa|lain) (aku|saya) bantu\??|ada pertanyaan lain\??)\s*[!.]*\s*$/gi,
+    /\n*(semoga (surat|jawaban|penjelasan|contoh|info|tulisan|ini|artikel|terjemahan)?[\w\s]*(membantu|bermanfaat)[\w\s]*[!.]*|semoga (membantu|bermanfaat|bisa membantu)[!.]*|jangan ragu (untuk |)bertanya[!.]*|feel free to ask[!.]*|hope this helps[!.]*|ada (yang |hal )?(bisa|lain) (aku|saya) bantu\??|ada pertanyaan lain\??)\s*$/gi,
     ""
   ).trim();
 

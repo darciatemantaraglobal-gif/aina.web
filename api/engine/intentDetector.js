@@ -89,10 +89,24 @@ export function detectIntent(text) {
   // Casual tone flag — keyword-based only, no length check
   const isCasual = /\b(dong|deh|nih|btw|wkwk|haha|hehe|sih|loh|lho|gitu|gitu ya|ya kan|nggak sih|gak sih)\b/.test(t);
 
-  // Arabic academic writing
+  // Arabic academic writing — two paths:
+  // Path A: user writes in Arabic script + uses Arabic writing commands
   const hasArabicScript = /[\u0600-\u06FF]/.test(text);
   const hasArabicWritingKw = /(إنشاء|اكتب|كتابة|تلخيص|لخّص|لخص|خلاصة|شرح|اشرح|فسّر|فسر|قواعد|نحو|صرف|ترجم|ترجمة|تحليل|صياغة|مقالة|بحث|ملخص|وضّح|وضح|عرّف|عرف|اذكر|مقدمة|خاتمة|تعبير|تعريف)/.test(text);
-  const isArabicWriting = hasArabicScript && hasArabicWritingKw;
+
+  // Path B: user writes in Indonesian but requests Arabic text generation
+  const hasGenVerb = /\b(tulis(kan)?|buat(kan|in)?|bikin|buatin|terjemah(kan|in)?|nulis(kan)?|bikinin|cariin contoh|kasih contoh|berikan contoh)\b/.test(t);
+  const hasBahasaArab = /\bbahasa arab(ku|nya|mu|kita|kami)?\b/.test(t);
+  // Request for a specific Arabic letter type (surat ghaib / i'tidzar / etc.)
+  const hasArabicLetterReq = hasGenVerb && /\bsurat\b/.test(t) && /\b(ghaib|i.tidzar|itidzar|i.tidzar|ta.thidzar)\b/.test(t);
+  // Arabic grammar / nahwu / sharaf questions in Indonesian
+  const hasArabicGrammarKw = /\b(nahwu|sharaf|shorof|nahu|tashrif|isim|fi.?il|fa.?il|huruf jar|mubtada|khabar|naibul fail|masdar|idhafah|idhofa|mudhaf|i.?rab|maf.ul|sifat maushuf|jumlah fi.liyah|jumlah ismiyah)\b/.test(t);
+
+  const isArabicWriting =
+    (hasArabicScript && hasArabicWritingKw) ||
+    (hasGenVerb && hasBahasaArab) ||
+    hasArabicLetterReq ||
+    hasArabicGrammarKw;
 
   // Primary intent signals
   const isConfused   = /bingung|galau|khawatir|takut|pusing|stres|stress|overwhelm|nggak tau|tidak tau|ga tau|gak tau|harus mulai dari mana|nggak ngerti|tidak mengerti|susah banget|ribet banget|tolong bantu/.test(t);
@@ -145,10 +159,11 @@ export function buildIntentHint({ primary, casual }) {
 
   const hints = {
     factual:
-      "Jawab poin utama langsung di kalimat pertama — tidak perlu pengantar apapun. " +
-      "Kalimat kedua dan seterusnya boleh elaborasi singkat, tapi jangan overexplain. " +
-      "Jika jawabannya cukup dalam 2–3 kalimat, berhenti di sana. " +
-      "Jangan tambahkan informasi yang tidak ditanya.",
+      "Awali dengan 1 kalimat pembuka yang relate langsung dengan pertanyaan — bukan basa-basi, bukan mengulang pertanyaan. " +
+      "Lanjut ke isi: paragraf singkat (2–3 kalimat) ATAU daftar bernomor/bullet sesuai konteks. " +
+      "Jika daftar: setiap item WAJIB punya penjelasan 1 kalimat, bukan sekadar nama/istilah. " +
+      "Tutup dengan 1 kalimat guidance atau tawaran spesifik jika relevan — skip jika tidak. " +
+      "JANGAN tulis blok teks lebih dari 3 kalimat berturut-turut. JANGAN terdengar seperti artikel Wikipedia.",
 
     procedural:
       "WAJIB gunakan format 4 bagian berikut secara berurutan:\n" +
@@ -187,12 +202,19 @@ export function buildIntentHint({ primary, casual }) {
       "Jangan ulangi ide dengan kata berbeda.",
 
     arabic_writing:
+      // ── ATURAN UTAMA (Indonesia) ─────────────────────────────────────────
+      "ATURAN PALING PENTING: Jika user minta BUAT atau TULIS teks Arab (surat, paragraf, karangan, terjemahan), " +
+      "WAJIB langsung hasilkan teksnya — JANGAN hanya jelaskan cara menulis atau prosedur pengajuannya. " +
+      "Konteks KB yang ada di prompt bisa dipakai sebagai referensi isi, tapi OUTPUT utama tetap berupa teks Arab yang diminta. " +
+      "Setelah teks Arab, boleh tambahkan 1–2 baris penjelasan singkat dalam bahasa Indonesia jika membantu. " +
+      // ── ATURAN PER JENIS TUGAS (Arab) ───────────────────────────────────
       "أجب باللغة العربية الفصحى الواضحة المناسبة لمستوى طلاب الجامعة في الأزهر الشريف. " +
-      "للإنشاء/المقالة: اكتب نصاً متكاملاً بمقدمة (فقرة افتتاحية تطرح الموضوع) وعرض (فقرات تفصيلية بأفكار منظمة) وخاتمة (ملخص وخلاصة). استخدم أسلوباً أكاديمياً راقياً مع الترابط المنطقي بين الأفكار. " +
-      "للتلخيص: قدم ملخصاً دقيقاً يحافظ على الأفكار الرئيسية ويحذف التفاصيل الثانوية، مع الحفاظ على لغة النص الأصلية وأسلوبه. " +
-      "للشرح/التفسير: وضّح المعنى بأسلوب سهل وواضح مع ذكر السياق والأمثلة التوضيحية عند الحاجة. " +
-      "للقواعد النحوية والصرفية: اشرح القاعدة بتعريف واضح، ثم أعطِ أمثلة تطبيقية متنوعة من القرآن أو الأدب العربي إن أمكن. " +
-      "للترجمة (عربي↔إندونيسي): ترجم بدقة مع مراعاة السياق الأكاديمي والمعنى الضمني، ولا تترجم كلمة بكلمة. " +
+      "للرسائل الرسمية والاعتذار (سurat ijin/ghaib/i'tidzar): اكتب رسالة رسمية متكاملة — المقدمة (البسملة والسلام) والمضمون (سبب الغياب والاعتذار) والخاتمة (الشكر والتوقيع). استخدم صيغة مؤدبة ورسمية. " +
+      "للإنشاء/المقالة: اكتب نصاً متكاملاً بمقدمة وعرض وخاتمة. استخدم أسلوباً أكاديمياً راقياً. " +
+      "للتلخيص: ملخص دقيق يحافظ على الأفكار الرئيسية ويحذف التفاصيل الثانوية. " +
+      "للشرح/التفسير: وضّح المعنى بأسلوب سهل وواضح مع أمثلة توضيحية. " +
+      "للقواعد النحوية والصرفية: اشرح القاعدة بتعريف واضح ثم أعطِ أمثلة تطبيقية. " +
+      "للترجمة: ترجم بدقة مع مراعاة السياق الأكاديمي والمعنى الضمني — لا تترجم كلمة بكلمة. " +
       "لا تستخدم مقدمات مثل 'بالطبع' أو 'إليك' — ابدأ مباشرة بالمحتوى المطلوب.",
 
     casual:
