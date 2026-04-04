@@ -3045,11 +3045,16 @@ function trimToSentence(text, maxLen) {
 /* ── Confidence / trust layer ────────────────────────── */
 // Rule-based, no LLM call. Returns a hint injected into the system prompt.
 function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, hasPerplexity = false, externalTrustTier = null, intent, query }) {
-  const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita)\b/i.test(query);
+  const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita|harga|nilai tukar|kurs|tarif|rate|hasil|pemenang|juara|menang|kalah|terpilih|dilantik|pemilu|piala dunia|olimpiade|klasemen|peringkat)\b/i.test(query);
 
   // Current role / office-holder: inherently dynamic even without explicit time keywords.
-  const currentRoleQuery = /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|sekretaris jenderal|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris|wali kota)\b/i.test(query)
-    || /\b(presiden|menteri|rektor|direktur|ceo|gubernur|ketua|kepala)\b.{0,30}\bsiapa\b/i.test(query);
+  // Bidirectional: "siapa presiden X", "presiden X siapa", "siapa yang menjabat X", dll.
+  const _jabatanList = "(presiden|perdana menteri|pm|menteri|wakil presiden|rektor|direktur utama|dirut|direktur|ceo|gubernur|walikota|wali kota|bupati|kepala|ketua|sekjen|sekretaris jenderal|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris|menko|menkeu|menlu|menhan|mendagri|menag|kepala bps|kepala bi|gubernur bi|chief|bos|pemimpin)";
+  const currentRoleQuery =
+    new RegExp(`\\bsiapa\\b.{0,60}\\b${_jabatanList}\\b`, "i").test(query)
+    || new RegExp(`\\b${_jabatanList}\\b.{0,40}\\b(siapa|apa|siapakah)\\b`, "i").test(query)
+    || /\b(yang menjabat|yang menjadi|yang memimpin|yang menjadi|sedang menjabat|saat ini menjabat|sekarang menjabat|masih menjabat|jabatan saat ini|pemegang jabatan|office holder|incumbent)\b/i.test(query)
+    || /\bsiapa\b.{0,30}\b(yang jadi|yang menjadi|yang menjabat|yang memimpin|yang terpilih|yang dilantik)\b/i.test(query);
 
   // Historical role modifier — these are stable facts, not current office-holders.
   // "presiden pertama", "presiden ke-2", "pendiri", "mantan", "almarhum", etc.
@@ -3092,22 +3097,37 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     };
   }
 
+  // ── PERPLEXITY OVERRIDE (universal) ──────────────────────────────────────
+  // If real-time Perplexity data is present (and not already handled by currentRoleQuery
+  // or KB/pinned above), ALWAYS force model to use Perplexity, not training data.
+  // This catches ALL cases: time-sensitive, general knowledge, any other factual query.
+  // "di atas" is correct — confidence.hint is injected AFTER perplexityContext in prompt.
+  if (hasPerplexity && !hasKB && !hasPinned) {
+    const isTimeSensitiveQ = timeSensitive;
+    return {
+      level: "medium_confidence",
+      hint: isTimeSensitiveQ
+        ? "\n\n---\n**[🔴 DATA REAL-TIME AKTIF — WAJIB DIIKUTI]**\n" +
+          "Terdapat data pencarian web real-time dalam blok '## Informasi Terkini dari Pencarian Web' di atas.\n" +
+          "WAJIB: Jawab HANYA berdasarkan data tersebut — BUKAN dari memori training model yang bisa sudah usang.\n" +
+          "Training data model bisa tertinggal bulan atau tahun untuk informasi yang berubah.\n" +
+          "Sampaikan dengan percaya diri dan langsung. Jangan tambahkan disclaimer.\n---"
+        : "\n\n---\n**[🟡 DATA PENCARIAN WEB TERSEDIA]**\n" +
+          "Ada data dari pencarian web real-time di atas. Jika data tersebut relevan dengan pertanyaan user,\n" +
+          "gunakan data itu sebagai sumber jawaban — bukan dari training model.\n" +
+          "Jika tidak relevan, jawab dari pengetahuan model seperti biasa.\n---",
+    };
+  }
+
   // General knowledge + stable + not a current role query → high trust.
   // Historical role queries (presiden pertama, pendiri, mantan) are allowed through.
   if (generalKnowledge && !timeSensitive && (!currentRoleQuery || historicalRole)) {
     return { level: "high_confidence", hint: "" };
   }
 
-  // No KB, no pinned, query is time-sensitive:
-  // Perplexity provides web-grounded fresh context → medium_confidence
-  // No Perplexity → model uses its own knowledge but MUST prefix with uncertainty phrase
+  // No KB, no pinned, query is time-sensitive, no Perplexity:
+  // Model uses its own knowledge but MUST note uncertainty for genuinely dynamic details.
   if (!hasKB && !hasPinned && timeSensitive) {
-    if (hasPerplexity) {
-      return {
-        level: "medium_confidence",
-        hint: "\n\n**[Kepercayaan — SEDANG/PERPLEXITY]** Jawaban ini berdasarkan hasil pencarian web real-time. Sampaikan dengan percaya diri — tidak perlu tambahkan peringatan atau disclaimer.",
-      };
-    }
     return {
       level: "needs_verification",
       hint: "\n\n**[Kepercayaan — PERLU_VERIFIKASI / FALLBACK MODEL]** Tidak ada data web terbaru untuk pertanyaan ini — kamu menjawab dari pengetahuan umum model. Jawab dengan natural dan percaya diri, tapi jika ada detail yang genuinely bisa berubah (harga, jadwal, kontak), boleh sebut 1 kalimat singkat saran verifikasi di akhir — jangan dipaksakan jika tidak relevan.",

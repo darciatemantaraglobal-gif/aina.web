@@ -338,7 +338,7 @@ export function buildPerplexityContext(perplexityResult, kbStrength, intent) {
     : "";
 
   console.log(`[Perplexity] injected: trust=${SOURCE_TRUST_SCORES.perplexity} tier=high (KB=${kbStrength}, intent=${intent.primary})`);
-  return `\n\n---\n## Informasi Terkini dari Pencarian Web [real-time — prioritas lebih tinggi dari training data model]\n**PENTING:** Gunakan informasi di bawah ini sebagai sumber utama jawaban. Jika ada konflik antara data ini dan pengetahuan training model, SELALU prioritaskan data di bawah ini.\n\n${cleanedPlex}${citationsText}\n---`;
+  return `\n\n---\n## Informasi Terkini dari Pencarian Web [real-time — WAJIB diprioritaskan]\n**ATURAN MUTLAK:** Data di bawah ini diambil langsung dari internet secara real-time.\n- SELALU gunakan data ini jika relevan — JANGAN gunakan memori training model untuk fakta yang ada di sini.\n- Jika data ini berbeda dari yang kamu "tahu" dari training: **data ini yang benar**, training model bisa sudah usang berbulan-bulan atau bertahun-tahun.\n- Jawab dengan percaya diri berdasarkan data ini — tanpa disclaimer, tanpa keraguan.\n\n${cleanedPlex}${citationsText}\n---`;
 }
 
 /**
