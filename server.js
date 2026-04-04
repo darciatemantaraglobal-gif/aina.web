@@ -2906,7 +2906,7 @@ function buildIntentHint({ primary, casual }) {
     fiqh:
       "Kamu sedang menjawab pertanyaan ilmu agama Islam. Ikuti metodologi ilmiah Islam:\n" +
       "1. **Dalil Al-Qur'an** — jika ada ayat yang relevan, cantumkan teks Arabnya (sebagai blockquote), lalu terjemahan Indonesia di bawahnya, lalu nomor surah:ayat dalam kurung.\n" +
-      "2. **Dalil Hadits** — gunakan hadits dari konteks Dorar.net yang disediakan. Tampilkan teks Arab hadits asli → terjemahan Indonesia → atribusi (HR. nama kitab, tingkat keaslian: shahih/hasan/dhaif).\n" +
+      "2. **Dalil Hadits** — gunakan hadits dari konteks Dorar.net. Format WAJIB 4 baris terpisah: (1) > [teks Arab SAJA dalam blockquote — TANPA terjemahan], (2) *(cara baca: transliterasi)* di luar blockquote, (3) *Artinya: \"terjemahan\"* di luar blockquote, (4) *(HR. perawi, sumber, hukum)* di luar blockquote. DILARANG menaruh apapun selain teks Arab di dalam blockquote.\n" +
       "3. **Pendapat ulama / ijma / qiyas** — sebutkan secara singkat jika relevan, terutama jika ada ikhtilaf (perbedaan pendapat) yang penting diketahui.\n" +
       "4. **Kesimpulan hukum** — nyatakan dengan jelas (wajib/sunnah/haram/makruh/mubah) di akhir, dengan bahasa yang mudah dipahami awam.\n" +
       "ATURAN KERAS:\n" +
