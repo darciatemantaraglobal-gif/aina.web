@@ -2437,7 +2437,26 @@ app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
 function isLocalMasisirQuery(text) {
   const t = text.toLowerCase();
   return (
-    // Kekeluargaan / paguyuban / komunitas daerah
+    // ── Egypt-exclusive admin & dokumen (PALING KRITIS) ──────────────────────
+    // Iqomah adalah istilah izin tinggal MESIR — di internet lebih dikenal
+    // sebagai istilah Saudi. Perplexity WAJIB diblokir untuk semua varian ini.
+    /\b(iqomah|iqama|igamah|ikamah|ikomah|iqoamah|iqaamah|izin\s*tinggal\s*(mesir|kairo|egypt))\b/.test(t) ||
+    // KBRI — dalam konteks Masisir, KBRI selalu = KBRI Kairo, blokir web
+    /\bkbri\b/.test(t) ||
+    /\b(kedutaan\s*besar\s*(ri|indonesia)|konsulat\s*indonesia).{0,30}(kairo|cairo|mesir|egypt)/.test(t) ||
+    // Qaid Al-Azhar — pendaftaran ulang kuliah, spesifik Al-Azhar
+    /\b(qaid|pendaftaran\s*ulang\s*(al.?azhar|azhar)|qaid\s*azhar|shahada\s*qaid|surat\s*aktif\s*(mahasiswa|azhar))\b/.test(t) ||
+    // Jawazat — imigrasi Mesir (nama resmi kantor imigrasi Mesir)
+    /\bjawazat\b/.test(t) ||
+    // Rasm — biaya kuliah Al-Azhar (terminologi khas Azhar)
+    /\brasm\s*(azhar|kuliah|semester|qaid)\b/.test(t) ||
+    // Muqorror / mugharrar — buku wajib Al-Azhar
+    /\b(muqorror|mugharrar|maqrur)\b/.test(t) ||
+    // Visa pelajar / student visa khusus Mesir
+    /visa\s*(pelajar|belajar|study|student).{0,30}(mesir|egypt|kairo|cairo)/.test(t) ||
+    /\b(tarhil|tamlik|tasjil\s*azhar)\b/.test(t) ||
+
+    // ── Kekeluargaan / paguyuban / komunitas daerah ───────────────────────────
     /kekeluargaan|paguyuban|perhimpunan|komunitas\s*(daerah|mahasiswa|indonesia)|perkumpulan/.test(t) ||
     // Named Indonesian orgs in Egypt
     /\b(ppmi|ppi\s*mesir|imaba|isma|imabi|ikaluin|forkis|kmm|ismafar|ikpm|forsada|gamasi|kpmjb|kpmjt|himdamesi|himalaya|himsatesi|fosimaba|pknm)\b/.test(t) ||
