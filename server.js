@@ -3335,6 +3335,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Auth is required — unauthenticated requests must not reach OpenRouter
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan untuk menggunakan chat" });
+  const _chatDebugStart = Date.now();
+  let _chatDebugStep = "init";
+  const _chatDebugErr = (e) => {
+    console.error(`[CHAT-DEBUG] CRASH at step="${_chatDebugStep}" err="${e?.message}" stack="${e?.stack?.split("\n")[1]?.trim()}"`);
+  };
+  try {
 
   const { messages, userProfile, attachedFile } = req.body;
   if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: "messages array required" });
@@ -3402,10 +3408,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // Intent detection is synchronous — compute before parallel fetches so memory retrieval is query-aware
+  _chatDebugStep = "intent-detection";
   const intent = detectIntent(lastUserMessage);
   const intentHint = buildIntentHint(intent);
   console.log(`[Intent] ${intent.primary}${intent.casual ? "+casual" : ""} — "${lastUserMessage.slice(0, 60)}"`);
 
+  _chatDebugStep = "roles-and-memories";
   const [rolesRes, userMemories] = await Promise.all([
     supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id),
     fetchUserMemories(user.id, lastUserMessage, intent.primary),
@@ -3476,6 +3484,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     : Promise.resolve(null);
 
   // Wave 1 — fast internal fetches (always run in parallel with early Perplexity)
+  _chatDebugStep = "wave1-fetches";
   const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
     fetchRelevantArticles(lastUserMessage, intent.primary),
     fetchPinnedUpdates(),
@@ -3630,6 +3639,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   });
 
   // ── Assemble full system prompt via modular builder ───────────────────────
+  _chatDebugStep = "build-system-prompt";
   const systemPrompt = buildSystemPrompt({
     todayStr,
     intentHint,
@@ -3926,11 +3936,13 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // ── Set SSE headers before model calls ─────────────────────────────────────
   // Must be set before any res.write() calls; once flushed, headers are committed.
+  _chatDebugStep = "sse-headers";
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+  _chatDebugStep = "streaming";
 
   // Helper: attempt a single streaming fetch from OpenRouter
   const tryStreamFetch = async (model, timeoutMs = 20000) => {
@@ -4230,6 +4242,15 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       isTransport: isTransportQuery(lastUserMessage),
     });
   });
+
+  } catch (_chatErr) {
+    _chatDebugErr(_chatErr);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Terjadi kesalahan, silakan coba lagi." });
+    } else {
+      try { res.write(`data: ${JSON.stringify({ type: "error", error: "Terjadi kesalahan, silakan coba lagi." })}\n\n`); res.end(); } catch {}
+    }
+  }
 });
 
 /* ── User Memories CRUD ──────────────────────────────── */
