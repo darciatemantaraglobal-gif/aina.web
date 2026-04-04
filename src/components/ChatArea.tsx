@@ -1522,14 +1522,16 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     const isArabicReply = arabicRatio > 0.25;
                     const topSuggestions = msg.suggestions.slice(0, 2);
                     return (
-                      <div className="mt-2 space-y-1.5">
-                        <p className="text-[10px] text-muted-foreground/40 pl-0.5">Pertanyaan lanjutan:</p>
-                        <div className="flex flex-wrap gap-1.5">
+                      <div className="mt-3 space-y-2">
+                        <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground/60 pl-0.5">
+                          <span className="text-primary/60">✦</span> Lanjutkan percakapan:
+                        </p>
+                        <div className="flex flex-wrap gap-2">
                         {topSuggestions.map(s => (
                           <button
                             key={s}
                             onClick={() => handleSend(s)}
-                            className="rounded-full border border-border/50 bg-secondary/30 px-3 py-1 text-[11px] text-muted-foreground/70 transition-all hover:border-primary/40 hover:bg-secondary/60 hover:text-foreground"
+                            className="rounded-full border border-primary/25 bg-primary/10 px-3.5 py-1.5 text-[12px] text-foreground/75 transition-all hover:border-primary/60 hover:bg-primary/20 hover:text-foreground active:scale-95"
                             dir={isArabicReply ? "rtl" : "ltr"}
                           >
                             {s}
