@@ -2837,10 +2837,15 @@ function buildIntentHint({ primary, casual }) {
 
   const hints = {
     factual:
-      "Jawab poin utama langsung di kalimat pertama — tidak perlu pengantar apapun. " +
-      "Kalimat kedua dan seterusnya boleh elaborasi singkat, tapi jangan overexplain. " +
-      "Jika jawabannya cukup dalam 2–3 kalimat, berhenti di sana. " +
-      "Jangan tambahkan informasi yang tidak ditanya.",
+      "Buka dengan 1 kalimat pembuka yang relate langsung dengan pertanyaan — singkat, bukan basa-basi.\n" +
+      "Lalu masuk ke isi utama dengan format yang sesuai jenis pertanyaan:\n" +
+      "• Pertanyaan singkat (berapa/siapa/kapan/di mana): jawab langsung dalam 1–3 kalimat, tidak perlu daftar.\n" +
+      "• Pertanyaan 'apa itu' atau definisi: definisi paling sederhana dulu → penjelasan singkat → contoh atau konteks → kesimpulan 1 kalimat.\n" +
+      "• Pertanyaan perbandingan atau 'mana yang lebih baik': ringkas perbedaan utamanya dulu → poin perbandingan → rekomendasi berdasar kebutuhan.\n" +
+      "• Pertanyaan referensi / rekomendasi kitab / tokoh / sumber keilmuan Islam: buka dengan 1 kalimat konteks → daftar bernomor dengan positioning singkat tiap item → tutup dengan rekomendasi untuk pemula atau untuk pendalaman.\n" +
+      "ATURAN DAFTAR: Jika menggunakan bullet atau nomor, SETIAP item WAJIB punya penjelasan singkat 1 kalimat — kenapa penting, apa bedanya, atau kapan cocok dipakai. JANGAN sekadar menyebut nama/istilah tanpa konteks.\n" +
+      "PENUTUP: Jika ada tindak lanjut logis, tutup dengan 1 kalimat guidance yang spesifik — saran, rekomendasi mulai dari mana, atau tawaran bantuan lanjutan. Skip jika tidak relevan.\n" +
+      "Maksimal 2–3 kalimat per paragraf. Jangan buat blok teks besar.",
 
     procedural:
       "WAJIB gunakan format 4 bagian berikut secara berurutan:\n" +
@@ -2866,16 +2871,18 @@ function buildIntentHint({ primary, casual }) {
       "Format bernomor justru sangat membantu user yang bingung karena terasa lebih terkendali dan tidak overwhelming.",
 
     recommendation:
-      "Sebutkan rekomendasi terkuat di kalimat pertama dengan tegas — jangan langsung bikin daftar. " +
-      "Jelaskan alasannya dalam 1 kalimat singkat. " +
-      "Baru setelah itu, tambahkan 2–3 alternatif jika memang relevan, masing-masing dengan 1 alasan singkat. " +
-      "Jangan buat listing panjang tanpa prioritas — user butuh panduan, bukan katalog.",
+      "Buka dengan 1 kalimat pembuka yang framing-nya natural — jangan langsung lempar daftar ke user.\n" +
+      "Jika ada rekomendasi terkuat: sebutkan di awal dengan tegas + alasannya 1 kalimat. Baru tambahkan 2–3 alternatif.\n" +
+      "Jika tidak ada satu yang terbaik: susun daftar bernomor dengan positioning singkat tiap item — kenapa cocok, untuk siapa, atau kapan dipakai.\n" +
+      "WAJIB tutup dengan 1 kalimat rekomendasi konkret: saran untuk pemula, atau mana yang paling cocok berdasar kondisi user. " +
+      "Jangan buat listing panjang tanpa prioritas atau panduan — user butuh arahan, bukan katalog.",
 
     brainstorming:
       "Buka dengan 1 kalimat singkat yang framing-nya terbuka dan mengundang. " +
       "Berikan 3–5 opsi/ide yang benar-benar berbeda satu sama lain — hindari variasi yang terlalu mirip. " +
-      "Setiap ide dalam format bullet, diikuti 1–2 kalimat penjelasan yang relevan dan konkret. " +
-      "Susun dari yang paling mudah diakses ke yang lebih spesifik, atau dari yang paling umum ke yang paling niche. " +
+      "Setiap ide dalam format bullet atau nomor, diikuti 1–2 kalimat penjelasan yang relevan dan konkret — apa kelebihannya, untuk siapa cocok, atau bagaimana cara mulainya. " +
+      "Susun dari yang paling mudah diakses ke yang lebih spesifik. " +
+      "Tutup dengan 1 kalimat tawaran: tanya ke mana user ingin lanjut, atau tawarkan untuk mendalami salah satu. " +
       "Jangan ulangi ide dengan kata berbeda.",
 
     arabic_writing:
