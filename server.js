@@ -2437,38 +2437,149 @@ app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
 function isLocalMasisirQuery(text) {
   const t = text.toLowerCase();
   return (
-    // ── Egypt-exclusive admin & dokumen (PALING KRITIS) ──────────────────────
-    // Iqomah adalah istilah izin tinggal MESIR — di internet lebih dikenal
-    // sebagai istilah Saudi. Perplexity WAJIB diblokir untuk semua varian ini.
-    /\b(iqomah|iqama|igamah|ikamah|ikomah|iqoamah|iqaamah|izin\s*tinggal\s*(mesir|kairo|egypt))\b/.test(t) ||
-    // KBRI — dalam konteks Masisir, KBRI selalu = KBRI Kairo, blokir web
-    /\bkbri\b/.test(t) ||
-    /\b(kedutaan\s*besar\s*(ri|indonesia)|konsulat\s*indonesia).{0,30}(kairo|cairo|mesir|egypt)/.test(t) ||
-    // Qaid Al-Azhar — pendaftaran ulang kuliah, spesifik Al-Azhar
-    /\b(qaid|pendaftaran\s*ulang\s*(al.?azhar|azhar)|qaid\s*azhar|shahada\s*qaid|surat\s*aktif\s*(mahasiswa|azhar))\b/.test(t) ||
-    // Jawazat — imigrasi Mesir (nama resmi kantor imigrasi Mesir)
-    /\bjawazat\b/.test(t) ||
-    // Rasm — biaya kuliah Al-Azhar (terminologi khas Azhar)
-    /\brasm\s*(azhar|kuliah|semester|qaid)\b/.test(t) ||
-    // Muqorror / mugharrar — buku wajib Al-Azhar
-    /\b(muqorror|mugharrar|maqrur)\b/.test(t) ||
-    // Visa pelajar / student visa khusus Mesir
-    /visa\s*(pelajar|belajar|study|student).{0,30}(mesir|egypt|kairo|cairo)/.test(t) ||
-    /\b(tarhil|tamlik|tasjil\s*azhar)\b/.test(t) ||
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLOK A — DOKUMEN & ADMINISTRASI KHAS MESIR
+    // Istilah ini eksklusif Egypt. Web/Perplexity selalu return hasil Saudi/global
+    // yang salah konteks. WAJIB diblokir dari external search.
+    // ══════════════════════════════════════════════════════════════════════════
 
-    // ── Kekeluargaan / paguyuban / komunitas daerah ───────────────────────────
-    /kekeluargaan|paguyuban|perhimpunan|komunitas\s*(daerah|mahasiswa|indonesia)|perkumpulan/.test(t) ||
-    // Named Indonesian orgs in Egypt
-    /\b(ppmi|ppi\s*mesir|imaba|isma|imabi|ikaluin|forkis|kmm|ismafar|ikpm|forsada|gamasi|kpmjb|kpmjt|himdamesi|himalaya|himsatesi|fosimaba|pknm)\b/.test(t) ||
-    // Indonesian-run places in Egypt
-    /warung\s*indonesia|kantin\s*indonesia|masakan\s*indonesia|resto(ran)?\s*indonesia|catering\s*indonesia|jajan\s*indonesia/.test(t) ||
-    // Masisir-specific housing/area
-    /\b(hay\s*asher|hay\s*(asyir|10|sepuluh)|nasr\s*city|madinah\s*nasr|darrasah|basatin|zaytoun|hadaiq|ain\s*shams|shubra|dokki|mohandessin|maadi|heliopolis)\b.{0,60}(flat|sewa|kost|kamar|rumah|tinggal|apartemen)/.test(t) ||
-    // Direct ask about community location
+    // Iqomah / izin tinggal — semua ejaan varian Masisir
+    /\b(iqomah|iqama|igamah|ikamah|ikomah|iqoamah|iqaamah|izin\s*tinggal\s*(mesir|kairo|egypt))\b/.test(t) ||
+
+    // KBRI — dalam konteks Masisir selalu = KBRI Kairo
+    /\bkbri\b/.test(t) ||
+    /\b(kedutaan\s*besar\s*(ri|indonesia)|konsulat\s*(ri|indonesia)).{0,30}(kairo|cairo|mesir|egypt)/.test(t) ||
+
+    // Jawazat — nama resmi kantor imigrasi Mesir (الجوازات)
+    /\bjawazat\b/.test(t) ||
+
+    // Qaid — pendaftaran ulang Al-Azhar & Shahada Qaid
+    /\b(qaid|shahada\s*qaid|surat\s*aktif\s*(mahasiswa|azhar)|pendaftaran\s*ulang\s*(al.?azhar|azhar))\b/.test(t) ||
+
+    // Rasm — biaya kuliah Al-Azhar (bukan "biaya kuliah" umum)
+    /\brasm\b/.test(t) ||
+
+    // Muqorror / mugharrar / manhaj — terminologi akademik Al-Azhar
+    /\b(muqorror|mugharrar|maqrur|manhaj\s*(azhar|al.?azhar|kuliah))\b/.test(t) ||
+
+    // Tarhil, tasrih, taqyid — birokrasi imigrasi/perizinan Mesir
+    /\b(tarhil|tasrih|taqyid|tamlik|tasjil\s*azhar)\b/.test(t) ||
+
+    // Apostille / legalisasi notaris khas Mesir
+    /\b(apostille|apostil|legalisasi\s*(mesir|notaris\s*mesir|dokumen\s*mesir))\b/.test(t) ||
+
+    // Visa pelajar / belajar konteks Mesir
+    /visa\s*(pelajar|belajar|study|student).{0,30}(mesir|egypt|kairo|cairo)/.test(t) ||
+
+    // Pemilu / PPLN Mesir — suara WNI di luar negeri konteks Mesir
+    /\b(ppln|pemilu.{0,20}(mesir|kairo)|pilpres.{0,20}mesir|pileg.{0,20}mesir|dptln|dpln)\b/.test(t) ||
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLOK B — SISTEM AKADEMIK AL-AZHAR
+    // Istilah khas sistem ujian & akademik Al-Azhar — hasil web sangat tidak relevan
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // Imtihan — ujian Al-Azhar (bukan ujian generik)
+    /\b(imtihan|imtehan|imtehon)\b/.test(t) ||
+
+    // Tahriri & Syafahi — ujian tulis & lisan Al-Azhar
+    /\b(tahriri|tahriiri|syafahi|syafaahi)\b/.test(t) ||
+
+    // Imtihan takmili / susulan Al-Azhar
+    /\b(takmili|imtihan\s*susulan|ujian\s*susulan\s*(azhar|al.?azhar)|ujian\s*takmili)\b/.test(t) ||
+
+    // Taqdir / nilai / raport Al-Azhar
+    /\b(taqdir|nilai\s*(azhar|al.?azhar|semester\s*azhar)|raport\s*azhar|hasil\s*imtihan)\b/.test(t) ||
+
+    // Dirasat Ulya — pascasarjana Al-Azhar
+    /\b(dirasat\s*ulya|dira[sz]at\s*ulya|pascasarjana\s*(azhar|al.?azhar)|s2\s*azhar|magister\s*azhar)\b/.test(t) ||
+
+    // Markaz Lughah — pusat bahasa Arab Al-Azhar
+    /\b(markaz\s*lugh?ah?|pusat\s*bahasa\s*(azhar|arab\s*azhar)|kursus\s*bahasa\s*azhar)\b/.test(t) ||
+
+    // Kulliyah — fakultas Al-Azhar
+    /\b(kulliyah|kuliyah)\s*(azhar|al.?azhar|syariah|ushuluddin|tarbiyah|dirasah|lughah|dakwah|tijaroh|handasah)/.test(t) ||
+
+    // Syahadah — ijazah/sertifikat Al-Azhar
+    /\bsyahadah\s*(azhar|al.?azhar|tsanawiyah|ibtidaiyah|aliyah|jami[ae]iyah)\b/.test(t) ||
+
+    // Kartu mahasiswa / ID Al-Azhar
+    /\b(kartu\s*mahasiswa\s*azhar|id\s*azhar|kartu\s*azhar|azhar\s*card|mazaya\s*card)\b/.test(t) ||
+
+    // Azhar Online / portal akademik Al-Azhar
+    /\b(azhar\s*online|portal\s*(azhar|al.?azhar)|sistem\s*(azhar|al.?azhar)|simak\s*azhar)\b/.test(t) ||
+
+    // Beasiswa MORA/PBSB — beasiswa Kemenag khusus studi di Mesir
+    /\b(mora|pbsb|beasiswa\s*(mora|pbsb|kemenag).{0,30}(mesir|azhar|egypt)|beasiswa\s*pemerintah\s*mesir)\b/.test(t) ||
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLOK C — TEMPAT TINGGAL KHAS MASISIR
+    // Sakan, syaqa, fawar, hawl — istilah khas hunian mahasiswa di Kairo
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // Sakan — kos/tempat tinggal mahasiswa di Kairo
+    /\bsakan\b/.test(t) ||
+
+    // Syaqa / syaqqa — apartemen
+    /\b(syaqa|syaqqa|shaqqa|sha99a)\b/.test(t) ||
+
+    // Fawar / hawl — istilah bagian apartemen khas Masisir
+    /\b(fawar|hawl)\b/.test(t) ||
+
+    // Cari kos/apartemen di kawasan Masisir
+    /\b(hay\s*(asyir|asher|'asyir|'asher|10|sepuluh|sabi|sabea|tamine|tasi|sadis|rabi|thamin|khamis)|nasr\s*city|madinah?\s*nasr|darrasah|basatin|zaytoun|hadaiq|abbasiyya|ain\s*shams|alf\s*maskan|alif\s*maskan)\b.{0,80}(sewa|kost|kamar|rumah|tinggal|apartemen|flat|sakan|syaqa|harga|budget|murah|biaya)/.test(t) ||
+    // Arah balik: cari kos tapi sebutkan kawasan Masisir
+    /(cari|sewa|kontrak|nyari).{0,40}(kost?|kamar|apartemen|flat|sakan|rumah|tempat\s*tinggal).{0,60}(hay|nasr\s*city|darrasah|kairo|cairo|masisir)/.test(t) ||
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLOK D — PASAR, TOKO & TEMPAT BELANJA KHAS MASISIR
+    // Fathallah, BIM, Attaba — referensi belanja lokal komunitas
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /\b(fathallah|fat[- ]?h?allah)\b/.test(t) ||
+    /\bbim\s*(market|mart|mesir|kairo|toko)\b/.test(t) ||
+    /\battaba\b/.test(t) ||
+    /\b(roxy\s*(mall|plaza|kairo)|mal\s*roxy|plaza\s*roxy)\b/.test(t) ||
+    /\b(seorang|toko|pasar|mall).{0,40}(masisir|hay\s*(asyir|10)|nasr\s*city)/.test(t) ||
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLOK E — ORGANISASI & KOMUNITAS INDONESIA DI MESIR
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // Kekeluargaan daerah (umbrella terms)
+    /kekeluargaan|paguyuban|perhimpunan|komunitas\s*(daerah|mahasiswa|indonesia)|perkumpulan\s*(mahasiswa|pelajar)/.test(t) ||
+
+    // Ormas/orpel Indonesia di Mesir — daftar lengkap
+    /\b(ppmi|ppi\s*mesir|imaba|isma|imabi|ikaluin|forkis|kmm|ismafar|ikpm|forsada|gamasi|kpmjb|kpmjt|himdamesi|himalaya|himsatesi|fosimaba|pknm|gamajatim|permika|ikama|fosmabi|ikamaro|ikapmawi|ikasmansa|ikustar|ikabama|permapaba|formasis|formasitra|permata|formasi|ikappmawa|ikasmansa|laskar|formais)\b/.test(t) ||
+
+    // PPMI secara spesifik — program, bantuan, sekretariat
+    /\b(program\s*ppmi|dana\s*darurat\s*ppmi|bantuan\s*ppmi|sekretariat\s*ppmi|ppmi\s*(mesir|kairo)|ketua\s*ppmi|pengurus\s*ppmi)\b/.test(t) ||
+
+    // Makanan & kuliner Indonesia di Kairo
+    /warung\s*indonesia|kantin\s*indonesia|masakan\s*indonesia|resto(ran)?\s*indonesia|catering\s*indonesia|jajan\s*indonesia|makanan\s*indonesia.{0,20}(kairo|mesir|masisir)/.test(t) ||
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLOK F — EVENT & KEGIATAN KHAS MASISIR
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /\b(bazar\s*masisir|masisir\s*cup|turnamen\s*masisir|lomba\s*masisir|festival\s*masisir|acara\s*masisir|event\s*masisir|pentas\s*masisir|drama\s*masisir|rihlah\s*masisir|wisata\s*masisir)\b/.test(t) ||
+    /\b(kajian\s*(masisir|indonesia\s*di\s*mesir)|halaqah\s*(masisir|indonesia)|pengajian\s*(masisir|kairo))\b/.test(t) ||
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // BLOK G — LOKASI & TEMPAT FISIK KHAS MASISIR
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // Sekretariat / kantor komunitas Indonesia di Kairo
     /di\s*mana\s*(kantor|sekretariat|lokasi|alamat)\s*(kekeluargaan|ppmi|ppi|komunitas|paguyuban)/.test(t) ||
-    // Masisir social spots
-    /(kedai|kafe|cafe|tempat\s*nongkrong|tempat\s*kumpul).{0,40}(masisir|indonesia|mahasiswa)/.test(t) ||
-    (/(tempat|lokasi|alamat|di\s*mana)\b.{0,60}\b(masisir|mahasiswa\s*indonesia\s*di\s*mesir|mahasiswa\s*mesir)/.test(t))
+
+    // Tempat nongkrong Masisir
+    /(kedai|kafe|cafe|warung|tempat\s*nongkrong|tempat\s*kumpul|basecamp).{0,40}(masisir|indonesia|mahasiswa\s*(indonesia|azhar))/.test(t) ||
+
+    // Pertanyaan umum tentang lokasi di komunitas Masisir
+    /(tempat|lokasi|alamat|di\s*mana)\b.{0,60}\b(masisir|mahasiswa\s*indonesia\s*di\s*mesir|mahasiswa\s*mesir)/.test(t) ||
+
+    // Masisir sebagai kata kunci eksplisit dalam query
+    /\bmasisir\b/.test(t)
   );
 }
 
