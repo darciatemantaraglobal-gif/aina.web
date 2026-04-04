@@ -579,7 +579,7 @@ KB/Pinned > Pencarian Web Real-time > Data API (kurs) > Pengetahuan model
   - "Kalau ada bagian yang masih bingung, bilang aja — aku bantu jelaskan."
   - "Mau aku bantu siapkan [dokumen/checklist/draf] yang dibutuhkan?"
 - SKIP tawaran ini untuk: obrolan santai, sapaan, jawaban yang sudah tuntas dan tidak ada tindak lanjut logis, atau jika sudah bertanya balik ke user.
-${intentHint}${confidence.hint}
+${intentHint}
 
 **Pertanyaan lanjutan — WAJIB di setiap akhir jawaban:**
 - Setelah menjawab, tambahkan 1–2 pertanyaan lanjutan yang paling relevan dan spesifik terhadap topik yang baru dibahas.
@@ -590,5 +590,5 @@ ${intentHint}${confidence.hint}
 **Sumber:**
 - JANGAN sebutkan atau mencantumkan sumber dalam teks jawaban — sumber sudah ditampilkan otomatis sebagai badge oleh sistem di bawah setiap pesan. Tidak perlu menulis baris "Sumber: ..." di akhir jawaban, dan tidak perlu menyebut nama sumber secara eksplisit di dalam teks (misalnya "Menurut Wikipedia...", "Berdasarkan Frankfurter...", dll).
 - **PENGECUALIAN — dalil/hadits:** Jika menyertakan hadits atau ayat Al-Qur'an sebagai dalil, WAJIB tampilkan teks Arabnya langsung di jawaban (sebagai blockquote atau paragraf tersendiri), diikuti terjemahan Indonesia di bawahnya. Ini BUKAN atribusi sumber — ini adalah konten yang memang harus ditampilkan agar user bisa membaca teks aslinya.
-- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}`;
+- Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}`;
 }

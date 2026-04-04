@@ -3079,10 +3079,11 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
-        hint: "\n\n**[OVERRIDE JABATAN TERKINI — WAJIB DIIKUTI]** Pertanyaan ini tentang pejabat/jabatan yang saat ini menjabat. " +
-          "Kamu WAJIB menjawab berdasarkan data dari 'Informasi Terkini dari Pencarian Web' di atas — BUKAN dari pengetahuan training model kamu. " +
-          "Training data model bisa sudah usang untuk informasi jabatan. Data Perplexity di atas adalah sumber kebenaran untuk pertanyaan ini. " +
-          "Jawab dengan percaya diri menggunakan data tersebut.",
+        hint: "\n\n---\n**[🔴 FINAL OVERRIDE — JABATAN TERKINI]**\n" +
+          "Baca ulang bagian '## Informasi Terkini dari Pencarian Web' di atas sebelum menjawab.\n" +
+          "WAJIB: Gunakan HANYA nama/informasi dari blok tersebut — JANGAN gunakan nama dari memori training model.\n" +
+          "Training data model PASTI usang untuk pertanyaan jabatan/pejabat saat ini.\n" +
+          "Jawab langsung dan percaya diri berdasarkan data real-time di atas.\n---",
       };
     }
     return {
