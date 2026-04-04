@@ -3545,9 +3545,9 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // ── Response style — auto-detected from intent ────────────────────────────
-  const answerMode = detectResponseStyle(intentPrimary);
+  const answerMode = detectResponseStyle(intent.primary);
   const answerModeHint = buildResponseStyleHint(answerMode);
-  console.log(`[ResponseStyle] auto:${answerMode} (intent:${intentPrimary})`);
+  console.log(`[ResponseStyle] auto:${answerMode} (intent:${intent.primary})`);
 
   // ── Structured source decision log ──────────────────────────────────────
   const sourceLog = {
@@ -4073,9 +4073,9 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       casual:        ["Ada lagi yang ingin kamu tanyakan?", "Mau aku bantu hal lainnya?"],
       confused:      ["Apakah penjelasan ini cukup jelas?", "Bagian mana yang masih membingungkan?"],
     };
-    const _fallbackSuggestions = _fb[intentPrimary] ?? ["Ada hal lain yang ingin ditanyakan?", "Mau aku bantu lebih detail?"];
+    const _fallbackSuggestions = _fb[intent.primary] ?? ["Ada hal lain yang ingin ditanyakan?", "Mau aku bantu lebih detail?"];
     aiSuggestions = _fallbackSuggestions;
-    console.log(`[Saran] AI skipped suggestions → using intent-based fallback (intent:${intentPrimary})`);
+    console.log(`[Saran] AI skipped suggestions → using intent-based fallback (intent:${intent.primary})`);
   }
 
   let reply = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
