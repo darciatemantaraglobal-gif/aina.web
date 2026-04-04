@@ -2931,7 +2931,8 @@ function buildIntentHint({ primary, casual }) {
       "ATURAN PALING PENTING: Jika user meminta BUAT atau TULIS teks Arab (surat, paragraf, karangan, terjemahan), " +
       "WAJIB langsung hasilkan teks Arabnya — JANGAN hanya jelaskan cara menulis atau prosedur pengajuannya. " +
       "Informasi dari Knowledge Base boleh dipakai sebagai konteks/isi, tapi OUTPUT UTAMA harus berupa teks Arab yang diminta. " +
-      "Setelah teks Arab, boleh tambahkan 1–2 kalimat penjelasan dalam bahasa Indonesia jika membantu. " +
+      "FORMAT TAMPILAN: Letakkan teks Arab yang dihasilkan dalam blockquote (awali baris dengan >) agar tampil dalam kotak khusus Arab. " +
+      "Setelah blockquote teks Arab, boleh tambahkan 1–2 kalimat penjelasan dalam bahasa Indonesia jika membantu. " +
       // ── PANDUAN PER JENIS TUGAS (bahasa Arab) ───────────────────────────
       "أجب باللغة العربية الفصحى الواضحة المناسبة لمستوى طلاب الجامعة في الأزهر الشريف. " +
       "للرسائل الرسمية (سurat ghaib / i'tidzar / izin / permohonan): اكتب رسالة رسمية متكاملة — البسملة والسلام، ثم مضمون الرسالة (سبب الغياب / الطلب / الاعتذار)، ثم الخاتمة (الشكر والتوقيع والتاريخ). استخدم صيغة مؤدبة ورسمية مناسبة للتواصل الأكاديمي. " +
@@ -3038,7 +3039,7 @@ Lanjut format bernomor (1. 2. 3.) — setiap langkah = SATU aksi spesifik, maks 
 Tambahkan ⚠️ hanya untuk hal kritis yang sering terlewat. Tambahkan 💡 untuk tip yang benar-benar menghemat waktu.
 Tutup dengan 1 kalimat guidance konkret: langkah paling penting atau peringatan utama yang tidak boleh dilewatkan.
 
-Untuk pertanyaan faktual/konseptual yang tidak punya urutan langkah: jawab dalam paragraf mengalir, jangan paksakan format bernomor.`,
+**WAJIB**: Format bernomor adalah default untuk semua pertanyaan "cara/gimana/langkah". DILARANG jawab dalam paragraf panjang untuk pertanyaan prosedural.`,
 
   // Used for: fiqh
   // Goal: thorough, warm, multi-section. User must understand AND be able to act.

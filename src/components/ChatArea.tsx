@@ -313,8 +313,8 @@ const MD_COMPONENTS = {
       return (
         <blockquote
           dir="rtl"
-          className="mt-3 mb-3 rounded-xl border border-emerald-500/25 bg-emerald-950/25 px-6 py-4 text-right text-foreground"
-          style={{ fontFamily: "'Scheherazade New', serif", lineHeight: "2.1", fontSize: "1.0625em" }}
+          className="mt-3 mb-4 rounded-xl border border-emerald-500/50 bg-emerald-950/40 px-6 py-5 text-right text-foreground shadow-sm shadow-emerald-900/20"
+          style={{ fontFamily: "'Scheherazade New', serif", lineHeight: "2.2", fontSize: "1.1em" }}
         >
           {children}
         </blockquote>
@@ -380,7 +380,15 @@ const MD_COMPONENTS = {
   },
   td: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <td dir={ar ? "auto" : undefined} className="px-4 py-2.5 text-foreground/90" style={ar ? { lineHeight: "1.9" } : undefined}>{children}</td>;
+    return (
+      <td
+        dir={ar ? "rtl" : undefined}
+        className={`px-4 py-2.5 text-foreground/90${ar ? " text-right text-emerald-300/90" : ""}`}
+        style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "2.0", fontSize: "1.05em" } : undefined}
+      >
+        {children}
+      </td>
+    );
   },
 };
 
