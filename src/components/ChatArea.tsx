@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw, Square } from "lucide-react";
-import { RESPONSE_STYLES, RESPONSE_STYLE_ORDER, type ResponseStyleKey } from "@/lib/responseStyles";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -204,12 +203,12 @@ const MD_COMPONENTS = {
     if (/^\(cara baca:/i.test(text)) {
       const pronunciation = text.replace(/^\(cara baca:\s*/i, "").replace(/\)$/, "").trim();
       return (
-        <em className="italic text-sky-300/80">
+        <em className="not-italic text-sky-400 block mt-1" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>
           🔊 {pronunciation}
         </em>
       );
     }
-    return <em className="italic text-foreground/75">{children}</em>;
+    return <em className="italic text-white/80" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>{children}</em>;
   },
   ul: ({ children }: any) => {
     return <ul className="mb-4 last:mb-0 space-y-1.5 text-foreground/90 list-none">{children}</ul>;
@@ -315,7 +314,7 @@ const MD_COMPONENTS = {
         <blockquote
           dir="rtl"
           className="mt-3 mb-3 rounded-xl border border-emerald-500/25 bg-emerald-950/25 px-6 py-4 text-right text-foreground"
-          style={{ fontFamily: "'Scheherazade New', serif", lineHeight: "2.1" }}
+          style={{ fontFamily: "'Scheherazade New', serif", lineHeight: "2.1", fontSize: "1.0625em" }}
         >
           {children}
         </blockquote>
@@ -425,7 +424,6 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState<Record<string, "up" | "down">>(loadStoredFeedback);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [currentStyle, setCurrentStyle] = useState<ResponseStyleKey>(() => getPersonalization().responseStyle ?? "step_by_step");
   const [welcomeSubtitle] = useState(() => getRandomSubtitle());
   const [timeGreeting] = useState(() => getTimeGreeting());
   const [loadingSeconds, setLoadingSeconds] = useState(0);
@@ -462,19 +460,6 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  // Sync mode pills when sidebar settings change responseStyle in localStorage
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === "aina_personalization" && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (parsed.responseStyle) setCurrentStyle(parsed.responseStyle as ResponseStyleKey);
-        } catch {}
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
 
   useEffect(() => {
     if (!isLoading) {
@@ -986,7 +971,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           },
           body: JSON.stringify({
             messages: history,
-            userProfile: { ...userProfile, ...getPersonalization(), responseStyle: currentStyle },
+            userProfile: { ...userProfile, ...getPersonalization() },
             ...(attachedFilePayload ? { attachedFile: attachedFilePayload } : {}),
           }),
         });
@@ -1741,34 +1726,6 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : (
           <form onSubmit={handleFormSubmit} className="mx-auto max-w-3xl">
-            {/* Response style pills */}
-            <div className="mb-2 flex items-center gap-1 flex-wrap">
-              {RESPONSE_STYLE_ORDER.map((key) => {
-                const s = RESPONSE_STYLES[key];
-                const SIcon = s.icon;
-                const isActive = key === currentStyle;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    title={s.desc}
-                    onClick={() => {
-                      const prefs = getPersonalization();
-                      localStorage.setItem("aina_personalization", JSON.stringify({ ...prefs, responseStyle: key }));
-                      setCurrentStyle(key);
-                    }}
-                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] transition-all ${
-                      isActive
-                        ? "bg-primary/15 text-primary border border-primary/30 font-medium"
-                        : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-secondary border border-transparent"
-                    }`}
-                  >
-                    <SIcon className="h-2.5 w-2.5 shrink-0" />
-                    {s.shortLabel}
-                  </button>
-                );
-              })}
-            </div>
             {/* File preview above textarea */}
             {(attachedFile || isUploadingFile) && (
               <div className="mb-2 flex items-center gap-2 rounded-2xl border border-border bg-secondary/60 px-3 py-2">

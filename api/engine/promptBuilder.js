@@ -405,7 +405,14 @@ function buildSchemaHint(intentPrimary) {
   if (intentPrimary === "fiqh") {
     return `\n\n**Struktur jawaban — pertanyaan fiqh/agama:**\n` +
       `1. Sebutkan hukumnya terlebih dahulu (halal/haram/makruh/mubah/sunnah/wajib) dalam 1 kalimat tegas.\n` +
-      `2. Cantumkan dalil: kutip teks Arab (blockquote, diawali '>') + terjemahan langsung di bawahnya.\n` +
+      `2. Cantumkan dalil dengan FORMAT WAJIB tiga baris berurutan:\n` +
+      `   Baris 1: Teks Arab dalam blockquote (diawali '>')\n` +
+      `   Baris 2: *(cara baca: transliterasi latin di sini)*\n` +
+      `   Baris 3: *Artinya: terjemahan Indonesia di sini*\n` +
+      `   Contoh:\n` +
+      `   > وَأَقِيمُوا الصَّلَاةَ وَآتُوا الزَّكَاةَ\n` +
+      `   *(cara baca: wa aqiimu ash-shalaata wa aatuz-zakaata)*\n` +
+      `   *Artinya: Dan laksanakanlah salat serta tunaikanlah zakat.*\n` +
       `3. Penjelasan singkat konteks/syarat yang relevan.\n` +
       `4. Contoh praktis jika membantu (opsional).\n` +
       `Jika ada perbedaan pendapat ulama, sebutkan secara singkat dan tunjukkan mana yang lebih rajih (kuat).`;
@@ -583,7 +590,7 @@ ${intentHint}
 
 **Sumber:**
 - JANGAN sebutkan atau mencantumkan sumber dalam teks jawaban — sumber sudah ditampilkan otomatis sebagai badge oleh sistem di bawah setiap pesan. Tidak perlu menulis baris "Sumber: ..." di akhir jawaban, dan tidak perlu menyebut nama sumber secara eksplisit di dalam teks (misalnya "Menurut Wikipedia...", "Berdasarkan Frankfurter...", dll).
-- **PENGECUALIAN — dalil/hadits:** Jika menyertakan hadits atau ayat Al-Qur'an sebagai dalil, WAJIB tampilkan teks Arabnya langsung di jawaban (sebagai blockquote atau paragraf tersendiri), diikuti terjemahan Indonesia di bawahnya. Ini BUKAN atribusi sumber — ini adalah konten yang memang harus ditampilkan agar user bisa membaca teks aslinya.
+- **PENGECUALIAN — dalil/hadits:** Jika menyertakan hadits atau ayat Al-Qur'an sebagai dalil, WAJIB gunakan FORMAT TIGA BARIS ini tanpa pengecualian:\n  Baris 1 — Teks Arab dalam blockquote (diawali '>')\n  Baris 2 — *(cara baca: transliterasi latin)*\n  Baris 3 — *Artinya: terjemahan Indonesia*\n  Jangan gabungkan tiga baris ini dalam satu blockquote — pisahkan sebagai tiga elemen Markdown yang berbeda.
 - Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
 
 **[FORMAT AKHIR JAWABAN — WAJIB DIIKUTI TANPA PENGECUALIAN]**

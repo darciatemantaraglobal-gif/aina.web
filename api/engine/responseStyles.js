@@ -59,16 +59,30 @@ Tujuannya: siapapun — termasuk yang baru pertama kali di Mesir — harus bisa 
 /* ── Style detection ──────────────────────────────────────────────────────── */
 
 /**
- * Detect which response style to apply, with backward compatibility for legacy fields.
+ * Auto-detect the best response style based on detected query intent.
+ * This replaces the old user-selectable style system.
  *
- * Priority chain:
- *   1. responseStyle field (new — from frontend selector)
- *   2. answerMode field (legacy)
- *   3. responseLength field (legacy)
- *   4. "step_by_step" (default)
- *
- * @param {object|null} userProfile - Profile object from the request body
+ * @param {string} intentPrimary - Intent from intentDetector (e.g. "procedural", "fiqh")
  * @returns {string} One of the VALID_RESPONSE_STYLES keys
+ */
+export function autoDetectResponseStyle(intentPrimary) {
+  switch (intentPrimary) {
+    case "procedural":     return "step_by_step";
+    case "fiqh":           return "detailed_complete";
+    case "recommendation": return "practical_ready_to_use";
+    case "brainstorming":  return "casual_easy_to_understand";
+    case "arabic_writing": return "step_by_step";
+    case "factual":        return "short_direct";
+    case "casual":         return "casual_easy_to_understand";
+    case "confused":       return "short_direct";
+    default:               return "step_by_step";
+  }
+}
+
+/**
+ * Legacy: detect style from user profile fields (kept for backward compatibility).
+ * @param {object|null} userProfile
+ * @returns {string}
  */
 export function detectResponseStyle(userProfile) {
   const rs = userProfile?.responseStyle;

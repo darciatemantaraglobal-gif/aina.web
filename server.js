@@ -2936,55 +2936,51 @@ const VALID_RESPONSE_STYLES = new Set([
 ]);
 
 /**
- * Detect which response style to use.
- * Priority: responseStyle field → legacy answerMode → legacy responseLength → default
+ * Auto-detect the best response style based on detected query intent.
+ * The user no longer selects this manually — it's inferred from context.
  */
-function detectResponseStyle(userProfile) {
-  // 1. New responseStyle field (from frontend selector)
-  const rs = userProfile?.responseStyle;
-  if (rs && VALID_RESPONSE_STYLES.has(rs)) return rs;
-
-  // 2. Legacy answerMode field (backward compat)
-  const am = userProfile?.answerMode;
-  if (am === "concise")  return "short_direct";
-  if (am === "detailed") return "detailed_complete";
-
-  // 3. Legacy responseLength field (backward compat)
-  const rl = userProfile?.responseLength;
-  if (rl === "ringkas") return "short_direct";
-  if (rl === "lengkap") return "detailed_complete";
-
-  return "balanced"; // default
+function detectResponseStyle(intentPrimary) {
+  switch (intentPrimary) {
+    case "procedural":     return "step_by_step";
+    case "fiqh":           return "detailed_complete";
+    case "recommendation": return "practical_ready_to_use";
+    case "brainstorming":  return "casual_easy_to_understand";
+    case "arabic_writing": return "step_by_step";
+    case "factual":        return "short_direct";
+    case "casual":         return "casual_easy_to_understand";
+    case "confused":       return "short_direct";
+    default:               return "balanced";
+  }
 }
 
 const RESPONSE_STYLE_HINTS = {
   short_direct: `
 
-⚡ **[MODE JAWABAN USER: SINGKAT & LANGSUNG — WAJIB DIIKUTI]**
-User secara eksplisit memilih mode ini. Jawab inti pertanyaan dalam 1–3 kalimat saja.
+⚡ **[GAYA JAWABAN: SINGKAT & LANGSUNG]**
+Konteks pertanyaan ini membutuhkan jawaban langsung dan padat. Jawab inti pertanyaan dalam 1–3 kalimat saja.
 Tanpa pendahuluan, tanpa elaborasi yang tidak diminta. Jika ada langkah-langkah: maksimal 3 poin, masing-masing satu kalimat.
 Prioritaskan kepadatan informasi — berhenti begitu inti sudah tersampaikan.`,
 
   step_by_step: `
 
-📋 **[MODE JAWABAN USER: LANGKAH DEMI LANGKAH — WAJIB DIIKUTI]**
-User secara eksplisit memilih mode ini. Untuk pertanyaan prosedural atau yang punya urutan: gunakan format bernomor (1. 2. 3.). Setiap nomor = satu aksi spesifik, maks 2 kalimat.
+📋 **[GAYA JAWABAN: LANGKAH DEMI LANGKAH]**
+Pertanyaan ini bersifat prosedural atau membutuhkan urutan yang jelas. Gunakan format bernomor (1. 2. 3.). Setiap nomor = satu aksi spesifik, maks 2 kalimat.
 Tambahkan ⚠️ atau 💡 hanya jika ada hal kritis yang sering terlewat. Urutan harus logis dari awal sampai akhir.
 Untuk pertanyaan faktual atau konseptual yang tidak punya urutan langkah: jawab dalam paragraf natural yang ringkas — jangan paksakan format bernomor jika tidak relevan.`,
 
   detailed_complete: `
 
-📖 **[MODE JAWABAN USER: DETAIL & LENGKAP — WAJIB DIIKUTI]**
-User secara eksplisit memilih mode ini. WAJIB berikan jawaban yang komprehensif dan mendalam — ini MENGGANTIKAN semua aturan brevity lainnya.
-Bahkan untuk pertanyaan yang terasa sederhana, GALI lebih dalam: latar belakang topik, konteks penting, detail relevan, hal yang perlu diwaspadai, tips tambahan, atau perspektif yang berguna.
+📖 **[GAYA JAWABAN: DETAIL & LENGKAP]**
+Pertanyaan ini membutuhkan penjelasan mendalam dan komprehensif. Berikan jawaban yang menyeluruh — latar belakang, alasan, langkah-langkah, tips, dan hal yang perlu diwaspadai.
+GALI lebih dalam: latar belakang topik, konteks penting, detail relevan, hal yang perlu diwaspadai, tips tambahan, atau perspektif yang berguna.
 Gunakan heading ## untuk membagi bagian utama jika ada lebih dari satu aspek. Gunakan bullet atau nomor sesuai konten.
 Target minimal 3–5 paragraf atau bagian yang substantif. Setiap kalimat harus bernilai — tidak ada padding, tidak ada pengulangan.
 Tujuan: user harus bisa MEMAHAMI SEPENUHNYA topik ini setelah membaca, bukan sekadar tahu jawabannya.`,
 
   practical_ready_to_use: `
 
-✅ **[MODE JAWABAN USER: PRAKTIS & SIAP PAKAI — WAJIB DIIKUTI]**
-User secara eksplisit memilih mode ini. WAJIB prioritaskan output yang langsung bisa dipakai tanpa adaptasi:
+✅ **[GAYA JAWABAN: PRAKTIS & SIAP PAKAI]**
+Pertanyaan ini membutuhkan output yang bisa langsung dipakai. Prioritaskan:
 - 📋 **Checklist** → gunakan format "- [ ] Langkah..." untuk daftar yang bisa dicentang
 - 📝 **Template pesan/surat** → tulis dalam blockquote siap copy-paste
 - ⚡ **Aksi langsung** → daftar tindakan konkret berurutan dari yang paling segera
@@ -2993,8 +2989,8 @@ Jika pertanyaan tidak cocok format ini, jawab dengan langkah-langkah konkret yan
 
   casual_easy_to_understand: `
 
-💬 **[MODE JAWABAN USER: SANTAI & MUDAH DIPAHAMI — WAJIB DIIKUTI]**
-User secara eksplisit memilih mode ini. Tulis seperti menjelaskan ke teman — bukan laporan, bukan dokumen resmi.
+💬 **[GAYA JAWABAN: SANTAI & MUDAH DIPAHAMI]**
+Pertanyaan ini bersifat ringan atau obrolan. Tulis seperti menjelaskan ke teman — bukan laporan, bukan dokumen resmi.
 Gunakan kalimat pendek, bahasa sehari-hari, dan analogi sederhana jika membantu.
 Kalau terpaksa pakai istilah teknis, langsung jelaskan artinya dalam kurung atau kalimat berikutnya.
 Boleh pakai emoji sesekali (max 1-2) kalau terasa pas dan natural.
@@ -3539,10 +3535,10 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (queryType === "currency") console.log(`[Source] currency query → exchange API only`);
   }
 
-  // ── Response style ────────────────────────────────────────────────────────
-  const answerMode = detectResponseStyle(userProfile);
+  // ── Response style — auto-detected from intent ────────────────────────────
+  const answerMode = detectResponseStyle(intentPrimary);
   const answerModeHint = buildResponseStyleHint(answerMode);
-  console.log(`[ResponseStyle] ${answerMode}`);
+  console.log(`[ResponseStyle] auto:${answerMode} (intent:${intentPrimary})`);
 
   // ── Structured source decision log ──────────────────────────────────────
   const sourceLog = {
@@ -4049,9 +4045,27 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // Extract AI-generated follow-up suggestions (<!--saran: Q1 | Q2 | Q3-->)
   const _suggestionMatch = rawReply.match(/<!--saran:\s*([^>]+?)-->/i);
-  const aiSuggestions = _suggestionMatch
+  let aiSuggestions = _suggestionMatch
     ? _suggestionMatch[1].split("|").map(s => s.trim()).filter(s => s.length > 3).slice(0, 2)
     : [];
+
+  // Fallback: generate context-aware suggestions if AI skipped them
+  if (aiSuggestions.length === 0 && lastUserMessage?.trim().length > 4) {
+    const _fb = {
+      fiqh:          ["Apakah ada perbedaan pendapat ulama tentang ini?", "Bagaimana penerapannya dalam kehidupan sehari-hari?"],
+      procedural:    ["Berapa lama prosesnya biasanya?", "Apa dokumen yang perlu disiapkan?"],
+      recommendation:["Apa kelebihan dan kekurangannya?", "Ada alternatif lain yang bisa dipertimbangkan?"],
+      brainstorming: ["Bisa dikembangkan lebih lanjut ke arah mana?", "Apa tantangan terbesar yang mungkin dihadapi?"],
+      arabic_writing:["Bisa dibuatkan contoh kalimat lainnya?", "Apa perbedaan gaya formal dan informal dalam konteks ini?"],
+      factual:       ["Apakah informasi ini masih berlaku saat ini?", "Ada hal lain yang perlu diketahui tentang topik ini?"],
+      casual:        ["Ada lagi yang ingin kamu tanyakan?", "Mau aku bantu hal lainnya?"],
+      confused:      ["Apakah penjelasan ini cukup jelas?", "Bagian mana yang masih membingungkan?"],
+    };
+    const _fallbackSuggestions = _fb[intentPrimary] ?? ["Ada hal lain yang ingin ditanyakan?", "Mau aku bantu lebih detail?"];
+    aiSuggestions = _fallbackSuggestions;
+    console.log(`[Saran] AI skipped suggestions → using intent-based fallback (intent:${intentPrimary})`);
+  }
+
   let reply = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
   console.log(`Responded using model: ${usedModel}`);
 
