@@ -1489,10 +1489,10 @@ async function fetchExchangeRates() {
  */
 function classifyQueryType(intentPrimary, kbStrength, query) {
   if (isCurrencyQuery(query)) return "currency";
-  // Dynamic role or time-sensitive: Perplexity is critical
+  // Dynamic: office-holder queries (uses shared helper — covers menko/menkeu/menlu/etc.)
+  // or any time-sensitive keyword
   const dynamic =
-    /\bsiapa\b.{0,50}\b(presiden|perdana menteri|menteri|wakil presiden|rektor|direktur|ceo|gubernur|walikota|bupati|kepala|ketua|sekjen|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|pemimpin)\b/i.test(query)
-    || /\b(presiden|menteri|rektor|direktur|ceo|gubernur|ketua|kepala)\b.{0,30}\bsiapa\b/i.test(query)
+    isDynamicRoleQuery(query)
     || /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|kebijakan baru|aturan terbaru|perubahan|berubah|update|berita|baru-baru)\b/i.test(query);
   if (dynamic) return "dynamic";
   return "general";
@@ -1897,6 +1897,20 @@ async function fetchDorarHadith(query) {
 /* ── Web context fetch: Perplexity (real-time) → Gemini (training data fallback) ─── */
 
 /**
+ * Shared helper: detects if a query is about who currently holds a public office/role.
+ * These queries are inherently time-sensitive — KB data may be stale.
+ * Used by needsPerplexity, classifyQueryType, and classifyConfidence.
+ */
+const _JABATAN_PATTERN = "(presiden|perdana menteri|pm|menteri|wakil presiden|rektor|direktur utama|dirut|direktur|ceo|gubernur|walikota|wali kota|bupati|kepala|ketua|sekjen|sekretaris jenderal|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris|menko|menkeu|menlu|menhan|mendagri|menag|menpan|menaker|mentan|menhub|menpora|menkes|kepala bps|kepala bi|gubernur bi|chief|bos|duta besar|dubes)";
+function isDynamicRoleQuery(q) {
+  const text = (q ?? "").toLowerCase();
+  return new RegExp(`\\bsiapa\\b.{0,60}\\b${_JABATAN_PATTERN}\\b`, "i").test(text)
+    || new RegExp(`\\b${_JABATAN_PATTERN}\\b.{0,40}\\b(siapa|apa|siapakah)\\b`, "i").test(text)
+    || /\b(yang menjabat|yang menjadi|yang memimpin|sedang menjabat|saat ini menjabat|sekarang menjabat|masih menjabat|jabatan saat ini|pemegang jabatan|office holder|incumbent|terpilih|dilantik|ditunjuk)\b/i.test(text)
+    || /\bsiapa\b.{0,30}\b(yang jadi|yang menjadi|yang menjabat|yang memimpin|yang terpilih|yang dilantik)\b/i.test(text);
+}
+
+/**
  * Decide if a query warrants a Gemini context lookup.
  *
  * Rule: KB → Gemini if KB is absent or weak.
@@ -1915,6 +1929,9 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   if (intentPrimary === "casual") return false;
   if (intentPrimary === "arabic_writing" || intentPrimary === "arabic_analysis") return false; // Pure language/writing task — no web context needed
   if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Gemini not used for fiqh
+  // Dynamic override: jabatan/pejabat/office-holder queries ALWAYS need Perplexity,
+  // even when KB is strong — KB data for public office holders can be stale.
+  if (isDynamicRoleQuery(q)) return true;
   if (kbStrength === "strong") return false;
   // KB is absent or weak → always fetch Gemini context
   return true;
@@ -3123,14 +3140,8 @@ function trimToSentence(text, maxLen) {
 function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, hasPerplexity = false, externalTrustTier = null, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita|harga|nilai tukar|kurs|tarif|rate|hasil|pemenang|juara|menang|kalah|terpilih|dilantik|pemilu|piala dunia|olimpiade|klasemen|peringkat)\b/i.test(query);
 
-  // Current role / office-holder: inherently dynamic even without explicit time keywords.
-  // Bidirectional: "siapa presiden X", "presiden X siapa", "siapa yang menjabat X", dll.
-  const _jabatanList = "(presiden|perdana menteri|pm|menteri|wakil presiden|rektor|direktur utama|dirut|direktur|ceo|gubernur|walikota|wali kota|bupati|kepala|ketua|sekjen|sekretaris jenderal|paus|raja|ratu|panglima|kapolri|jaksa agung|chairman|chancellor|pemimpin|komisaris|menko|menkeu|menlu|menhan|mendagri|menag|kepala bps|kepala bi|gubernur bi|chief|bos|pemimpin)";
-  const currentRoleQuery =
-    new RegExp(`\\bsiapa\\b.{0,60}\\b${_jabatanList}\\b`, "i").test(query)
-    || new RegExp(`\\b${_jabatanList}\\b.{0,40}\\b(siapa|apa|siapakah)\\b`, "i").test(query)
-    || /\b(yang menjabat|yang menjadi|yang memimpin|yang menjadi|sedang menjabat|saat ini menjabat|sekarang menjabat|masih menjabat|jabatan saat ini|pemegang jabatan|office holder|incumbent)\b/i.test(query)
-    || /\bsiapa\b.{0,30}\b(yang jadi|yang menjadi|yang menjabat|yang memimpin|yang terpilih|yang dilantik)\b/i.test(query);
+  // Current role / office-holder: use shared helper (consistent with classifyQueryType + needsPerplexity)
+  const currentRoleQuery = isDynamicRoleQuery(query);
 
   // Historical role modifier — these are stable facts, not current office-holders.
   // "presiden pertama", "presiden ke-2", "pendiri", "mantan", "almarhum", etc.
@@ -3143,10 +3154,9 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
   if (hasPinned) return { level: "high_confidence", hint: "" };
 
   // ── CURRENT ROLE QUERIES — checked BEFORE KB ──────────────────────────────
-  // BUG FIX: Must run BEFORE hasKB check. Previously, any weak KB hit (e.g. an article
-  // mentioning "presiden PPMI") would set hasKB=true and block all Perplexity overrides.
-  // Now: currentRoleQuery bypasses KB unless KB is STRONG (admin-verified, high score).
-  if (currentRoleQuery && !historicalRole && !hasPinned && !(hasKB && kbStrength === "strong")) {
+  // CRITICAL: Always runs for office-holder queries regardless of KB strength.
+  // Strong KB CAN have stale names for public offices — Perplexity MUST override.
+  if (currentRoleQuery && !historicalRole && !hasPinned) {
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
@@ -3593,7 +3603,9 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // ── Classify query type for strict 3-layer routing ──────────────────────────
   const queryType = classifyQueryType(intent.primary, kbStrength, lastUserMessage);
-  const kbCoversQuery = kbStrength === "strong";
+  // Dynamic (office-holder / time-sensitive) queries: KB data may be stale even when "strong".
+  // Always fetch Perplexity for dynamic queries regardless of KB coverage.
+  const kbCoversQuery = kbStrength === "strong" && queryType !== "dynamic";
 
   console.log(`[Source] KB=${kbStrength} (${articles.length} art) intent=${intent.primary} queryType=${queryType} kbCovers=${kbCoversQuery}`);
 
