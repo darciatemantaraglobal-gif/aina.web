@@ -15,6 +15,7 @@ import { validateResponse, postProcessResponse, buildSourceBadges, formatAINARes
 import { optimizeHistory, estimateTokens, debugTokenReport } from './api/engine/historyOptimizer.js';
 import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
 import { detectMasisirContext } from './api/engine/contextDetector.js';
+import { expandQuery } from './api/engine/queryExpander.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
@@ -3494,6 +3495,10 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Typo] normalized: "${lastUserMessage.slice(0, 50)}" → "${retrievalQuery.slice(0, 50)}"`);
   }
 
+  // Context detection + query expansion (synchronous — before any async calls)
+  const masisirCtx = detectMasisirContext(retrievalQuery);
+  const { kbQuery, strategy: retrievalStrategy, changed: queryExpanded } = expandQuery(retrievalQuery, masisirCtx);
+
   // Content moderation — screen for harmful content before any processing (free OpenAI API)
   if (lastUserMessage.length > 5) {
     const modResult = await checkModeration(lastUserMessage);
@@ -3582,7 +3587,6 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Heuristic: start Perplexity early for queries that are likely to need external context.
   // If KB turns out to be strong, we discard the result (minor API cost, major latency win).
   // Skip early-start for: local-Masisir, casual, arabic_writing, brainstorming, currency.
-  const masisirCtx = detectMasisirContext(retrievalQuery);
   const isLocalMasisir = masisirCtx.isLocal;
   const INTENTS_NO_PERPLEXITY = new Set(["casual", "arabic_writing", "arabic_analysis", "brainstorming"]);
   const earlyPerplexityStart = !isLocalMasisir
@@ -3594,9 +3598,10 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     : Promise.resolve(null);
 
   // Wave 1 — fast internal fetches (always run in parallel with early Perplexity)
+  // kbQuery = expanded/enriched query for better KB hit-rate; retrievalQuery used for everything else
   _chatDebugStep = "wave1-fetches";
   const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
-    fetchRelevantArticles(retrievalQuery, intent.primary),
+    fetchRelevantArticles(kbQuery, intent.primary),
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
@@ -3824,12 +3829,27 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   let finalMessages = histOpt.trimmedMessages;
   let useVisionModel = false;
 
-  // ── Local Masisir KB-only enforcement ────────────────────────────────────
-  // When query is about hyper-local Indonesian community topics and KB has no
-  // strong coverage, inject a hard instruction to prevent hallucination.
+  // ── Local Masisir retrieval guidance ─────────────────────────────────────
+  // Inject context-aware instruction based on:
+  //   (a) whether KB has relevant coverage  (kbStrength)
+  //   (b) which category was matched        (masisirCtx.matchedCategories)
+  //   (c) how confident we are              (masisirCtx.confidence)
   if (isLocalMasisir && kbStrength !== "strong") {
-    finalSystemPrompt += `\n\n---\n## ⚠️ INSTRUKSI WAJIB — TOPIK LOKAL KOMUNITAS INDONESIA DI MESIR\n\nPertanyaan ini menyangkut topik yang bersifat SANGAT LOKAL — kekeluargaan daerah, organisasi mahasiswa Indonesia di Mesir, tempat/spot khusus komunitas Masisir, dll.\n\nSumber eksternal (web, Wikipedia, dll.) TIDAK memiliki data akurat tentang topik ini. Knowledge Base AINA adalah satu-satunya sumber yang bisa dipercaya.\n\n**JIKA informasi yang ditanya TIDAK ADA dalam Knowledge Base di atas:**\n- JANGAN mengarang, menduga, atau "kira-kira" menjawab\n- JANGAN menggunakan pengetahuan training model untuk topik hyper-lokal ini\n- Sampaikan dengan jujur dan hangat, misalnya: "Info tentang ini belum tersedia di Knowledge Base AINA saat ini. Kamu bisa tanya langsung ke senior atau grup komunitas Masisir yang relevan ya."\n- Boleh sarankan user bertanya di grup WhatsApp komunitas, senior angkatan, atau langsung ke pengurus kekeluargaan yang bersangkutan\n---`;
-    console.log(`[LocalMasisir] KB ${kbStrength} → injected no-hallucination instruction`);
+    const cats = masisirCtx.matchedCategories ?? [];
+    const isHyperLocal = cats.includes("komunitas_masisir") && !cats.some(c =>
+      ["akademik_al_azhar", "administrasi_mesir", "kehidupan_kairo", "travel_masisir"].includes(c)
+    );
+
+    if (isHyperLocal) {
+      // Hyper-local community data (org names, contacts, events) — model rarely has this
+      // → answer what you can, but strongly advise direct verification
+      finalSystemPrompt += `\n\n---\n## 📌 PANDUAN SUMBER — TOPIK KOMUNITAS MASISIR\n\nTopik ini menyangkut hal yang SANGAT SPESIFIK komunitas Indonesia di Mesir (organisasi, kekeluargaan, acara, kontak pengurus, dll.).\n\n**Prioritas sumber:**\n1. Knowledge Base AINA (gunakan jika tersedia di atas)\n2. Pengetahuan umum tentang komunitas Masisir yang kamu miliki — boleh digunakan, tapi...\n3. Selalu akhiri dengan: "Untuk info yang paling akurat dan terkini, cek langsung ke grup komunitas atau senior Masisir ya."\n\n**JANGAN** memberikan nama, kontak, atau data spesifik yang kamu tidak yakin akurat — lebih baik jawab dengan gambaran umum lalu arahkan ke sumber primer.\n---`;
+    } else {
+      // Procedural / admin / academic Masisir topics — model has reasonable general knowledge
+      // → answer from general knowledge + mark as needs-verification
+      finalSystemPrompt += `\n\n---\n## 📌 PANDUAN RETRIEVAL — TOPIK MASISIR\n\nPertanyaan ini tentang topik Masisir yang belum atau tidak lengkap di Knowledge Base.\n\n**Strategi jawaban:**\n1. Gunakan konteks KB yang tersedia (jika ada) sebagai dasar utama\n2. Lengkapi dengan pengetahuan umummu tentang prosedur/kondisi di Mesir\n3. Prioritaskan jawaban yang PRAKTIS dan langsung bisa ditindaklanjuti\n4. Jika ada detail yang bisa berubah (harga, tanggal, kebijakan), tambahkan catatan singkat: *"Angka/info ini bisa berubah — konfirmasi ke KBRI/Al-Azhar/senior setempat untuk kepastian."*\n\n**JANGAN** bilang "tidak ada info" atau "saya tidak tahu" — selalu jawab dengan yang kamu bisa, lalu arahkan ke sumber terpercaya jika perlu konfirmasi.\n---`;
+    }
+    console.log(`[LocalMasisir] KB ${kbStrength} | hyperLocal:${isHyperLocal} | conf:${masisirCtx.confidence} → injected retrieval guidance`);
   }
 
   // ── Partner promo injection (Temantiket) ─────────────────────────────────
