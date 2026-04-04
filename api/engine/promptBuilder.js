@@ -431,6 +431,17 @@ function buildSchemaHint(intentPrimary) {
       `2. Daftar bernomor — tiap item dengan positioning singkat (kenapa cocok / untuk siapa).\n` +
       `3. Penutup WAJIB — rekomendasi konkret: mulai dari mana, atau mana paling cocok untuk user ini.`;
   }
+  if (intentPrimary === "arabic_analysis") {
+    return `\n\n**Struktur jawaban WAJIB — analisis makna per kata:**\n` +
+      `Tampilkan hasil dalam TABEL MARKDOWN 3 kolom:\n` +
+      `| Kata Arab | Makna | Keterangan |\n` +
+      `|-----------|-------|------------|\n` +
+      `| (kata dari teks) | (arti Indonesia) | (isim/fi'il/huruf + fungsi gramatikal) |\n\n` +
+      `- Ikuti urutan kata dari kalimat asli (baris 1 = kata pertama)\n` +
+      `- Setelah tabel: 1–2 kalimat catatan gramatikal/kontekstual jika ada yang penting\n` +
+      `- Jika ada beberapa kalimat/ayat: pisahkan dengan heading **Kalimat 1**, **Kalimat 2**, dst.\n` +
+      `JANGAN tulis paragraf panjang tanpa tabel.`;
+  }
   return ""; // casual, arabic_writing, brainstorming: no rigid structure needed
 }
 

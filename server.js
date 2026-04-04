@@ -1413,7 +1413,7 @@ function shouldFetchExternal(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
-  if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no external needed
+  if (intentPrimary === "arabic_writing" || intentPrimary === "arabic_analysis") return false; // Pure language/writing task — no external needed
   if (intentPrimary === "fiqh") return false; // Dorar.net handles Islamic references — Wikipedia/DDG not reliable for fiqh
   if (kbStrength === "strong") return false;
   // KB absent or weak → always try Wikipedia/DDG as last-resort fallback
@@ -1913,7 +1913,7 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
-  if (intentPrimary === "arabic_writing") return false; // Pure language/writing task — no web context needed
+  if (intentPrimary === "arabic_writing" || intentPrimary === "arabic_analysis") return false; // Pure language/writing task — no web context needed
   if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Gemini not used for fiqh
   if (kbStrength === "strong") return false;
   // KB is absent or weak → always fetch Gemini context
@@ -2752,6 +2752,15 @@ function detectIntent(text) {
   // Casual tone flag — keyword-based only, no length check
   const isCasual = /\b(dong|deh|nih|btw|wkwk|haha|hehe|sih|loh|lho|gitu|gitu ya|ya kan|nggak sih|gak sih)\b/.test(t);
 
+  // Arabic word-by-word analysis (makna perkata, mufradat, i'rab tahlili)
+  // Detected BEFORE arabic_writing so it takes priority
+  const isArabicAnalysis =
+    /\bper\s?kata\b/.test(t) ||                                           // "perkata" / "per kata"
+    /\b(makna|arti|terjemah(kan)?)\s+(tiap|setiap)\s+kata\b/.test(t) ||  // "makna tiap kata"
+    /\b(mufradat|mufrodat)\b/.test(t) ||                                  // "mufradat"
+    /\bi.?rab\s+(tahlili|kalimat|kata)\b/.test(t) ||                      // "i'rab tahlili/kalimat"
+    /معنى كل كلمة|كلمة بكلمة|المفردات/.test(text);                         // Arabic: "makna tiap kata"
+
   // Arabic academic writing — two detection paths:
   // Path A: user types in Arabic script + uses Arabic writing/task commands
   const hasArabicScript = /[\u0600-\u06FF]/.test(text);
@@ -2766,10 +2775,12 @@ function detectIntent(text) {
   const hasArabicGrammarKw = /\b(nahwu|sharaf|shorof|nahu|tashrif|isim|fi.?il|fa.?il|huruf jar|mubtada|khabar|naibul fail|masdar|idhafah|idhofa|mudhaf|i.?rab|maf.?ul|sifat maushuf|jumlah fi.?liyah|jumlah ismiyah)\b/.test(t);
 
   const isArabicWriting =
-    (hasArabicScript && hasArabicWritingKw) || // original: Arabic-script query with writing commands
-    (hasGenVerb && hasBahasaArab)            || // Indonesian: "tulis/buat + bahasa Arab"
-    hasArabicLetterReq                       || // Indonesian: "buatin surat ghaib"
-    hasArabicGrammarKw;                         // Indonesian: nahwu/sharaf/i'rab questions
+    !isArabicAnalysis && (                       // never override arabic_analysis
+    (hasArabicScript && hasArabicWritingKw) ||   // original: Arabic-script query with writing commands
+    (hasGenVerb && hasBahasaArab)            ||   // Indonesian: "tulis/buat + bahasa Arab"
+    hasArabicLetterReq                       ||   // Indonesian: "buatin surat ghaib"
+    hasArabicGrammarKw                           // Indonesian: nahwu/sharaf/i'rab questions
+    );
 
   // Primary intent signals (evaluated independently before priority resolution)
   const isConfused   = /bingung|galau|khawatir|takut|pusing|stres|stress|overwhelm|nggak tau|tidak tau|ga tau|gak tau|harus mulai dari mana|nggak ngerti|tidak mengerti|susah banget|ribet banget|tolong bantu/.test(t);
@@ -2778,11 +2789,12 @@ function detectIntent(text) {
   const isBrainstorm = /\b(ide|pilihan|opsi|alternatif|apa saja|apa aja|apa yang bisa|bisa apa|ada nggak|ada yang|kira-kira apa)\b/.test(t);
 
   // Fiqh / Islamic knowledge — detects questions about Islamic rulings, hadith, fiqh, aqidah, etc.
-  const isFiqhIntent = !isArabicWriting && isFiqhQuery(text);
+  const isFiqhIntent = !isArabicWriting && !isArabicAnalysis && isFiqhQuery(text);
 
-  // Priority resolution — arabic_writing checked before Indonesian intents; fiqh before generic
+  // Priority resolution — arabic_analysis > arabic_writing > fiqh > other intents
   let primary;
-  if (isArabicWriting)            primary = "arabic_writing";
+  if (isArabicAnalysis)           primary = "arabic_analysis";
+  else if (isArabicWriting)       primary = "arabic_writing";
   else if (isFiqhIntent)          primary = "fiqh";
   else if (isConfused && isProcedural) primary = "confused_procedural";
   else if (isConfused)            primary = "confused";
@@ -2898,6 +2910,22 @@ function buildIntentHint({ primary, casual }) {
       "Tutup dengan 1 kalimat tawaran: tanya ke mana user ingin lanjut, atau tawarkan untuk mendalami salah satu. " +
       "Jangan ulangi ide dengan kata berbeda.",
 
+    arabic_analysis:
+      // ── MAKNA PERKATA / MUFRADAT / I'RAB ────────────────────────────────
+      "User meminta analisis makna per kata (mufradat / perkata) dari teks Arab. " +
+      "FORMAT WAJIB — gunakan TABEL MARKDOWN dengan 3 kolom:\n" +
+      "| Kata Arab | Makna | Keterangan |\n" +
+      "|-----------|-------|------------|\n" +
+      "| كلمة | arti kata | jenis kata & fungsi gramatikal |\n\n" +
+      "ATURAN TABEL:\n" +
+      "- Kolom 'Kata Arab': tampilkan kata Arab persis seperti dalam kalimat asli, dengan harakat jika ada.\n" +
+      "- Kolom 'Makna': terjemahan tepat dalam Bahasa Indonesia — BUKAN harfiah robotik, tapi makna kontekstual.\n" +
+      "- Kolom 'Keterangan': jenis kata (isim/fi'il/huruf) + fungsi gramatikal (fa'il/maf'ul/mubtada/khabar/dll) + keterangan penting singkat.\n" +
+      "- Urutan: ikuti urutan kata dalam kalimat aslinya (kiri ke kanan untuk Arab, tampil dari atas ke bawah di tabel).\n" +
+      "- Setelah tabel: tulis 1–2 kalimat 'Catatan' (opsional) jika ada pola gramatikal penting atau konteks makna yang perlu disorot.\n" +
+      "- Jika user bertanya banyak ayat/kalimat sekaligus: beri heading **[Kalimat/Ayat ke-N]** di atas tiap tabel.\n" +
+      "DILARANG: menulis paragraf panjang tanpa tabel, menggabungkan semua kata dalam satu baris, atau skip harakat kecuali teks aslinya memang tanpa harakat.",
+
     arabic_writing:
       // ── ATURAN UTAMA — WAJIB DIIKUTI ────────────────────────────────────
       "ATURAN PALING PENTING: Jika user meminta BUAT atau TULIS teks Arab (surat, paragraf, karangan, terjemahan), " +
@@ -2972,7 +3000,8 @@ function detectResponseStyle(intentPrimary) {
     case "fiqh":           return "detailed_complete";
     case "recommendation": return "practical_ready_to_use";
     case "brainstorming":  return "casual_easy_to_understand";
-    case "arabic_writing": return "step_by_step";
+    case "arabic_writing":  return "step_by_step";
+    case "arabic_analysis": return "step_by_step";
     case "factual":        return "short_direct";
     case "casual":         return "casual_easy_to_understand";
     case "confused":       return "short_direct";
@@ -3524,7 +3553,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // If KB turns out to be strong, we discard the result (minor API cost, major latency win).
   // Skip early-start for: local-Masisir, casual, arabic_writing, brainstorming, currency.
   const isLocalMasisir = isLocalMasisirQuery(lastUserMessage);
-  const INTENTS_NO_PERPLEXITY = new Set(["casual", "arabic_writing", "brainstorming"]);
+  const INTENTS_NO_PERPLEXITY = new Set(["casual", "arabic_writing", "arabic_analysis", "brainstorming"]);
   const earlyPerplexityStart = !isLocalMasisir
     && !INTENTS_NO_PERPLEXITY.has(intent.primary)
     && !isCurrencyQuery(lastUserMessage)
@@ -3979,7 +4008,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (needsTable) return 6000;
     if (i === "casual") return 2000;
     if (i === "factual" || i === "confused") return 4000;
-    if (i === "arabic_writing" || i === "fiqh") return 5000;
+    if (i === "arabic_writing" || i === "arabic_analysis" || i === "fiqh") return 5000;
     if (i === "procedural" || i === "confused_procedural") return 5000;
     return 4000;
   })();
