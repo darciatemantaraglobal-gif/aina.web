@@ -4053,27 +4053,27 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // ── Post-processing (identical to previous non-streaming path) ───────────────
-  const rawReply = postProcessResponse(cleanReply(fullContent));
-
-  // Extract AI-generated follow-up suggestions (<!--saran: Q1 | Q2 | Q3-->)
-  const _suggestionMatch = rawReply.match(/<!--saran:\s*([^>]+?)-->/i);
+  // Extract saran from raw fullContent BEFORE cleanReply strips HTML comments
+  const _suggestionMatch = fullContent.match(/<!--saran:\s*([\s\S]+?)-->/i);
   let aiSuggestions = _suggestionMatch
-    ? _suggestionMatch[1].split("|").map(s => s.trim()).filter(s => s.length > 3).slice(0, 2)
+    ? _suggestionMatch[1].split("|").map(s => { const t = s.trim(); return t.length > 3 ? t.charAt(0).toUpperCase() + t.slice(1) : t; }).filter(s => s.length > 3).slice(0, 2)
     : [];
+
+  const rawReply = postProcessResponse(cleanReply(fullContent));
 
   // Fallback: generate context-aware suggestions if AI skipped them
   if (aiSuggestions.length === 0 && lastUserMessage?.trim().length > 4) {
     const _fb = {
-      fiqh:          ["Apakah ada perbedaan pendapat ulama tentang ini?", "Bagaimana penerapannya dalam kehidupan sehari-hari?"],
-      procedural:    ["Berapa lama prosesnya biasanya?", "Apa dokumen yang perlu disiapkan?"],
-      recommendation:["Apa kelebihan dan kekurangannya?", "Ada alternatif lain yang bisa dipertimbangkan?"],
-      brainstorming: ["Bisa dikembangkan lebih lanjut ke arah mana?", "Apa tantangan terbesar yang mungkin dihadapi?"],
-      arabic_writing:["Bisa dibuatkan contoh kalimat lainnya?", "Apa perbedaan gaya formal dan informal dalam konteks ini?"],
-      factual:       ["Apakah informasi ini masih berlaku saat ini?", "Ada hal lain yang perlu diketahui tentang topik ini?"],
-      casual:        ["Ada lagi yang ingin kamu tanyakan?", "Mau aku bantu hal lainnya?"],
-      confused:      ["Apakah penjelasan ini cukup jelas?", "Bagian mana yang masih membingungkan?"],
+      fiqh:          ["Mau tahu perbedaan pendapat ulamanya juga?", "Kalau mau, bisa lanjut ke cara penerapannya sehari-hari."],
+      procedural:    ["Mau tahu estimasi waktunya juga?", "Kalau perlu, bisa bantu soal dokumen yang dibutuhkan."],
+      recommendation:["Mau aku bantu bandingkan kelebihan dan kekurangannya?", "Atau kalau mau, bisa cari alternatif lainnya."],
+      brainstorming: ["Mau kita kembangkan ke arah mana dulu?", "Kalau mau, bisa bahas tantangannya juga."],
+      arabic_writing:["Mau dibuatkan contoh kalimat lainnya?", "Atau kalau penasaran soal perbedaan gaya formalnya, tinggal tanya."],
+      factual:       ["Kalau mau info yang lebih terbaru, bisa ditanyakan.", "Mau aku bantu cari detail lainnya soal topik ini?"],
+      casual:        ["Atau ada yang mau ditanyakan soal lainnya?", "Tinggal bilang kalau butuh sesuatu."],
+      confused:      ["Bagian mana yang masih belum jelas?", "Mau aku coba jelaskan dengan cara yang berbeda?"],
     };
-    const _fallbackSuggestions = _fb[intent.primary] ?? ["Ada hal lain yang ingin ditanyakan?", "Mau aku bantu lebih detail?"];
+    const _fallbackSuggestions = _fb[intent.primary] ?? ["Kalau ada yang mau dilanjutkan, tinggal tanya.", "Mau aku bantu lebih detail soal ini?"];
     aiSuggestions = _fallbackSuggestions;
     console.log(`[Saran] AI skipped suggestions → using intent-based fallback (intent:${intent.primary})`);
   }

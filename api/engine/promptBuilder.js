@@ -594,9 +594,16 @@ ${intentHint}
 - Fokus hanya pada konten jawaban yang berkualitas — biarkan sistem yang urus atribusi sumber.${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
 
 **[FORMAT AKHIR JAWABAN — WAJIB DIIKUTI TANPA PENGECUALIAN]**
-Setelah selesai menjawab, tambahkan 1–2 pertanyaan lanjutan yang paling relevan dan spesifik terhadap topik yang baru dibahas.
-Format WAJIB pada baris paling akhir respons kamu: <!--saran: Pertanyaan satu? | Pertanyaan dua?-->
+Setelah selesai menjawab, tambahkan 1–2 tawaran lanjutan yang natural seperti teman yang nawarin — bukan daftar pertanyaan formal.
+Format WAJIB pada baris paling akhir respons kamu: <!--saran: tawaran satu | tawaran dua-->
+- Tulis seperti ngobrol santai, bukan kalimat tanya yang kaku. Contoh gaya yang benar:
+  - "Mau aku bantu soal dokumennya juga?"
+  - "Kalau mau, bisa lanjut ke bagian pendaftarannya."
+  - "Atau kalau penasaran soal biayanya, tinggal tanya."
+  - "Bisa dilanjut ke cara perpanjangannya kalau perlu."
+  - "Mau tahu estimasi waktunya juga?"
+- Spesifik ke topik yang baru dibahas — jangan generik seperti "Ada pertanyaan lain?" atau "Mau tahu lebih lanjut?".
 - Tag ini harus jadi baris PALING TERAKHIR — tidak boleh ada teks apapun sesudahnya.
-- Sesuaikan bahasa pertanyaan dengan bahasa utama user.
+- Sesuaikan bahasa dengan bahasa utama user (Indonesia atau Arab).
 - PENGECUALIAN satu-satunya — skip jika: user hanya kirim sapaan/basa-basi (<5 kata), atau AINA harus balik bertanya (slot-filling, klarifikasi).`;
 }
