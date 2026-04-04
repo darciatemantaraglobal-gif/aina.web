@@ -2961,64 +2961,87 @@ function detectResponseStyle(intentPrimary) {
 }
 
 const RESPONSE_STYLE_HINTS = {
+  // Used for: factual, confused
+  // Goal: natural and conversational, not encyclopedic. Concise but with structure when needed.
   short_direct: `
 
-⚡ **[GAYA JAWABAN: SINGKAT & LANGSUNG]**
-Konteks pertanyaan ini membutuhkan jawaban langsung dan padat. Jawab inti pertanyaan dalam 1–3 kalimat saja.
-Tanpa pendahuluan, tanpa elaborasi yang tidak diminta. Jika ada langkah-langkah: maksimal 3 poin, masing-masing satu kalimat.
-Prioritaskan kepadatan informasi — berhenti begitu inti sudah tersampaikan.`,
+⚡ **[GAYA JAWABAN: TERFOKUS & NATURAL]**
+Jawab seperti teman yang tahu jawabannya — langsung ke inti, tapi tetap manusiawi.
 
+**Struktur wajib:**
+- Baris pertama: 1 kalimat pembuka yang relate langsung dengan pertanyaan (bukan basa-basi, bukan mengulang pertanyaan).
+- Isi: paragraf pendek (2–3 kalimat) ATAU daftar bernomor/bullet — pilih yang paling cocok.
+  - Jika daftar: SETIAP item harus punya penjelasan 1 kalimat. DILARANG tulis nama saja tanpa keterangan.
+- Penutup (opsional): 1 kalimat guidance, saran, atau tawaran spesifik. Skip jika tidak relevan.
+
+**Pantangan:**
+- JANGAN buka dengan "Berikut adalah..." atau "Berikut ini..." sebagai kalimat pertama tanpa framing sebelumnya.
+- JANGAN terdengar seperti artikel Wikipedia atau kamus.
+- JANGAN tulis blok teks lebih dari 3 kalimat berturut-turut.`,
+
+  // Used for: procedural, arabic_writing
+  // Goal: clear numbered steps, each step one action only, practical tip if genuinely useful.
   step_by_step: `
 
 📋 **[GAYA JAWABAN: LANGKAH DEMI LANGKAH]**
-Pertanyaan ini bersifat prosedural atau membutuhkan urutan yang jelas. Gunakan format bernomor (1. 2. 3.). Setiap nomor = satu aksi spesifik, maks 2 kalimat.
-Tambahkan ⚠️ atau 💡 hanya jika ada hal kritis yang sering terlewat. Urutan harus logis dari awal sampai akhir.
-Untuk pertanyaan faktual atau konseptual yang tidak punya urutan langkah: jawab dalam paragraf natural yang ringkas — jangan paksakan format bernomor jika tidak relevan.`,
+Awali dengan 1 kalimat framing tentang proses ini (apa tujuannya, kenapa penting).
+Lanjut format bernomor (1. 2. 3.) — setiap langkah = SATU aksi spesifik, maks 2 kalimat. Aksi dulu, detail menyusul.
+Tambahkan ⚠️ hanya untuk hal kritis yang sering terlewat. Tambahkan 💡 untuk tip yang benar-benar menghemat waktu.
+Tutup dengan 1 kalimat guidance konkret: langkah paling penting atau peringatan utama yang tidak boleh dilewatkan.
 
+Untuk pertanyaan faktual/konseptual yang tidak punya urutan langkah: jawab dalam paragraf mengalir, jangan paksakan format bernomor.`,
+
+  // Used for: fiqh
+  // Goal: thorough, warm, multi-section. User must understand AND be able to act.
   detailed_complete: `
 
-📖 **[GAYA JAWABAN: DETAIL & LENGKAP]**
-Pertanyaan ini membutuhkan penjelasan mendalam dan komprehensif. Berikan jawaban yang menyeluruh — latar belakang, alasan, langkah-langkah, tips, dan hal yang perlu diwaspadai.
-GALI lebih dalam: latar belakang topik, konteks penting, detail relevan, hal yang perlu diwaspadai, tips tambahan, atau perspektif yang berguna.
-Gunakan heading ## untuk membagi bagian utama jika ada lebih dari satu aspek. Gunakan bullet atau nomor sesuai konten.
-Target minimal 3–5 paragraf atau bagian yang substantif. Setiap kalimat harus bernilai — tidak ada padding, tidak ada pengulangan.
-Tujuan: user harus bisa MEMAHAMI SEPENUHNYA topik ini setelah membaca, bukan sekadar tahu jawabannya.`,
+📖 **[GAYA JAWABAN: MENDALAM & KOMPREHENSIF]**
+Pembuka 1–2 kalimat yang tempatkan topik dalam konteks user — hangat, bukan akademik kering.
+Isi: latar belakang singkat → penjelasan detail dengan dalil/alasan → catatan penting atau perbedaan pendapat ulama jika ada.
+Gunakan ## heading jika ada lebih dari 2 aspek berbeda. Tiap bagian: paragraf pendek 2–3 kalimat, bukan blok teks besar.
+Jika ada daftar: setiap item wajib punya penjelasan — bukan sekedar menyebut nama/istilah.
+Tutup dengan guidance praktis: apa yang perlu user lakukan atau pertimbangkan setelah memahami ini.
 
+Standar minimal: 3 bagian substantif. Setiap kalimat harus bernilai — tidak ada padding, tidak ada pengulangan.`,
+
+  // Used for: recommendation
+  // Goal: positioned numbered options with concrete closing recommendation, NOT checkbox list.
   practical_ready_to_use: `
 
-✅ **[GAYA JAWABAN: PRAKTIS & SIAP PAKAI]**
-Pertanyaan ini membutuhkan output yang bisa langsung dipakai. Prioritaskan:
-- 📋 **Checklist** → gunakan format "- [ ] Langkah..." untuk daftar yang bisa dicentang
-- 📝 **Template pesan/surat** → tulis dalam blockquote siap copy-paste
-- ⚡ **Aksi langsung** → daftar tindakan konkret berurutan dari yang paling segera
-Tandai jenis output dengan label yang sesuai di awal. Minimalis di penjelasan — maksimal di konten siap pakai.
-Jika pertanyaan tidak cocok format ini, jawab dengan langkah-langkah konkret yang bisa langsung dieksekusi.`,
+✅ **[GAYA JAWABAN: REKOMENDASI KONKRET]**
+1 kalimat pembuka yang frame konteks: untuk apa ini, siapa yang cocok, atau apa yang membedakan pilihan-pilihan ini.
+Daftar bernomor — tiap item WAJIB punya positioning: kenapa cocok, untuk siapa, apa keunggulan utamanya. Bukan sekadar nama.
+Tutup dengan rekomendasi konkret yang WAJIB ada: mulai dari mana, mana paling cocok untuk situasi user ini, atau apa yang harus dipertimbangkan pertama.
 
+Gunakan template/checklist hanya jika user memang minta format siap-copy. Default: opsi bernomor dengan positioning.
+DILARANG: tutup tanpa rekomendasi konkret. DILARANG: daftar tanpa penjelasan per item.`,
+
+  // Used for: casual, brainstorming
+  // Goal: conversational, short sentences, analogies welcome, light emoji ok.
   casual_easy_to_understand: `
 
-💬 **[GAYA JAWABAN: SANTAI & MUDAH DIPAHAMI]**
-Pertanyaan ini bersifat ringan atau obrolan. Tulis seperti menjelaskan ke teman — bukan laporan, bukan dokumen resmi.
-Gunakan kalimat pendek, bahasa sehari-hari, dan analogi sederhana jika membantu.
-Kalau terpaksa pakai istilah teknis, langsung jelaskan artinya dalam kurung atau kalimat berikutnya.
-Boleh pakai emoji sesekali (max 1-2) kalau terasa pas dan natural.
-Tujuannya: siapapun — termasuk yang baru pertama kali di Mesir — harus langsung ngerti tanpa perlu googling ulang.`,
+💬 **[GAYA JAWABAN: SANTAI & MENGALIR]**
+Tulis seperti ngobrol sama teman cerdas — bukan laporan, bukan dokumen resmi, bukan artikel blog.
+Kalimat pendek dan ringan. Bahasa sehari-hari. Pakai analogi atau perbandingan sederhana jika membantu.
+Kalau terpaksa pakai istilah teknis, langsung jelaskan artinya dalam kalimat berikutnya atau dalam kurung.
+Boleh pakai emoji sesekali (max 1–2) kalau terasa natural dan pas.
+Jangan heading kecuali kontennya memang kompleks. Jangan terlalu formal atau terstruktur kaku.`,
 
+  // Used for: fallback / unknown intent
+  // Goal: sensible default — adaptive format, no forced structure, warm tone.
   balanced: `
 
-⚖️ **[MODE JAWABAN DEFAULT: SEIMBANG & INFORMATIF]**
-Ini mode default AINA. Gunakan format yang paling sesuai dengan konten — jangan paksa semua jadi poin atau daftar.
+⚖️ **[GAYA JAWABAN: ADAPTIF & INFORMATIF]**
+Pilih format yang paling cocok dengan jenis pertanyaan — jangan paksa semua jadi daftar.
 
-**Prinsip format:**
-- Pertanyaan faktual/konseptual → jawab dalam paragraf mengalir, natural seperti teman menjelaskan.
-- Prosedur/langkah-langkah → gunakan nomor (1. 2. 3.) hanya jika urutan memang penting.
-- Daftar dokumen/syarat/opsi → boleh pakai bullet (-).
-- Pertanyaan obrolan santai → jawab natural, tanpa heading, tanpa daftar.
-- Jangan paksa format heading (##) jika jawaban tidak kompleks.
+- Pertanyaan faktual/konseptual → paragraf mengalir, natural, pembuka 1 kalimat, isi terstruktur, guidance penutup.
+- Prosedur/langkah → bernomor, satu aksi per langkah.
+- Daftar syarat/dokumen/opsi → bullet dengan penjelasan per item.
+- Perbandingan → poin bernomor atau tabel, tiap item dengan positioning.
+- Obrolan santai → natural, tanpa heading, tanpa daftar kaku.
 
-**Kedalaman jawaban:**
-- Substantif dan lengkap — jawab inti dengan jelas, tambahkan konteks yang benar-benar berguna.
-- Obrolan santai/salam/ungkapan singkat → cukup jawab natural, tidak perlu panjang.
-- Jangan tulis poin-poin filler yang tidak menambah nilai.`,
+Kedalaman: substantif dan bermanfaat — bukan panjang demi panjang. Kalimat pendek, paragraf maks 3 kalimat.
+JANGAN langsung buka dengan "Berikut adalah..." tanpa kalimat pembuka yang manusiawi.`,
 };
 
 /**

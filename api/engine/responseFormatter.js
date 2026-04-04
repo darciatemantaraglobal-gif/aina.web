@@ -89,7 +89,19 @@ const BAD_PATTERNS = [
   // Closing filler phrases (forbidden by system prompt for informational responses)
   {
     type: "filler_closing",
-    pattern: /(semoga membantu|jangan ragu bertanya|feel free to ask|hope this helps)\s*[!.]*\s*$/i,
+    pattern: /(semoga membantu|jangan ragu bertanya|feel free to ask|hope this helps|ada yang bisa aku bantu lagi|ada pertanyaan lain)\s*[!.]*\s*$/i,
+    severity: "warn",
+  },
+  // Bare-list opener: response starts with "Berikut adalah..." immediately dumping a list
+  {
+    type: "bare_list_opener",
+    pattern: /^Berikut (adalah |ini )?(beberapa |)[\w\s,()-]+(nya|:)\s*\n/i,
+    severity: "warn",
+  },
+  // Encyclopedic opener: first sentence is a dry dictionary-style definition
+  {
+    type: "encyclopedic_opener",
+    pattern: /^[A-Z][a-zéèàâêî\u00C0-\u017E]+(?:\s+[a-z]+)? adalah (sebuah|suatu|satu|jenis) /i,
     severity: "warn",
   },
 ];
@@ -200,14 +212,29 @@ export function postProcessResponse(text) {
 
   let cleaned = text;
 
-  // 1. Strip sycophantic openers at the very start (severity: warn)
+  // 1. Strip sycophantic openers at the very start
   cleaned = cleaned.replace(
-    /^(tentu!|baik!|siap!|dengan senang hati!|tentu saja!|pastinya!|oke!|ok!|sure!)\s*/i,
+    /^(tentu!|baik!|siap!|dengan senang hati!|tentu saja!|pastinya!|oke!|ok!|sure!|tentu,|baik,|siap,)\s*/i,
     ""
   );
 
-  // 2. Remove sentences that contain waiting_language block patterns.
-  // These indicate the model is hallucinating a "searching" state — remove the whole sentence.
+  // 2. Strip hollow "Berikut adalah/ini..." as the SOLE opening line (with nothing before it).
+  //    These openers dump a list immediately without any framing — feels robotic.
+  //    Pattern: response starts with "Berikut adalah/ini X:" or "Berikut X-nya:" and is immediately
+  //    followed by a blank line + list. We remove that opener so the list speaks for itself,
+  //    which is cleaner than a bare "Berikut adalah 5 hal:" with no context sentence.
+  cleaned = cleaned.replace(
+    /^(Berikut (adalah |ini )?(beberapa |)[\w\s,()-]+(nya|:)\s*\n)/i,
+    ""
+  );
+
+  // 3. Strip bare structural openers that add no informational value
+  cleaned = cleaned.replace(
+    /^(Penjelasannya (adalah |)sebagai berikut\s*:\s*\n)/i,
+    ""
+  );
+
+  // 4. Remove sentences that contain waiting_language (model hallucinating a search state)
   const WAITING_PHRASES = [
     /tunggu sebentar/i,
     /aku cek dulu/i,
@@ -219,20 +246,22 @@ export function postProcessResponse(text) {
   ];
   for (const pattern of WAITING_PHRASES) {
     if (pattern.test(cleaned)) {
-      // Remove the entire sentence containing the bad phrase
       cleaned = cleaned
         .split(/(?<=[.!?])\s+/)
         .filter(sentence => !pattern.test(sentence))
         .join(" ");
-      console.warn(`[PostProcess] stripped waiting_language sentence matching: ${pattern}`);
+      console.warn(`[PostProcess] stripped waiting_language sentence: ${pattern}`);
     }
   }
 
-  // 3. Remove trailing filler closings (severity: warn)
+  // 5. Strip trailing filler closings
   cleaned = cleaned.replace(
-    /\n*(semoga membantu\.?|semoga bisa membantu\.?|jangan ragu (untuk |)bertanya\.?|feel free to ask\.?|hope this helps\.?)\s*[!.]*\s*$/gi,
+    /\n*(semoga membantu\.?|semoga bisa membantu\.?|jangan ragu (untuk |)bertanya\.?|feel free to ask\.?|hope this helps\.?|ada (yang |hal )?(bisa|lain) (aku|saya) bantu\??|ada pertanyaan lain\??)\s*[!.]*\s*$/gi,
     ""
   ).trim();
+
+  // 6. Strip repeated blank lines (3+ → 2)
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
 
   return cleaned;
 }
