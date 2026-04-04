@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw, Square } from "lucide-react";
+import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw, Square, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -424,6 +424,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState<Record<string, "up" | "down">>(loadStoredFeedback);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [chatTitle, setChatTitle] = useState<string | null>(null);
+  const [googleAvatar, setGoogleAvatar] = useState<string>("");
   const [welcomeSubtitle] = useState(() => getRandomSubtitle());
   const [timeGreeting] = useState(() => getTimeGreeting());
   const [loadingSeconds, setLoadingSeconds] = useState(0);
@@ -565,6 +567,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     setInput("");
     if (chatId) {
       loadMessages(chatId);
+    } else {
+      setChatTitle(null);
     }
   }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -599,6 +603,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       if (profileRes.data) {
         setUserProfile(profileRes.data);
       }
+      const gAvatar = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || "";
+      setGoogleAvatar(gAvatar);
 
       if (!paid) {
         const todayStart = new Date();
@@ -619,15 +625,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const loadMessages = async (id: string) => {
     setLoadingHistory(true);
     try {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("chat_id", id)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      if (data) {
+      const [msgsRes, chatRes] = await Promise.all([
+        supabase.from("messages").select("*").eq("chat_id", id).order("created_at", { ascending: true }),
+        supabase.from("chats").select("title").eq("id", id).single(),
+      ]);
+      if (msgsRes.error) throw msgsRes.error;
+      if (msgsRes.data) {
         setMessages(
-          data.map((m) => ({
+          msgsRes.data.map((m) => ({
             id: m.id,
             role: m.role as "user" | "assistant",
             content: m.content,
@@ -635,6 +640,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           }))
         );
       }
+      if (chatRes.data?.title) setChatTitle(chatRes.data.title);
     } catch (err: any) {
       setError("Gagal memuat riwayat chat. Coba refresh halaman.");
     } finally {
@@ -942,6 +948,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         if (chatError || !newChat) throw new Error("Gagal membuat chat baru");
         currentChatId = newChat.id;
         activeChatIdRef.current = currentChatId;
+        setChatTitle(newChat.title);
         onChatCreated(newChat.id, newChat.title);
       }
 
@@ -1181,9 +1188,15 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="flex items-center gap-2">
-            <AinaLogo className="h-7 w-7 object-contain" />
-            <span className="font-sunspire text-lg tracking-wider text-foreground">AINA</span>
+          <div className="flex flex-1 min-w-0 items-center justify-center gap-2 px-2">
+            {chatTitle ? (
+              <span className="truncate text-sm font-medium text-foreground max-w-[180px]">{chatTitle}</span>
+            ) : (
+              <>
+                <AinaLogo className="h-7 w-7 object-contain" />
+                <span className="font-sunspire text-lg tracking-wider text-foreground">AINA</span>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-1">
@@ -1203,6 +1216,63 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               <Plus className="h-5 w-5" />
             </button>
           </div>
+        </div>
+      </header>
+
+      {/* Desktop header */}
+      <header className="hidden md:flex shrink-0 items-center justify-between border-b border-border bg-background px-6 h-14">
+        {/* Left: AINA branding */}
+        <div className="flex items-center gap-2.5 w-40 shrink-0">
+          <AinaLogo className="h-7 w-7 object-contain" />
+          <span className="font-sunspire text-lg tracking-wider text-foreground">AINA</span>
+        </div>
+
+        {/* Center: chat title */}
+        <div className="flex-1 flex items-center justify-center px-4 min-w-0">
+          {chatTitle && (
+            <span className="truncate text-sm font-semibold text-foreground max-w-md">
+              {chatTitle}
+            </span>
+          )}
+        </div>
+
+        {/* Right: actions + avatar */}
+        <div className="flex items-center gap-2 w-40 shrink-0 justify-end">
+          {!isEmpty && (
+            <>
+              <button
+                onClick={exportChat}
+                title="Unduh percakapan"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast.success("Link disalin ke clipboard");
+                }}
+                title="Salin link percakapan"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <Share2 className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          {/* User avatar */}
+          {(userProfile?.avatar_url || googleAvatar) ? (
+            <img
+              src={userProfile?.avatar_url || googleAvatar}
+              alt="Profil"
+              className="h-8 w-8 rounded-full object-cover ring-1 ring-border"
+            />
+          ) : (
+            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center ring-1 ring-border">
+              <span className="text-xs font-semibold text-primary">
+                {(userProfile?.full_name || "U").charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -1244,17 +1314,6 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : (
           <>
-            {/* Desktop-only export button — sticky at top of messages area */}
-            <div className="sticky top-0 z-10 hidden md:flex justify-end px-4 pt-3 pb-1 pointer-events-none">
-              <button
-                onClick={exportChat}
-                title="Ekspor percakapan ke teks"
-                className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:text-foreground"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Ekspor
-              </button>
-            </div>
           <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
             {messages.map((msg, msgIdx) => {
               const isLastAI = msg.role === "assistant" && msgIdx === messages.length - 1 && !isLoading && !streamingMsg;
