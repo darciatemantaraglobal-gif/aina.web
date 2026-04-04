@@ -1575,21 +1575,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     </div>
                   )}
 
-                  {/* Follow-up suggestions — AI-generated, only on last AI message, max 2 */}
+                  {/* Follow-up suggestions — clickable conversational chips */}
                   {isLastAI && msg.suggestions && msg.suggestions.length > 0 && (() => {
                     const arabicRatio = (msg.content.match(/[\u0600-\u06FF]/g)?.length ?? 0) / Math.max(msg.content.length, 1);
                     const isArabicReply = arabicRatio > 0.25;
                     const topSuggestions = msg.suggestions.slice(0, 2);
                     return (
-                      <div className="mt-3 border-t border-border/30 pt-2.5" dir={isArabicReply ? "rtl" : "ltr"}>
-                        <p className="text-[11px] text-muted-foreground/50 leading-relaxed">
-                          {topSuggestions.map((s, i) => (
-                            <span key={s}>
-                              {i > 0 && " · "}
-                              {s}
-                            </span>
-                          ))}
-                        </p>
+                      <div className="mt-4 flex flex-wrap gap-2" dir={isArabicReply ? "rtl" : "ltr"}>
+                        {topSuggestions.map((s) => (
+                          <button
+                            key={s}
+                            onClick={() => handleSend(s)}
+                            className="rounded-full border border-border bg-secondary/40 px-4 py-1.5 text-sm text-foreground/80 transition-all hover:border-primary/40 hover:bg-secondary hover:text-foreground active:scale-95"
+                          >
+                            {s}
+                          </button>
+                        ))}
                       </div>
                     );
                   })()}
