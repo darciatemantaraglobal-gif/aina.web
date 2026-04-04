@@ -3063,24 +3063,14 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
   // General knowledge: stable definitional / conceptual questions the model already knows
   const generalKnowledge = /\b(siapa|apa itu|apa arti|artinya apa|apa yang dimaksud|definisi|pengertian|ibu kota|ibukota|jelaskan|bagaimana cara kerja|dalam bahasa|terjemahan|artinya|maksudnya|berapa lama|berapa hari|kapan|sejarah|asal usul|fungsi|manfaat)\b/i.test(query);
 
-  // Pinned updates are admin-verified — highest trust
+  // Pinned updates are admin-verified — highest trust, always wins
   if (hasPinned) return { level: "high_confidence", hint: "" };
 
-  // KB hit → trust it. KB adalah sumber yang sudah diverifikasi admin — jangan ragukan.
-  // Strong KB: high_confidence untuk semua intent.
-  // Weak KB: tetap jawab dari KB dengan percaya diri, cukup jelaskan info mungkin tidak lengkap.
-  if (hasKB) {
-    if (kbStrength !== "weak") return { level: "high_confidence", hint: "" };
-    return {
-      level: "medium_confidence",
-      hint: "\n\n**[KB PARSIAL]** Knowledge Base memiliki cakupan sebagian untuk topik ini. Jawab berdasarkan info KB yang tersedia dengan percaya diri — jangan tambahkan disclaimer atau saran konfirmasi ke sumber lain. Jika ada aspek yang tidak tercakup KB, jawab dari pengetahuan model dengan natural.",
-    };
-  }
-
-  // Current role + NOT historical + no KB/pinned:
-  // If Perplexity returned web-grounded data → medium confidence, answer allowed.
-  // If no Perplexity → hard block, model must not guess from stale memory.
-  if (currentRoleQuery && !historicalRole && !hasKB && !hasPinned) {
+  // ── CURRENT ROLE QUERIES — checked BEFORE KB ──────────────────────────────
+  // BUG FIX: Must run BEFORE hasKB check. Previously, any weak KB hit (e.g. an article
+  // mentioning "presiden PPMI") would set hasKB=true and block all Perplexity overrides.
+  // Now: currentRoleQuery bypasses KB unless KB is STRONG (admin-verified, high score).
+  if (currentRoleQuery && !historicalRole && !hasPinned && !(hasKB && kbStrength === "strong")) {
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
@@ -3097,13 +3087,18 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     };
   }
 
+  // ── STRONG KB — admin-verified, trust it ─────────────────────────────────
+  if (hasKB && kbStrength === "strong") {
+    return { level: "high_confidence", hint: "" };
+  }
+
   // ── PERPLEXITY OVERRIDE (universal) ──────────────────────────────────────
-  // If real-time Perplexity data is present (and not already handled by currentRoleQuery
-  // or KB/pinned above), ALWAYS force model to use Perplexity, not training data.
-  // This catches ALL cases: time-sensitive, general knowledge, any other factual query.
-  // "di atas" is correct — confidence.hint is injected AFTER perplexityContext in prompt.
-  if (hasPerplexity && !hasKB && !hasPinned) {
-    const isTimeSensitiveQ = timeSensitive;
+  // If real-time Perplexity data is present AND KB is absent or weak:
+  // ALWAYS force model to use Perplexity, not training data.
+  // BUG FIX: Previously required !hasKB — now also applies when kbStrength="weak"
+  // because weak KB hits on unrelated articles must NOT block real-time Perplexity data.
+  if (hasPerplexity && (!hasKB || kbStrength === "weak")) {
+    const isTimeSensitiveQ = timeSensitive || currentRoleQuery;
     return {
       level: "medium_confidence",
       hint: isTimeSensitiveQ
@@ -3116,6 +3111,14 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
           "Ada data dari pencarian web real-time di atas. Jika data tersebut relevan dengan pertanyaan user,\n" +
           "gunakan data itu sebagai sumber jawaban — bukan dari training model.\n" +
           "Jika tidak relevan, jawab dari pengetahuan model seperti biasa.\n---",
+    };
+  }
+
+  // ── WEAK KB only (no Perplexity, not currentRoleQuery) ───────────────────
+  if (hasKB && kbStrength === "weak") {
+    return {
+      level: "medium_confidence",
+      hint: "\n\n**[KB PARSIAL]** Knowledge Base memiliki cakupan sebagian untuk topik ini. Jawab berdasarkan info KB yang tersedia dengan percaya diri — jangan tambahkan disclaimer atau saran konfirmasi ke sumber lain. Jika ada aspek yang tidak tercakup KB, jawab dari pengetahuan model dengan natural.",
     };
   }
 
@@ -3616,6 +3619,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     query: lastUserMessage,
   });
   console.log(`[Confidence] ${confidence.level} — "${lastUserMessage.slice(0, 60)}"`);
+  if (perplexityContext) {
+    console.log(`[DEBUG-Perplexity] context snippet: "${perplexityContext.slice(0, 200).replace(/\n/g, ' ')}"`);
+  } else {
+    console.log(`[DEBUG-Perplexity] NO perplexity context injected`);
+  }
+  if (confidence.hint) {
+    console.log(`[DEBUG-ConfidenceHint] hint: "${confidence.hint.slice(0, 100).replace(/\n/g, ' ')}"`);
+  }
 
   const now = new Date();
   const todayStr = now.toLocaleDateString("id-ID", {
