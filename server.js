@@ -12,6 +12,7 @@ import {
   buildSystemPrompt,
 } from './api/engine/promptBuilder.js';
 import { validateResponse, postProcessResponse, buildSourceBadges, formatAINAResponse } from './api/engine/responseFormatter.js';
+import { optimizeHistory, estimateTokens, debugTokenReport } from './api/engine/historyOptimizer.js';
 import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
@@ -3616,16 +3617,18 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
   // ──────────────────────────────────────────────────────────────────────────────
   const MODEL_TIERS = {
-    // Tier A — fast + reliable for all queries
+    // Tier A — fast + cheap for casual / KB-covered stable queries
+    // Uses Flash Lite as primary → ~40% cheaper, ~15% faster than Flash on simple tasks
     lightweight: {
-      primary:   "google/gemini-2.0-flash-001",            // proven stable primary
-      fallback:  "google/gemini-2.0-flash-lite-001",       // lighter fallback
+      primary:   "google/gemini-2.0-flash-lite-001",       // fast & cheap for simple queries
+      fallback:  "google/gemini-2.0-flash-001",            // upgrade if lite fails
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
     },
-    // Tier B — quality for complex, procedural, and dynamic queries
+    // Tier B — quality for complex, procedural, dynamic, and fiqh queries
+    // Uses full Flash as primary → better instruction-following for structured outputs
     standard: {
       primary:   "google/gemini-2.0-flash-001",            // proven stable primary
-      fallback:  "google/gemini-2.0-flash-lite-001",       // lighter fallback
+      fallback:  "google/gemini-2.0-flash-lite-001",       // lite fallback if primary fails
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
     },
   };
@@ -3855,9 +3858,24 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     ? `[INSTRUKSI BAHASA — SISTEM]: Pesan user terdeteksi dalam Bahasa Arab (${Math.round(_arabicRatio * 100)}% karakter Arab). WAJIB balas seluruh respons dalam Bahasa Arab فصحى yang fasih dan jelas sesuai level akademik Al-Azhar. DILARANG menggunakan Bahasa Indonesia dalam respons ini kecuali untuk catatan terjemahan pendek.`
     : `[INSTRUKSI BAHASA — SISTEM]: Pesan user dalam Bahasa Indonesia atau non-Arab. WAJIB balas dalam Bahasa Indonesia. DILARANG menggunakan Bahasa Inggris atau bahasa lain dalam respons ini — bahkan sebagai campuran. Pengecualian satu-satunya: kutipan/dalil Arab dengan terjemahan Indonesia-nya.`;
 
+  // ── Optimize chat history for token efficiency ────────────────────────────
+  // Long sessions accumulate many messages → huge token waste. We keep the last
+  // 6 messages verbatim and compress older ones into a compact summary block.
+  const histOpt = optimizeHistory(messages);
+  if (histOpt.stats.triggered) {
+    console.log(
+      `[HistOpt] compressed ${histOpt.stats.summarized} → summary ` +
+      `| kept=${histOpt.stats.kept} | saved≈${histOpt.stats.estimatedSavedTokens}t`
+    );
+  }
+
   // ── Build final messages array, injecting attachedFile if present ──────────
   let finalSystemPrompt = _langNote + "\n\n" + systemPrompt;
-  let finalMessages = [...messages];
+  // Inject compressed history summary as system context if applicable
+  if (histOpt.summarySystemBlock) {
+    finalSystemPrompt += `\n\n---\n${histOpt.summarySystemBlock}\n---`;
+  }
+  let finalMessages = histOpt.trimmedMessages;
   let useVisionModel = false;
 
   // ── Local Masisir KB-only enforcement ────────────────────────────────────
@@ -4179,6 +4197,17 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       ...(t.emergency ? [{ model: t.emergency,  timeoutMs: 60000 }] : []),
       { model: crossTier.primary, timeoutMs: baseTimeoutMs },
     ];
+
+    // Debug token report (only fires when AINA_DEBUG=true)
+    debugTokenReport({
+      systemPrompt:      finalSystemPrompt,
+      messages:          finalMessages,
+      kbContext:         knowledgeContext,
+      webContext:        (perplexityContext ?? "") + (wikiContext ?? "") + (ddgContext ?? ""),
+      model:             t.primary,
+      historySummarized: histOpt.stats.triggered,
+      kbArticleCount:    articles.length,
+    });
   }
 
   // ── Try models in order; grab first 200 streaming response ─────────────────
