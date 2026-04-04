@@ -102,6 +102,118 @@ function cleanMarkdown(text: string): string {
     .trim();
 }
 
+// ── ARABIC_BLOCK renderer ────────────────────────────────────────────────────
+// Parses [ARABIC_BLOCK]...[/ARABIC_BLOCK] tags emitted by AINA's Learning Mode
+// and renders them as a styled card instead of raw text.
+
+interface ArabicBlockData {
+  arabic: string;
+  reading: string;
+  meaning: string;
+}
+
+function parseArabicBlock(raw: string): ArabicBlockData {
+  const get = (label: string) => {
+    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Reading \\(Latin\\):|Meaning:)[^\\n]*)*)`, "i");
+    const m = raw.match(re);
+    return m ? m[1].trim() : "";
+  };
+  return {
+    arabic: get("Arabic Text"),
+    reading: get("Reading \\(Latin\\)"),
+    meaning: get("Meaning"),
+  };
+}
+
+function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
+  return (
+    <div className="my-3 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
+      {/* Arabic text row */}
+      <div className="px-4 pt-3 pb-2.5 border-b border-primary/10">
+        <p
+          dir="rtl"
+          className="text-right text-2xl leading-loose text-foreground tracking-wide"
+          style={{ fontFamily: "'Amiri', 'Scheherazade New', 'Noto Naskh Arabic', serif" }}
+        >
+          {arabic}
+        </p>
+      </div>
+      {/* Reading + Meaning rows */}
+      <div className="px-4 py-2.5 space-y-1.5">
+        {reading && (
+          <p className="text-sm text-sky-400 flex items-start gap-1.5">
+            <span className="mt-px shrink-0">🔊</span>
+            <span>{reading}</span>
+          </p>
+        )}
+        {meaning && (
+          <p className="text-sm text-foreground/80 flex items-start gap-1.5">
+            <span className="mt-px shrink-0 text-primary/70">✦</span>
+            <span>{meaning}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ARABIC_BLOCK_RE = /\[ARABIC_BLOCK\]([\s\S]*?)\[\/ARABIC_BLOCK\]/g;
+
+function renderWithArabicBlocks(content: string, applyClean = true): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  ARABIC_BLOCK_RE.lastIndex = 0;
+  while ((match = ARABIC_BLOCK_RE.exec(content)) !== null) {
+    // Prose before this block
+    if (match.index > lastIndex) {
+      const raw = content.slice(lastIndex, match.index);
+      const md = applyClean ? cleanMarkdown(raw) : raw;
+      if (md.trim()) {
+        parts.push(
+          <ReactMarkdown key={key++} remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
+            {md}
+          </ReactMarkdown>
+        );
+      }
+    }
+    // Arabic block card
+    const data = parseArabicBlock(match[1]);
+    if (data.arabic || data.meaning) {
+      parts.push(<ArabicBlockCard key={key++} {...data} />);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining prose after last block
+  if (lastIndex < content.length) {
+    const raw = content.slice(lastIndex);
+    const md = applyClean ? cleanMarkdown(raw) : raw;
+    if (md.trim()) {
+      parts.push(
+        <ReactMarkdown key={key++} remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
+          {md}
+        </ReactMarkdown>
+      );
+    }
+  }
+
+  // No blocks found — render as normal markdown
+  if (parts.length === 0) {
+    const md = applyClean ? cleanMarkdown(content) : content;
+    return (
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
+        {md}
+      </ReactMarkdown>
+    );
+  }
+
+  return <>{parts}</>;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function extractSources(content: string): string[] {
   const results: string[] = [];
   const lines = content.split("\n");
@@ -1362,9 +1474,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 ) : (
                   <div className="min-w-0 flex-1 min-h-0">
                     <div className="py-1" dir={isArabicMsg ? "rtl" : "ltr"}>
-                      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
-                        {cleanMarkdown(msg.content)}
-                      </ReactMarkdown>
+                      {renderWithArabicBlocks(msg.content)}
                     </div>
 
                     {/* Source badges + confidence badge + freshness warning */}
@@ -1595,9 +1705,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               <div className="flex gap-3 min-w-0 justify-start">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
                 <div className="min-w-0 flex-1 py-1" dir={isArabicText(streamingMsg.displayed) ? "rtl" : "ltr"}>
-                  <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
-                    {streamingMsg.displayed}
-                  </ReactMarkdown>
+                  {renderWithArabicBlocks(streamingMsg.displayed, false)}
                   {streamingMsg.isStreaming && (
                     <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
                   )}
