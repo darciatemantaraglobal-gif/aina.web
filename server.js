@@ -3447,13 +3447,13 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
   // ──────────────────────────────────────────────────────────────────────────────
   const MODEL_TIERS = {
-    // Tier A — fast + cost-efficient for simple/casual/KB-covered queries
+    // Tier A — 2.5 Flash for all queries (best context understanding, similar cost to 2.0)
     lightweight: {
-      primary:   "google/gemini-2.0-flash-001",            // fast, affordable, great for simple queries
-      fallback:  "google/gemini-2.5-flash",                // stronger fallback if 2.0 unavailable
+      primary:   "google/gemini-2.5-flash",                // best reasoning, great for all queries
+      fallback:  "google/gemini-2.0-flash-001",            // reliable fallback if 2.5 unavailable
       emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
     },
-    // Tier B — strongest model for complex, procedural, and dynamic queries
+    // Tier B — 2.5 Flash primary for complex, procedural, and dynamic queries
     standard: {
       primary:   "google/gemini-2.5-flash",                // best reasoning for nuanced answers
       fallback:  "google/gemini-2.0-flash-001",            // reliable paid fallback
