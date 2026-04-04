@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Download, X, RefreshCw, Share } from "lucide-react";
+import { Download, X, Share } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 const DISMISS_KEY  = "pwa-install-dismissed-at";
@@ -31,6 +31,14 @@ export default function PwaInstallBanner() {
     onRegistered(r) { if (r) console.log("[PWA] Service Worker registered"); },
     onRegisterError(e) { console.warn("[PWA] SW error:", e); },
   });
+
+  // Auto-update: langsung apply service worker baru tanpa perlu klik tombol
+  useEffect(() => {
+    if (needRefresh) {
+      console.log("[PWA] New version detected — auto-updating...");
+      updateServiceWorker(true);
+    }
+  }, [needRefresh, updateServiceWorker]);
 
   useEffect(() => {
     if (isInStandalone() || isDismissedRecently()) return;
@@ -66,25 +74,8 @@ export default function PwaInstallBanner() {
     setShowIOS(false);
   };
 
-  // ── Update banner (service worker) ──────────────────────────────────────
-  if (needRefresh) {
-    return (
-      <div className="fixed bottom-20 md:bottom-4 left-1/2 z-50 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm animate-in slide-in-from-bottom-4 duration-300">
-        <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-background/95 px-4 py-3 shadow-lg backdrop-blur-md">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15">
-            <RefreshCw className="h-4 w-4 text-primary" />
-          </div>
-          <p className="flex-1 text-[13px] text-foreground/80">Versi baru AINA tersedia!</p>
-          <button
-            onClick={() => updateServiceWorker(true)}
-            className="rounded-lg bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            Perbarui
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Auto-update sudah ditangani oleh useEffect di atas — tidak perlu banner manual
+  if (needRefresh) return null;
 
   // ── iOS install guide ────────────────────────────────────────────────────
   if (showIOS) {
