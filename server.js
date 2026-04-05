@@ -4162,6 +4162,18 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+
+  // Send immediate heartbeat so Vercel (and any proxy) knows the stream is alive.
+  // Without this, Vercel may buffer the entire response until the function completes.
+  res.write(`: heartbeat\n\n`);
+
+  // Periodic keepalive to prevent gateway timeout on Vercel Hobby (auto-clears on finish)
+  const _keepaliveInterval = setInterval(() => {
+    try { res.write(`: keepalive\n\n`); } catch { clearInterval(_keepaliveInterval); }
+  }, 5000);
+  res.once("finish", () => clearInterval(_keepaliveInterval));
+  res.once("close",  () => clearInterval(_keepaliveInterval));
+
   _chatDebugStep = "streaming";
 
   // Helper: attempt a single streaming fetch from OpenRouter
