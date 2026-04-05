@@ -37,7 +37,7 @@ export function buildKnowledgeContext(articles) {
     const typeHint = hasArabicText
       ? " [FORMAT: Muqorror/Kitab Arab — ATURAN WAJIB: (1) Kutip paragraf Arab yang relevan persis dari artikel sebagai blockquote (awali dengan '>'), (2) Tulis terjemahan/maknanya dalam Bahasa Indonesia di bawah kutipan, (3) Jelaskan maksud dan poin-poin pentingnya. DILARANG menjelaskan tanpa menampilkan teks Arabnya terlebih dahulu.]"
       : a.article_type === "step_by_step"
-        ? " [FORMAT: Panduan Langkah-langkah — WAJIB jawab dalam format langkah bernomor: **Langkah 1**, **Langkah 2**, dst.]"
+        ? " [FORMAT: Panduan Langkah-langkah — WAJIB gunakan numbered markdown list: 1. ... 2. ... 3. ... (satu aksi per nomor, tiap langkah di baris baru). JANGAN gunakan **Langkah 1:** atau format lain — hanya angka diikuti titik dan spasi: '1. teks']"
         : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
 
     const cleanedContent = trimToSentence(a.content, 2000);

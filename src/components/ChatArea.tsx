@@ -99,14 +99,14 @@ function cleanMarkdown(text: string): string {
     return body.replace(/<li\b[^>]*>/gi, "\n- ").replace(/<\/li>/gi, "");
   });
 
-  return result
+  // ── HTML entity / tag cleanup ────────────────────────────────────────────
+  result = result
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?p>/gi, "\n")
     .replace(/<\/?b>/gi, "**")
     .replace(/<\/?strong>/gi, "**")
     .replace(/<\/?i>/gi, "_")
     .replace(/<\/?em>/gi, "_")
-    // Catch any remaining stray li tags (e.g. malformed HTML)
     .replace(/<li\b[^>]*>/gi, "\n- ")
     .replace(/<\/li>/gi, "")
     .replace(/<[^>]+>/g, "")
@@ -114,9 +114,53 @@ function cleanMarkdown(text: string): string {
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/&quot;/gi, '"');
+
+  // ── List normalization ───────────────────────────────────────────────────
+
+  // 1. Convert "**Langkah N:**" / "**Langkah N**:" / "**Langkah N**."
+  //    patterns to proper numbered markdown "N. "
+  //    Handles: **Langkah 1:** | **Langkah 1**. | **Langkah 1** | Langkah 1.
+  result = result.replace(
+    /^\*{0,2}[Ll]angkah\s+(\d+)\*{0,2}[.:،]?\*{0,2}:?\s*/gm,
+    "$1. "
+  );
+
+  // 2. Convert "**N.**" or "**N)**" bold-number-as-prefix patterns to "N. "
+  //    e.g. "**1.**" or "**1)**" at line start
+  result = result.replace(
+    /^\*\*(\d+)[.)]\*\*\s*/gm,
+    "$1. "
+  );
+
+  // 3. Ensure a blank line exists before a list item that follows non-list prose.
+  //    "prose text\n1. item" → "prose text\n\n1. item"
+  //    The negative lookahead (?![ \t]*\d+\.) prevents adding blank lines
+  //    between consecutive list items (e.g. "1. a\n2. b" stays as-is).
+  result = result.replace(
+    /^(?![ \t]*\d+\.)([^\n]+)\n(\d+\.\s)/gm,
+    "$1\n\n$2"
+  );
+  result = result.replace(
+    /^(?![ \t]*[-*]\s)([^\n]+)\n([-*]\s)/gm,
+    "$1\n\n$2"
+  );
+
+  // 4. Split numbered items that were collapsed onto the same line.
+  //    e.g. "1. Step one 2. Step two" → "1. Step one\n2. Step two"
+  //    Only acts on consecutive numbers (N+1 = M) to avoid false positives.
+  result = result.replace(
+    /(\d+\.\s[^\n]+?)\s{1,4}(?=(\d+)\.\s)/g,
+    (match, item, nextNum) => {
+      const thisNum = parseInt(item.match(/^(\d+)/)?.[1] ?? "0");
+      return parseInt(nextNum) === thisNum + 1 ? `${item}\n` : match;
+    }
+  );
+
+  // 5. Collapse excess blank lines
+  result = result.replace(/\n{3,}/g, "\n\n");
+
+  return result.trim();
 }
 
 // ── ARABIC_BLOCK renderer ────────────────────────────────────────────────────
