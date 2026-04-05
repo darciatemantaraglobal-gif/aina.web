@@ -190,26 +190,29 @@ function parseArabicBlock(raw: string): ArabicBlockData {
 function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
   return (
     <div className="my-3 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
-      {/* Arabic text — centered, RTL */}
+      {/* Arabic text — right-aligned, RTL, shifted up 1px */}
       <div className="px-4 pt-3 pb-2.5 border-b border-primary/10">
         <p
           dir="rtl"
-          className="text-center text-2xl leading-loose text-foreground tracking-wide"
-          style={{ fontFamily: "'Amiri', 'Scheherazade New', 'Noto Naskh Arabic', serif" }}
+          className="text-right text-2xl leading-loose text-foreground tracking-wide"
+          style={{
+            fontFamily: "'Amiri', 'Scheherazade New', 'Noto Naskh Arabic', serif",
+            marginTop: "-1px",
+          }}
         >
           {arabic}
         </p>
       </div>
-      {/* Reading + Meaning — explicitly LTR so Latin text is always left-aligned */}
+      {/* Reading + Meaning — explicitly LTR, left-aligned */}
       <div className="px-4 py-2.5 space-y-1.5" dir="ltr">
         {reading && (
-          <p className="text-sm text-sky-400 flex items-start gap-1.5 text-left">
-            <span className="mt-px shrink-0">🔊</span>
+          <p className="text-sm text-sky-400 italic flex items-start gap-1.5 text-left">
+            <span className="mt-px shrink-0 not-italic">🔊</span>
             <span dir="ltr" className="break-words">{reading}</span>
           </p>
         )}
         {meaning && (
-          <p className="text-sm text-foreground/80 flex items-start gap-1.5 text-left">
+          <p className="text-sm text-white flex items-start gap-1.5 text-left">
             <span className="mt-px shrink-0 text-primary/70">✦</span>
             <span dir="ltr" className="break-words">{meaning}</span>
           </p>
@@ -360,6 +363,11 @@ function isArabicText(text: string): boolean {
   const arabicChars = (text.match(/[\u0600-\u06FF]/g) ?? []).length;
   return arabicChars / Math.max(text.replace(/\s/g, "").length, 1) > 0.35;
 }
+// Returns true when Arabic chars make up the majority (>35%) of the node's text.
+// Used to decide bullet-point alignment: right for Arabic-heavy items, left otherwise.
+function isMajorityArabic(node: any): boolean {
+  return isArabicText(extractMdText(node));
+}
 
 const MD_COMPONENTS = {
   br: () => <br />,
@@ -401,23 +409,24 @@ const MD_COMPONENTS = {
   li: ({ children }: any) => {
     const listType = useContext(ListTypeContext);
     const isOrdered = listType === "ol";
-    const isArabic = containsArabic(children);
+    const majorityArabic = isMajorityArabic(children);
 
     if (isOrdered) {
       return (
         <li className="leading-[1.75] break-words pl-1">
-          {isArabic
-            ? <span dir="rtl" className="block" style={{ lineHeight: "2.0" }}>{children}</span>
+          {majorityArabic
+            ? <span dir="rtl" className="block text-right" style={{ lineHeight: "2.0" }}>{children}</span>
             : children}
         </li>
       );
     }
 
-    if (isArabic) {
+    // Unordered: bullet on RIGHT for Arabic-majority items, LEFT for Latin/Indonesian items
+    if (majorityArabic) {
       return (
-        <li className="flex gap-3 items-start" style={{ lineHeight: "2.0" }}>
+        <li className="flex flex-row-reverse gap-3 items-start" style={{ lineHeight: "2.0" }}>
           <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
-          <span className="flex-1 min-w-0 break-words" dir="rtl">{children}</span>
+          <span className="flex-1 min-w-0 break-words text-right" dir="rtl">{children}</span>
         </li>
       );
     }
