@@ -663,7 +663,7 @@ async function verifyMasterAdmin(authHeader) {
 
 /* ── OpenRouter AI call with primary→fallback ──────── */
 const OR_PRIMARY  = "google/gemini-2.0-flash-001";
-const OR_FALLBACK = "google/gemini-2.0-flash-001";
+const OR_FALLBACK = "google/gemini-2.0-flash-lite-001";
 
 async function callOpenRouter(apiKey, { messages, temperature = 0.0, max_tokens = 200, timeoutMs = 20_000, label = "AI" }) {
   const tryModel = async (model) => {
