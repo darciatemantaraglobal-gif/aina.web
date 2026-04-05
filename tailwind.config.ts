@@ -15,9 +15,9 @@ export default {
     extend: {
       fontFamily: {
         sunspire: ['Sunspire', 'sans-serif'],
-        modernist: ['Inter', 'sans-serif'],
-        display: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
-        body: ['Inter', 'sans-serif'],
+        modernist: ['Poppins', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'Poppins', 'sans-serif'],
+        body: ['Poppins', 'sans-serif'],
         jakarta: ['Plus Jakarta Sans', 'sans-serif'],
       },
       colors: {
