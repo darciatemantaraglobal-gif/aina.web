@@ -3209,18 +3209,29 @@ const RESPONSE_STYLE_HINTS = {
 ⚡ **[GAYA JAWABAN: TERFOKUS & LANGSUNG]**
 Kalimat pertama = jawaban langsung ke inti. Tidak ada basa-basi, tidak ada mengulang pertanyaan.
 
-**Pola wajib:**
+**Pola wajib (SEMUA POIN 1 & 2 HARUS ADA — tidak boleh dilewati):**
 1. **Jawaban langsung** (1 kalimat) — inti jawaban segera, tanpa pembuka.
-2. **Penjelasan singkat** (2–3 kalimat) — detail atau konteks. Paragraf pendek, beri spasi.
+2. ⚠️ **WAJIB — Penjelasan** (2–3 kalimat) — tambahkan konteks, latar belakang, atau info pendukung yang membuat jawaban lebih bermakna. INI BUKAN OPSIONAL. Minimum 2 kalimat tambahan setelah jawaban utama.
 3. **Poin-poin** (jika ada banyak aspek) — bullet dengan penjelasan 1 kalimat per item.
-4. **Catatan opsional** — peringatan kritis atau tawaran lanjutan. Skip jika tidak ada.
+4. **Catatan** — peringatan kritis atau tawaran lanjutan. Skip jika tidak ada.
+
+**Minimum output:** 3 kalimat total (1 jawaban + 2 penjelasan). Jawaban 1 kalimat saja = GAGAL.
+
+**Contoh yang BENAR:**
+> "Donald Trump adalah Presiden Amerika Serikat ke-47 yang menjabat sejak Januari 2025.
+> Ia sebelumnya juga pernah menjabat sebagai presiden ke-45 (2017–2021), menjadikannya presiden kedua dalam sejarah AS yang menjabat dua periode tidak berurutan.
+> Kemenangan Trump pada pemilu 2024 diraih atas Kamala Harris dengan selisih yang cukup signifikan di Electoral College."
+
+**Contoh yang SALAH (jangan ditiru):**
+> "Donald Trump adalah Presiden Amerika Serikat."  ← Terlalu singkat, tidak informatif.
 
 **Gaya:** Natural, seperti teman yang tahu jawabannya. Boleh pakai "Jadi...", "Nah...", "Intinya..." untuk transisi antar poin.
 
 **Larangan ketat:**
 - JANGAN buka dengan "Berikut adalah...", "Tentu!", "Baik!", atau variasi apapun.
 - JANGAN terdengar seperti Wikipedia — jawaban percakapan, bukan artikel.
-- JANGAN tulis blok teks lebih dari 3 kalimat berturut-turut.`,
+- JANGAN tulis blok teks lebih dari 3 kalimat berturut-turut.
+- JANGAN berhenti setelah 1 kalimat — selalu tambahkan penjelasan.`,
 
   // Used for: procedural, arabic_writing
   // Goal: direct one-liner first, then numbered steps. Each step = one action.

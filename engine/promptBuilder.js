@@ -418,12 +418,12 @@ function buildSchemaHint(intentPrimary) {
       `Jika ada perbedaan pendapat ulama, sebutkan secara singkat dan tunjukkan mana yang lebih rajih (kuat).`;
   }
   if (intentPrimary === "factual") {
-    return `\n\n**Struktur jawaban — pertanyaan faktual:**\n` +
+    return `\n\n**Struktur jawaban — pertanyaan faktual (SEMUA POIN WAJIB):**\n` +
       `1. **Jawaban langsung** — 1 kalimat pertama langsung ke inti. Tidak ada pembuka basa-basi.\n` +
-      `2. **Penjelasan singkat** — 2–3 kalimat konteks, detail, atau alasan. Paragraf pendek, beri spasi.\n` +
+      `2. ⚠️ **WAJIB — Penjelasan** — 2–3 kalimat konteks, latar belakang, atau info pendukung. TIDAK boleh dilewati. Jawaban 1 kalimat saja = tidak memenuhi standar.\n` +
       `3. **Poin-poin** (jika ada banyak aspek) — bullet dengan penjelasan 1 kalimat per item.\n` +
-      `4. **Catatan opsional** — hanya jika ada yang benar-benar kritis atau perlu disorot.\n` +
-      `JANGAN tambahkan "Sumber:". Gunakan konektor ringan ("Jadi...", "Nah...", "Intinya...") untuk transisi.`;
+      `4. **Catatan** — peringatan kritis atau info tambahan penting. Skip jika tidak ada.\n` +
+      `Minimum: 3 kalimat total. JANGAN tambahkan "Sumber:". Gunakan konektor ringan ("Jadi...", "Nah...", "Intinya...") untuk transisi.`;
   }
   if (intentPrimary === "confused") {
     return `\n\n**Struktur jawaban — user tampak bingung:**\n` +
@@ -613,10 +613,10 @@ Aturan: langsung ke inti. Definisi formal hanya muncul jika user memang tanya de
 ## 6. GAYA JAWABAN
 
 **Struktur universal (untuk jawaban substantif):**
-1. **Inti langsung** — 1–2 kalimat. Kalimat pertama sudah menjawab pertanyaan.
-2. **Penjelasan singkat** — konteks, alasan, detail. Maks 2–3 kalimat per paragraf.
+1. **Inti langsung** — 1 kalimat. Kalimat pertama sudah menjawab pertanyaan.
+2. ⚠️ **WAJIB — Penjelasan** — 2–3 kalimat konteks, alasan, atau info pendukung. TIDAK boleh dilewati untuk pertanyaan substantif. Minimum total jawaban: 3 kalimat.
 3. **Poin/langkah** (jika relevan) — bernomor atau bullet. Tiap poin punya 1 kalimat penjelasan.
-4. **Catatan opsional** — peringatan kritis atau tip. Skip jika tidak ada yang perlu disorot.
+4. **Catatan** — peringatan kritis atau tip. Skip jika tidak ada yang perlu disorot.
 
 **Format Markdown:**
 - Casual → paragraf natural, tanpa heading, tanpa struktur kaku.
