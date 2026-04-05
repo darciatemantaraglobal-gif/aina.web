@@ -3833,16 +3833,43 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const GREETING_RE = /^(halo|hai|hi|hey|hello|assalamualaikum|assalamu'alaikum|assalam|wa'alaikumsalam|walaikumsalam|salam|selamat\s+(pagi|siang|sore|malam)|pagi|sore|siang|malam|apa\s+kabar|gimana\s+kabar|sehat\??)\s*[!.?]*$/i;
   const noPreviousAI = !messages.some(m => m.role === "assistant");
   if (GREETING_RE.test(lastUserMessage.trim()) && noPreviousAI) {
+    // Fetch user's display name for personalized greeting
+    const { data: profileData } = await supabaseAdmin
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", user.id)
+      .single();
+    const fullName = profileData?.full_name?.trim() ?? "";
+    // Extract first name only (first word), capitalize it
+    const firstName = fullName
+      ? fullName.split(/\s+/)[0].charAt(0).toUpperCase() + fullName.split(/\s+/)[0].slice(1)
+      : "";
+    // Name slot: ", [Nama]" if name available, else ""
+    const nameSlot = firstName ? `, ${firstName}` : "";
+    // Detect if it's a salam greeting specifically
+    const isSalam = /assalamu?['\s]?alaikum|assalam/i.test(lastUserMessage.trim());
+
     const cairoHour = (new Date().getUTCHours() + 2) % 24;
     const timeGreet = cairoHour < 10 ? "Selamat pagi" : cairoHour < 15 ? "Selamat siang" : cairoHour < 18 ? "Selamat sore" : "Selamat malam";
-    const greetOptions = [
-      `Wa'alaikumsalam! Senang ada yang nyapa 😄 Aku AINA — teman diskusi Masisir yang siap bantu soal apa aja: kuliah di Al-Azhar, iqomah, sakan, kurs, atau hal-hal lain seputar kehidupan di Kairo. Mau mulai dari mana?`,
-      `${timeGreet}! Aku AINA 👋 Kalau kamu punya pertanyaan soal kehidupan Masisir — dari yang remeh sampai yang bikin pusing — boleh tanya di sini. Lagi butuh info apa nih?`,
-      `Halo, senang ketemu kamu! Aku AINA, asisten Masisir yang udah "hafal luar kepala" soal seluk-beluk hidup di Mesir 😊 Mau tanya soal apa hari ini?`,
-      `Halo! ${timeGreet} dari Kairo ☀️ Aku AINA — siap bantu kamu navigate kehidupan Masisir. Dari urusan dokumen yang ribet sampai rekomendasi tempat makan, boleh tanya semua. Ada yang bisa aku bantu?`,
-      `Wa'alaikumsalam! Alhamdulillah, pas banget — aku lagi siap 😄 Aku AINA, asisten khusus Masisir. Mau nanya soal kuliah, administrasi, kehidupan di Kairo, atau yang lainnya? Langsung aja ceritain.`,
+
+    // Salam-specific replies (Wa'alaikumsalam opening)
+    const salamOptions = [
+      `Wa'alaikumsalam${nameSlot}! 😊 Senang kamu mampir — aku AINA, teman diskusi Masisir. Lagi mau bahas apa hari ini?`,
+      `Wa'alaikumsalam${nameSlot}! Alhamdulillah. Aku AINA, siap nemani kamu soal apapun seputar kehidupan di Mesir. Mau mulai dari mana?`,
+      `Wa'alaikumsalam warohmatullahi wabarokatuh${nameSlot}! 🤍 Aku AINA — dari urusan kuliah sampai kehidupan sehari-hari di Kairo, boleh ceritain aja. Ada yang bisa aku bantu?`,
     ];
-    const greetReply = greetOptions[Math.floor(Math.random() * greetOptions.length)];
+
+    // General greeting replies
+    const greetOptions = [
+      `Halo${nameSlot}! 😊 Senang banget bisa ngobrol sama kamu. Lagi pengen bahas apa hari ini?`,
+      `${timeGreet}${nameSlot}! ☀️ Aku AINA — siap bantu kamu soal apapun seputar kehidupan Masisir. Ada yang lagi dipikirin?`,
+      `Hei${nameSlot}! 👋 Aku AINA, teman diskusi kamu di sini. Dari soal kuliah, dokumen, sampai hal random seputar Kairo — boleh tanya apa aja. Lagi butuh info apa nih?`,
+      `Halo${nameSlot}! Senang ada yang mampir 😄 Aku AINA — mau nanya soal apa? Kuliah, administrasi, kehidupan di Mesir, atau yang lainnya?`,
+      `${timeGreet}${nameSlot}! Aku AINA, asisten Masisir kamu 🙌 Langsung aja — lagi ada yang mau didiskusiin atau ditanyain?`,
+    ];
+
+    const pool = isSalam ? salamOptions : greetOptions;
+    const greetReply = pool[Math.floor(Math.random() * pool.length)];
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
