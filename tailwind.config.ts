@@ -15,10 +15,10 @@ export default {
     extend: {
       fontFamily: {
         sunspire: ['Sunspire', 'sans-serif'],
-        modernist: ['Poppins', 'sans-serif'],
-        display: ['Plus Jakarta Sans', 'Poppins', 'sans-serif'],
-        body: ['Poppins', 'sans-serif'],
-        jakarta: ['Plus Jakarta Sans', 'sans-serif'],
+        modernist: ['SF Pro Display', 'sans-serif'],
+        display: ['SF Pro Display', 'sans-serif'],
+        body: ['SF Pro Display', 'sans-serif'],
+        jakarta: ['SF Pro Display', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
