@@ -284,6 +284,19 @@ export function postProcessResponse(text) {
     (_, _hashes, questionText) => `\n\n${questionText}`
   );
 
+  // 8. Collapse blank lines between consecutive numbered list items.
+  // When blank lines appear between "N. text" and "(N+1). text", markdown parsers
+  // create separate <ol> elements, causing numbering to reset visually.
+  // Collapse those blank lines so items stay in one contiguous list.
+  cleaned = cleaned.replace(
+    /(\n\d+\. [^\n]+)\n\n(?=\d+\. )/g,
+    "$1\n"
+  );
+
+  // 9. Remove empty numbered list items (e.g. "3.\n" or "3. \n") that leave
+  // a blank bullet in the rendered output.
+  cleaned = cleaned.replace(/^\d+\.\s*$/gm, "").replace(/\n{3,}/g, "\n\n");
+
   return cleaned;
 }
 

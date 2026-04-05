@@ -406,9 +406,9 @@ const MD_COMPONENTS = {
       <ul className="mb-5 last:mb-0 pl-1 space-y-2 text-foreground/90 list-none">{children}</ul>
     </ListTypeContext.Provider>
   ),
-  ol: ({ children }: any) => (
+  ol: ({ children, start }: any) => (
     <ListTypeContext.Provider value="ol">
-      <ol className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
+      <ol start={start ?? 1} className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
     </ListTypeContext.Provider>
   ),
   li: ({ children }: any) => {
