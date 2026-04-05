@@ -4013,10 +4013,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     if (queryType === "currency") console.log(`[Source] currency query → exchange API only`);
   }
 
-  // ── Response style — auto-detected from intent ────────────────────────────
-  const answerMode = detectResponseStyle(intent.primary);
-  const answerModeHint = buildResponseStyleHint(answerMode);
-  console.log(`[ResponseStyle] auto:${answerMode} (intent:${intent.primary})`);
+  // ── Response style — user preference first, auto-detect as fallback ──────
+  const userPreferredStyle = userProfile?.responseStyle;
+  const hasUserPreference  = userPreferredStyle && VALID_RESPONSE_STYLES.has(userPreferredStyle) && userPreferredStyle !== "balanced";
+  const answerMode         = hasUserPreference ? userPreferredStyle : detectResponseStyle(intent.primary);
+  const answerModeHint     = buildResponseStyleHint(answerMode);
+  console.log(`[ResponseStyle] ${hasUserPreference ? `user:${answerMode}` : `auto:${answerMode} (intent:${intent.primary})`}`);
 
   // ── Structured source decision log ──────────────────────────────────────
   const sourceLog = {
