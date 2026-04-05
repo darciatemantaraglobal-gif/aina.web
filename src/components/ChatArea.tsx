@@ -197,7 +197,7 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
           className="text-right leading-loose text-foreground tracking-wide"
           style={{
             fontFamily: "'Amiri', serif",
-            fontSize: "32px",
+            lineHeight: "2.0",
             marginTop: "-1px",
           }}
         >
@@ -378,7 +378,7 @@ const MD_COMPONENTS = {
     const isArabic = containsArabic(children);
     return isArabic ? (
       <p dir="auto" className="mb-5 last:mb-0 break-words text-foreground/90"
-        style={{ lineHeight: "2.2", fontSize: "26px", fontFamily: "'Amiri', serif" }}>
+        style={{ lineHeight: "2.0", fontFamily: "'Amiri', serif" }}>
         {children}
       </p>
     ) : (
@@ -519,8 +519,7 @@ const MD_COMPONENTS = {
               style: {
                 textAlign: "right",
                 fontFamily: "'Amiri', serif",
-                lineHeight: "2.2",
-                fontSize: "28px",
+                lineHeight: "2.0",
                 marginBottom: 0,
               },
             } as any)
@@ -618,7 +617,7 @@ const MD_COMPONENTS = {
       <td
         dir={ar ? "rtl" : undefined}
         className={`px-4 py-2.5 text-foreground/90${ar ? " text-right text-emerald-300/90" : ""}`}
-        style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.2", fontSize: "22px" } : undefined}
+        style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
       >
         {children}
       </td>
