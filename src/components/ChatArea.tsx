@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useRef, useEffect, useCallback, createContext, useContext, Children, cloneElement, isValidElement } from "react";
 import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw, Square, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -190,28 +190,28 @@ function parseArabicBlock(raw: string): ArabicBlockData {
 function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
   return (
     <div className="my-3 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
-      {/* Arabic text row */}
+      {/* Arabic text — centered, RTL */}
       <div className="px-4 pt-3 pb-2.5 border-b border-primary/10">
         <p
           dir="rtl"
-          className="text-right text-2xl leading-loose text-foreground tracking-wide"
+          className="text-center text-2xl leading-loose text-foreground tracking-wide"
           style={{ fontFamily: "'Amiri', 'Scheherazade New', 'Noto Naskh Arabic', serif" }}
         >
           {arabic}
         </p>
       </div>
-      {/* Reading + Meaning rows */}
-      <div className="px-4 py-2.5 space-y-1.5">
+      {/* Reading + Meaning — explicitly LTR so Latin text is always left-aligned */}
+      <div className="px-4 py-2.5 space-y-1.5" dir="ltr">
         {reading && (
-          <p className="text-sm text-sky-400 flex items-start gap-1.5">
+          <p className="text-sm text-sky-400 flex items-start gap-1.5 text-left">
             <span className="mt-px shrink-0">🔊</span>
-            <span>{reading}</span>
+            <span dir="ltr" className="break-words">{reading}</span>
           </p>
         )}
         {meaning && (
-          <p className="text-sm text-foreground/80 flex items-start gap-1.5">
+          <p className="text-sm text-foreground/80 flex items-start gap-1.5 text-left">
             <span className="mt-px shrink-0 text-primary/70">✦</span>
-            <span>{meaning}</span>
+            <span dir="ltr" className="break-words">{meaning}</span>
           </p>
         )}
       </div>
@@ -490,13 +490,21 @@ const MD_COMPONENTS = {
   ),
   blockquote: ({ children }: any) => {
     if (containsArabic(children)) {
+      // Style each child paragraph individually: Arabic → centered RTL, Latin → left LTR.
+      // This prevents transliteration / Indonesian translation from inheriting right-alignment.
+      const styledChildren = Children.map(children, (child: any) => {
+        if (!isValidElement(child)) return child;
+        const isAr = containsArabic(child);
+        return cloneElement(child as Parameters<typeof cloneElement>[0], {
+          dir: isAr ? "rtl" : "ltr",
+          style: isAr
+            ? { textAlign: "center", fontFamily: "'Scheherazade New', 'Amiri', serif", lineHeight: "2.2", fontSize: "1.1em" }
+            : { textAlign: "left", fontSize: "0.9em", opacity: 0.8 },
+        } as any);
+      });
       return (
-        <blockquote
-          dir="rtl"
-          className="mt-3 mb-4 rounded-xl border border-emerald-500/50 bg-emerald-950/40 px-6 py-5 text-right text-foreground shadow-sm shadow-emerald-900/20"
-          style={{ fontFamily: "'Scheherazade New', serif", lineHeight: "2.2", fontSize: "1.1em" }}
-        >
-          {children}
+        <blockquote className="mt-3 mb-4 rounded-xl border border-emerald-500/50 bg-emerald-950/40 px-5 py-4 text-foreground shadow-sm shadow-emerald-900/20 space-y-1.5">
+          {styledChildren}
         </blockquote>
       );
     }
