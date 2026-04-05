@@ -275,6 +275,15 @@ export function postProcessResponse(text) {
   // 6. Strip repeated blank lines (3+ → 2)
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
 
+  // 7. Convert trailing ## headings that are follow-up questions into plain text.
+  // The model sometimes formats the closing follow-up as "## Question?" which
+  // renders as a large heading. Strip the ## markers only from trailing lines
+  // that end with "?" (i.e. clearly a question, not a content section header).
+  cleaned = cleaned.replace(
+    /\n+(#{1,3})\s+([^\n]+\?)\s*$/,
+    (_, _hashes, questionText) => `\n\n${questionText}`
+  );
+
   return cleaned;
 }
 
