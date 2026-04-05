@@ -148,9 +148,10 @@ function cleanMarkdown(text: string): string {
 
   // 4. Split numbered items that were collapsed onto the same line.
   //    e.g. "1. Step one 2. Step two" → "1. Step one\n2. Step two"
+  //    Also handles zero-space: "1. Step one2. Step two" → correct split.
   //    Only acts on consecutive numbers (N+1 = M) to avoid false positives.
   result = result.replace(
-    /(\d+\.\s[^\n]+?)\s{1,4}(?=(\d+)\.\s)/g,
+    /(\d+\.\s[^\n]+?)\s{0,4}(?=(\d+)\.\s)/g,
     (match, item, nextNum) => {
       const thisNum = parseInt(item.match(/^(\d+)/)?.[1] ?? "0");
       return parseInt(nextNum) === thisNum + 1 ? `${item}\n` : match;
@@ -1776,7 +1777,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               <div className="flex gap-3 min-w-0 justify-start">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
                 <div className="min-w-0 flex-1 py-1.5 text-[15px] leading-[1.7]" dir="ltr">
-                  {renderWithArabicBlocks(streamingMsg.displayed, false)}
+                  {renderWithArabicBlocks(streamingMsg.displayed, true)}
                   {streamingMsg.isStreaming && (
                     <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
                   )}

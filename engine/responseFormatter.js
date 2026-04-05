@@ -235,6 +235,7 @@ export function postProcessResponse(text) {
   );
 
   // 4. Remove sentences that contain waiting_language (model hallucinating a search state)
+  // Process LINE BY LINE so list structure and newlines are preserved.
   const WAITING_PHRASES = [
     /tunggu sebentar/i,
     /aku cek dulu/i,
@@ -247,9 +248,20 @@ export function postProcessResponse(text) {
   for (const pattern of WAITING_PHRASES) {
     if (pattern.test(cleaned)) {
       cleaned = cleaned
-        .split(/(?<=[.!?])\s+/)
-        .filter(sentence => !pattern.test(sentence))
-        .join(" ");
+        .split('\n')
+        .map(line => {
+          if (!pattern.test(line)) return line;
+          // Remove only the matching clause/sentence within this line.
+          // Split at sentence boundaries (. ! ?) followed by a space — NOT \n
+          // so list markers like "1. " are not broken.
+          return line
+            .split(/(?<=[.!?]) +/)
+            .filter(s => !pattern.test(s))
+            .join(' ')
+            .trim();
+        })
+        .filter(line => line.length > 0)
+        .join('\n');
       console.warn(`[PostProcess] stripped waiting_language sentence: ${pattern}`);
     }
   }
