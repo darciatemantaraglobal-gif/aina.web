@@ -419,19 +419,20 @@ function buildSchemaHint(intentPrimary) {
   }
   if (intentPrimary === "factual") {
     return `\n\n**Struktur jawaban — pertanyaan faktual (SEMUA POIN WAJIB):**\n` +
-      `1. **Jawaban langsung** — 1 kalimat pertama langsung ke inti. Tidak ada pembuka basa-basi.\n` +
-      `2. ⚠️ **WAJIB — Penjelasan** — 2–3 kalimat konteks, latar belakang, atau info pendukung. TIDAK boleh dilewati. Jawaban 1 kalimat saja = tidak memenuhi standar.\n` +
+      `1. **Jawaban hangat & langsung** — ekspresi natural ("Nah,", "Jadi,", "Oke,") + 1 kalimat inti. Bukan fakta mentah.\n` +
+      `2. ⚠️ **WAJIB — Penjelasan** — 1–2 kalimat konteks, latar belakang, atau info pendukung. TIDAK boleh dilewati.\n` +
       `3. **Poin-poin** (jika ada banyak aspek) — bullet dengan penjelasan 1 kalimat per item.\n` +
-      `4. **Catatan** — peringatan kritis atau info tambahan penting. Skip jika tidak ada.\n` +
-      `Minimum: 3 kalimat total. JANGAN tambahkan "Sumber:". Gunakan konektor ringan ("Jadi...", "Nah...", "Intinya...") untuk transisi.`;
+      `4. 🔁 **WAJIB — Follow-up penutup** — 1 kalimat yang mengundang lanjutan. SELALU ada, bahkan jawaban singkat sekalipun.\n` +
+      `   Contoh follow-up: "Mau aku ceritain lebih lanjut soal [topik terkait]?" / "Kamu penasaran sama bagian yang mana?" / "Kalau mau tau lebih dalam, bisa tanya juga."\n` +
+      `Minimum: 3 kalimat + 1 follow-up. Jawaban tanpa follow-up = GAGAL.`;
   }
   if (intentPrimary === "confused") {
     return `\n\n**Struktur jawaban — user tampak bingung:**\n` +
-      `1. **Akui konteks/situasinya** — 1 kalimat singkat yang show kamu mengerti situasinya, bukan validasi kosong.\n` +
+      `1. **Akui konteks/situasinya** — 1 kalimat singkat yang show kamu mengerti situasinya.\n` +
       `2. **Jawaban langsung** — 1–2 kalimat inti yang menjawab intinya.\n` +
       `3. **Penjelasan atau langkah** — singkat, jelas, tidak overwhelming. Maks 3–4 poin.\n` +
-      `4. **Tawaran konkret** — tunjukkan langkah pertama yang harus diambil, atau tawaran spesifik.\n` +
-      `Nada: tenang, jelas, tidak menghakimi. Hindari terlalu banyak informasi sekaligus.`;
+      `4. 🔁 **WAJIB — Follow-up penutup** — tawaran konkret dan spesifik, bukan generik. Contoh: "Ceritain situasinya lebih detail — aku bisa bantu lebih spesifik." / "Mau mulai dari bagian mana dulu?"\n` +
+      `Nada: tenang, jelas, tidak menghakimi. WAJIB ada follow-up di akhir.`;
   }
   if (intentPrimary === "recommendation") {
     return `\n\n**Struktur jawaban — rekomendasi:**\n` +
@@ -676,11 +677,17 @@ Setiap jawaban HARUS terasa manusiawi, bukan robotic. Caranya:
 ❌ SALAH: "Presiden Amerika Serikat adalah Donald Trump."
 ✅ BENAR: "Nah, Presiden Amerika Serikat saat ini adalah Donald Trump — ia mulai menjabat lagi sejak Januari 2025."
 
-**Struktur universal (untuk jawaban substantif):**
+**Struktur universal (untuk semua jawaban — SEMUA POIN WAJIB):**
 1. **Pembuka hangat + inti langsung** — ekspresi natural + 1 kalimat jawaban. Kalimat pertama sudah menjawab, tapi terasa manusiawi.
-2. ⚠️ **WAJIB — Penjelasan** — 2–3 kalimat konteks, alasan, atau info pendukung. TIDAK boleh dilewati. Minimum total jawaban: 3 kalimat.
+2. ⚠️ **WAJIB — Penjelasan** — 1–2 kalimat konteks, alasan, atau info pendukung. TIDAK boleh dilewati.
 3. **Poin/langkah** (jika relevan) — bernomor atau bullet. Tiap poin punya 1 kalimat penjelasan.
-4. **Catatan / closing** — peringatan kritis, tip, atau hook percakapan ringan. Skip jika tidak ada.
+4. 🔁 **WAJIB — Follow-up penutup** — 1 kalimat yang mengundang lanjutan percakapan. HARUS ADA di setiap jawaban, bahkan yang singkat sekalipun.
+   - Spesifik ke topik, bukan generik. Jangan "Semoga membantu!" atau "Ada yang ingin ditanyakan?"
+   - Contoh baik: "Mau aku jelasin lebih lanjut soal [aspek X]?" / "Ada situasi spesifik yang kamu hadapi?" / "Penasaran sama bagian yang mana?"
+   - Contoh buruk: "Jangan ragu untuk bertanya!" ← terlalu generik, tidak mengundang lanjutan yang konkret.
+
+❌ GAGAL jika: jawaban hanya 1–2 kalimat tanpa follow-up.
+✅ BERHASIL jika: ada pembuka hangat + isi + follow-up spesifik.
 
 **Format Markdown:**
 - Casual → paragraf natural, tanpa heading, tanpa struktur kaku.
