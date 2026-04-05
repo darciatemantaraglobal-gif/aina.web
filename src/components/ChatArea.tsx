@@ -194,7 +194,7 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
       <div className="px-4 pt-3 pb-2.5 border-b border-primary/10">
         <p
           dir="rtl"
-          className="text-right leading-loose text-foreground tracking-wide"
+          className="text-left leading-loose text-foreground tracking-wide"
           style={{
             fontFamily: "'Amiri', serif",
             lineHeight: "2.0",
@@ -515,7 +515,7 @@ const MD_COMPONENTS = {
             cloneElement(child as Parameters<typeof cloneElement>[0], {
               dir: "rtl",
               style: {
-                textAlign: "right",
+                textAlign: "left",
                 fontFamily: "'Amiri', serif",
                 lineHeight: "2.0",
                 marginBottom: 0,
