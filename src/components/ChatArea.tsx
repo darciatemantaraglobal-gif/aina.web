@@ -3,6 +3,7 @@ import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Pa
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getPersonalization } from "@/components/DashboardSidebar";
@@ -279,7 +280,7 @@ function loadStoredFeedback(): Record<string, "up" | "down"> {
 }
 
 const DAILY_LIMIT = 5;
-const REMARK_PLUGINS = [remarkGfm];
+const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
 function extractMdText(node: any): string {
   if (typeof node === "string") return node;
@@ -300,15 +301,15 @@ const MD_COMPONENTS = {
   p: ({ children }: any) => {
     const isArabic = containsArabic(children);
     return isArabic ? (
-      <p dir="auto" className="mb-4 last:mb-0 break-words text-foreground/90" style={{ lineHeight: "1.9" }}>
+      <p dir="auto" className="mb-5 last:mb-0 break-words text-foreground/90" style={{ lineHeight: "2.0" }}>
         {children}
       </p>
     ) : (
-      <p className="mb-4 last:mb-0 break-words leading-7 text-foreground/90">{children}</p>
+      <p className="mb-5 last:mb-0 break-words leading-[1.75] text-foreground/90">{children}</p>
     );
   },
   strong: ({ children }: any) => (
-    <strong className="font-semibold text-foreground">{children}</strong>
+    <strong className="font-bold text-foreground">{children}</strong>
   ),
   em: ({ children }: any) => {
     const text = [children].flat().map((c: any) => (typeof c === "string" ? c : "")).join("");
@@ -323,11 +324,11 @@ const MD_COMPONENTS = {
     return <em className="italic text-white/80" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>{children}</em>;
   },
   ul: ({ children }: any) => {
-    return <ul className="mb-4 last:mb-0 space-y-1.5 text-foreground/90 list-none">{children}</ul>;
+    return <ul className="mb-5 last:mb-0 pl-1 space-y-2 text-foreground/90 list-none">{children}</ul>;
   },
   ol: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <ol dir={ar ? "auto" : undefined} className="mb-4 last:mb-0 ml-5 list-decimal space-y-1.5 text-foreground/90">{children}</ol>;
+    return <ol dir={ar ? "auto" : undefined} className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>;
   },
   li: ({ children, node }: any) => {
     const isArabic = containsArabic(children);
@@ -337,8 +338,8 @@ const MD_COMPONENTS = {
       return (
         <li
           dir={isArabic ? "rtl" : undefined}
-          className="leading-7 break-words pl-1"
-          style={{ lineHeight: isArabic ? "1.9" : undefined }}
+          className="leading-[1.75] break-words pl-1"
+          style={{ lineHeight: isArabic ? "2.0" : undefined }}
         >
           {children}
         </li>
@@ -347,16 +348,16 @@ const MD_COMPONENTS = {
 
     if (isArabic) {
       return (
-        <li dir="rtl" className="flex gap-2.5 items-start" style={{ lineHeight: "1.9" }}>
-          <span className="shrink-0 mt-[0.45em] h-[5px] w-[5px] rounded-full bg-foreground/50" aria-hidden />
+        <li dir="rtl" className="flex gap-3 items-start" style={{ lineHeight: "2.0" }}>
+          <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
           <span className="flex-1 min-w-0 break-words">{children}</span>
         </li>
       );
     }
 
     return (
-      <li className="flex gap-2.5 items-start leading-7">
-        <span className="shrink-0 mt-[0.45em] h-[5px] w-[5px] rounded-full bg-foreground/50" aria-hidden />
+      <li className="flex gap-3 items-start leading-[1.75]">
+        <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
         <span className="flex-1 min-w-0 break-words">{children}</span>
       </li>
     );
@@ -1477,7 +1478,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1 min-h-0">
-                    <div className="py-1" dir={isArabicMsg ? "rtl" : "ltr"}>
+                    <div className="py-1.5 text-[15px] leading-[1.7]" dir={isArabicMsg ? "rtl" : "ltr"}>
                       {renderWithArabicBlocks(msg.content)}
                     </div>
 
@@ -1708,7 +1709,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             {streamingMsg && (
               <div className="flex gap-3 min-w-0 justify-start">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
-                <div className="min-w-0 flex-1 py-1" dir={isArabicText(streamingMsg.displayed) ? "rtl" : "ltr"}>
+                <div className="min-w-0 flex-1 py-1.5 text-[15px] leading-[1.7]" dir={isArabicText(streamingMsg.displayed) ? "rtl" : "ltr"}>
                   {renderWithArabicBlocks(streamingMsg.displayed, false)}
                   {streamingMsg.isStreaming && (
                     <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
