@@ -26,6 +26,7 @@ const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
+const SERVER_START_MS = Date.now(); // epoch timestamp when this process started
 
 /* ── Process-level crash guards ──────────────────────── */
 // Prevent silent crashes — always log to console so Replit/ops can see it.
@@ -5115,7 +5116,79 @@ app.delete("/api/notifications", async (req, res) => {
   res.json({ success: true });
 });
 
-/* ── Admin: Stats ────────────────────────────────────── */
+/* ── Admin: System status / update flag / restart ───── */
+
+// GET /api/admin/system/status
+// Returns server uptime and whether a system update was flagged after server start.
+app.get("/api/admin/system/status", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  try {
+    const supabase = getAdminClient();
+    const { data } = await supabase
+      .from("system_settings")
+      .select("value, updated_at")
+      .eq("key", "last_system_update")
+      .maybeSingle();
+
+    const lastUpdateAt = data?.updated_at ?? null;
+    const needsRestart = lastUpdateAt
+      ? new Date(lastUpdateAt).getTime() > SERVER_START_MS
+      : false;
+
+    res.json({
+      needsRestart,
+      serverStartMs: SERVER_START_MS,
+      uptimeSecs: Math.floor((Date.now() - SERVER_START_MS) / 1000),
+      lastUpdateAt,
+    });
+  } catch (err) {
+    res.json({ needsRestart: false, uptimeSecs: Math.floor((Date.now() - SERVER_START_MS) / 1000) });
+  }
+});
+
+// POST /api/admin/system/mark-updated
+// Sets the "needs restart" flag — call this after deploying code changes.
+app.post("/api/admin/system/mark-updated", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  try {
+    const supabase = getAdminClient();
+    await supabase.from("system_settings").upsert(
+      { key: "last_system_update", value: "true", updated_at: new Date().toISOString() },
+      { onConflict: "key" }
+    );
+    console.log(`[System] mark-updated called by admin ${admin.id}`);
+    res.json({ ok: true, markedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/system/restart
+// Gracefully restarts the Node server process (Replit workflow will auto-restart it).
+app.post("/api/admin/system/restart", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  try {
+    const supabase = getAdminClient();
+    // Clear the needs-restart flag so after restart the banner won't show again
+    await supabase.from("system_settings").upsert(
+      { key: "last_system_update", value: "false", updated_at: new Date(SERVER_START_MS).toISOString() },
+      { onConflict: "key" }
+    );
+  } catch (_) { /* non-critical */ }
+
+  console.log(`[System] Restart initiated by admin ${admin.id} — exiting process now`);
+  res.json({ ok: true, message: "Server akan restart dalam 1 detik..." });
+
+  // Give the response time to flush before exiting
+  setTimeout(() => process.exit(0), 800);
+});
+
 app.get("/api/admin/stats", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
@@ -10816,6 +10889,7 @@ async function checkRequiredTables() {
     "daily_focus_items", "admin_tracker_items", "reminder_logs",
     "library_items",
     "flashcard_sets",
+    "system_settings",
   ];
 
   const missing = [];
@@ -11061,6 +11135,12 @@ async function runColumnMigrations() {
       LIMIT match_count;
     END;
     $func$;`,
+    // System settings table — for server restart flag and future config
+    `CREATE TABLE IF NOT EXISTS public.system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

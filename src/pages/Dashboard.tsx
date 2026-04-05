@@ -9,6 +9,7 @@ import WelcomeModal from "@/components/WelcomeModal";
 import BreakingUpdatesBanner from "@/components/BreakingUpdatesBanner";
 import SetupProfileModal from "@/components/SetupProfileModal";
 import AnnouncementPopup from "@/components/AnnouncementPopup";
+import SystemRestartBanner from "@/components/SystemRestartBanner";
 import GuidedTour, { type TourStep } from "@/components/GuidedTour";
 import { supabase } from "@/integrations/supabase/client";
 import { Menu, RefreshCw } from "lucide-react";
@@ -637,6 +638,7 @@ const Dashboard = () => {
           initialValues={profileInitial}
         />
       )}
+      <SystemRestartBanner isAdmin={isAdmin} />
       <FeedbackButton />
       {!showSetup && <AnnouncementPopup />}
       {showTour && activeTourSteps.length > 0 && (
