@@ -178,7 +178,8 @@ function parseArabicBlock(raw: string): ArabicBlockData {
   const get = (label: string) => {
     const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Reading \\(Latin\\):|Meaning:)[^\\n]*)*)`, "i");
     const m = raw.match(re);
-    return m ? m[1].trim() : "";
+    if (!m) return "";
+    return m[1].replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   };
   return {
     arabic: get("Arabic Text"),
