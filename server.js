@@ -5168,24 +5168,44 @@ app.post("/api/admin/system/mark-updated", async (req, res) => {
 });
 
 // POST /api/admin/system/restart
-// Gracefully restarts the Node server process (Replit workflow will auto-restart it).
+// On Vercel: triggers a new deployment via Deploy Hook (set VERCEL_DEPLOY_HOOK_URL env var).
+// On Replit/local: gracefully exits the process so the workflow restarts it automatically.
 app.post("/api/admin/system/restart", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
+  // Clear the needs-restart flag regardless of mode
   try {
     const supabase = getAdminClient();
-    // Clear the needs-restart flag so after restart the banner won't show again
     await supabase.from("system_settings").upsert(
       { key: "last_system_update", value: "false", updated_at: new Date(SERVER_START_MS).toISOString() },
       { onConflict: "key" }
     );
   } catch (_) { /* non-critical */ }
 
-  console.log(`[System] Restart initiated by admin ${admin.id} — exiting process now`);
-  res.json({ ok: true, message: "Server akan restart dalam 1 detik..." });
+  const deployHookUrl = process.env.VERCEL_DEPLOY_HOOK_URL;
 
-  // Give the response time to flush before exiting
+  // ── Vercel: trigger a new deployment via Deploy Hook ──────────────
+  if (deployHookUrl) {
+    try {
+      const hookRes = await fetch(deployHookUrl, { method: "POST" });
+      const hookData = await hookRes.json().catch(() => ({}));
+      console.log(`[System] Vercel deploy hook triggered by ${admin.id}`, hookData);
+      return res.json({
+        ok: true,
+        mode: "vercel_deploy",
+        message: "Deployment baru sedang di-proses. Ini memakan waktu 1–3 menit.",
+        jobId: hookData?.job?.id ?? null,
+      });
+    } catch (err) {
+      console.error("[System] Deploy hook failed:", err.message);
+      return res.status(500).json({ error: "Gagal trigger deploy hook: " + err.message });
+    }
+  }
+
+  // ── Replit / non-Vercel: exit process, workflow restarts it ───────
+  console.log(`[System] Restart via process.exit(0) — initiated by admin ${admin.id}`);
+  res.json({ ok: true, mode: "process_restart", message: "Server akan restart dalam 1 detik..." });
   setTimeout(() => process.exit(0), 800);
 });
 
