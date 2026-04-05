@@ -197,7 +197,7 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
           className="text-right leading-loose text-foreground tracking-wide"
           style={{
             fontFamily: "'Amiri', 'Scheherazade New', 'Noto Naskh Arabic', serif",
-            fontSize: "1.625rem",
+            fontSize: "1.8rem",
             marginTop: "-1px",
           }}
         >
@@ -375,7 +375,8 @@ const MD_COMPONENTS = {
   p: ({ children }: any) => {
     const isArabic = containsArabic(children);
     return isArabic ? (
-      <p dir="auto" className="mb-5 last:mb-0 break-words text-foreground/90" style={{ lineHeight: "2.0" }}>
+      <p dir="auto" className="mb-5 last:mb-0 break-words text-foreground/90"
+        style={{ lineHeight: "2.2", fontSize: "1.4rem", fontFamily: "'Scheherazade New', 'Amiri', serif" }}>
         {children}
       </p>
     ) : (
@@ -517,7 +518,7 @@ const MD_COMPONENTS = {
                 textAlign: "right",
                 fontFamily: "'Scheherazade New', 'Amiri', serif",
                 lineHeight: "2.2",
-                fontSize: "1.15em",
+                fontSize: "1.45rem",
                 marginBottom: 0,
               },
             } as any)
@@ -613,7 +614,7 @@ const MD_COMPONENTS = {
       <td
         dir={ar ? "rtl" : undefined}
         className={`px-4 py-2.5 text-foreground/90${ar ? " text-right text-emerald-300/90" : ""}`}
-        style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "2.0", fontSize: "1.05em" } : undefined}
+        style={ar ? { fontFamily: "'Scheherazade New', serif", lineHeight: "2.2", fontSize: "1.3rem" } : undefined}
       >
         {children}
       </td>
