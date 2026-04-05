@@ -298,7 +298,7 @@ export default function SetupProfileModal({ userId, onComplete, initialValues }:
                   Tahun Tiba di Mesir
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {YEARS.slice(0, 8).map(y => (
+                  {YEARS.filter(y => parseInt(y) >= 2010).map(y => (
                     <button
                       key={y}
                       onClick={() => setArrivalYear(arrivalYear === y ? "" : y)}
