@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
 import { Send, AlertCircle, Menu, Plus, Zap, Crown, BookOpen, X, Flag, Check, Paperclip, FileText, ImageIcon, Copy, ThumbsUp, ThumbsDown, BookMarked, Mic, MicOff, Globe, TrendingUp, ShieldCheck, Bookmark, BookmarkCheck, MapPin, Download, RefreshCw, Square, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -80,18 +80,34 @@ const AinaLogo = ({ className }: { className?: string }) => (
 );
 
 function cleanMarkdown(text: string): string {
-  return text
-    // Strip "Sumber: ..." lines — already rendered as small styled badges below the message
-    .replace(/^\*{0,2}sumber\*{0,2}[\s:*]+.+$/gim, "")
+  let result = text;
+
+  // Strip "Sumber: ..." lines — rendered as source badges below the message
+  result = result.replace(/^\*{0,2}sumber\*{0,2}[\s:*]+.+$/gim, "");
+
+  // Convert HTML ordered lists to numbered markdown BEFORE stripping tags,
+  // so <ol><li>Item A</li><li>Item B</li></ol> → "1. Item A\n2. Item B"
+  result = result.replace(/<ol\b[^>]*>([\s\S]*?)<\/ol>/gi, (_, body) => {
+    let n = 0;
+    return body
+      .replace(/<li\b[^>]*>/gi, () => { n++; return `\n${n}. `; })
+      .replace(/<\/li>/gi, "");
+  });
+
+  // Convert HTML unordered lists to bullet markdown
+  result = result.replace(/<ul\b[^>]*>([\s\S]*?)<\/ul>/gi, (_, body) => {
+    return body.replace(/<li\b[^>]*>/gi, "\n- ").replace(/<\/li>/gi, "");
+  });
+
+  return result
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?p>/gi, "\n")
     .replace(/<\/?b>/gi, "**")
     .replace(/<\/?strong>/gi, "**")
     .replace(/<\/?i>/gi, "_")
     .replace(/<\/?em>/gi, "_")
-    .replace(/<\/?ul>/gi, "")
-    .replace(/<\/?ol>/gi, "")
-    .replace(/<li>/gi, "\n- ")
+    // Catch any remaining stray li tags (e.g. malformed HTML)
+    .replace(/<li\b[^>]*>/gi, "\n- ")
     .replace(/<\/li>/gi, "")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/gi, " ")
@@ -282,6 +298,10 @@ function loadStoredFeedback(): Record<string, "up" | "down"> {
 const DAILY_LIMIT = 5;
 const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
+// Context used by MD_COMPONENTS to tell <li> whether it's inside <ol> or <ul>.
+// react-markdown v10 no longer passes node.parent, so we propagate it via context.
+const ListTypeContext = createContext<"ol" | "ul">("ul");
+
 function extractMdText(node: any): string {
   if (typeof node === "string") return node;
   if (Array.isArray(node)) return node.map(extractMdText).join("");
@@ -323,16 +343,23 @@ const MD_COMPONENTS = {
     }
     return <em className="italic text-white/80" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>{children}</em>;
   },
-  ul: ({ children }: any) => {
-    return <ul className="mb-5 last:mb-0 pl-1 space-y-2 text-foreground/90 list-none">{children}</ul>;
-  },
+  ul: ({ children }: any) => (
+    <ListTypeContext.Provider value="ul">
+      <ul className="mb-5 last:mb-0 pl-1 space-y-2 text-foreground/90 list-none">{children}</ul>
+    </ListTypeContext.Provider>
+  ),
   ol: ({ children }: any) => {
     const ar = containsArabic(children);
-    return <ol dir={ar ? "auto" : undefined} className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>;
+    return (
+      <ListTypeContext.Provider value="ol">
+        <ol dir={ar ? "auto" : undefined} className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
+      </ListTypeContext.Provider>
+    );
   },
-  li: ({ children, node }: any) => {
+  li: ({ children }: any) => {
+    const listType = useContext(ListTypeContext);
+    const isOrdered = listType === "ol";
     const isArabic = containsArabic(children);
-    const isOrdered = node?.parent?.tagName === "ol";
 
     if (isOrdered) {
       return (
