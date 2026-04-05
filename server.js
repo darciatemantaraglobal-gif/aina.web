@@ -2403,6 +2403,109 @@ app.get("/api/debug", async (_req, res) => {
   });
 });
 
+/* ── Chat Pipeline Self-Test (no auth needed) ─────────── */
+app.get("/api/chat-test", async (_req, res) => {
+  const results = {};
+  const MASTER_ID = [...MASTER_ADMIN_IDS][0] || "unknown";
+  const supabase  = getAdminClient();
+
+  // 1. Supabase connection
+  try {
+    const { error } = await supabase.from("profiles").select("id").limit(1);
+    results.supabase = error ? `FAIL: ${error.message}` : "OK";
+  } catch (e) { results.supabase = `THROW: ${e.message}`; }
+
+  // 2. user_roles query
+  try {
+    const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", MASTER_ID);
+    results.user_roles = error ? `FAIL: ${error.message}` : `OK (${data?.length} rows)`;
+  } catch (e) { results.user_roles = `THROW: ${e.message}`; }
+
+  // 3. messages count
+  try {
+    const { count, error } = await supabase.from("messages").select("*", { count: "exact", head: true }).eq("user_id", MASTER_ID);
+    results.messages_count = error ? `FAIL: ${error.message}` : `OK (count=${count})`;
+  } catch (e) { results.messages_count = `THROW: ${e.message}`; }
+
+  // 4. knowledge_base
+  try {
+    const { data, error } = await supabase.from("knowledge_base").select("id, title").limit(3);
+    results.knowledge_base = error ? `FAIL: ${error.message}` : `OK (${data?.length} rows)`;
+  } catch (e) { results.knowledge_base = `THROW: ${e.message}`; }
+
+  // 5. pinned_updates
+  try {
+    const { data, error } = await supabase.from("pinned_updates").select("topic").eq("active", true).limit(3);
+    results.pinned_updates = error ? `FAIL: ${error.message}` : `OK (${data?.length} rows)`;
+  } catch (e) { results.pinned_updates = `THROW: ${e.message}`; }
+
+  // 6. user_memories
+  try {
+    const { data, error } = await supabase.from("user_memories").select("id").eq("user_id", MASTER_ID).limit(5);
+    results.user_memories = error ? `FAIL: ${error.message}` : `OK (${data?.length} rows)`;
+  } catch (e) { results.user_memories = `THROW: ${e.message}`; }
+
+  // 7. Engine functions
+  try {
+    const ctx   = detectMasisirContext("Halo");
+    const exp   = expandQuery("Halo", ctx);
+    const int   = detectIntent("Halo");
+    const hint  = buildIntentHint(int);
+    const style = detectResponseStyle(int.primary);
+    results.engine_functions = `OK (intent=${int.primary})`;
+  } catch (e) { results.engine_functions = `THROW: ${e.message}`; }
+
+  // 8. fetchRelevantArticles
+  try {
+    const arts = await fetchRelevantArticles("halo", "casual");
+    results.fetch_articles = `OK (${arts.length} articles)`;
+  } catch (e) { results.fetch_articles = `THROW: ${e.message}`; }
+
+  // 9. fetchPinnedUpdates
+  try {
+    const pins = await fetchPinnedUpdates();
+    results.fetch_pinned = `OK (${pins.length} items)`;
+  } catch (e) { results.fetch_pinned = `THROW: ${e.message}`; }
+
+  // 10. fetchUserMemories
+  try {
+    const mems = await fetchUserMemories(MASTER_ID, "Halo", "casual");
+    results.fetch_memories = `OK (${mems.length} items)`;
+  } catch (e) { results.fetch_memories = `THROW: ${e.message}`; }
+
+  // 11. buildSystemPrompt
+  try {
+    const todayStr = new Date().toLocaleDateString("id-ID", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+    const intent   = detectIntent("Halo");
+    const intentHint = buildIntentHint(intent);
+    const style    = detectResponseStyle(intent.primary);
+    const hint     = buildResponseStyleHint(style);
+    const prompt   = buildSystemPrompt({
+      todayStr, intentHint, intentPrimary: intent.primary,
+      confidence: { level: "sedang", hint: "" },
+      answerModeHint: hint,
+      pinnedContext: "", memoryContext: "", personalizationContext: "",
+      knowledgeContext: "", exchangeContext: null, dorarContext: null,
+      perplexityContext: null, wikiContext: null, ddgContext: null,
+      sourceMeta: { trust: "Sedang", label: "Pengetahuan AINA", retrieved_at: null },
+    });
+    results.build_system_prompt = `OK (${prompt.length} chars)`;
+  } catch (e) { results.build_system_prompt = `THROW: ${e.message}`; }
+
+  // 12. OpenRouter connectivity
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const r = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    results.openrouter_connectivity = r.ok ? `OK (${r.status})` : `FAIL (${r.status})`;
+  } catch (e) { results.openrouter_connectivity = `THROW: ${e.message}`; }
+
+  const allOk = Object.values(results).every(v => v.startsWith("OK"));
+  res.json({ status: allOk ? "PASS" : "FAIL", results });
+});
+
 /* ── Current user info (role, master admin status) ───── */
 app.get("/api/me", async (req, res) => {
   const authHeader = req.headers.authorization;

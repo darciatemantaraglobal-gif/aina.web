@@ -39,7 +39,15 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
+            // SSE/streaming endpoints — must NEVER be cached or timed-out by SW.
+            // The service worker cannot handle long-lived SSE connections;
+            // intercepting them causes "Terjadi kesalahan" after ~8 seconds.
+            urlPattern: /^\/api\/(chat|flashcards\/generate)(\/|$|\?)/,
+            handler: "NetworkOnly",
+          },
+          {
+            // Other API endpoints (non-streaming) — short timeout, cacheable
+            urlPattern: /^\/api\/(?!chat|flashcards\/generate)/,
             handler: "NetworkFirst",
             options: {
               cacheName: "aina-api-cache",
