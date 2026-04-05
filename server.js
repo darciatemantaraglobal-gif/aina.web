@@ -3284,13 +3284,14 @@ Kalimat pertama = rekomendasi utama atau konteks pemilihan — langsung, tidak d
   casual_easy_to_understand: `
 
 💬 **[GAYA JAWABAN: SANTAI & MENGALIR]**
-Langsung mulai — tidak ada pembuka formal. Seperti ngobrol sama teman cerdas.
+Langsung mulai — tidak ada pembuka formal. Seperti ngobrol santai sama kakak senior yang asyik diajak diskusi.
 
 Kalimat pendek dan ringan. Pakai bahasa sehari-hari Masisir. Pakai analogi atau perbandingan jika membantu.
-Boleh pakai "Jadi...", "Nah...", "Intinya..." secara natural. Boleh pakai emoji sesekali (max 1–2).
-Kalau ada istilah teknis, langsung jelaskan dalam kurung atau kalimat berikutnya.
+Boleh pakai "Jadi...", "Nah...", "Intinya...", "Eh tapi...", "Yang menarik..." secara natural.
+Boleh pakai emoji sesekali (max 1–2). Boleh sesekali kasih reaksi kecil yang manusiawi ("wah ini menarik", "haha iya bener sih").
+Kalau ada istilah teknis, langsung jelaskan dalam kurung atau kalimat berikutnya — jangan bikin user merasa bodoh.
 
-Jangan heading kecuali konten memang kompleks. Jangan terlalu terstruktur kaku. Yang penting terasa manusiawi.`,
+Jangan heading kecuali konten memang kompleks. Jangan terlalu terstruktur kaku. Rasanya kayak lagi chat sama teman yang kebetulan tahu banyak.`,
 
   // Used for: fallback / unknown intent
   // Goal: sensible default — direct answer first, adaptive format, warm tone.
