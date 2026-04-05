@@ -300,16 +300,56 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
       <div
-        className="relative flex w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#1c1c23] shadow-2xl"
-        style={{ maxHeight: "min(85vh, 600px)" }}
+        className="relative flex flex-col sm:flex-row w-full sm:max-w-2xl overflow-hidden rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#1c1c23] shadow-2xl"
+        style={{ maxHeight: "min(92vh, 600px)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Left sidebar ── */}
-        <div className="flex w-48 shrink-0 flex-col border-r border-white/[0.07] bg-[#16161c] py-4">
-          {/* Header */}
+        {/* ── Mobile: drag handle ── */}
+        <div className="flex sm:hidden justify-center pt-3 pb-1 shrink-0">
+          <div className="h-1 w-10 rounded-full bg-white/20" />
+        </div>
+
+        {/* ── Mobile: header + tab bar ── */}
+        <div className="flex sm:hidden flex-col shrink-0 border-b border-white/[0.07]">
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <span className="text-sm font-semibold text-foreground">Pengaturan AINA</span>
+            <button
+              onClick={onClose}
+              className="rounded-xl p-1.5 text-foreground/40 hover:bg-white/5 hover:text-foreground/70 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex gap-1 overflow-x-auto px-3 pb-3 [scrollbar-width:none] [-webkit-overflow-scrolling:touch]">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = activeNav === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveNav(item.id)}
+                  className={`relative flex-shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors ${
+                    active
+                      ? "bg-primary/15 text-primary border border-primary/25"
+                      : "text-foreground/50 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.07] hover:text-foreground/80"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{item.label}</span>
+                  {item.dot && (
+                    <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Desktop: left sidebar ── */}
+        <div className="hidden sm:flex w-48 shrink-0 flex-col border-r border-white/[0.07] bg-[#16161c] py-4">
           <div className="flex items-center justify-between px-4 pb-4">
             <span className="text-xs font-semibold uppercase tracking-widest text-foreground/30">Pengaturan</span>
             <button
@@ -319,7 +359,6 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
               <X className="h-4 w-4" />
             </button>
           </div>
-          {/* Nav items */}
           <nav className="flex-1 space-y-0.5 px-2">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -343,7 +382,6 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
               );
             })}
           </nav>
-          {/* Save button at bottom */}
           <div className="px-3 pt-4">
             <button
               onClick={save}
@@ -355,60 +393,59 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {/* ── Right content ── */}
-        <div className="flex-1 overflow-y-auto">
-          {/* ── Personalisasi ── */}
-          {activeNav === "personalisasi" && (
-            <div className="p-7">
-              <h2 className="mb-1 text-lg font-semibold text-foreground">Personalisasi</h2>
-              <div className="mb-5 h-px bg-white/[0.07]" />
+        {/* ── Content area ── */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
 
-              {/* Gaya dasar */}
-              <p className="mb-0.5 text-sm font-semibold text-foreground">Gaya Dasar dan Nada</p>
-              <p className="mb-3 text-xs text-foreground/50">Atur gaya dan nada dasar bagaimana AINA merespons kamu.</p>
+            {/* Personalisasi */}
+            {activeNav === "personalisasi" && (
+              <div className="p-4 sm:p-7">
+                <h2 className="mb-1 text-base sm:text-lg font-semibold text-foreground">Personalisasi</h2>
+                <div className="mb-4 h-px bg-white/[0.07]" />
 
-              <SettingsRow label="Gaya Bahasa">
-                <SettingsDropdown
-                  options={chatStyleOptions}
-                  value={prefs.chatStyle}
-                  onChange={(v) => setPrefs((p) => ({ ...p, chatStyle: v as "santai" | "formal" }))}
-                />
-              </SettingsRow>
+                <p className="mb-0.5 text-sm font-semibold text-foreground">Gaya Dasar dan Nada</p>
+                <p className="mb-3 text-xs text-foreground/50">Atur gaya dan nada dasar bagaimana AINA merespons kamu.</p>
 
-              {/* Karakteristik */}
-              <div className="mb-3 mt-6">
-                <p className="mb-0.5 text-sm font-semibold text-foreground">Karakteristik</p>
-                <p className="text-xs text-foreground/50">Pilih kustomisasi tambahan di atas gaya dasar.</p>
-              </div>
+                <SettingsRow label="Gaya Bahasa">
+                  <SettingsDropdown
+                    options={chatStyleOptions}
+                    value={prefs.chatStyle}
+                    onChange={(v) => setPrefs((p) => ({ ...p, chatStyle: v as "santai" | "formal" }))}
+                  />
+                </SettingsRow>
 
-              <SettingsRow
-                label="Format Jawaban"
-                desc="Tentukan bagaimana AINA menyusun setiap respons."
-              >
-                <SettingsDropdown
-                  options={responseStyleOptions}
-                  value={prefs.responseStyle}
-                  onChange={(v) => setPrefs((p) => ({ ...p, responseStyle: v as ResponseStyleKey }))}
-                />
-              </SettingsRow>
-            </div>
-          )}
-
-          {/* ── Instruksi Personal ── */}
-          {activeNav === "instruksi" && (
-            <div className="p-7">
-              <h2 className="mb-1 text-lg font-semibold text-foreground">Instruksi Personal</h2>
-              <div className="mb-5 h-px bg-white/[0.07]" />
-              <p className="mb-6 text-xs leading-relaxed text-foreground/50">
-                Beri tahu AINA instruksi khusus yang berlaku di setiap sesi — cara merespons, hal yang perlu dihindari, atau preferensi lainnya.
-              </p>
-
-              {loadingCI ? (
-                <div className="flex items-center justify-center py-10">
-                  <p className="text-sm text-foreground/30">Memuat instruksi tersimpan...</p>
+                <div className="mb-3 mt-5">
+                  <p className="mb-0.5 text-sm font-semibold text-foreground">Karakteristik</p>
+                  <p className="text-xs text-foreground/50">Pilih kustomisasi tambahan di atas gaya dasar.</p>
                 </div>
-              ) : (
-                <div className="space-y-6">
+
+                <SettingsRow
+                  label="Format Jawaban"
+                  desc="Tentukan bagaimana AINA menyusun setiap respons."
+                >
+                  <SettingsDropdown
+                    options={responseStyleOptions}
+                    value={prefs.responseStyle}
+                    onChange={(v) => setPrefs((p) => ({ ...p, responseStyle: v as ResponseStyleKey }))}
+                  />
+                </SettingsRow>
+              </div>
+            )}
+
+            {/* Instruksi Personal */}
+            {activeNav === "instruksi" && (
+              <div className="p-4 sm:p-7">
+                <h2 className="mb-1 text-base sm:text-lg font-semibold text-foreground">Instruksi Personal</h2>
+                <div className="mb-4 h-px bg-white/[0.07]" />
+                <p className="mb-4 text-xs leading-relaxed text-foreground/50">
+                  Beri tahu AINA instruksi khusus yang berlaku di setiap sesi — cara merespons, hal yang perlu dihindari, atau preferensi lainnya.
+                </p>
+
+                {loadingCI ? (
+                  <div className="flex items-center justify-center py-10">
+                    <p className="text-sm text-foreground/30">Memuat instruksi tersimpan...</p>
+                  </div>
+                ) : (
                   <div>
                     <div className="mb-2 flex items-center justify-between">
                       <p className="text-sm font-medium text-foreground">Instruksi tambahan</p>
@@ -424,56 +461,64 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
                       className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-foreground placeholder:text-foreground/25 focus:border-white/20 focus:outline-none focus:ring-0"
                     />
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Tentang Kamu ── */}
-          {activeNav === "tentang" && (
-            <div className="p-7">
-              <h2 className="mb-1 text-lg font-semibold text-foreground">Tentang Kamu</h2>
-              <div className="mb-5 h-px bg-white/[0.07]" />
-
-              <p className="mb-6 text-xs leading-relaxed text-foreground/50">
-                Informasi ini membantu AINA memahami konteksmu — jurusan, angkatan, dan latar belakangmu — supaya jawaban lebih relevan.
-              </p>
-
-              <div className="space-y-5">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-sm font-medium text-foreground">Nama Panggilan</p>
-                  </div>
-                  <input
-                    type="text"
-                    value={prefs.userName}
-                    onChange={(e) => setPrefs((p) => ({ ...p, userName: e.target.value }))}
-                    placeholder="Nama yang kamu mau AINA pakai (opsional)"
-                    maxLength={30}
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-foreground placeholder:text-foreground/25 focus:border-white/20 focus:outline-none focus:ring-0"
-                  />
-                </div>
-
-                {!loadingCI && (
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-medium text-foreground">Tentang dirimu</p>
-                      <span className={`text-xs ${customAbout.length > 450 ? "text-orange-400" : "text-foreground/30"}`}>
-                        {customAbout.length}/500
-                      </span>
-                    </div>
-                    <textarea
-                      value={customAbout}
-                      onChange={(e) => setCustomAbout(e.target.value.slice(0, 500))}
-                      placeholder="Contoh: Saya mahasiswa semester 3 jurusan Syariah di Al-Azhar, baru 1 tahun di Mesir, asal dari Jawa Tengah."
-                      rows={5}
-                      className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-foreground placeholder:text-foreground/25 focus:border-white/20 focus:outline-none focus:ring-0"
-                    />
-                  </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Tentang Kamu */}
+            {activeNav === "tentang" && (
+              <div className="p-4 sm:p-7">
+                <h2 className="mb-1 text-base sm:text-lg font-semibold text-foreground">Tentang Kamu</h2>
+                <div className="mb-4 h-px bg-white/[0.07]" />
+                <p className="mb-4 text-xs leading-relaxed text-foreground/50">
+                  Informasi ini membantu AINA memahami konteksmu — jurusan, angkatan, dan latar belakangmu — supaya jawaban lebih relevan.
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-foreground">Nama Panggilan</p>
+                    <input
+                      type="text"
+                      value={prefs.userName}
+                      onChange={(e) => setPrefs((p) => ({ ...p, userName: e.target.value }))}
+                      placeholder="Nama yang kamu mau AINA pakai (opsional)"
+                      maxLength={30}
+                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-foreground placeholder:text-foreground/25 focus:border-white/20 focus:outline-none focus:ring-0"
+                    />
+                  </div>
+
+                  {!loadingCI && (
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-sm font-medium text-foreground">Tentang dirimu</p>
+                        <span className={`text-xs ${customAbout.length > 450 ? "text-orange-400" : "text-foreground/30"}`}>
+                          {customAbout.length}/500
+                        </span>
+                      </div>
+                      <textarea
+                        value={customAbout}
+                        onChange={(e) => setCustomAbout(e.target.value.slice(0, 500))}
+                        placeholder="Contoh: Saya mahasiswa semester 3 jurusan Syariah di Al-Azhar, baru 1 tahun di Mesir, asal dari Jawa Tengah."
+                        rows={5}
+                        className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-foreground placeholder:text-foreground/25 focus:border-white/20 focus:outline-none focus:ring-0"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Mobile: save button (sticky bottom) ── */}
+          <div className="flex sm:hidden shrink-0 border-t border-white/[0.07] p-4">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            >
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
