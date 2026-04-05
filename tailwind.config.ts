@@ -15,9 +15,9 @@ export default {
     extend: {
       fontFamily: {
         sunspire: ['Sunspire', 'sans-serif'],
-        modernist: ['"Sk-Modernist"', 'sans-serif'],
-        display: ['"Space Grotesk"', 'sans-serif'],
-        body: ['"Sk-Modernist"', 'Inter', 'sans-serif'],
+        modernist: ['Inter', 'sans-serif'],
+        display: ['Inter', 'sans-serif'],
+        body: ['Inter', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",

@@ -82,7 +82,7 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Sk-Modernist", Inter, sans-serif;
+    font-family: "Inter", sans-serif;
     overscroll-behavior: none;
   }
   button, a, [role="button"] {

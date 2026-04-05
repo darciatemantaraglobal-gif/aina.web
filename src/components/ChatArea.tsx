@@ -393,13 +393,13 @@ const MD_COMPONENTS = {
     if (/^\(cara baca:/i.test(text)) {
       const pronunciation = text.replace(/^\(cara baca:\s*/i, "").replace(/\)$/, "").trim();
       return (
-        <em dir="ltr" className="not-italic text-sky-400 block mt-1 text-left" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>
+        <em dir="ltr" className="not-italic text-sky-400 block mt-1 text-left" style={{ fontFamily: "Inter, sans-serif" }}>
           🔊 {pronunciation}
         </em>
       );
     }
     // Always LTR so Arabic-adjacent italic text (Artinya, transliteration) stays left-aligned
-    return <em dir="ltr" className="italic text-white/80 text-left" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>{children}</em>;
+    return <em dir="ltr" className="italic text-white/80 text-left" style={{ fontFamily: "Inter, sans-serif" }}>{children}</em>;
   },
   ul: ({ children }: any) => (
     <ListTypeContext.Provider value="ul">
