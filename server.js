@@ -3483,14 +3483,23 @@ async function submitClarificationDraft(draft, userId, supabase) {
 
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", chatLimiter, async (req, res) => {
-  // Auth is required — unauthenticated requests must not reach OpenRouter
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan untuk menggunakan chat" });
   const _chatDebugStart = Date.now();
   let _chatDebugStep = "init";
+
+  // Log every incoming request for visibility
+  console.log(`[CHAT] ← request | ip=${req.ip} | ua=${(req.headers["user-agent"] ?? "").slice(0, 60)}`);
+
   const _chatDebugErr = (e) => {
     console.error(`[CHAT-DEBUG] CRASH at step="${_chatDebugStep}" err="${e?.message}" stack="${e?.stack?.split("\n")[1]?.trim()}"`);
   };
+
+  // Auth is required — unauthenticated requests must not reach OpenRouter
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    console.warn(`[CHAT] 401 no-auth | ${Date.now() - _chatDebugStart}ms`);
+    return res.status(401).json({ error: "Login diperlukan untuk menggunakan chat" });
+  }
+
   try {
 
   const { messages, userProfile, attachedFile } = req.body;
@@ -4425,6 +4434,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     },
   })}\n\n`);
   res.end();
+  console.log(`[CHAT] ✓ done | user=${user.id.slice(0,8)} intent=${intent.primary} ms=${Date.now()-_chatDebugStart} src=${sourceUsed}`);
 
   // ── Fire-and-forget background tasks (unchanged) ─────────────────────────────
   setImmediate(() => {

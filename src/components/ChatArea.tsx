@@ -1028,7 +1028,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id;
-    if (!userId) return;
+    if (!userId) {
+      toast.error("Sesi login habis. Silakan refresh halaman dan login kembali.");
+      setIsLoading(false);
+      return;
+    }
 
     // Block immediately if we already know the limit is reached
     if (!isPaidUser && limitReached) return;
@@ -1086,7 +1090,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       streamAbortRef.current = controller;
       userStoppedRef.current = false;
       accumulatedRef.current = "";
-      const fetchTimeout = setTimeout(() => controller.abort(), 45000);
+      const fetchTimeout = setTimeout(() => controller.abort(), 55000);
       let res: Response;
       try {
         res = await fetch(API_URL, {
