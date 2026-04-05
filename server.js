@@ -2775,6 +2775,30 @@ function extractCairoArea(name, surroundingText) {
 }
 
 /**
+ * Detect whether a user query is about transport / getting around Cairo.
+ * Used to decide whether to inject the Cairo transport context block.
+ */
+function isTransportQuery(text) {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  const TRANSPORT_KEYWORDS = [
+    // modes
+    "metro", "subway", "kereta", "bus", "bis", "mikrobus", "minibus",
+    "taksi", "taxi", "uber", "careem", "otobus", "angkutan",
+    // action/direction
+    "naik apa", "pergi ke", "ke sana", "cara ke", "rute", "route",
+    "jalur", "jalan ke", "menuju", "dari mana", "mau ke", "mau pergi",
+    "transportasi", "transport", "angkot", "kendaraan",
+    // places implying travel
+    "bandara", "airport", "stasiun", "terminal", "pelabuhan",
+    // asking about trip
+    "berapa lama", "berapa menit", "berapa jam", "perjalanan",
+    "ongkos", "tarif", "biaya perjalanan", "tiket metro",
+  ];
+  return TRANSPORT_KEYWORDS.some(kw => t.includes(kw));
+}
+
+/**
  * Detect which specific Cairo area(s) are mentioned directly in a user query.
  * Returns array of matched area objects (with key + area name).
  */
