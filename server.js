@@ -1189,6 +1189,14 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     "kuliah":     ["akademik","kampus","perkuliahan"],
     "rumah":      ["apartemen","sewa","kost"],
     "muadzin":    ["mu'adzin","azan"],
+    // ── Jabatan / role aliases — so "presiden PPMI" also searches "ketua PPMI" ──
+    "presiden":   ["ketua","pimpinan","pemimpin","koordinator"],
+    "ketua":      ["presiden","pimpinan","pemimpin"],
+    "pimpinan":   ["presiden","ketua","pemimpin"],
+    "pemimpin":   ["presiden","ketua","pimpinan"],
+    "sekretaris": ["sekjen","sekretariat"],
+    "bendahara":  ["keuangan"],
+    "koordinator":["ketua","kepala"],
   };
 
   // ── Extract keywords: strip stopwords → expand aliases → sort by specificity ──
@@ -1966,6 +1974,17 @@ function isDynamicRoleQuery(q) {
 }
 
 /**
+ * Returns true if the query is about a Masisir-internal student/diaspora organisation.
+ * These orgs (PPMI, kekeluargaan daerah, forkom, dsb.) are not indexed by public web
+ * search engines — their leadership data lives exclusively in the AINA Knowledge Base.
+ * When this returns true AND KB has a strong hit, skip Perplexity and trust the KB.
+ */
+function isMasisirInternalOrg(q) {
+  const text = (q ?? "").toLowerCase();
+  return /\b(ppmi|ppi\s*mesir|kekeluargaan|imman|iwama|ikamapta|ioms|forkom|dppm|senat\s*masisir|bem\s*masisir|komunitas\s*masisir|perhimpunan\s*pelajar|persatuan\s*pelajar)\b/.test(text);
+}
+
+/**
  * Decide if a query warrants a Gemini context lookup.
  *
  * Rule: KB → Gemini if KB is absent or weak.
@@ -1986,7 +2005,12 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Gemini not used for fiqh
   // Dynamic override: jabatan/pejabat/office-holder queries ALWAYS need Perplexity,
   // even when KB is strong — KB data for public office holders can be stale.
-  if (isDynamicRoleQuery(q)) return true;
+  // Exception: Masisir-internal orgs (PPMI, kekeluargaan, forkom, dll.) are NOT on
+  // public web indices — Perplexity will return nothing useful. Trust KB instead.
+  if (isDynamicRoleQuery(q)) {
+    if (isMasisirInternalOrg(q) && kbStrength === "strong") return false;
+    return true;
+  }
   if (kbStrength === "strong") return false;
   // KB is absent or weak → always fetch Gemini context
   return true;
@@ -3357,6 +3381,22 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
   // CRITICAL: Always runs for office-holder queries regardless of KB strength.
   // Strong KB CAN have stale names for public offices — Perplexity MUST override.
   if (currentRoleQuery && !historicalRole && !hasPinned) {
+    // Exception: Masisir-internal organisations (PPMI, kekeluargaan, forkom, dll.)
+    // are NOT indexed by public search engines.  Their leadership roster lives only
+    // in the AINA KB — so when KB has any hit, trust it (strong = high, weak = medium).
+    if (hasKB && isMasisirInternalOrg(query)) {
+      if (kbStrength === "strong") {
+        return {
+          level: "high_confidence",
+          hint: "\n\n**[KB INTERNAL MASISIR — DIPERCAYA]** Jawab berdasarkan data KB yang tersedia. Boleh sebutkan nama/jabatan yang tertulis di KB dengan percaya diri. Jika info terasa mungkin sudah berubah, tambahkan 1 kalimat saran konfirmasi ringan di akhir.",
+        };
+      }
+      // Weak KB — partial info, but still the best available source for internal orgs
+      return {
+        level: "medium_confidence",
+        hint: "\n\n**[KB INTERNAL MASISIR — PARSIAL]** Knowledge Base AINA memiliki beberapa info tentang organisasi ini. Gunakan info yang tersedia dengan percaya diri. Sarankan user untuk konfirmasi langsung ke pengurus PPMI/kekeluargaan jika butuh data yang lebih lengkap.",
+      };
+    }
     if (hasPerplexity) {
       return {
         level: "medium_confidence",
