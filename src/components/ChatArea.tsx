@@ -213,8 +213,8 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
           </p>
         )}
         {meaning && (
-          <p className="text-sm text-white flex items-start gap-1.5 text-left">
-            <span className="mt-px shrink-0 text-primary/70">✦</span>
+          <p className="text-sm text-white italic flex items-start gap-1.5 text-left">
+            <span className="mt-px shrink-0 not-italic text-primary/70">✦</span>
             <span dir="ltr" className="break-words">{meaning}</span>
           </p>
         )}
@@ -397,7 +397,7 @@ const MD_COMPONENTS = {
       );
     }
     // Always LTR so Arabic-adjacent italic text (Artinya, transliteration) stays left-aligned
-    return <em dir="ltr" className="italic text-white/80 text-left" style={{ fontFamily: "Inter, sans-serif" }}>{children}</em>;
+    return <em dir="ltr" className="italic text-white text-left" style={{ fontFamily: "Inter, sans-serif" }}>{children}</em>;
   },
   ul: ({ children }: any) => (
     <ListTypeContext.Provider value="ul">
