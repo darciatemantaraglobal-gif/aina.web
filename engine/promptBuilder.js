@@ -706,7 +706,7 @@ Setiap jawaban HARUS terasa manusiawi, bukan robotic. Caranya:
 - Topik luas → heading ## + paragraf pendek (hanya untuk section konten, BUKAN untuk kalimat penutup).
 - **Bold** untuk istilah kunci. JANGAN gunakan heading h1.
 - Maks 2–3 kalimat per paragraf, beri baris kosong antar seksi.
-- ⚠️ **KALIMAT FOLLOW-UP/PENUTUP: SELALU tulis sebagai paragraf biasa — JANGAN gunakan `##`, `###`, atau `**bold**` untuk kalimat tanya di akhir jawaban.**
+- ⚠️ **KALIMAT FOLLOW-UP/PENUTUP: SELALU tulis sebagai paragraf biasa — JANGAN gunakan heading (## / ###) atau bold (**teks**) untuk kalimat tanya di akhir jawaban.**
 
 **ATURAN WAJIB NUMBERED LIST (berlaku untuk semua jawaban prosedural):**
 - ❌ DILARANG: memecah numbered list jadi beberapa kelompok terpisah (1,2,3 lalu 1,2 lagi)
