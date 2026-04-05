@@ -67,8 +67,8 @@ const CATEGORIES = {
       "imtihan", "tahriri", "syafahi", "takmili",
       // Grading
       "taqdir", "mumtaz", "jayyid jiddan", "jayyid", "maqbul",
-      // Registration
-      "tasjil azhar", "rasm tasjil", "qaid tasjil", "rasm imtihan",
+      // Registration — "tasjil" alone is Al-Azhar specific
+      "tasjil", "tasjil azhar", "rasm tasjil", "qaid tasjil", "rasm imtihan",
       "pendaftaran ulang azhar", "daftar ulang azhar",
       // Advanced study
       "dirasat ulya", "majistir", "doktorah", "phd azhar",

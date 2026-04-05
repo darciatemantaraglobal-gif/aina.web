@@ -80,6 +80,14 @@ const EXPANSION_RULES = [
     expand: "rasm tasjil biaya pendaftaran ulang Al-Azhar prosedur pembayaran",
   },
   {
+    match: /\b(cara|gimana|bagaimana|prosedur|kapan|deadline)\b.*\btasjil\b/i,
+    expand: "prosedur tasjil pendaftaran ulang mahasiswa Al-Azhar syarat jadwal deadline",
+  },
+  {
+    match: /\btasjil\b.*\b(kapan|deadline|batas|sampai|mulai|selesai)\b/i,
+    expand: "jadwal tasjil pendaftaran ulang Al-Azhar batas waktu deadline semester",
+  },
+  {
     match: /\bqaid\s*tasjil\b/i,
     expand: "qaid tasjil kartu mahasiswa Al-Azhar pendaftaran nomor induk",
   },
@@ -152,6 +160,7 @@ const EXPANSION_RULES = [
 // ═══════════════════════════════════════════════════════════════════
 const CONTEXT_ANCHORS = [
   { term: /\biqomah\b/i,        anchor: "izin tinggal mesir" },
+  { term: /\btasjil\b/i,        anchor: "pendaftaran ulang Al-Azhar" },
   { term: /\bvisa\s*dubai\b/i,  anchor: "dari kairo mesir mahasiswa" },
   { term: /\bvisa\s*turki\b/i,  anchor: "dari mesir kairo" },
   { term: /\bkbri\b/i,          anchor: "kairo konsulat indonesia" },
