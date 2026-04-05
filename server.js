@@ -3744,6 +3744,43 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     }
   }
 
+  // ── Fast path: simple greetings (skip AI, respond instantly) ────────────────
+  // Greetings never need KB search or an LLM call — answer immediately so
+  // the user never sees an error on the most basic interaction.
+  const GREETING_RE = /^(halo|hai|hi|hey|hello|assalamualaikum|assalamu'alaikum|assalam|wa'alaikumsalam|walaikumsalam|salam|selamat\s+(pagi|siang|sore|malam)|pagi|sore|siang|malam|apa\s+kabar|gimana\s+kabar|sehat\??)\s*[!.?]*$/i;
+  const noPreviousAI = !messages.some(m => m.role === "assistant");
+  if (GREETING_RE.test(lastUserMessage.trim()) && noPreviousAI) {
+    const cairoHour = (new Date().getUTCHours() + 2) % 24;
+    const timeGreet = cairoHour < 10 ? "Selamat pagi" : cairoHour < 15 ? "Selamat siang" : cairoHour < 18 ? "Selamat sore" : "Selamat malam";
+    const greetOptions = [
+      `Wa'alaikumsalam! Aku AINA — asisten pintar untuk Masisir. Mau tanya soal kuliah, kehidupan di Kairo, visa, atau hal lainnya?`,
+      `${timeGreet}! Aku AINA. Bisa tanya apa saja soal kehidupan Masisir di Mesir. Apa yang ingin kamu ketahui?`,
+      `Halo! Senang ketemu kamu. Ada yang mau ditanyakan soal kuliah di Al-Azhar, visa, kehidupan di Kairo, atau yang lainnya?`,
+    ];
+    const greetReply = greetOptions[Math.floor(Math.random() * greetOptions.length)];
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    const words = greetReply.split(" ");
+    for (let i = 0; i < words.length; i++) {
+      const chunk = (i === 0 ? "" : " ") + words[i];
+      res.write(`data: ${JSON.stringify({ type: "chunk", content: chunk })}\n\n`);
+      await new Promise(r => setTimeout(r, 25));
+    }
+    res.write(`data: ${JSON.stringify({
+      type: "done", reply: greetReply, model: "aina-hardcoded",
+      intent: "casual", confidence: "high_confidence",
+      source_used: "Model", sources: ["Pengetahuan Umum"],
+      sourceMetadata: { confidence: "high_confidence", primary_source: "Model",
+        sources_used: ["Pengetahuan Umum"], may_be_outdated: false, source_summary: null },
+    })}\n\n`);
+    res.end();
+    console.log(`[CHAT] greeting fast-path → user=${user.id.slice(0,8)}`);
+    return;
+  }
+
   // ── Tiered model routing ────────────────────────────────────────────────────
   // Tier A (lightweight): fast + cheap — casual, short queries, KB-strong simple answers
   // Tier B (standard):   quality   — procedural, memory-aware, complex, time-sensitive

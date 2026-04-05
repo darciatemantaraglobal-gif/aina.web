@@ -489,7 +489,9 @@ export function formatAINAResponse(text, context = {}) {
     // 6. Safety fallback — if everything was stripped, return minimal message
     if (result.trim().length < 20) {
       console.warn("[Formatter] safety fallback triggered — output too short after formatting");
-      return text.trim().length > 20 ? text.trim() : "Maaf, aku tidak dapat menghasilkan jawaban yang baik. Coba ulangi pertanyaanmu.";
+      if (text.trim().length > 20) return text.trim();
+      // Friendly, natural fallback — doesn't make AINA feel "broken"
+      return "Hmm, jawaban aku terpotong. Bisa coba tanyakan lagi dengan kalimat yang sedikit berbeda?";
     }
 
     return result;

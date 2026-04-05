@@ -1228,7 +1228,20 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               doneEvent = evt;
               break outer;
             } else if (evt.type === "error") {
-              throw new Error(evt.error || "Model AI tidak merespons");
+              // If we already have partial content, use it instead of erroring
+              if (accumulated.trim().length > 40) {
+                doneEvent = { reply: accumulated, sources: [], partial: true };
+                break outer;
+              }
+              // Otherwise surface a friendly fallback — still break cleanly
+              doneEvent = {
+                reply: "Sepertinya ada gangguan jaringan sesaat. Coba kirim ulang pesanmu ya — biasanya langsung berhasil.",
+                sources: [], model: "error-fallback", intent: "casual",
+                confidence: "low", source_used: "Model",
+                sourceMetadata: { confidence: "low", primary_source: "Model",
+                  sources_used: [], may_be_outdated: false, source_summary: null },
+              };
+              break outer;
             }
           }
         }
@@ -1315,7 +1328,20 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         }
         setStreamingMsg(null);
       } else {
-        setError(err.message || "Gagal menghubungi server. Coba lagi.");
+        // Show a friendly message inside the chat instead of a cold error banner
+        const FRIENDLY_ERRORS = [
+          "Kayaknya ada gangguan jaringan sebentar. Coba kirim ulang pesanmu ya.",
+          "Ada sedikit masalah teknis. Tenang, coba kirim ulang dan biasanya langsung berhasil.",
+          "Koneksi ke AI lagi tidak stabil. Coba kirim ulang pertanyaanmu.",
+        ];
+        const friendly = FRIENDLY_ERRORS[Math.floor(Math.random() * FRIENDLY_ERRORS.length)];
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 2).toString(),
+          role: "assistant" as const,
+          content: friendly,
+          timestamp: new Date(),
+          sources: [],
+        }]);
       }
     } finally {
       streamAbortRef.current = null;
