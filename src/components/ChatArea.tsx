@@ -197,6 +197,7 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
           className="text-left leading-loose text-foreground tracking-wide"
           style={{
             fontFamily: "'Amiri', serif",
+            fontSize: "17px",
             lineHeight: "2.0",
             marginTop: "-1px",
           }}
