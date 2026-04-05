@@ -16,8 +16,9 @@ export default {
       fontFamily: {
         sunspire: ['Sunspire', 'sans-serif'],
         modernist: ['Inter', 'sans-serif'],
-        display: ['Inter', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
         body: ['Inter', 'sans-serif'],
+        jakarta: ['Plus Jakarta Sans', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",

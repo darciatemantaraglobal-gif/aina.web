@@ -447,7 +447,7 @@ const MD_COMPONENTS = {
       <h1
         dir="auto"
         className="mb-3 mt-6 first:mt-0 text-2xl font-bold text-foreground tracking-tight border-b border-border pb-1.5"
-        style={ar ? { lineHeight: "1.8" } : undefined}
+        style={{ fontFamily: ar ? undefined : "'Plus Jakarta Sans', Inter, sans-serif", lineHeight: ar ? "1.8" : "1.3" }}
       >
         {children}
       </h1>
@@ -459,7 +459,7 @@ const MD_COMPONENTS = {
       <h2
         dir="auto"
         className="mb-2 mt-5 first:mt-0 text-xl font-bold text-foreground tracking-tight"
-        style={ar ? { lineHeight: "1.8" } : undefined}
+        style={{ fontFamily: ar ? undefined : "'Plus Jakarta Sans', Inter, sans-serif", lineHeight: ar ? "1.8" : "1.35" }}
       >
         {children}
       </h2>
@@ -471,7 +471,7 @@ const MD_COMPONENTS = {
       <h3
         dir="auto"
         className="mb-2 mt-4 first:mt-0 text-base font-semibold text-foreground/90"
-        style={ar ? { lineHeight: "1.8" } : undefined}
+        style={{ fontFamily: ar ? undefined : "'Plus Jakarta Sans', Inter, sans-serif", lineHeight: ar ? "1.8" : "1.4" }}
       >
         {children}
       </h3>
