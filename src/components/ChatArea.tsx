@@ -189,9 +189,9 @@ function parseArabicBlock(raw: string): ArabicBlockData {
 
 function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
   return (
-    <div className="my-3">
-      {/* Green box: Arabic text only */}
-      <div className="rounded-xl border border-primary/25 bg-primary/5 overflow-hidden px-4 pt-3 pb-4">
+    <div className="my-3 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
+      {/* Arabic text — right-aligned, RTL */}
+      <div className="px-4 pt-3 pb-2.5 border-b border-primary/10">
         <p
           dir="rtl"
           className="text-right leading-loose text-foreground tracking-wide"
@@ -204,23 +204,21 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
           {arabic}
         </p>
       </div>
-      {/* Reading + Meaning — outside the box, left-aligned Latin */}
-      {(reading || meaning) && (
-        <div className="px-1 pt-2 pb-1 space-y-1.5" dir="ltr">
-          {reading && (
-            <p className="text-sm text-sky-400 flex items-start gap-1.5 text-left">
-              <span className="mt-px shrink-0">🔊</span>
-              <span dir="ltr" className="break-words italic">{reading}</span>
-            </p>
-          )}
-          {meaning && (
-            <p className="text-sm text-foreground/90 flex items-start gap-1.5 text-left">
-              <span className="mt-px shrink-0 text-primary/70">✦</span>
-              <span dir="ltr" className="break-words">{meaning}</span>
-            </p>
-          )}
-        </div>
-      )}
+      {/* Reading + Meaning — inside the box, LTR left-aligned */}
+      <div className="px-4 py-2.5 space-y-1.5" dir="ltr">
+        {reading && (
+          <p className="text-sm text-sky-400 italic flex items-start gap-1.5 text-left">
+            <span className="mt-px shrink-0 not-italic">🔊</span>
+            <span dir="ltr" className="break-words">{reading}</span>
+          </p>
+        )}
+        {meaning && (
+          <p className="text-sm text-white flex items-start gap-1.5 text-left">
+            <span className="mt-px shrink-0 text-primary/70">✦</span>
+            <span dir="ltr" className="break-words">{meaning}</span>
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -535,22 +533,20 @@ const MD_COMPONENTS = {
       });
 
       return (
-        <>
-          {/* ── Green box: Arabic text only ── */}
-          <blockquote className="mt-3 mb-1 rounded-xl border border-emerald-500/50 bg-emerald-950/40 overflow-hidden text-foreground shadow-sm shadow-emerald-900/20">
-            {arabicRows.length > 0 && (
-              <div className="px-5 pt-4 pb-4 space-y-2">
-                {arabicRows}
-              </div>
-            )}
-          </blockquote>
-          {/* ── Cara baca + Artinya: outside the box, left-aligned Latin ── */}
+        <blockquote className="mt-3 mb-4 rounded-xl border border-emerald-500/50 bg-emerald-950/40 overflow-hidden text-foreground shadow-sm shadow-emerald-900/20">
+          {/* ── Arabic section ── */}
+          {arabicRows.length > 0 && (
+            <div className={`px-5 pt-4 pb-3 space-y-2${latinRows.length > 0 ? " border-b border-emerald-500/20" : " pb-4"}`}>
+              {arabicRows}
+            </div>
+          )}
+          {/* ── Cara baca + Artinya section ── */}
           {latinRows.length > 0 && (
-            <div className="px-1 pt-1 pb-3 space-y-1.5" dir="ltr">
+            <div className="px-5 pt-3 pb-4 space-y-2">
               {latinRows}
             </div>
           )}
-        </>
+        </blockquote>
       );
     }
     return (
