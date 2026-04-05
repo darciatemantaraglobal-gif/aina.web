@@ -348,14 +348,11 @@ const MD_COMPONENTS = {
       <ul className="mb-5 last:mb-0 pl-1 space-y-2 text-foreground/90 list-none">{children}</ul>
     </ListTypeContext.Provider>
   ),
-  ol: ({ children }: any) => {
-    const ar = containsArabic(children);
-    return (
-      <ListTypeContext.Provider value="ol">
-        <ol dir={ar ? "auto" : undefined} className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
-      </ListTypeContext.Provider>
-    );
-  },
+  ol: ({ children }: any) => (
+    <ListTypeContext.Provider value="ol">
+      <ol className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
+    </ListTypeContext.Provider>
+  ),
   li: ({ children }: any) => {
     const listType = useContext(ListTypeContext);
     const isOrdered = listType === "ol";
@@ -363,21 +360,19 @@ const MD_COMPONENTS = {
 
     if (isOrdered) {
       return (
-        <li
-          dir={isArabic ? "rtl" : undefined}
-          className="leading-[1.75] break-words pl-1"
-          style={{ lineHeight: isArabic ? "2.0" : undefined }}
-        >
-          {children}
+        <li className="leading-[1.75] break-words pl-1">
+          {isArabic
+            ? <span dir="rtl" className="block" style={{ lineHeight: "2.0" }}>{children}</span>
+            : children}
         </li>
       );
     }
 
     if (isArabic) {
       return (
-        <li dir="rtl" className="flex gap-3 items-start" style={{ lineHeight: "2.0" }}>
+        <li className="flex gap-3 items-start" style={{ lineHeight: "2.0" }}>
           <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
-          <span className="flex-1 min-w-0 break-words">{children}</span>
+          <span className="flex-1 min-w-0 break-words" dir="rtl">{children}</span>
         </li>
       );
     }
@@ -1497,7 +1492,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     {msg.content && (
                       <div
                         className="rounded-3xl bg-secondary px-5 py-3.5 text-base text-foreground whitespace-pre-wrap break-words"
-                        dir={isArabicMsg ? "rtl" : "ltr"}
+                        dir="auto"
                       >
                         {msg.content}
                       </div>
@@ -1505,7 +1500,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1 min-h-0">
-                    <div className="py-1.5 text-[15px] leading-[1.7]" dir={isArabicMsg ? "rtl" : "ltr"}>
+                    <div className="py-1.5 text-[15px] leading-[1.7]" dir="ltr">
                       {renderWithArabicBlocks(msg.content)}
                     </div>
 
@@ -1736,7 +1731,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             {streamingMsg && (
               <div className="flex gap-3 min-w-0 justify-start">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
-                <div className="min-w-0 flex-1 py-1.5 text-[15px] leading-[1.7]" dir={isArabicText(streamingMsg.displayed) ? "rtl" : "ltr"}>
+                <div className="min-w-0 flex-1 py-1.5 text-[15px] leading-[1.7]" dir="ltr">
                   {renderWithArabicBlocks(streamingMsg.displayed, false)}
                   {streamingMsg.isStreaming && (
                     <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
