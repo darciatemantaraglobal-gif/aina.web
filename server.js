@@ -3765,9 +3765,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     const cairoHour = (new Date().getUTCHours() + 2) % 24;
     const timeGreet = cairoHour < 10 ? "Selamat pagi" : cairoHour < 15 ? "Selamat siang" : cairoHour < 18 ? "Selamat sore" : "Selamat malam";
     const greetOptions = [
-      `Wa'alaikumsalam! Aku AINA — asisten pintar untuk Masisir. Mau tanya soal kuliah, kehidupan di Kairo, visa, atau hal lainnya?`,
-      `${timeGreet}! Aku AINA. Bisa tanya apa saja soal kehidupan Masisir di Mesir. Apa yang ingin kamu ketahui?`,
-      `Halo! Senang ketemu kamu. Ada yang mau ditanyakan soal kuliah di Al-Azhar, visa, kehidupan di Kairo, atau yang lainnya?`,
+      `Wa'alaikumsalam! Senang ada yang nyapa 😄 Aku AINA — teman diskusi Masisir yang siap bantu soal apa aja: kuliah di Al-Azhar, iqomah, sakan, kurs, atau hal-hal lain seputar kehidupan di Kairo. Mau mulai dari mana?`,
+      `${timeGreet}! Aku AINA 👋 Kalau kamu punya pertanyaan soal kehidupan Masisir — dari yang remeh sampai yang bikin pusing — boleh tanya di sini. Lagi butuh info apa nih?`,
+      `Halo, senang ketemu kamu! Aku AINA, asisten Masisir yang udah "hafal luar kepala" soal seluk-beluk hidup di Mesir 😊 Mau tanya soal apa hari ini?`,
+      `Halo! ${timeGreet} dari Kairo ☀️ Aku AINA — siap bantu kamu navigate kehidupan Masisir. Dari urusan dokumen yang ribet sampai rekomendasi tempat makan, boleh tanya semua. Ada yang bisa aku bantu?`,
+      `Wa'alaikumsalam! Alhamdulillah, pas banget — aku lagi siap 😄 Aku AINA, asisten khusus Masisir. Mau nanya soal kuliah, administrasi, kehidupan di Kairo, atau yang lainnya? Langsung aja ceritain.`,
     ];
     const greetReply = greetOptions[Math.floor(Math.random() * greetOptions.length)];
     res.setHeader("Content-Type", "text/event-stream");
