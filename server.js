@@ -10,17 +10,17 @@ import {
   buildMemoryContext, buildExchangeContext, buildWikiContext,
   buildDDGContext, buildPerplexityContext, buildDorarContext,
   buildSystemPrompt,
-} from './api/engine/promptBuilder.js';
-import { validateResponse, postProcessResponse, buildSourceBadges, formatAINAResponse } from './api/engine/responseFormatter.js';
-import { optimizeHistory, estimateTokens, debugTokenReport } from './api/engine/historyOptimizer.js';
-import { buildSourceResult, logSourceDecision } from './api/engine/sourceOrchestrator.js';
-import { detectMasisirContext } from './api/engine/contextDetector.js';
-import { expandQuery } from './api/engine/queryExpander.js';
+} from './engine/promptBuilder.js';
+import { validateResponse, postProcessResponse, buildSourceBadges, formatAINAResponse } from './engine/responseFormatter.js';
+import { optimizeHistory, estimateTokens, debugTokenReport } from './engine/historyOptimizer.js';
+import { buildSourceResult, logSourceDecision } from './engine/sourceOrchestrator.js';
+import { detectMasisirContext } from './engine/contextDetector.js';
+import { expandQuery } from './engine/queryExpander.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
-import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./api/engine/embedder.js";
-import { detectPlacesQuery, buildPlacesContext } from "./api/engine/placesSearch.js";
+import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
+import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
