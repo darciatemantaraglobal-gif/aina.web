@@ -501,23 +501,51 @@ const MD_COMPONENTS = {
   ),
   blockquote: ({ children }: any) => {
     if (containsArabic(children)) {
-      // Style each child paragraph individually.
-      // Use MAJORITY check (>35% Arabic chars) so paragraphs that merely mention
-      // one Arabic word (e.g. "اللَّه" inside an Indonesian translation) are NOT
-      // treated as Arabic and do NOT get RTL / center alignment.
-      const styledChildren = Children.map(children, (child: any) => {
-        if (!isValidElement(child)) return child;
-        const isAr = isMajorityArabic(child);
-        return cloneElement(child as Parameters<typeof cloneElement>[0], {
-          dir: isAr ? "rtl" : "ltr",
-          style: isAr
-            ? { textAlign: "right", fontFamily: "'Scheherazade New', 'Amiri', serif", lineHeight: "2.2", fontSize: "1.1em" }
-            : { textAlign: "left", fontSize: "0.9em", opacity: 0.8 },
-        } as any);
+      // Split children into two groups:
+      // - arabicRows: paragraphs where Arabic chars are majority → top section, RTL right-aligned
+      // - latinRows:  paragraphs where Latin/Indonesian is majority → bottom section, LTR left-aligned
+      // Using isMajorityArabic prevents stray Arabic words in translations from flipping direction.
+      const arabicRows: React.ReactNode[] = [];
+      const latinRows: React.ReactNode[] = [];
+      Children.forEach(children, (child: any) => {
+        if (!isValidElement(child)) return;
+        if (isMajorityArabic(child)) {
+          arabicRows.push(
+            cloneElement(child as Parameters<typeof cloneElement>[0], {
+              dir: "rtl",
+              style: {
+                textAlign: "right",
+                fontFamily: "'Scheherazade New', 'Amiri', serif",
+                lineHeight: "2.2",
+                fontSize: "1.15em",
+                marginBottom: 0,
+              },
+            } as any)
+          );
+        } else {
+          latinRows.push(
+            cloneElement(child as Parameters<typeof cloneElement>[0], {
+              dir: "ltr",
+              style: { textAlign: "left", fontSize: "0.9em", marginBottom: 0 },
+            } as any)
+          );
+        }
       });
+
       return (
-        <blockquote className="mt-3 mb-4 rounded-xl border border-emerald-500/50 bg-emerald-950/40 px-5 py-4 text-foreground shadow-sm shadow-emerald-900/20 space-y-1.5">
-          {styledChildren}
+        <blockquote className="mt-3 mb-4 rounded-xl border border-emerald-500/50 bg-emerald-950/40 overflow-hidden text-foreground shadow-sm shadow-emerald-900/20">
+          {/* ── Arabic section ── */}
+          {arabicRows.length > 0 && (
+            <div className={`px-5 pt-4 pb-3 space-y-2${latinRows.length > 0 ? " border-b border-emerald-500/20" : " pb-4"}`}>
+              {arabicRows}
+            </div>
+          )}
+          {/* ── Cara baca + Artinya section ── */}
+          {latinRows.length > 0 && (
+            <div className="px-5 pt-3 pb-4 space-y-2">
+              {latinRows}
+            </div>
+          )}
         </blockquote>
       );
     }
