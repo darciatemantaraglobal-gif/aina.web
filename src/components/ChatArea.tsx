@@ -207,15 +207,15 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
       {/* Reading + Meaning — inside the box, LTR left-aligned */}
       <div className="px-4 py-2.5 space-y-1.5" dir="ltr">
         {reading && (
-          <p className="text-sm text-sky-400 italic flex items-start gap-1.5 text-left">
-            <span className="mt-px shrink-0 not-italic">🔊</span>
-            <span dir="ltr" className="break-words">{reading}</span>
+          <p className="text-sm flex items-start gap-1.5 text-left">
+            <span className="mt-px shrink-0">🔊</span>
+            <span dir="ltr" className="break-words text-sky-400 italic">{reading}</span>
           </p>
         )}
         {meaning && (
-          <p className="text-sm text-white italic flex items-start gap-1.5 text-left">
-            <span className="mt-px shrink-0 not-italic text-primary/70">✦</span>
-            <span dir="ltr" className="break-words">{meaning}</span>
+          <p className="text-sm flex items-start gap-1.5 text-left">
+            <span className="mt-px shrink-0 text-primary/70">✦</span>
+            <span dir="ltr" className="break-words text-white italic">{meaning}</span>
           </p>
         )}
       </div>
