@@ -390,12 +390,13 @@ const MD_COMPONENTS = {
     if (/^\(cara baca:/i.test(text)) {
       const pronunciation = text.replace(/^\(cara baca:\s*/i, "").replace(/\)$/, "").trim();
       return (
-        <em className="not-italic text-sky-400 block mt-1" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>
+        <em dir="ltr" className="not-italic text-sky-400 block mt-1 text-left" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>
           🔊 {pronunciation}
         </em>
       );
     }
-    return <em className="italic text-white/80" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>{children}</em>;
+    // Always LTR so Arabic-adjacent italic text (Artinya, transliteration) stays left-aligned
+    return <em dir="ltr" className="italic text-white/80 text-left" style={{ fontFamily: "'Sk-Modernist', sans-serif" }}>{children}</em>;
   },
   ul: ({ children }: any) => (
     <ListTypeContext.Provider value="ul">
@@ -500,15 +501,17 @@ const MD_COMPONENTS = {
   ),
   blockquote: ({ children }: any) => {
     if (containsArabic(children)) {
-      // Style each child paragraph individually: Arabic → centered RTL, Latin → left LTR.
-      // This prevents transliteration / Indonesian translation from inheriting right-alignment.
+      // Style each child paragraph individually.
+      // Use MAJORITY check (>35% Arabic chars) so paragraphs that merely mention
+      // one Arabic word (e.g. "اللَّه" inside an Indonesian translation) are NOT
+      // treated as Arabic and do NOT get RTL / center alignment.
       const styledChildren = Children.map(children, (child: any) => {
         if (!isValidElement(child)) return child;
-        const isAr = containsArabic(child);
+        const isAr = isMajorityArabic(child);
         return cloneElement(child as Parameters<typeof cloneElement>[0], {
           dir: isAr ? "rtl" : "ltr",
           style: isAr
-            ? { textAlign: "center", fontFamily: "'Scheherazade New', 'Amiri', serif", lineHeight: "2.2", fontSize: "1.1em" }
+            ? { textAlign: "right", fontFamily: "'Scheherazade New', 'Amiri', serif", lineHeight: "2.2", fontSize: "1.1em" }
             : { textAlign: "left", fontSize: "0.9em", opacity: 0.8 },
         } as any);
       });
