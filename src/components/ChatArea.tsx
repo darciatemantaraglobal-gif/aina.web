@@ -542,7 +542,7 @@ const MD_COMPONENTS = {
           )}
           {/* ── Cara baca + Artinya section ── */}
           {latinRows.length > 0 && (
-            <div className="px-5 pt-3 pb-4 space-y-2">
+            <div dir="ltr" className="px-5 pt-3 pb-4 space-y-2 text-left">
               {latinRows}
             </div>
           )}
