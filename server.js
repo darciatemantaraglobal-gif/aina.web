@@ -2355,6 +2355,54 @@ app.get("/api/health", (_req, res) => {
 });
 
 
+/* ── Debug endpoint — diagnose Vercel deployment issues ─ */
+app.get("/api/debug", async (_req, res) => {
+  const env = {
+    SUPABASE_URL:           !!process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE:  !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    OPENROUTER_API_KEY:     !!process.env.OPENROUTER_API_KEY,
+    PERPLEXITY_API_KEY:     !!process.env.PERPLEXITY_API_KEY,
+    MASTER_ADMIN_IDS:       !!process.env.MASTER_ADMIN_IDS,
+    VITE_SUPABASE_URL:      !!process.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_KEY:      !!process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  };
+  let supabaseOk = false;
+  let supabaseErr = null;
+  try {
+    const sb = getAdminClient();
+    if (sb) {
+      const { error } = await sb.from("profiles").select("id").limit(1);
+      supabaseOk = !error;
+      if (error) supabaseErr = error.message;
+    }
+  } catch (e) { supabaseErr = e.message; }
+
+  const engineFiles = [
+    "promptBuilder.js", "responseFormatter.js", "historyOptimizer.js",
+    "sourceOrchestrator.js", "contextDetector.js", "queryExpander.js",
+    "embedder.js", "intentDetector.js",
+  ];
+  const engineOk = {};
+  for (const f of engineFiles) {
+    try {
+      await import(`./engine/${f}`);
+      engineOk[f] = true;
+    } catch (e) {
+      engineOk[f] = e.message;
+    }
+  }
+
+  res.json({
+    status: "debug",
+    node: process.version,
+    platform: process.platform,
+    env,
+    supabase: { ok: supabaseOk, error: supabaseErr },
+    engine: engineOk,
+    uptime: Math.floor(process.uptime()),
+  });
+});
+
 /* ── Current user info (role, master admin status) ───── */
 app.get("/api/me", async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -4411,10 +4459,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   } catch (_chatErr) {
     _chatDebugErr(_chatErr);
+    const _errDetail = `[step:${_chatDebugStep}] ${_chatErr?.message ?? "unknown"}`;
+    console.error("[CHAT-FAIL]", _errDetail);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Terjadi kesalahan, silakan coba lagi." });
+      res.status(500).json({ error: "Terjadi kesalahan, silakan coba lagi.", _debug: _errDetail });
     } else {
-      try { res.write(`data: ${JSON.stringify({ type: "error", error: "Terjadi kesalahan, silakan coba lagi." })}\n\n`); res.end(); } catch {}
+      try { res.write(`data: ${JSON.stringify({ type: "error", error: "Terjadi kesalahan, silakan coba lagi.", _debug: _errDetail })}\n\n`); res.end(); } catch {}
     }
   }
 });
