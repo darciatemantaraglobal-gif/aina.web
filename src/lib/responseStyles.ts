@@ -1,4 +1,4 @@
-import { Zap, ListOrdered, BookOpen, ClipboardList, MessageCircle } from "lucide-react";
+import { Zap, ListOrdered, BookOpen, List, MessageCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface ResponseStyleConfig {
@@ -11,37 +11,37 @@ export interface ResponseStyleConfig {
 
 export const RESPONSE_STYLES: Record<string, ResponseStyleConfig> = {
   short_direct: {
-    label: "Singkat & Langsung",
-    shortLabel: "Singkat",
-    desc: "Jawaban to the point, tanpa basa-basi",
+    label: "Ringkas",
+    shortLabel: "Ringkas",
+    desc: "Jawaban singkat, padat, langsung ke inti",
     icon: Zap,
     promptKey: "short_direct",
   },
-  step_by_step: {
-    label: "Langkah demi Langkah",
-    shortLabel: "Langkah",
-    desc: "Panduan urut bernomor, mudah diikuti",
-    icon: ListOrdered,
-    promptKey: "step_by_step",
-  },
   detailed_complete: {
-    label: "Detail & Lengkap",
-    shortLabel: "Detail",
-    desc: "Penjelasan mendalam dengan konteks penuh",
+    label: "Mendalam",
+    shortLabel: "Mendalam",
+    desc: "Penjelasan lengkap dan komprehensif",
     icon: BookOpen,
     promptKey: "detailed_complete",
   },
   practical_ready_to_use: {
-    label: "Praktis & Siap Pakai",
-    shortLabel: "Praktis",
-    desc: "Checklist, template, atau aksi langsung",
-    icon: ClipboardList,
+    label: "Poin-poin",
+    shortLabel: "Poin",
+    desc: "Disusun dalam bullet points yang terstruktur",
+    icon: List,
     promptKey: "practical_ready_to_use",
   },
+  step_by_step: {
+    label: "Panduan Langkah",
+    shortLabel: "Langkah",
+    desc: "Urutan bernomor yang jelas, mudah diikuti",
+    icon: ListOrdered,
+    promptKey: "step_by_step",
+  },
   casual_easy_to_understand: {
-    label: "Santai & Mudah Dipahami",
+    label: "Percakapan",
     shortLabel: "Santai",
-    desc: "Gaya ngobrol, ringan, mudah dicerna",
+    desc: "Gaya ngobrol santai, natural, mudah dicerna",
     icon: MessageCircle,
     promptKey: "casual_easy_to_understand",
   },
@@ -53,9 +53,9 @@ export const DEFAULT_RESPONSE_STYLE: ResponseStyleKey = "balanced";
 
 export const RESPONSE_STYLE_ORDER: ResponseStyleKey[] = [
   "short_direct",
-  "step_by_step",
   "detailed_complete",
   "practical_ready_to_use",
+  "step_by_step",
   "casual_easy_to_understand",
 ];
 

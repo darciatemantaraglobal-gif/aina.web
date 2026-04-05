@@ -3300,45 +3300,49 @@ Contoh: "Oke, ada [X] langkah yang perlu kamu lakuin:", "Gampang kok, ini cara n
 
 **Gaya:** Tegas tapi bersahabat. DILARANG selesai tanpa penutup diskusi.`,
 
-  // Used for: fiqh
-  // Goal: hukum first, dalil second, explanation third. Thorough but not academic-dry.
+  // Used for: fiqh, or when user explicitly picks "Mendalam"
+  // Goal: comprehensive answer — direct inti first, then thorough explanation with structure.
   detailed_complete: `
 
-📖 **[GAYA JAWABAN: MENDALAM & TERSTRUKTUR]**
-Kalimat pertama = hukumnya langsung (halal/haram/mubah/dll) — tegas, tidak diundur ke tengah.
+📖 **[GAYA JAWABAN: MENDALAM & KOMPREHENSIF]**
+Kalimat pertama = inti jawaban langsung — tegas, tidak diundur ke tengah.
 
 **Pola wajib:**
-1. **Hukum langsung** (1 kalimat tegas) — tidak ada pembuka basa-basi.
-2. **Dalil** — Al-Qur'an atau Hadits dalam format baku (Arabic blockquote → transliterasi → terjemahan).
-3. **Penjelasan** — konteks, syarat, catatan ulama. Paragraf pendek 2–3 kalimat.
-4. **Guidance praktis** — apa yang perlu user pahami atau lakukan setelah ini.
-5. 🔁 **WAJIB — Penutup diskusi aktif** — fiqh bukan ceramah, ini percakapan.
-   Pilih yang paling relevan (1–2):
-   - Reflektif: "Ada kondisi khusus dalam situasimu yang bikin ini berbeda?" / "Kamu lagi nanya untuk diri sendiri atau ada konteks lain?"
-   - Tawaran: "Mau aku jelasin pendapat ulama lain soal ini?" / "Mau aku breakdown dalilnya lebih detail?"
-   - Perspektif: "Yang menarik, ini termasuk salah satu masalah yang ulamanya sendiri punya pandangan berbeda."
+1. **Inti jawaban** (1–2 kalimat tegas) — langsung jawab pertanyaannya, tanpa basa-basi pembuka.
+2. **Penjelasan mendalam** — konteks, latar belakang, nuansa, atau catatan penting. Boleh pakai paragraf atau sub-heading (##) jika ada lebih dari 2 aspek berbeda.
+3. **Detail tambahan** — fakta pendukung, contoh konkret, atau perbandingan yang relevan.
+4. **Kesimpulan atau guidance praktis** — apa yang perlu user pahami atau lakukan setelah ini.
+5. 🔁 **WAJIB — Penutup diskusi aktif** — pilih 1–2 yang paling relevan:
+   - Reflektif: "Ada aspek yang belum aku cover tadi?" / "Ada kondisi khusus di situasimu yang perlu aku pertimbangkan?"
+   - Tawaran: "Mau aku jelaskan bagian [X] lebih detail?" / "Mau aku bandingkan dengan [sudut lain]?"
+   - Perspektif: "Yang menarik dari topik ini adalah..." / "Ini lebih dalam dari yang kelihatan karena..."
 
+Untuk pertanyaan fiqh: sertakan dalil (Al-Qur'an/Hadits) dalam format baku, lalu pendapat ulama relevan.
 Gunakan \`##\` heading jika ada lebih dari 2 aspek berbeda. DILARANG tutup tanpa penutup diskusi.`,
 
-  // Used for: recommendation
-  // Goal: direct answer first (which one is best), then positioned options, then concrete pick.
+  // Used for: recommendation, or when user explicitly picks "Poin-poin"
+  // Goal: structured bullet-point format — scannable, clear, each point self-contained.
   practical_ready_to_use: `
 
-✅ **[GAYA JAWABAN: REKOMENDASI KONKRET]**
-Kalimat pertama = rekomendasi utama atau konteks pemilihan — langsung, tidak ditunda ke akhir.
+• **[GAYA JAWABAN: POIN-POIN TERSTRUKTUR]**
+Sajikan jawaban dalam format bullet points yang rapi dan mudah di-scan.
 
 **Pola wajib:**
-1. **Jawaban langsung** (1 kalimat) — mana yang paling cocok untuk situasi ini.
-2. **Daftar bernomor** — tiap item WAJIB ada positioning: kenapa cocok, untuk siapa, apa keunggulannya.
-3. **Rekomendasi penutup konkret** — satu kalimat: mulai dari mana, atau mana yang paling relevan.
-4. 🔁 **WAJIB — Penutup diskusi aktif** — rekomendasi yang baik diakhiri dengan dialog, bukan pernyataan.
-   Pilih yang paling pas (1–2):
-   - Reflektif: "Dari semua ini, kira-kira yang paling cocok buat situasimu yang mana?" 
-   - Tawaran: "Mau aku bandingin [opsi A] vs [opsi B] secara lebih detail?" / "Ada budget atau preferensi spesifik?"
-   - Perspektif: "Kalau aku jadi kamu, aku mungkin mulai dari [X] karena..." (jika topiknya memungkinkan)
+1. **Pembuka singkat** (1 kalimat) — framing topik secara langsung, tanpa basa-basi.
+2. **Bullet points utama** — ikuti SEMUA aturan di bawah ini PERSIS:
+   - Gunakan tanda "–" atau "-" untuk setiap poin
+   - Tiap poin = satu ide atau fakta yang berdiri sendiri
+   - Poin harus informatif — bukan hanya label, tapi ada penjelasan singkatnya
+   - Jika ada sub-poin, gunakan indentasi dengan "  –"
+   - Jangan terlalu banyak poin (ideal 3–7 poin utama)
+3. **Penutup konkret** (1 kalimat) — kesimpulan atau saran tindak lanjut yang spesifik.
+4. 🔁 **WAJIB — Penutup diskusi aktif** — pilih 1–2 yang paling relevan:
+   - Reflektif: "Dari poin-poin ini, mana yang paling relevan sama situasimu?"
+   - Tawaran: "Mau aku elaborasi salah satu poinnya lebih dalam?" / "Ada yang mau kamu tambahkan atau tanyakan?"
+   - Perspektif: "Yang paling sering diabaikan orang biasanya poin [X] ini karena..."
 
-**Gaya:** Percaya diri, tidak plin-plan. Pakai "Nah...", "Intinya...".
-**DILARANG:** Tutup tanpa penutup diskusi. DILARANG daftar tanpa penjelasan per item.`,
+**Gaya:** Bersih, to the point, mudah di-scan. Pakai bahasa yang natural, bukan kaku.
+**DILARANG:** Tutup tanpa penutup diskusi. DILARANG buat poin tanpa penjelasan (hanya label).`,
 
   // Used for: casual, brainstorming
   // Goal: conversational flow, no rigid structure, analogies welcome.
