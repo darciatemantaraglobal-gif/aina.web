@@ -11,6 +11,18 @@ An AI-powered assistant for Indonesian students in Egypt (Masisir), built with R
 - **PWA**: `vite-plugin-pwa` + Workbox (service worker, offline caching, install prompt, mobile bottom nav)
 - **Additional DB**: Replit PostgreSQL used for `masisir_procedures` table
 
+### Knowledge Layer (foundation, not yet wired to chat)
+
+A second knowledge schema (designed to receive data from the **news-harvester** repo) has been prepared as an additive layer. The existing `knowledge_base` retrieval in `server.js` remains the default.
+
+| File | Role |
+|---|---|
+| `supabase/migrations/20260406_news_knowledge_schema.sql` | DDL for `knowledge_sources` + `knowledge_chunks` tables |
+| `server/db/knowledgeSourceQueries.js` | Raw query layer (dependency-injected supabase client) |
+| `server/services/newsKnowledgeService.js` | Business logic + retrieval entry point (not wired to chat yet) |
+
+The chat route (`/api/chat`) still calls `fetchRelevantArticles()` which queries `knowledge_base`. The new service exposes `retrieveByKeywords()` as the future integration point for stage 2.
+
 ## Running the App
 
 ```bash

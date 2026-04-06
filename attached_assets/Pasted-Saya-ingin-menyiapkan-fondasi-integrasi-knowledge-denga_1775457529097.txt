@@ -1,0 +1,59 @@
+Saya ingin menyiapkan fondasi integrasi knowledge dengan repo `news-harvester` yang memakai Supabase yang sama.
+
+PENTING:
+- Jangan mengganti flow chat, retrieval, atau knowledge base yang sekarang sudah berjalan
+- Jangan mengubah UI
+- Jangan membuat breaking changes
+- Existing chat/retrieval behavior harus tetap menjadi default
+- Semua perubahan harus additive only (menambah helper/service/repository baru), bukan rewrite atau replace logic lama
+
+Fokus tugas ini hanya tahap 1: persiapan layer data/retrieval agar AINA nanti siap membaca schema knowledge yang lebih umum.
+
+Tolong lakukan hal berikut:
+
+1. Audit bagaimana knowledge/retrieval AINA sekarang bekerja:
+   - file mana yang mengambil data knowledge
+   - query/service mana yang dipakai
+   - bagian mana yang nanti relevan untuk integrasi
+
+2. Pertahankan flow existing apa adanya.
+
+3. Tambahkan helper/service/repository BARU untuk schema knowledge umum seperti ini:
+   - id
+   - title
+   - source_type
+   - source_name
+   - source_url
+   - summary
+   - tags
+   - status
+   - cleaned_content
+   - created_at
+
+4. Tambahkan juga support helper/model BARU untuk knowledge chunks:
+   - id
+   - source_id
+   - chunk_index
+   - chunk_text
+   - chunk_summary
+   - topic
+   - metadata_json
+
+5. Jika perlu, buat file service terpisah untuk future knowledge retrieval, tetapi:
+   - jangan alihkan chat utama ke service baru ini
+   - jangan hapus query/retrieval lama
+   - jangan ubah behavior existing
+   - cukup siapkan layer baru yang belum menjadi default
+
+6. Pastikan perubahan bersifat persiapan integrasi saja, bukan aktivasi integrasi penuh.
+
+7. Setelah selesai, berikan:
+   - daftar file yang diubah/ditambahkan
+   - before vs after singkat
+   - penjelasan bagian mana yang baru ditambahkan
+   - konfirmasi bahwa flow existing tetap default dan tidak diubah
+
+Aturan penting:
+- Do not replace existing chat/retrieval flow
+- Do not change current UI behavior
+- If any change risks breaking current behavior, stop and preserve the current implementation while only adding non-default supporting modules
