@@ -4405,19 +4405,45 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // ── Append suggestion instruction at the very end of the system prompt ────
-  finalSystemPrompt += `\n\n---\n## SARAN TINDAK LANJUT (WAJIB)\nSetiap respons harus diakhiri dengan tepat 2 saran tindak lanjut yang actionable — apa yang bisa user LAKUKAN atau JELAJAHI selanjutnya. Tulis blok berikut langsung setelah konten jawaban (tanpa baris kosong di antaranya):\n[SARAN_LANJUT]\n- [saran aksi 1, bahasa Indonesia, max 9 kata, diawali kata kerja aktif]\n- [saran aksi 2, bahasa Indonesia, max 9 kata, diawali kata kerja aktif]\n[/SARAN_LANJUT]\nContoh bagus: "Cek persyaratan dokumen pendaftaran Al-Azhar", "Hitung estimasi biaya hidup di Kairo", "Pelajari tips memperlancar bahasa Arab".\nJANGAN buat kalimat tanya. Buat saran aksi nyata yang bisa langsung diambil user setelah membaca jawabanmu.\n---`;
+  finalSystemPrompt += `\n\n---\n## SARAN TINDAK LANJUT (WAJIB — IKUTI FORMAT PERSIS)\nSetiap respons WAJIB diakhiri dengan blok ini. JANGAN ubah format tag, JANGAN tambah markdown di sekitar tag:\n[SARAN_LANJUT]\n- Saran aksi 1 (max 9 kata, bahasa Indonesia, diawali kata kerja aktif)\n- Saran aksi 2 (max 9 kata, bahasa Indonesia, diawali kata kerja aktif)\n[/SARAN_LANJUT]\nContoh benar:\n[SARAN_LANJUT]\n- Cek persyaratan dokumen pendaftaran Al-Azhar\n- Hitung estimasi biaya hidup bulanan di Kairo\n[/SARAN_LANJUT]\nPENTING: tag harus persis [SARAN_LANJUT] dan [/SARAN_LANJUT] tanpa tanda bintang atau karakter lain. JANGAN buat kalimat tanya.\n---`;
 
   // ── Helper: parse and strip [SARAN_LANJUT] block from accumulated text ───
+  // Toleran terhadap: (1) closing tag hilang, (2) markdown bold di sekitar tag,
+  // (3) spasi ekstra, (4) tag terpotong di akhir streaming.
   function parseFollowUpSuggestions(text) {
-    const match = text.match(/\[SARAN_LANJUT\]([\s\S]*?)\[\/SARAN_LANJUT\]/i);
-    if (!match) return { clean: text, suggestions: [] };
-    const block = match[1];
-    const suggestions = block
-      .split('\n')
-      .map(l => l.replace(/^[-*•\d.]\s*/, '').trim())
-      .filter(l => l.length > 4 && l.length < 120);
-    const clean = text.replace(/\s*\[SARAN_LANJUT\][\s\S]*?\[\/SARAN_LANJUT\]/i, '').trimEnd();
-    return { clean, suggestions: suggestions.slice(0, 2) };
+    // Normalise: strip markdown bold/italic wrapping around the tag
+    const normalised = text.replace(/\*+\s*(\[(?:\/?SARAN_LANJUT)\])\s*\*+/gi, '$1');
+
+    const extractSuggestions = (block) =>
+      block
+        .split('\n')
+        .map(l => l.replace(/^[-*•\d.)\]]\s*/, '').replace(/^\[.*?\]\s*/, '').trim())
+        .filter(l => l.length > 4 && l.length < 120 && !/^\[/.test(l))
+        .slice(0, 2);
+
+    // ── Strategy 1: strict — both opening and closing tag present ─────────
+    const strict = normalised.match(/\[SARAN_LANJUT\]([\s\S]*?)\[\/SARAN_LANJUT\]/i);
+    if (strict) {
+      const suggestions = extractSuggestions(strict[1]);
+      if (suggestions.length > 0) {
+        const clean = normalised.replace(/\s*\[SARAN_LANJUT\][\s\S]*?\[\/SARAN_LANJUT\]/i, '').trimEnd();
+        return { clean, suggestions };
+      }
+    }
+
+    // ── Strategy 2: fallback — opening tag only (closing tag missing/cut off) ─
+    const openMatch = normalised.match(/\[SARAN_LANJUT\]([\s\S]*?)$/i);
+    if (openMatch) {
+      const block = openMatch[1].replace(/\[\/SARAN_LANJUT\].*/i, ''); // strip partial closing if any
+      const suggestions = extractSuggestions(block);
+      if (suggestions.length > 0) {
+        const openIdx = normalised.search(/\[SARAN_LANJUT\]/i);
+        const clean = normalised.slice(0, openIdx).trimEnd();
+        return { clean, suggestions };
+      }
+    }
+
+    return { clean: text, suggestions: [] };
   }
 
   const cleanReply = (raw) => raw
