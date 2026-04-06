@@ -1,0 +1,161 @@
+Tolong lakukan audit menyeluruh terhadap implementasi Phase 5 Step 2 (Analytics + Feedback Brain) pada repo AINA.
+
+Tujuan audit:
+- Memastikan analytics query logging berjalan benar dan aman
+- Memastikan feedback system (jika ada) terhubung dengan benar
+- Memastikan flow chat utama tidak berubah
+- Memastikan semua perubahan additive-only dan non-breaking
+- Memastikan analytics tidak mengganggu performa user
+
+==================================================
+
+1. Validasi Struktur Perubahan
+
+- File apa saja yang ditambahkan?
+- File apa saja yang diubah?
+- Apakah ada perubahan destructive pada file existing?
+- Apakah semua perubahan bersifat additive-only?
+- Apakah ada perubahan di server.js, route /api/chat, atau engine utama?
+
+==================================================
+
+2. Validasi Query Analytics Storage
+
+- Apakah ada tabel baru (misalnya query_analytics)?
+- Field apa saja yang tersedia?
+  Minimal:
+  - id
+  - created_at
+  - user_id (nullable)
+  - query_text
+  - intent_class
+  - retrieval_mode
+  - legacy_count
+  - news_count
+  - final_count
+  - top_origin
+  - kb_strength
+  - used_external_fallback
+  - response_status
+
+- Apakah data benar-benar tersimpan saat chat dilakukan?
+- Apakah ada constraint / index yang membantu performa?
+
+==================================================
+
+3. Validasi Hook ke Chat Flow
+
+- Di bagian mana analytics ditulis?
+- Apakah analytics dilakukan AFTER response disiapkan?
+- Apakah analytics write bersifat non-blocking (best-effort)?
+- Jika insert analytics gagal:
+  - apakah hanya log warning?
+  - apakah tidak mempengaruhi response ke user?
+
+==================================================
+
+4. Validasi Retrieval Metadata Capture
+
+- Apakah analytics benar-benar mencatat:
+  - berapa hasil dari legacy
+  - berapa dari news
+  - final_count
+  - top_origin
+  - kb_strength
+- Apakah nilai ini sesuai dengan logika retrieval Phase 4?
+
+==================================================
+
+5. Validasi Internal Analytics Route
+
+- Apakah ada route seperti `/api/internal/knowledge-analytics`?
+- Endpoint apa saja tersedia?
+  - /summary
+  - /top-queries
+  - /weak-queries
+  - /source-mix
+
+- Apakah route ini terpisah dari flow user?
+- Apakah response JSON konsisten dan stabil?
+
+==================================================
+
+6. Validasi Proteksi Endpoint
+
+- Apakah endpoint analytics menggunakan:
+  - X-Internal-Key
+  - atau auth fallback
+- Apakah endpoint tidak bisa diakses tanpa auth?
+- Apakah tidak ada kebocoran data ke user biasa?
+
+==================================================
+
+7. Validasi Feedback System
+
+- Apakah ada tabel atau struktur feedback (misalnya query_feedback)?
+- Apakah feedback terhubung ke query_analytics_id?
+- Jika belum terhubung ke UI:
+  - apakah endpoint test tersedia?
+  - apakah sistem aman jika belum digunakan?
+
+==================================================
+
+8. Validasi Non-Breaking
+
+Jawab dengan tegas:
+- Apakah /api/chat tetap sama?
+- Apakah response AI ke user tidak berubah?
+- Apakah retrieval smart/hybrid tetap berjalan seperti sebelumnya?
+- Apakah frontend user tidak berubah?
+- Apakah analytics tidak mempengaruhi latency secara signifikan?
+
+==================================================
+
+9. Simulasi Before vs After
+
+Jelaskan:
+- sebelum Phase 5 Step 2:
+  - apa yang terjadi saat user chat
+- setelah Phase 5 Step 2:
+  - tambahan apa yang terjadi di belakang layar
+Pastikan terlihat bahwa perubahan hanya observability + intelligence, bukan behavior user
+
+==================================================
+
+10. Risiko & Bug Potensial
+
+Cari kemungkinan:
+- analytics insert gagal diam-diam
+- query analytics terlalu besar / berat
+- race condition antara response dan analytics write
+- endpoint analytics berat (no pagination)
+- kebocoran data query user
+- dependency pada field retrieval yang tidak selalu ada
+
+==================================================
+
+11. Kesimpulan
+
+Berikan verdict:
+- AMAN
+- PERLU FIX
+- BERISIKO
+
+Dan jelaskan alasannya secara tegas.
+
+==================================================
+
+12. Bonus Improvement
+
+Berikan saran ringan:
+- pagination di /top-queries
+- caching summary
+- index di kolom query_text / intent_class
+- retention policy (misalnya hanya simpan 30–90 hari)
+- agregasi SQL (GROUP BY) untuk performa
+
+PENTING:
+- Jangan menambah fitur baru
+- Jangan menulis ulang code
+- Fokus hanya pada audit dan pelaporan
+- Jawaban harus jujur, spesifik, dan ringkas
