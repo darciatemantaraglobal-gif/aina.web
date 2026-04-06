@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, Component, ReactNode, useCallback } from "react";
+import { useState, useEffect, useRef, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import MobileBottomNav from "@/components/MobileBottomNav";
@@ -200,6 +200,10 @@ const Dashboard = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarPanelRef  = useRef<HTMLDivElement>(null);
+  const sidebarOverlayRef = useRef<HTMLDivElement>(null);
+  const sidebarOpenRef   = useRef(sidebarOpen);
+  useEffect(() => { sidebarOpenRef.current = sidebarOpen; }, [sidebarOpen]);
   const [showSetup, setShowSetup] = useState(false);
   const [profileInitial, setProfileInitial] = useState<{
     fullName?: string; originCity?: string; faculty?: string;
@@ -476,6 +480,77 @@ const Dashboard = () => {
     triggerFeatureTour(activeTab, true);
   }, [activeTab, triggerFeatureTour]);
 
+  // ── Swipe gesture: swipe right from left edge → open; swipe left → close ──
+  useEffect(() => {
+    const SIDEBAR_W = 256;
+    const EDGE_ZONE = 40;
+    const THRESHOLD = 72;
+
+    let startX  = 0, startY = 0;
+    let active  = false, decided = false, isHoriz = false;
+
+    const panel   = () => sidebarPanelRef.current;
+    const overlay = () => sidebarOverlayRef.current;
+    const clamp   = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+    function onStart(e: TouchEvent) {
+      if (window.innerWidth >= 768) return;
+      const t = e.touches[0];
+      startX = t.clientX; startY = t.clientY;
+      active = false; decided = false; isHoriz = false;
+      if (!sidebarOpenRef.current && startX > EDGE_ZONE) return;
+      active = true;
+    }
+
+    function onMove(e: TouchEvent) {
+      if (!active) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (!decided) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        isHoriz = Math.abs(dx) > Math.abs(dy);
+        decided = true;
+        if (!isHoriz) { active = false; return; }
+        const p = panel();
+        if (p) p.style.transition = "none";
+      }
+      if (!isHoriz) return;
+      e.preventDefault();
+      const p = panel(); const o = overlay();
+      if (!p) return;
+      if (sidebarOpenRef.current) {
+        const tx = clamp(dx, -SIDEBAR_W, 0);
+        p.style.transform = `translateX(${tx}px)`;
+        if (o) o.style.opacity = String(clamp(1 + tx / SIDEBAR_W, 0, 1));
+      } else {
+        if (dx <= 0) return;
+        const tx = clamp(dx - SIDEBAR_W, -SIDEBAR_W, 0);
+        p.style.transform = `translateX(${tx}px)`;
+        if (o) { o.style.display = "block"; o.style.opacity = String(clamp(dx / SIDEBAR_W, 0, 0.85)); }
+      }
+    }
+
+    function onEnd(e: TouchEvent) {
+      if (!active || !isHoriz) { active = false; return; }
+      const dx = e.changedTouches[0].clientX - startX;
+      const p = panel(); const o = overlay();
+      if (p) { p.style.transition = ""; p.style.transform = ""; }
+      if (o) { o.style.opacity = ""; o.style.display = ""; }
+      if (!sidebarOpenRef.current && dx > THRESHOLD) setSidebarOpen(true);
+      else if (sidebarOpenRef.current && dx < -THRESHOLD) setSidebarOpen(false);
+      active = false; decided = false; isHoriz = false;
+    }
+
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchmove",  onMove,  { passive: false });
+    document.addEventListener("touchend",   onEnd,   { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove",  onMove);
+      document.removeEventListener("touchend",   onEnd);
+    };
+  }, []);
+
   if (!authReady) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
@@ -487,14 +562,15 @@ const Dashboard = () => {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {/* Sidebar overlay — always in DOM so swipe-drag can animate opacity */}
+      <div
+        ref={sidebarOverlayRef}
+        className={`fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden transition-opacity duration-300 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        onClick={() => setSidebarOpen(false)}
+      />
 
       <div
+        ref={sidebarPanelRef}
         className={`
           fixed inset-y-0 left-0 z-40 md:relative md:z-auto md:flex md:translate-x-0
           transition-transform duration-300 ease-in-out
