@@ -1,0 +1,144 @@
+Tujuan: Tambahkan "Knowledge Gap Detection + Topic Recommendation + Draft Generator" ke AINA berdasarkan data analytics yang sudah ada.
+
+PENTING:
+- Semua perubahan HARUS additive-only
+- Tidak mengubah flow /api/chat
+- Tidak mengganggu retrieval existing
+- Semua fitur baru hanya aktif jika dipanggil endpoint baru
+
+====================================================
+
+STEP 1 — BUAT SERVICE: knowledgeGapService.js
+
+Lokasi:
+server/services/knowledgeGapService.js
+
+Fungsi:
+
+1. detectKnowledgeGaps()
+- Ambil data dari:
+  - intel_query_patterns
+  - intel_retrieval_stats
+  - intel_message_ratings
+
+Logic:
+- Cari query dengan kondisi:
+  - frequency tinggi (>= 3)
+  - tapi:
+    - KB tidak digunakan ATAU
+    - confidence = needs_verification ATAU
+    - rating rendah
+
+Output:
+[
+  {
+    query: "...",
+    frequency: 12,
+    issue: "no_kb" | "low_confidence" | "low_rating",
+    priority_score: number
+  }
+]
+
+Priority score:
+- frequency tinggi = naik
+- low rating = naik
+- no KB = paling tinggi
+
+====================================================
+
+STEP 2 — BUAT: topicRecommender
+
+Function:
+getRecommendedTopics()
+
+Logic:
+- group query jadi topik (keyword grouping sederhana)
+- contoh:
+  "cara iqomah", "perpanjang iqomah" → "Iqomah Mesir"
+
+Output:
+[
+  {
+    topic: "Iqomah Mesir",
+    queries: [...],
+    total_frequency: 30,
+    priority: "high" | "medium" | "low"
+  }
+]
+
+====================================================
+
+STEP 3 — BUAT: draftGenerator
+
+Function:
+generateDraft(topic)
+
+- Ambil:
+  - related queries
+- Generate prompt ke AI:
+
+Prompt:
+"Tuliskan artikel panduan lengkap, jelas, step-by-step, berdasarkan topik berikut: {topic}. Gunakan bahasa sederhana, cocok untuk mahasiswa Indonesia di Mesir."
+
+Output:
+{
+  title,
+  content,
+  suggested_tags
+}
+
+Gunakan model yang sama dengan chat (Tier B).
+
+====================================================
+
+STEP 4 — BUAT API ROUTES
+
+Lokasi:
+server/routes/knowledgeInsights.js
+
+Endpoints:
+
+1. GET /api/internal/knowledge/gaps
+→ return detectKnowledgeGaps()
+
+2. GET /api/internal/knowledge/recommendations
+→ return getRecommendedTopics()
+
+3. POST /api/internal/knowledge/draft
+body: { topic }
+→ return generateDraft(topic)
+
+====================================================
+
+STEP 5 — SECURITY
+
+Semua endpoint:
+- wajib pakai header:
+  x-internal-key === process.env.INTERNAL_API_KEY
+
+Jika tidak valid → 403
+
+====================================================
+
+STEP 6 — REGISTER ROUTE
+
+Di server.js:
+- import routes
+- mount ke:
+app.use("/api/internal/knowledge", routes)
+
+====================================================
+
+STEP 7 — NON-BREAKING CHECK
+
+Pastikan:
+- /api/chat tidak berubah
+- semua feature existing tetap jalan
+- jika service baru error → tidak mempengaruhi chat
+
+====================================================
+
+OUTPUT:
+- Ringkasan file baru
+- Contoh response tiap endpoint
+- Konfirmasi tidak ada perubahan ke flow utama

@@ -1,0 +1,292 @@
+/**
+ * knowledgeGapService.js — Knowledge Gap Detection + Topic Recommender + Draft Generator
+ *
+ * Tiga fungsi utama:
+ *   detectKnowledgeGaps()       — temukan topik yang sering ditanya tapi KB-nya lemah
+ *   getRecommendedTopics()      — grup query jadi topik terstruktur dengan prioritas
+ *   generateDraft(topic, deps)  — generate artikel panduan via OpenRouter
+ *
+ * ADDITIVE-ONLY: tidak mengubah chat flow, tidak mengubah retrieval.
+ * Dibaca dari tabel intel yang sudah ada (intel_query_patterns, intel_retrieval_stats,
+ * intel_message_ratings). Tidak ada write ke DB.
+ */
+
+/* ── Priority score helpers ─────────────────────────────────────────── */
+
+/**
+ * Hitung priority score untuk gap item.
+ * no_kb = paling tinggi, diikuti low_rating, lalu low_confidence.
+ * frequency juga menambah score.
+ */
+function calcPriorityScore({ frequency = 0, issue }) {
+  const base =
+    issue === "no_kb"          ? 100 :
+    issue === "low_rating"     ?  60 :
+    issue === "low_confidence" ?  30 : 10;
+  return base + Math.min(frequency * 2, 80);
+}
+
+/* ── 1. detectKnowledgeGaps() ───────────────────────────────────────── */
+
+/**
+ * Cari query yang sering muncul tapi KB-nya lemah / tidak ada / dapat rating buruk.
+ *
+ * @param {{ getAdminClient: Function }} deps
+ * @param {{ minFrequency?: number, days?: number }} [opts]
+ * @returns {Promise<Array<{ query, topic, frequency, issue, priority_score }>>}
+ */
+export async function detectKnowledgeGaps(deps, opts = {}) {
+  const { getAdminClient } = deps;
+  const { minFrequency = 3, days = 30 } = opts;
+  const supabase = getAdminClient();
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  // ── Ambil frequent queries ───────────────────────────────────────────
+  const { data: patterns, error: pErr } = await supabase
+    .from("intel_query_patterns")
+    .select("topic_cluster, sample_query, frequency, last_seen_at")
+    .gte("frequency", minFrequency)
+    .order("frequency", { ascending: false })
+    .limit(200);
+
+  if (pErr) throw new Error(`intel_query_patterns: ${pErr.message}`);
+  if (!patterns?.length) return [];
+
+  // ── Ambil retrieval stats recent (untuk cek had_kb + confidence) ─────
+  const { data: stats, error: sErr } = await supabase
+    .from("intel_retrieval_stats")
+    .select("intent, kb_strength, had_kb, confidence_level")
+    .gte("created_at", since)
+    .limit(2000);
+
+  if (sErr) console.warn("[GapSvc] intel_retrieval_stats:", sErr.message);
+
+  // Hitung "no-kb rate" per intent dari retrieval stats
+  const intentStats = {};
+  for (const row of (stats || [])) {
+    const key = (row.intent || "general").toLowerCase();
+    if (!intentStats[key]) intentStats[key] = { total: 0, noKb: 0, lowConf: 0 };
+    intentStats[key].total++;
+    if (!row.had_kb)                              intentStats[key].noKb++;
+    if (row.confidence_level === "needs_verification") intentStats[key].lowConf++;
+  }
+
+  // ── Ambil message ratings recent ────────────────────────────────────
+  const { data: ratings, error: rErr } = await supabase
+    .from("intel_message_ratings")
+    .select("rating, intent")
+    .gte("created_at", since)
+    .not("rating", "is", null)
+    .limit(1000);
+
+  if (rErr) console.warn("[GapSvc] intel_message_ratings:", rErr.message);
+
+  // Hitung avg rating per intent
+  const intentRatings = {};
+  for (const row of (ratings || [])) {
+    const key = (row.intent || "general").toLowerCase();
+    if (!intentRatings[key]) intentRatings[key] = { sum: 0, count: 0 };
+    intentRatings[key].sum   += Number(row.rating) || 0;
+    intentRatings[key].count++;
+  }
+
+  // ── Tentukan issue tiap query pattern ───────────────────────────────
+  const gaps = [];
+
+  for (const p of patterns) {
+    const query    = p.sample_query || p.topic_cluster || "–";
+    const topic    = p.topic_cluster || "Umum";
+    const freq     = p.frequency || 0;
+
+    // Cari match intent dari retrieval stats menggunakan overlap kata kunci
+    const topicWords = topic.toLowerCase().split(/[\s_]+/).filter(w => w.length > 2);
+    let bestKey   = null;
+    let bestScore = 0;
+    for (const key of Object.keys(intentStats)) {
+      const overlap = topicWords.filter(w => key.includes(w)).length;
+      if (overlap > bestScore) { bestScore = overlap; bestKey = key; }
+    }
+
+    const iStat = bestKey ? intentStats[bestKey] : null;
+    const iRat  = bestKey ? intentRatings[bestKey] : null;
+
+    let issue = null;
+
+    // Cek no_kb: >= 60% retrieval tanpa KB
+    if (iStat && iStat.total >= 2 && iStat.noKb / iStat.total >= 0.6) {
+      issue = "no_kb";
+    }
+    // Cek low_confidence: >= 50% needs_verification
+    else if (iStat && iStat.total >= 2 && iStat.lowConf / iStat.total >= 0.5) {
+      issue = "low_confidence";
+    }
+    // Cek low_rating: avg rating < 0.4 (skala 0–1) atau < 2 (skala 1–5)
+    else if (iRat && iRat.count >= 2) {
+      const avg = iRat.sum / iRat.count;
+      const isLow = avg <= 1 ? (avg < 0.4) : (avg < 2.5);
+      if (isLow) issue = "low_rating";
+    }
+    // Fallback: kalau stats tidak ada sama sekali dan freq tinggi → anggap no_kb
+    else if (!iStat && freq >= 5) {
+      issue = "no_kb";
+    }
+
+    if (!issue) continue; // tidak termasuk gap
+
+    gaps.push({
+      query,
+      topic,
+      frequency: freq,
+      issue,
+      priority_score: calcPriorityScore({ frequency: freq, issue }),
+      last_seen: p.last_seen_at,
+    });
+  }
+
+  // Sort descending priority_score
+  gaps.sort((a, b) => b.priority_score - a.priority_score);
+  return gaps;
+}
+
+/* ── 2. getRecommendedTopics() ──────────────────────────────────────── */
+
+/**
+ * Grup gap queries jadi topik yang direkomendasikan untuk penambahan KB.
+ * Keyword grouping sederhana: topik dengan kata kunci yang sama digabung.
+ *
+ * @param {{ getAdminClient: Function }} deps
+ * @param {{ minFrequency?: number, days?: number }} [opts]
+ * @returns {Promise<Array<{ topic, queries, total_frequency, priority }>>}
+ */
+export async function getRecommendedTopics(deps, opts = {}) {
+  const gaps = await detectKnowledgeGaps(deps, opts);
+  if (!gaps.length) return [];
+
+  // Grup berdasarkan topic_cluster
+  const topicMap = {};
+  for (const g of gaps) {
+    const key = g.topic || "Umum";
+    if (!topicMap[key]) {
+      topicMap[key] = {
+        topic: key,
+        queries:         [],
+        total_frequency: 0,
+        issues:          new Set(),
+        max_priority:    0,
+      };
+    }
+    topicMap[key].queries.push(g.query);
+    topicMap[key].total_frequency += g.frequency;
+    topicMap[key].issues.add(g.issue);
+    if (g.priority_score > topicMap[key].max_priority) {
+      topicMap[key].max_priority = g.priority_score;
+    }
+  }
+
+  // Dedupe queries dalam tiap topik
+  for (const t of Object.values(topicMap)) {
+    t.queries = [...new Set(t.queries)].slice(0, 10);
+    t.issues  = [...t.issues];
+  }
+
+  const topics = Object.values(topicMap);
+
+  // Beri label priority
+  const maxScore = Math.max(...topics.map(t => t.max_priority), 1);
+  for (const t of topics) {
+    const ratio = t.max_priority / maxScore;
+    t.priority = ratio >= 0.7 ? "high" : ratio >= 0.4 ? "medium" : "low";
+    delete t.max_priority; // bersihkan field internal
+  }
+
+  topics.sort((a, b) => b.total_frequency - a.total_frequency);
+  return topics;
+}
+
+/* ── 3. generateDraft(topic, deps) ─────────────────────────────────── */
+
+/**
+ * Generate draft artikel panduan via OpenRouter untuk topik yang dipilih.
+ *
+ * @param {string} topic — nama topik (misal "Iqomah Mesir")
+ * @param {{ getAdminClient: Function, openRouterApiKey: string }} deps
+ * @param {{ relatedQueries?: string[] }} [opts]
+ * @returns {Promise<{ title, content, suggested_tags, model_used }>}
+ */
+export async function generateDraft(topic, deps, opts = {}) {
+  const { openRouterApiKey } = deps;
+  if (!openRouterApiKey) throw new Error("OPENROUTER_API_KEY tidak tersedia");
+  if (!topic?.trim())   throw new Error("Topic tidak boleh kosong");
+
+  const { relatedQueries = [] } = opts;
+  const queriesText = relatedQueries.length
+    ? `\nPertanyaan-pertanyaan yang sering muncul terkait topik ini:\n${relatedQueries.slice(0, 8).map(q => `- ${q}`).join("\n")}\n`
+    : "";
+
+  const prompt = `Tuliskan artikel panduan lengkap, jelas, step-by-step, berdasarkan topik berikut: ${topic}.${queriesText}
+Gunakan bahasa sederhana, cocok untuk mahasiswa Indonesia di Mesir.
+
+Format output WAJIB JSON dengan struktur:
+{
+  "title": "judul artikel",
+  "content": "isi artikel lengkap dengan markdown (heading ##, bullet list, step-by-step)",
+  "suggested_tags": ["tag1", "tag2", "tag3"]
+}
+
+Jangan tambahkan teks apapun di luar JSON.`;
+
+  const models = [
+    "google/gemini-2.0-flash-001",
+    "google/gemini-2.0-flash-lite-001",
+  ];
+
+  let lastErr = null;
+  for (const model of models) {
+    try {
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "HTTP-Referer":  "https://aina-masisir.app",
+          "X-Title":       "AINA Draft Generator",
+        },
+        body: JSON.stringify({
+          model,
+          messages:    [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens:  2000,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!resp.ok) {
+        lastErr = new Error(`OpenRouter ${resp.status}`);
+        continue;
+      }
+
+      const json = await resp.json();
+      const raw  = json.choices?.[0]?.message?.content || "";
+
+      // Parse JSON dari response AI
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("AI tidak mengembalikan JSON valid");
+
+      const parsed = JSON.parse(match[0]);
+      if (!parsed.title || !parsed.content) throw new Error("Field title/content kosong");
+
+      return {
+        title:          parsed.title,
+        content:        parsed.content,
+        suggested_tags: Array.isArray(parsed.suggested_tags) ? parsed.suggested_tags : [],
+        model_used:     model,
+        topic,
+      };
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[DraftGen] model ${model} gagal:`, e.message);
+    }
+  }
+
+  throw lastErr || new Error("Semua model gagal");
+}

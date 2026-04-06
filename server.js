@@ -21,6 +21,7 @@ import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { createKnowledgeTestRouter }      from "./server/routes/knowledgeTest.js";
 import { createKnowledgeMonitorRouter }   from "./server/routes/knowledgeMonitor.js";
 import { createKnowledgeAnalyticsRouter } from "./server/routes/knowledgeAnalytics.js";
+import { createKnowledgeInsightsRouter }  from "./server/routes/knowledgeInsights.js";
 import { createAnalyticsService }         from "./server/services/analyticsService.js";
 import { createHybridRetrievalService }  from "./server/services/hybridRetrievalService.js";
 import { createSmartRetrievalService }   from "./server/services/smartRetrievalService.js";
@@ -11959,6 +11960,15 @@ app.use("/api/internal/knowledge-monitor",   createKnowledgeMonitorRouter({ getA
 // Read-only analytics: summary, top queries, weak queries, source-mix, feedback.
 // Data ditulis fire-and-forget oleh logQueryAnalytics() di setImmediate.
 app.use("/api/internal/knowledge-analytics", createKnowledgeAnalyticsRouter({ getAdminClient, verifyAuth }));
+
+// ── Internal knowledge-insights route — Gap Detection + Topic Recommendation + Draft ──
+// Additive-only: tidak mengubah /api/chat, tidak mengubah retrieval default.
+// Proteksi: X-Internal-Key (server-to-server) atau Bearer token (admin UI) fallback.
+app.use("/api/internal/knowledge", createKnowledgeInsightsRouter({
+  getAdminClient,
+  verifyAuth,
+  openRouterApiKey: process.env.OPENROUTER_API_KEY,
+}));
 
 /* ── Vercel Cron endpoints ────────────────────────────
    Called by Vercel scheduler (vercel.json "crons").
