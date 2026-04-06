@@ -199,6 +199,56 @@ export function knowledgeSourceQueries(supabase) {
       if (error) throw new Error(error.message);
     },
 
+    // ── Combined ──────────────────────────────────────────────────────────────
+
+    /**
+     * Ambil satu source beserta seluruh chunks-nya sekaligus.
+     * Mengembalikan { source, chunks } — source null jika tidak ditemukan.
+     * Hanya membaca source dengan status 'ready' untuk keamanan.
+     * @param {string} sourceId
+     */
+    async getSourceWithChunks(sourceId) {
+      const [sourceRes, chunksRes] = await Promise.all([
+        supabase
+          .from("knowledge_sources")
+          .select("*")
+          .eq("id", sourceId)
+          .eq("status", "ready")
+          .maybeSingle(),
+        supabase
+          .from("knowledge_chunks")
+          .select("*")
+          .eq("source_id", sourceId)
+          .order("chunk_index", { ascending: true }),
+      ]);
+
+      if (sourceRes.error) throw new Error(sourceRes.error.message);
+      if (chunksRes.error) throw new Error(chunksRes.error.message);
+
+      return { source: sourceRes.data ?? null, chunks: chunksRes.data ?? [] };
+    },
+
+    /**
+     * Ambil sources dengan source_type = 'news' yang sudah ready.
+     * Shortcut aman yang dipakai Phase 2 untuk membaca berita dari news-harvester.
+     * @param {{ limit?: number, tags?: string[] }} opts
+     */
+    async getPublishedNews({ limit = 10, tags } = {}) {
+      let q = supabase
+        .from("knowledge_sources")
+        .select("id, title, source_type, source_name, source_url, summary, tags, created_at")
+        .eq("status", "ready")
+        .eq("source_type", "news")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (tags && tags.length > 0) q = q.overlaps("tags", tags);
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    },
+
     // ── Stats ─────────────────────────────────────────────────────────────────
 
     /**

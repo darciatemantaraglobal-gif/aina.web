@@ -192,6 +192,35 @@ export function createNewsKnowledgeService({ getAdminClient }) {
       return { chunks, count: chunks.length };
     },
 
+    // ── Phase 2 read helpers ──────────────────────────────────────────────────
+
+    /**
+     * Ambil berita dari news-harvester yang sudah siap dibaca.
+     * Filter ketat: status = 'ready' + source_type = 'news'.
+     * Tidak membaca draft, pending, atau rejected.
+     *
+     * @param {{ limit?: number, tags?: string[] }} opts
+     */
+    async getPublishedNews({ limit = 10, tags } = {}) {
+      const news = await db().getPublishedNews({ limit, tags });
+      return { news, count: news.length };
+    },
+
+    /**
+     * Ambil satu source beserta seluruh chunks-nya.
+     * Hanya source dengan status 'ready' yang dikembalikan.
+     * Berguna untuk test integrasi dan validasi konten.
+     *
+     * @param {string} sourceId
+     */
+    async getSourceWithChunks(sourceId) {
+      if (!sourceId) {
+        throw Object.assign(new Error("sourceId diperlukan"), { status: 400 });
+      }
+      const { source, chunks } = await db().getSourceWithChunks(sourceId);
+      return { source, chunks, chunkCount: chunks.length };
+    },
+
     // ── Retrieval (future integration point) ──────────────────────────────────
 
     /**

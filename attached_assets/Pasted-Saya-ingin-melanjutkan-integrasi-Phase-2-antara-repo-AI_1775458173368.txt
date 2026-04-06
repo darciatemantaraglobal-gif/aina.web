@@ -1,0 +1,63 @@
+Saya ingin melanjutkan integrasi Phase 2 antara repo AINA (`aina.web`) dan repo `news-harvester` yang memakai Supabase yang sama.
+
+Konteks:
+- Phase 1 sudah menambahkan migration SQL, query layer, dan service layer baru:
+  - knowledge_sources
+  - knowledge_chunks
+  - knowledgeSourceQueries.js
+  - newsKnowledgeService.js
+- Flow chat utama existing harus tetap aman
+- Retrieval lama dari knowledge_base harus tetap menjadi default
+- Tujuan Phase 2 adalah membuat AINA mampu MEMBACA schema baru secara aman untuk kebutuhan test / integrasi bertahap, tanpa mengganti flow utama
+
+PENTING:
+- Jangan mengganti flow chat utama
+- Jangan mengganti retrieval default existing
+- Jangan mengubah UI
+- Jangan membuat breaking changes
+- Semua perubahan harus additive only
+- Jika ada risiko merusak behavior lama, pertahankan implementation existing dan tambahkan jalur baru yang non-default / opt-in
+
+Tugas yang saya inginkan:
+
+1. Audit layer baru Phase 1:
+   - server/db/knowledgeSourceQueries.js
+   - server/services/newsKnowledgeService.js
+   Pastikan siap dipakai untuk read/retrieval dari knowledge_sources dan knowledge_chunks
+
+2. Tambahkan jalur read/test yang aman untuk schema baru, misalnya:
+   - helper/service function untuk mengambil source published
+   - helper/service function untuk mencari chunks berdasarkan keyword
+   - helper/service function untuk mengambil source + chunks terkait
+
+3. JANGAN hubungkan jalur baru ini ke /api/chat utama sebagai default.
+   Existing chat flow harus tetap memakai retrieval lama.
+
+4. Jika memungkinkan, tambahkan satu mekanisme aman untuk test integrasi salah satu dari berikut:
+   - function test internal
+   - route admin/internal non-default
+   - script/server utility
+   Tujuannya hanya untuk membuktikan AINA bisa membaca data dari knowledge_sources/knowledge_chunks tanpa memengaruhi user flow utama
+
+5. Pastikan query hanya membaca data yang layak:
+   - status = published
+   - source_type = news (untuk tahap ini)
+   - hindari membaca draft/failed kecuali memang untuk admin/test
+
+6. Jika perlu, tambahkan adapter/helper untuk mengubah hasil schema baru menjadi format yang mudah dipakai retrieval di masa depan
+   Tapi jangan replace retrieval existing
+
+7. Setelah selesai, berikan laporan dengan format:
+   - Ringkasan perubahan
+   - File yang ditambahkan/diubah
+   - Bagaimana flow existing tetap aman
+   - Jalur baru mana yang sudah bisa membaca knowledge_sources/knowledge_chunks
+   - Apakah jalur baru sudah non-default
+   - Bagaimana cara saya mengetesnya tanpa mengganggu chat utama
+   - Risiko yang masih ada
+
+PENTING:
+- Do not replace existing chat/retrieval flow
+- Keep existing retrieval as default
+- Do not change current UI behavior
+- If any change risks breaking current behavior, stop and preserve the current implementation while only adding non-default supporting modules

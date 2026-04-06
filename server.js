@@ -18,6 +18,7 @@ import { detectMasisirContext } from './engine/contextDetector.js';
 import { expandQuery } from './engine/queryExpander.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
+import { createKnowledgeTestRouter }  from "./server/routes/knowledgeTest.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
 import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
@@ -11842,6 +11843,11 @@ app.use("/api/productivity", createProductivityRouter({ verifyAuth, getAdminClie
 
 // ── AI Focus + Reminder routes (moved to server/routes/productivityAI.js) ────
 app.use("/api/productivity", createProductivityAIRouter({ verifyAuth, getAdminClient, sendEmail, emailTemplate, getUserEmail }));
+
+// ── Internal knowledge-test route — Phase 2 integrasi news-harvester ─────────
+// Bukan bagian dari flow chat. Protected by X-Internal-Key header.
+// Mounting di /api/internal/** agar jelas terpisah dari route user.
+app.use("/api/internal/knowledge-test", createKnowledgeTestRouter({ getAdminClient, verifyAuth }));
 
 /* ── Vercel Cron endpoints ────────────────────────────
    Called by Vercel scheduler (vercel.json "crons").
