@@ -1,0 +1,156 @@
+Tolong lakukan audit menyeluruh terhadap implementasi Phase 5 Step 3 (Knowledge Gap Detection + Topic Recommendation + Draft Generator) pada repo AINA.
+
+Tujuan audit:
+- Memastikan fitur knowledge gap, recommendation, dan draft generator benar-benar ada dan berjalan
+- Memastikan semua perubahan additive-only dan non-breaking
+- Memastikan /api/chat tidak berubah
+- Memastikan endpoint baru aman dan internal-only
+
+==================================================
+
+1. Validasi Struktur Perubahan
+
+- File apa saja yang ditambahkan?
+- File apa saja yang diubah?
+- Apakah ada perubahan destructive pada file existing?
+- Apakah semua perubahan additive-only?
+- Apakah ada perubahan di server.js? Jelaskan singkat.
+
+==================================================
+
+2. Validasi Knowledge Gap Service
+
+- Apakah file `server/services/knowledgeGapService.js` ada?
+- Apakah function berikut ada dan berjalan:
+  - detectKnowledgeGaps()
+  - getRecommendedTopics()
+  - generateDraft(topic)
+
+- Dari tabel/data apa saja service ini membaca?
+  - intel_query_patterns
+  - intel_retrieval_stats
+  - intel_message_ratings
+  - sumber lain?
+
+- Apakah logic gap detection benar-benar ada?
+  Misalnya:
+  - frequency tinggi
+  - KB tidak digunakan
+  - confidence rendah / needs_verification
+  - rating rendah
+
+- Tunjukkan contoh output nyata/simulasi dari detectKnowledgeGaps()
+
+==================================================
+
+3. Validasi Topic Recommendation
+
+- Apakah query-query benar-benar digroup ke topik?
+- Bagaimana grouping dilakukan?
+  - keyword grouping sederhana?
+  - heuristik lain?
+- Apakah output berisi:
+  - topic
+  - related queries
+  - total_frequency
+  - priority
+
+- Tunjukkan contoh hasil recommendation yang dihasilkan
+
+==================================================
+
+4. Validasi Draft Generator
+
+- Apakah generateDraft(topic) benar-benar memanggil model AI?
+- Model/service apa yang dipakai?
+- Apakah prompt generation sesuai tujuan:
+  - artikel panduan
+  - step-by-step
+  - bahasa sederhana
+  - cocok untuk mahasiswa Indonesia di Mesir
+
+- Apakah output berisi:
+  - title
+  - content
+  - suggested_tags
+
+- Tunjukkan contoh hasil draft singkat (boleh ringkas, tidak perlu full panjang)
+
+==================================================
+
+5. Validasi API Routes
+
+- Apakah route baru benar-benar ada?
+- Endpoint apa saja yang tersedia?
+  - GET /api/internal/knowledge/gaps
+  - GET /api/internal/knowledge/recommendations
+  - POST /api/internal/knowledge/draft
+
+- Apakah route sudah di-mount di server.js?
+- Apakah response JSON konsisten dan stabil?
+
+==================================================
+
+6. Validasi Security
+
+- Apakah endpoint baru hanya bisa diakses dengan `x-internal-key`?
+- Apakah benar jika key salah / tidak ada → return 403?
+- Apakah endpoint ini tidak bisa diakses user biasa?
+
+==================================================
+
+7. Validasi Non-Breaking
+
+Jawab tegas:
+- Apakah /api/chat tidak berubah?
+- Apakah retrieval existing (legacy/hybrid/smart) tetap aman?
+- Apakah frontend user tidak berubah?
+- Apakah error di endpoint knowledge baru tidak mempengaruhi chat utama?
+
+==================================================
+
+8. Simulasi Before vs After
+
+Jelaskan singkat:
+- sebelum Phase 5 Step 3: admin/founder tahu gap knowledge dengan cara apa?
+- setelah Phase 5 Step 3: apa yang sekarang bisa dilakukan?
+
+==================================================
+
+9. Risiko & Bug Potensial
+
+Cari kemungkinan:
+- grouping topik terlalu kasar
+- draft generator terlalu generic
+- data intel kosong → output kosong
+- endpoint knowledge error kalau tabel intel belum ada
+- internal key bocor
+- AI draft terlalu mahal / lambat
+
+==================================================
+
+10. Kesimpulan
+
+Berikan verdict:
+- AMAN
+- PERLU FIX
+- BERISIKO
+
+Dan jelaskan alasannya dengan tegas.
+
+==================================================
+
+11. Bonus Improvement
+
+Berikan saran ringan:
+- ranking priority lebih pintar
+- grouping topic lebih akurat
+- draft generator dengan template per kategori
+- caching hasil recommendations
+- save draft langsung ke knowledge_base draft table (jika aman)
+
+PENTING:
+- Jangan menambah fitur baru
+- Jangan menulis ulang code
+- Fokus hanya pada audit dan pelaporan
+- Jawaban harus jujur, spesifik, dan ringkas
