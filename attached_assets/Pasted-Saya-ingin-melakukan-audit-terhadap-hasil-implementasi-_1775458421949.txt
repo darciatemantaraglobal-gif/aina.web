@@ -1,0 +1,73 @@
+Saya ingin melakukan audit terhadap hasil implementasi Phase 2 pada repo AINA (`aina.web`).
+
+Tujuan audit:
+- Memastikan flow chat dan retrieval existing tetap aman
+- Memastikan AINA sudah bisa membaca data dari knowledge_sources dan knowledge_chunks
+- Memastikan jalur baru bersifat non-default (tidak menggantikan retrieval lama)
+- Memastikan tidak ada breaking change
+
+Tolong lakukan audit dengan format berikut:
+
+1. Ringkasan Perubahan
+- Jelaskan singkat apa saja yang ditambahkan pada Phase 2
+- Fokus pada kemampuan read dari schema baru
+
+2. Daftar File
+- File apa saja yang:
+  a) ditambahkan
+  b) diubah
+- Untuk file yang diubah, jelaskan perubahan singkatnya
+
+3. Validasi Flow Existing
+Jawab dengan jelas:
+- Apakah flow chat utama masih sama?
+- Apakah retrieval lama masih menjadi default?
+- Apakah UI tidak berubah?
+- Apakah ada logic lama yang diubah atau diganti?
+
+4. Validasi Read dari Schema Baru
+- Apakah AINA sudah bisa membaca data dari:
+  - knowledge_sources
+  - knowledge_chunks
+- Function/service apa yang digunakan?
+- Apakah hanya mengambil data dengan status = published?
+- Apakah filter source_type = news sudah diterapkan?
+
+5. Mode Integrasi
+- Apakah jalur baru:
+  a) sudah terhubung ke chat utama
+  b) atau masih test/manual/non-default
+- Bagaimana cara mengetes jalur baru tanpa mengganggu user flow?
+
+6. Risiko & Potensi Error
+- Apakah ada bagian yang menyentuh logic kritikal?
+- Apakah ada kemungkinan error jika tabel Supabase belum ada?
+- Apakah ada dependency baru?
+- Apakah ada kemungkinan query lambat atau tidak optimal?
+
+7. Simulasi Before vs After
+Jelaskan singkat:
+- sebelum Phase 2: retrieval AINA seperti apa
+- setelah Phase 2: apa yang berubah dan apa yang tetap sama
+Pastikan jelas bahwa flow existing tetap berjalan
+
+8. Kesimpulan
+Pilih salah satu:
+- AMAN
+- PERLU PERBAIKAN
+- BERISIKO
+
+Dan jelaskan alasannya secara tegas.
+
+9. Verifikasi Tambahan
+Jawab ya/tidak:
+- Apakah chat utama masih pakai retrieval lama?
+- Apakah jalur baru belum jadi default?
+- Apakah AINA sudah bisa membaca data dari schema baru?
+- Apakah app masih build/run normal?
+
+PENTING:
+- Jangan menambah fitur baru
+- Jangan menulis ulang code
+- Fokus hanya pada audit dan pelaporan
+- Jawaban harus jelas, jujur, dan spesifik
