@@ -347,6 +347,24 @@
   .delay-500 { animation-delay: 500ms; }
   .delay-600 { animation-delay: 600ms; }
 
+  /* Thinking indicator — organic wave-up dots */
+  @keyframes thinking-dot {
+    0%, 40%, 100% { transform: translateY(0);    opacity: 0.3; }
+    20%            { transform: translateY(-5px); opacity: 1;   }
+  }
+  .animate-thinking-dot {
+    animation: thinking-dot 1.2s ease-in-out infinite;
+  }
+
+  /* Streaming text cursor — soft fade instead of hard blink */
+  @keyframes streaming-cursor {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.08; }
+  }
+  .animate-streaming-cursor {
+    animation: streaming-cursor 0.76s ease-in-out infinite;
+  }
+
   /* Sidebar active indicator pop */
   @keyframes indicator-in {
     from { transform: translateY(-50%) scaleY(0); opacity: 0; }

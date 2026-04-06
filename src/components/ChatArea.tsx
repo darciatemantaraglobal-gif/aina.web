@@ -1877,21 +1877,26 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
             {/* Streaming typewriter bubble */}
             {streamingMsg && (
-              <div className="flex gap-3 min-w-0 justify-start">
-                <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
-                <div className="min-w-0 flex-1 py-1.5 text-[15px] leading-[1.7]" dir="ltr">
-                  {renderWithArabicBlocks(streamingMsg.displayed, true)}
-                  {streamingMsg.isStreaming && (
-                    <span className="inline-block h-4 w-0.5 animate-pulse bg-primary/70 align-middle ml-0.5" />
-                  )}
+              <div className="flex gap-3 min-w-0 justify-start animate-msg-in-ai">
+                <AinaLogo className={`mt-1 h-7 w-7 shrink-0 object-contain transition-all ${streamingMsg.isStreaming ? "animate-thinking-pulse" : ""}`} />
+                <div className="min-w-0 flex-1" dir="ltr">
+                  <div className={`py-1.5 text-[15px] leading-[1.7] transition-all ${streamingMsg.isStreaming ? "border-l-2 border-primary/25 pl-3" : ""}`}>
+                    {renderWithArabicBlocks(streamingMsg.displayed, true)}
+                    {streamingMsg.isStreaming && (
+                      <span className="inline-block h-[1em] w-[2px] rounded-full bg-primary animate-streaming-cursor align-middle ml-0.5" />
+                    )}
+                  </div>
                   {/* Stop button — visible while stream is active */}
                   {streamingMsg.isStreaming && (
                     <div className="mt-2">
                       <button
                         onClick={handleStopGeneration}
-                        className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        className="group flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:border-red-500/40 hover:bg-red-500/8 hover:text-red-400 transition-all"
                       >
-                        <Square className="h-2.5 w-2.5 fill-current" />
+                        <span className="relative flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-red-400/60 animate-ping opacity-75" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500/70" />
+                        </span>
                         Hentikan
                       </button>
                     </div>
@@ -1901,19 +1906,23 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             )}
 
             {isLoading && (
-              <div className="flex gap-3">
+              <div className="flex gap-3 animate-msg-in-ai">
                 <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain animate-thinking-pulse" />
-                <div className="flex flex-col gap-1 py-2">
-                  <div className="flex items-center gap-1">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
-                  </div>
-                  {loadingSeconds >= 8 && (
-                    <span className="text-[11px] text-muted-foreground/60 animate-pulse">
-                      Sedang mencari jawaban... ({loadingSeconds}s)
+                <div className="py-1.5">
+                  <div className="flex items-center gap-2.5 rounded-2xl border border-border bg-card/70 px-4 py-2.5 w-fit shadow-sm">
+                    <div className="flex items-center gap-[5px]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary/80 animate-thinking-dot" style={{ animationDelay: "0ms" }} />
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary/80 animate-thinking-dot" style={{ animationDelay: "200ms" }} />
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary/80 animate-thinking-dot" style={{ animationDelay: "400ms" }} />
+                    </div>
+                    <span className="text-[13px] text-muted-foreground/80 transition-all">
+                      {loadingSeconds < 5
+                        ? "AINA sedang berpikir..."
+                        : loadingSeconds < 12
+                        ? "Mencari informasi terkini..."
+                        : `Sedang memproses... (${loadingSeconds}s)`}
                     </span>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
