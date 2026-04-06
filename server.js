@@ -4310,7 +4310,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // ── Append suggestion instruction at the very end of the system prompt ────
-  finalSystemPrompt += `\n\n---\n## SARAN TINDAK LANJUT (WAJIB)\nSetiap respons harus diakhiri dengan tepat 2 pertanyaan lanjutan yang relevan dan natural. Tulis blok berikut langsung setelah konten jawaban (tanpa baris kosong di antaranya):\n[SARAN_LANJUT]\n- [pertanyaan lanjutan 1, bahasa Indonesia, max 8 kata]\n- [pertanyaan lanjutan 2, bahasa Indonesia, max 8 kata]\n[/SARAN_LANJUT]\nPilih pertanyaan yang paling mungkin ditanyakan user setelah membaca jawabanmu. Jangan gunakan pertanyaan generik.\n---`;
+  finalSystemPrompt += `\n\n---\n## SARAN TINDAK LANJUT (WAJIB)\nSetiap respons harus diakhiri dengan tepat 2 saran tindak lanjut yang actionable — apa yang bisa user LAKUKAN atau JELAJAHI selanjutnya. Tulis blok berikut langsung setelah konten jawaban (tanpa baris kosong di antaranya):\n[SARAN_LANJUT]\n- [saran aksi 1, bahasa Indonesia, max 9 kata, diawali kata kerja aktif]\n- [saran aksi 2, bahasa Indonesia, max 9 kata, diawali kata kerja aktif]\n[/SARAN_LANJUT]\nContoh bagus: "Cek persyaratan dokumen pendaftaran Al-Azhar", "Hitung estimasi biaya hidup di Kairo", "Pelajari tips memperlancar bahasa Arab".\nJANGAN buat kalimat tanya. Buat saran aksi nyata yang bisa langsung diambil user setelah membaca jawabanmu.\n---`;
 
   // ── Helper: parse and strip [SARAN_LANJUT] block from accumulated text ───
   function parseFollowUpSuggestions(text) {
