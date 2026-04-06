@@ -255,13 +255,76 @@
     animation: fade-page 0.22s ease-out both;
   }
 
-  /* Chat message entrance — fade only (no transform, preserves Arabic subpixel rendering) */
-  @keyframes msg-in {
+  /* Chat message entrance — user bubble (slide from right) */
+  @keyframes msg-in-user {
+    from { opacity: 0; transform: translateX(10px) scale(0.97); }
+    to   { opacity: 1; transform: translateX(0)    scale(1); }
+  }
+  .animate-msg-in-user {
+    animation: msg-in-user 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Chat message entrance — AI bubble (lift from below + scale) */
+  @keyframes msg-in-ai {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+  }
+  .animate-msg-in-ai {
+    animation: msg-in-ai 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Avatar thinking pulse */
+  @keyframes thinking-pulse {
+    0%, 100% { opacity: 1;   transform: scale(1);    }
+    50%       { opacity: 0.5; transform: scale(0.88); }
+  }
+  .animate-thinking-pulse {
+    animation: thinking-pulse 1.4s ease-in-out infinite;
+  }
+
+  /* Scroll-to-bottom button — bouncy spring entrance */
+  @keyframes scroll-btn-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.75); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+  }
+  .animate-scroll-btn-in {
+    animation: scroll-btn-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  /* Source / action row staggered reveal */
+  @keyframes action-in {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-action-in {
+    animation: action-in 0.22s ease-out both;
+  }
+
+  /* Modal — backdrop fade */
+  @keyframes backdrop-in {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
-  .animate-msg-in {
-    animation: msg-in 0.22s ease both;
+  .animate-backdrop-in {
+    animation: backdrop-in 0.2s ease both;
+  }
+
+  /* Modal panel — mobile: slide up from bottom; desktop: scale + fade */
+  @keyframes sheet-in {
+    from { opacity: 0; transform: translateY(100%); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes modal-panel-in {
+    from { opacity: 0; transform: scale(0.96) translateY(10px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0); }
+  }
+  .animate-modal-panel {
+    animation: sheet-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @media (min-width: 640px) {
+    .animate-modal-panel {
+      animation: modal-panel-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
   }
 
   /* Scroll-reveal — general purpose fade+lift */

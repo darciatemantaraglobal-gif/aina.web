@@ -301,9 +301,9 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md animate-backdrop-in" />
       <div
-        className="relative flex flex-col sm:flex-row w-full sm:max-w-2xl overflow-hidden rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#1c1c23] shadow-2xl"
+        className="relative flex flex-col sm:flex-row w-full sm:max-w-2xl overflow-hidden rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#1c1c23] shadow-2xl animate-modal-panel"
         style={{ maxHeight: "min(92vh, 600px)" }}
         onClick={(e) => e.stopPropagation()}
       >

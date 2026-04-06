@@ -1599,7 +1599,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               return (
               <div
                 key={msg.id}
-                className={`flex gap-3 min-w-0 animate-msg-in ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex gap-3 min-w-0 ${msg.role === "user" ? "animate-msg-in-user justify-end" : "animate-msg-in-ai justify-start"}`}
               >
                 {msg.role === "assistant" && (
                   <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
@@ -1642,7 +1642,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       const confCfg = getConfidenceBadgeConfig(msg.sourceMetadata?.confidence);
                       const ConfIcon = confCfg?.icon;
                       return (sources.length > 0 || confCfg) ? (
-                        <div className="mt-2 space-y-1">
+                        <div className="mt-2 space-y-1 animate-action-in delay-150">
                           <div className="flex flex-wrap items-center gap-1.5">
                             {sources.map((src, i) => {
                               const cfg = getSourceConfig(src);
@@ -1696,7 +1696,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     })()}
 
                     {/* Action row: copy + feedback (left) + report (right) */}
-                    <div className="mt-2 flex items-center justify-between">
+                    <div className="mt-2 flex items-center justify-between animate-action-in delay-200">
                       <div className="flex items-center gap-0.5">
                       {/* Copy button */}
                       <button
@@ -1885,7 +1885,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
             {isLoading && (
               <div className="flex gap-3">
-                <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain" />
+                <AinaLogo className="mt-1 h-7 w-7 shrink-0 object-contain animate-thinking-pulse" />
                 <div className="flex flex-col gap-1 py-2">
                   <div className="flex items-center gap-1">
                     <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
@@ -1929,7 +1929,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           <button
             onClick={forceScrollToBottom}
             title="Lompat ke bawah"
-            className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/95 shadow-md backdrop-blur-sm transition-all hover:border-primary/40 hover:bg-secondary animate-in fade-in slide-in-from-bottom-2 duration-200"
+            className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/95 shadow-md backdrop-blur-sm transition-colors hover:border-primary/40 hover:bg-secondary animate-scroll-btn-in"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
           </button>
@@ -2123,7 +2123,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && !attachedFile)}
-                className="absolute right-3.5 bottom-3 flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-purple text-primary-foreground transition-opacity hover:opacity-80 disabled:opacity-30"
+                className="absolute right-3.5 bottom-3 flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-purple text-primary-foreground transition-all hover:opacity-80 active:scale-90 disabled:opacity-30"
               >
                 <Send className="h-4 w-4" />
               </button>
