@@ -1,0 +1,84 @@
+Tolong lakukan audit menyeluruh terhadap implementasi Phase 3 (Hybrid Retrieval) di repo ini.
+
+Fokus audit:
+
+==================================================
+
+1. Validasi Integrasi
+
+- Apakah file hybridRetrievalService.js sudah dibuat?
+- Apakah function hybridRetrieve() berjalan tanpa error?
+- Apakah import path benar (tidak broken import)?
+
+==================================================
+
+2. Validasi Penggunaan di Chat
+
+- Apakah /api/chat sekarang menggunakan:
+  hybridRetrieve() jika USE_HYBRID_RETRIEVAL=true
+- Apakah fetchRelevantArticles masih tersedia sebagai fallback?
+- Apakah tidak ada perubahan pada struktur response AI?
+
+==================================================
+
+3. Validasi Safety
+
+- Jika newsKnowledgeService gagal → apakah tetap fallback ke legacy?
+- Apakah tidak ada throw error ke user?
+- Apakah server tetap start tanpa error?
+
+==================================================
+
+4. Validasi Output
+
+- Apakah hasil retrieval mengandung:
+  - data dari knowledge_base
+  - data dari knowledge_sources
+- Tampilkan contoh jumlah:
+  console log: Legacy vs News count
+
+==================================================
+
+5. Validasi Non-Breaking
+
+- Apakah server.js tidak mengalami perubahan destructive?
+- Apakah /api/chat tetap bekerja normal?
+- Apakah UI tidak terpengaruh?
+
+==================================================
+
+6. Simulasi Before vs After
+
+Jelaskan:
+
+SEBELUM:
+flow retrieval lama
+
+SESUDAH:
+flow hybrid retrieval
+
+==================================================
+
+7. Risiko & Bug Potensial
+
+Cari kemungkinan:
+- duplicate result
+- ranking kacau (news terlalu dominan)
+- empty merge
+- performa lambat
+
+==================================================
+
+8. Kesimpulan
+
+Berikan verdict:
+- AMAN / PERLU FIX / BERBAHAYA
+
+==================================================
+
+9. BONUS (kalau ada)
+
+Rekomendasikan improvement kecil tanpa merusak sistem:
+- ranking
+- filtering
+- logging
