@@ -1837,6 +1837,23 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     </p>
                   )}
 
+                  {/* Smart follow-up suggestion chips */}
+                  {msg.suggestions && msg.suggestions.length > 0 && !isLoading && (
+                    <div className="mt-3 flex flex-col gap-1.5 animate-action-in delay-300">
+                      {msg.suggestions.map((sug, si) => (
+                        <button
+                          key={si}
+                          onClick={() => !isLoading && handleSend(sug)}
+                          disabled={isLoading}
+                          className="group flex w-fit items-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-3.5 py-2 text-[13px] text-foreground/80 transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40 active:scale-[0.97]"
+                        >
+                          <Zap className="h-3 w-3 shrink-0 text-primary/60 group-hover:text-primary transition-colors" />
+                          <span>{sug}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Regenerate — only on last AI message */}
                   {isLastAI && lastUserMsgRef.current && !isLoading && (
                     <div className="mt-2">

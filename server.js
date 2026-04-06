@@ -4309,6 +4309,22 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     }
   }
 
+  // ── Append suggestion instruction at the very end of the system prompt ────
+  finalSystemPrompt += `\n\n---\n## SARAN TINDAK LANJUT (WAJIB)\nSetiap respons harus diakhiri dengan tepat 2 pertanyaan lanjutan yang relevan dan natural. Tulis blok berikut langsung setelah konten jawaban (tanpa baris kosong di antaranya):\n[SARAN_LANJUT]\n- [pertanyaan lanjutan 1, bahasa Indonesia, max 8 kata]\n- [pertanyaan lanjutan 2, bahasa Indonesia, max 8 kata]\n[/SARAN_LANJUT]\nPilih pertanyaan yang paling mungkin ditanyakan user setelah membaca jawabanmu. Jangan gunakan pertanyaan generik.\n---`;
+
+  // ── Helper: parse and strip [SARAN_LANJUT] block from accumulated text ───
+  function parseFollowUpSuggestions(text) {
+    const match = text.match(/\[SARAN_LANJUT\]([\s\S]*?)\[\/SARAN_LANJUT\]/i);
+    if (!match) return { clean: text, suggestions: [] };
+    const block = match[1];
+    const suggestions = block
+      .split('\n')
+      .map(l => l.replace(/^[-*•\d.]\s*/, '').trim())
+      .filter(l => l.length > 4 && l.length < 120);
+    const clean = text.replace(/\s*\[SARAN_LANJUT\][\s\S]*?\[\/SARAN_LANJUT\]/i, '').trimEnd();
+    return { clean, suggestions: suggestions.slice(0, 2) };
+  }
+
   const cleanReply = (raw) => raw
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?p>/gi, "\n")
@@ -4570,6 +4586,19 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const textDecoder = new TextDecoder();
   let sseBuffer = "";
   let fullContent = "";
+  // Tail-buffer: hold back last ~20 chars to detect [SARAN_LANJUT] before forwarding
+  let tailBuf = "";
+  let followUpStarted = false;
+  const FOLLOW_TAG = "[SARAN_LANJUT]";
+  const TAIL_HOLD = FOLLOW_TAG.length + 2; // chars to hold back
+
+  function flushTailBuf(upTo) {
+    if (upTo > 0 && !followUpStarted) {
+      const safe = tailBuf.slice(0, upTo);
+      if (safe) res.write(`data: ${JSON.stringify({ type: "chunk", content: safe })}\n\n`);
+      tailBuf = tailBuf.slice(upTo);
+    }
+  }
 
   try {
     outer: while (true) {
@@ -4587,7 +4616,20 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
         const delta = parsed.choices?.[0]?.delta?.content;
         if (delta) {
           fullContent += delta;
-          res.write(`data: ${JSON.stringify({ type: "chunk", content: delta })}\n\n`);
+          if (!followUpStarted) {
+            tailBuf += delta;
+            const tagIdx = tailBuf.indexOf(FOLLOW_TAG);
+            if (tagIdx !== -1) {
+              // Flush everything before the tag, then stop forwarding
+              flushTailBuf(tagIdx);
+              tailBuf = "";
+              followUpStarted = true;
+            } else {
+              // Flush safe portion (keep last TAIL_HOLD chars in reserve)
+              flushTailBuf(Math.max(0, tailBuf.length - TAIL_HOLD));
+            }
+          }
+          // If followUpStarted, accumulate in fullContent only (don't forward)
         }
       }
     }
@@ -4599,13 +4641,21 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     }
   }
 
+  // Flush any remaining tail-buffer content (when [SARAN_LANJUT] was not found mid-stream)
+  if (!followUpStarted && tailBuf) {
+    res.write(`data: ${JSON.stringify({ type: "chunk", content: tailBuf })}\n\n`);
+    tailBuf = "";
+  }
+
   if (!fullContent) {
     res.write(`data: ${JSON.stringify({ type: "error", error: "Model tidak menghasilkan respons." })}\n\n`);
     return res.end();
   }
 
   // ── Post-processing ───────────────────────────────────────────────────────────
-  const rawReply = postProcessResponse(cleanReply(fullContent));
+  // Parse and strip [SARAN_LANJUT] block from full content before formatting
+  const { clean: contentWithoutSuggestions, suggestions: followUpSuggestions } = parseFollowUpSuggestions(fullContent);
+  const rawReply = postProcessResponse(cleanReply(contentWithoutSuggestions));
   // Strip any residual <!--saran:...--> tags the model might still output
   const _stripped = rawReply.replace(/<!--saran:[^>]*-->/gi, "").trimEnd();
   // ── formatAINAResponse: structural formatter — runs on complete response ──
@@ -4721,6 +4771,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     source_used: sourceUsed,
     sources:     responseSources,
     citation_urls: perplexityResult?.citations ?? [],
+    suggestions: followUpSuggestions,
     clarification_pending: clarificationDetected || undefined,
     sourceMetadata: {
       confidence:      normalizedConfidence,
