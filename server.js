@@ -20,6 +20,8 @@ import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { createKnowledgeTestRouter }      from "./server/routes/knowledgeTest.js";
 import { createKnowledgeMonitorRouter }   from "./server/routes/knowledgeMonitor.js";
+import { createKnowledgeAnalyticsRouter } from "./server/routes/knowledgeAnalytics.js";
+import { createAnalyticsService }         from "./server/services/analyticsService.js";
 import { createHybridRetrievalService }  from "./server/services/hybridRetrievalService.js";
 import { createSmartRetrievalService }   from "./server/services/smartRetrievalService.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
@@ -1397,6 +1399,47 @@ async function resolveArticles(kbQuery, intentPrimary) {
     }
   }
   return fetchRelevantArticles(kbQuery, intentPrimary);
+}
+
+// ── Analytics service — lazy init ─────────────────────────────────────────────
+// Created on first use so getAdminClient() is guaranteed to be ready.
+let _analyticsSvc = null;
+function getAnalyticsSvc() {
+  if (!_analyticsSvc) _analyticsSvc = createAnalyticsService({ getAdminClient });
+  return _analyticsSvc;
+}
+
+/**
+ * Fire-and-forget analytics write — NEVER blocks or throws to caller.
+ * Must be called inside setImmediate (after response sent) to avoid latency impact.
+ */
+function logQueryAnalytics({ userId, queryText, intentClass, articles, kbStrength, usedExternalFallback }) {
+  const retrievalMode = process.env.USE_SMART_RETRIEVAL  === "true" ? "smart"
+    :                   process.env.USE_HYBRID_RETRIEVAL === "true" ? "hybrid"
+    :                                                                  "legacy";
+
+  const arr        = articles ?? [];
+  const newsCount  = arr.filter(a => a._origin === "news_harvester" || a._origin === "news_harvester_chunk").length;
+  const legacyCount = arr.length - newsCount;
+  const finalCount  = arr.length;
+  const topOrigin   = (newsCount > 0 && legacyCount > 0) ? "mixed"
+    :                 (newsCount > 0)                     ? "news"
+    :                                                       "legacy";
+
+  getAnalyticsSvc().logQuery({
+    userId,
+    queryText,
+    intentClass,
+    retrievalMode,
+    legacyCount,
+    newsCount,
+    finalCount,
+    topOrigin,
+    kbStrength,
+    usedExternalFallback: !!usedExternalFallback,
+    responseStatus: "success",
+  });
+  // .logQuery already swallows errors internally — no .catch needed here
 }
 
 /* ── Fetch active pinned/breaking updates ────────────── */
@@ -4878,6 +4921,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       userId:      user.id,
       hasKbResult: articles.length > 0,
       isTransport: isTransportQuery(lastUserMessage),
+    });
+    logQueryAnalytics({
+      userId:               user.id,
+      queryText:            lastUserMessage,
+      intentClass:          intent.primary,
+      articles,
+      kbStrength,
+      usedExternalFallback: !!(wikiContext || ddgContext || perplexityContext),
     });
   });
 
@@ -11902,7 +11953,12 @@ app.use("/api/internal/knowledge-test",    createKnowledgeTestRouter({ getAdminC
 // ── Internal knowledge-monitor route — Phase 5 monitoring pipeline ────────────
 // Read-only monitoring untuk knowledge pipeline. Tidak ada efek ke chat/retrieval.
 // Proteksi sama: X-Internal-Key header atau verifyAuth fallback.
-app.use("/api/internal/knowledge-monitor", createKnowledgeMonitorRouter({ getAdminClient, verifyAuth }));
+app.use("/api/internal/knowledge-monitor",   createKnowledgeMonitorRouter({ getAdminClient, verifyAuth }));
+
+// ── Internal knowledge-analytics route — Phase 5 Step 2 analytics + feedback ──
+// Read-only analytics: summary, top queries, weak queries, source-mix, feedback.
+// Data ditulis fire-and-forget oleh logQueryAnalytics() di setImmediate.
+app.use("/api/internal/knowledge-analytics", createKnowledgeAnalyticsRouter({ getAdminClient, verifyAuth }));
 
 /* ── Vercel Cron endpoints ────────────────────────────
    Called by Vercel scheduler (vercel.json "crons").

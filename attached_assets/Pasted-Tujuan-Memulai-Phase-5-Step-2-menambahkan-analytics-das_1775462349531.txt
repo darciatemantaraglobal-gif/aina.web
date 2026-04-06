@@ -1,0 +1,119 @@
+Tujuan:
+Memulai Phase 5 Step 2: menambahkan analytics dasar dan feedback brain untuk AINA, TANPA mengubah flow chat utama atau UI user secara destruktif.
+
+PENTING:
+- Jangan ubah behavior /api/chat untuk user
+- Jangan ubah struktur response AI
+- Jangan ubah retrieval existing
+- Semua perubahan harus additive-only
+- Analytics harus bersifat internal/admin-safe
+
+==================================================
+STEP 1 — Tambahkan Query Analytics Storage
+
+Tambahkan storage/query logging ringan untuk setiap request chat yang berhasil diproses.
+
+Jika memungkinkan, gunakan Supabase table baru, misalnya:
+query_analytics
+
+Field minimal:
+- id
+- created_at
+- user_id (nullable jika tidak tersedia)
+- query_text
+- intent_class
+- retrieval_mode (legacy / hybrid / smart)
+- legacy_count
+- news_count
+- final_count
+- top_origin (legacy / news / mixed)
+- kb_strength
+- used_external_fallback (boolean)
+- response_status (success / failed)
+
+Jika pendekatan tabel baru terlalu besar, buat layer service dulu + migration SQL yang aman.
+
+==================================================
+STEP 2 — Hook Analytics ke Chat Flow
+
+Tanpa mengubah response user, setelah chat processing selesai:
+- simpan analytics ringan dari query
+- jangan block response user jika analytics gagal
+- analytics write harus best-effort only
+
+Jika analytics gagal:
+- log warning
+- jangan throw ke user
+
+==================================================
+STEP 3 — Tambahkan Internal Analytics Route
+
+Tambahkan route internal/admin yang aman, misalnya:
+`/api/internal/knowledge-analytics`
+
+Gunakan pola proteksi yang sama:
+- X-Internal-Key
+- auth fallback
+
+Endpoint minimal:
+1. GET /summary
+   - total queries
+   - total per intent_class
+   - total per retrieval_mode
+   - total used_external_fallback
+2. GET /top-queries?limit=20
+   - query yang paling sering muncul
+3. GET /weak-queries?limit=20
+   - query dengan kb_strength lemah / fallback tinggi
+4. GET /source-mix
+   - berapa banyak query lebih dominan legacy vs news
+
+==================================================
+STEP 4 — Tambahkan Feedback Storage (Basic)
+
+Jika sistem feedback user (thumbs up/down) sudah ada, hubungkan ke analytics.
+Jika belum ada, siapkan tabel / service dasar yang aman, misalnya:
+query_feedback
+
+Field minimal:
+- id
+- query_analytics_id
+- user_id (nullable)
+- feedback_type (up / down)
+- created_at
+
+Jika belum bisa dihubungkan ke UI sekarang, minimal siapkan layer backend dan internal endpoint test.
+
+==================================================
+STEP 5 — Tambahkan Internal Feedback Route
+
+Tambahkan endpoint internal/admin:
+- GET /feedback-summary
+- GET /low-rated-topics
+Jika feedback belum terhubung penuh, return safe placeholder / available=false
+
+==================================================
+STEP 6 — Safety
+
+- Jangan ubah flow /api/chat
+- Jangan buat analytics write memblokir response user
+- Jika tabel belum ada, system tetap jalan dan hanya log warning
+- Jangan ubah frontend user biasa
+
+==================================================
+STEP 7 — Laporan
+
+Setelah selesai, berikan laporan:
+- file yang ditambahkan/diubah
+- tabel/migration apa yang ditambahkan
+- bagaimana analytics di-hook ke flow chat
+- bagaimana fallback jika analytics gagal
+- endpoint internal apa saja yang tersedia
+- apakah flow user tetap aman
+- risiko yang masih ada
+
+PENTING:
+- Do not change user-facing chat behavior
+- Do not break existing smart retrieval
+- Keep all analytics/admin features internal-only
+- All changes must be additive-only
