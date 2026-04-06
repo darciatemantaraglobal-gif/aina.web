@@ -266,5 +266,53 @@ export function knowledgeSourceQueries(supabase) {
       }
       return counts;
     },
+
+    /**
+     * Hitung total baris di knowledge_chunks — indikator seberapa banyak
+     * konten yang sudah diindeks.
+     * @returns {number}
+     */
+    async countChunksTotal() {
+      const { count, error } = await supabase
+        .from("knowledge_chunks")
+        .select("*", { count: "exact", head: true });
+      if (error) throw new Error(error.message);
+      return count ?? 0;
+    },
+
+    /**
+     * Hitung sources per source_type (news, article, announcement, dll).
+     * Hanya yang berstatus 'ready' — mencerminkan konten aktif di pipeline.
+     * @returns {Record<string, number>}
+     */
+    async countBySourceType() {
+      const { data, error } = await supabase
+        .from("knowledge_sources")
+        .select("source_type")
+        .eq("status", "ready");
+      if (error) throw new Error(error.message);
+
+      const counts = {};
+      for (const row of (data ?? [])) {
+        const t = row.source_type ?? "unknown";
+        counts[t] = (counts[t] ?? 0) + 1;
+      }
+      return counts;
+    },
+
+    /**
+     * Ambil N sources terbaru dari semua status — untuk monitoring pipeline.
+     * Berbeda dengan getReadySources() yang filter hanya 'ready'.
+     * @param {{ limit?: number }} opts
+     */
+    async getLatestSources({ limit = 10 } = {}) {
+      const { data, error } = await supabase
+        .from("knowledge_sources")
+        .select("id, title, source_type, source_name, source_url, status, created_at, updated_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    },
   };
 }

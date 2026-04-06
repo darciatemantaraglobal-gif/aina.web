@@ -1,0 +1,101 @@
+Tujuan:
+Memulai Phase 5 Step 1 di repo AINA: menambahkan monitoring dasar untuk knowledge pipeline news, TANPA mengubah flow chat utama atau UI user biasa.
+
+PENTING:
+- Jangan ubah flow /api/chat
+- Jangan ubah retrieval default
+- Jangan ubah UI frontend user
+- Semua perubahan harus additive-only
+- Jalur monitoring harus non-default / internal / admin-safe
+
+==================================================
+STEP 1 — Tambahkan Internal Monitoring Route
+
+Tambahkan route internal/admin yang aman, misalnya di bawah:
+`/api/internal/knowledge-monitor`
+
+Route ini hanya untuk monitoring, bukan untuk user biasa.
+
+Jika sudah ada pola route internal, ikuti pola yang sama dan gunakan proteksi yang sama:
+- X-Internal-Key
+- atau auth fallback yang sudah ada
+
+==================================================
+STEP 2 — Tambahkan Endpoint Monitoring Dasar
+
+Tambahkan endpoint yang bisa mengecek:
+
+1. health
+- apakah knowledge_sources bisa dibaca
+- apakah knowledge_chunks bisa dibaca
+
+2. latest news knowledge
+- ambil beberapa source terbaru dari knowledge_sources
+- tampilkan title, source_name, status, created_at, published_at
+
+3. pipeline summary
+- total sources by status
+- total chunks
+- jumlah source_type = news
+- optional: source_category breakdown
+
+4. latest ingestion runs
+- jika repo harvester menyimpan run history ke Supabase dan bisa dibaca dari sini, tampilkan ringkasannya
+- jika belum ada, skip dengan aman
+
+==================================================
+STEP 3 — Tambahkan Service/Query Layer jika perlu
+
+Jika perlu, tambahkan helper/service/query baru untuk:
+- count sources by status
+- get latest published news
+- get chunk count
+- get latest ingestion runs (optional)
+
+Tapi:
+- jangan ganggu service retrieval existing
+- jangan jadikan ini bagian dari chat flow
+
+==================================================
+STEP 4 — Tambahkan Health Summary Response
+
+Contoh output JSON monitoring:
+
+{
+  "ok": true,
+  "knowledge_sources": {
+    "news_total": 120,
+    "ready": 100,
+    "pending": 15,
+    "rejected": 5
+  },
+  "knowledge_chunks": {
+    "total": 430
+  },
+  "latest_sources": [...],
+  "latest_ingestion_runs": [...]
+}
+
+==================================================
+STEP 5 — Safety
+
+- Jika tabel baru belum ada, return error internal yang jelas di endpoint monitoring
+- Jangan sampai error monitoring memengaruhi chat utama
+- Jangan tambahkan dependency baru jika tidak perlu
+
+==================================================
+STEP 6 — Laporan
+
+Setelah selesai, berikan laporan:
+- file yang ditambahkan/diubah
+- endpoint monitoring yang tersedia
+- bagaimana proteksi endpoint dilakukan
+- bagaimana cara mengetes endpoint ini
+- konfirmasi bahwa flow chat utama tetap aman dan tidak berubah
+- risiko yang masih ada
+
+PENTING:
+- Do not change chat retrieval behavior
+- Do not change frontend user UI
+- Keep all changes internal/admin-only
+- All changes must be additive-only

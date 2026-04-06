@@ -261,5 +261,41 @@ export function createNewsKnowledgeService({ getAdminClient }) {
       const counts = await db().countByStatus();
       return { counts };
     },
+
+    /**
+     * Ringkasan pipeline lengkap: status breakdown, source_type breakdown,
+     * chunk total. Satu panggilan untuk dashboard monitoring.
+     */
+    async getPipelineSummary() {
+      const [statusCounts, sourceTypeCounts, chunkTotal] = await Promise.all([
+        db().countByStatus(),
+        db().countBySourceType(),
+        db().countChunksTotal(),
+      ]);
+
+      const newsTotal = sourceTypeCounts["news"] ?? 0;
+      const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+
+      return {
+        knowledge_sources: {
+          total,
+          by_status:      statusCounts,
+          news_total:     newsTotal,
+          by_source_type: sourceTypeCounts,
+        },
+        knowledge_chunks: {
+          total: chunkTotal,
+        },
+      };
+    },
+
+    /**
+     * Ambil N sources terbaru (semua status) — untuk monitoring ingest pipeline.
+     * @param {{ limit?: number }} opts
+     */
+    async getLatestSources({ limit = 10 } = {}) {
+      const sources = await db().getLatestSources({ limit });
+      return { sources, count: sources.length };
+    },
   };
 }

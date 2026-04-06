@@ -19,6 +19,7 @@ import { expandQuery } from './engine/queryExpander.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { createKnowledgeTestRouter }      from "./server/routes/knowledgeTest.js";
+import { createKnowledgeMonitorRouter }   from "./server/routes/knowledgeMonitor.js";
 import { createHybridRetrievalService }  from "./server/services/hybridRetrievalService.js";
 import { createSmartRetrievalService }   from "./server/services/smartRetrievalService.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
@@ -11896,7 +11897,12 @@ app.use("/api/productivity", createProductivityAIRouter({ verifyAuth, getAdminCl
 // ── Internal knowledge-test route — Phase 2 integrasi news-harvester ─────────
 // Bukan bagian dari flow chat. Protected by X-Internal-Key header.
 // Mounting di /api/internal/** agar jelas terpisah dari route user.
-app.use("/api/internal/knowledge-test", createKnowledgeTestRouter({ getAdminClient, verifyAuth }));
+app.use("/api/internal/knowledge-test",    createKnowledgeTestRouter({ getAdminClient, verifyAuth }));
+
+// ── Internal knowledge-monitor route — Phase 5 monitoring pipeline ────────────
+// Read-only monitoring untuk knowledge pipeline. Tidak ada efek ke chat/retrieval.
+// Proteksi sama: X-Internal-Key header atau verifyAuth fallback.
+app.use("/api/internal/knowledge-monitor", createKnowledgeMonitorRouter({ getAdminClient, verifyAuth }));
 
 /* ── Vercel Cron endpoints ────────────────────────────
    Called by Vercel scheduler (vercel.json "crons").
