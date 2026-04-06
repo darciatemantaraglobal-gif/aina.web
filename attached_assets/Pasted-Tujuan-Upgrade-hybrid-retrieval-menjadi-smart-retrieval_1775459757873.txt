@@ -1,0 +1,116 @@
+Tujuan:
+Upgrade hybrid retrieval menjadi smart retrieval berbasis intent, freshness, trust, dan relevance — TANPA merusak flow existing.
+
+Aturan keras:
+- Jangan ubah UI
+- Jangan ubah struktur response AI
+- Jangan hapus retrieval lama
+- Semua perubahan additive-only
+- Jika logic baru gagal, fallback ke hybrid retrieval yang sekarang
+
+==================================================
+STEP 1 — Buat Smart Retrieval Service
+
+Buat file baru:
+server/services/smartRetrievalService.js
+
+Tujuan service ini:
+- menerima query + intent
+- mengambil hasil dari:
+  1. legacy knowledge_base
+  2. news knowledge_sources/knowledge_chunks
+- memberi skor untuk tiap hasil
+- mengurutkan hasil terbaik
+- return final top results
+
+==================================================
+STEP 2 — Tambahkan Scoring Rules
+
+Buat scoring sederhana dengan komponen:
+
+1. relevanceScore
+- jika result punya _topScore dari legacy, pakai itu
+- untuk news, pakai score yang tersedia atau fallback sederhana dari keyword match count
+
+2. freshnessScore
+- jika source lebih baru, score lebih tinggi
+- gunakan created_at / published_at jika tersedia
+- semakin baru, semakin tinggi (khususnya untuk source_type = news)
+
+3. trustScore
+- knowledge_base lama = trust dasar tinggi
+- news resmi / source_name tertentu bisa dapat trust tambahan
+- draft/rejected harus diabaikan
+
+4. intentBoost
+- jika intent/query mengandung:
+  "terbaru", "update", "berita", "kebijakan", "pengumuman"
+  → boost untuk news
+- jika query mengandung:
+  "apa itu", "definisi", "arti", "pengertian"
+  → boost untuk legacy/KB lama
+- jika query mengandung:
+  "cara", "langkah", "prosedur"
+  → boost campuran, tapi prioritas legacy kecuali ada update news sangat relevan
+
+Final score bisa sederhana:
+finalScore = relevance + freshness + trust + intentBoost
+
+==================================================
+STEP 3 — Dedup & Prioritization
+
+- Hindari duplicate result
+- Jika judul sama, pilih yang score final lebih tinggi
+- Limit hasil akhir 8–10 item
+
+==================================================
+STEP 4 — Feature Flag
+
+Tambahkan ENV baru:
+USE_SMART_RETRIEVAL=true
+
+Behavior:
+- jika USE_SMART_RETRIEVAL=true → pakai smart retrieval
+- else jika USE_HYBRID_RETRIEVAL=true → pakai hybrid retrieval
+- else → pakai retrieval lama
+
+==================================================
+STEP 5 — Integrasi Aman ke Chat
+
+Di server.js:
+- jangan hapus hybrid retrieval
+- cukup tambahkan gate baru di atasnya
+
+Urutan aman:
+1. smart retrieval
+2. hybrid retrieval
+3. legacy retrieval
+
+==================================================
+STEP 6 — Logging
+
+Tambahkan log singkat:
+- berapa result legacy
+- berapa result news
+- top final result source type
+- apakah query dianggap fresh/update/procedural/definition
+
+Contoh:
+[Smart] intent=fresh_update legacy=2 news=3 final=5 top=news
+
+==================================================
+STEP 7 — Safety
+
+- jika smart retrieval error → fallback ke hybrid
+- jika hybrid error → fallback ke legacy
+- jangan pernah throw error ke user
+
+==================================================
+STEP 8 — Laporan
+
+Setelah selesai, berikan laporan:
+- file yang ditambahkan/diubah
+- bagaimana scoring bekerja
+- bagaimana fallback bekerja
+- apakah flow lama tetap aman
+- risiko yang masih ada

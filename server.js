@@ -20,6 +20,7 @@ import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { createKnowledgeTestRouter }      from "./server/routes/knowledgeTest.js";
 import { createHybridRetrievalService }  from "./server/services/hybridRetrievalService.js";
+import { createSmartRetrievalService }   from "./server/services/smartRetrievalService.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
 import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
@@ -1362,6 +1363,39 @@ function getHybridRetriever() {
     });
   }
   return _hybridRetriever;
+}
+
+// ── Smart retrieval — lazy init (only when USE_SMART_RETRIEVAL=true) ──────────
+let _smartRetriever = null;
+function getSmartRetriever() {
+  if (!_smartRetriever) {
+    _smartRetriever = createSmartRetrievalService({
+      getAdminClient,
+      legacyFetch: fetchRelevantArticles,
+    });
+  }
+  return _smartRetriever;
+}
+
+// ── resolveArticles — 3-level cascade with safe fallback ─────────────────────
+// Priority: smart → hybrid → legacy
+// Any error at a given level falls through to the next level silently.
+async function resolveArticles(kbQuery, intentPrimary) {
+  if (process.env.USE_SMART_RETRIEVAL === "true") {
+    try {
+      return await getSmartRetriever().retrieve(kbQuery, intentPrimary);
+    } catch (err) {
+      console.warn("[Smart] Retrieval error, falling back to hybrid:", err.message);
+    }
+  }
+  if (process.env.USE_HYBRID_RETRIEVAL === "true") {
+    try {
+      return await getHybridRetriever().retrieve(kbQuery, intentPrimary);
+    } catch (err) {
+      console.warn("[Hybrid] Retrieval error, falling back to legacy:", err.message);
+    }
+  }
+  return fetchRelevantArticles(kbQuery, intentPrimary);
 }
 
 /* ── Fetch active pinned/breaking updates ────────────── */
@@ -3973,9 +4007,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // kbQuery = expanded/enriched query for better KB hit-rate; retrievalQuery used for everything else
   _chatDebugStep = "wave1-fetches";
   const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
-    process.env.USE_HYBRID_RETRIEVAL === "true"
-      ? getHybridRetriever().retrieve(kbQuery, intent.primary)
-      : fetchRelevantArticles(kbQuery, intent.primary),
+    resolveArticles(kbQuery, intent.primary),
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
