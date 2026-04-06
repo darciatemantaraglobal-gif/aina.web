@@ -1,0 +1,123 @@
+Tolong lakukan audit menyeluruh terhadap implementasi Phase 4 (Smart Retrieval).
+
+Fokus audit:
+
+==================================================
+
+1. Validasi Struktur
+
+- Apakah file smartRetrievalService.js sudah dibuat?
+- Apakah function utama berjalan tanpa error?
+- Apakah semua import valid (tidak broken path)?
+- Apakah tidak ada perubahan destructive di file existing?
+
+==================================================
+
+2. Validasi Integrasi ke Chat
+
+- Apakah /api/chat menggunakan smart retrieval jika:
+  USE_SMART_RETRIEVAL=true
+- Apakah fallback urutan benar:
+  smart → hybrid → legacy
+- Apakah fetchRelevantArticles masih tersedia dan tidak diubah?
+
+==================================================
+
+3. Validasi Scoring System
+
+Cek apakah sistem scoring benar-benar ada dan bekerja:
+
+- relevanceScore:
+  - legacy pakai _topScore
+  - news punya fallback scoring
+
+- freshnessScore:
+  - menggunakan created_at / published_at
+  - data lebih baru mendapat skor lebih tinggi
+
+- trustScore:
+  - knowledge_base punya trust tinggi
+  - news tetap diperhitungkan tapi tidak dominan tanpa alasan
+
+- intentBoost:
+  - query "terbaru/update/berita" → boost news
+  - query "apa itu/definisi" → boost legacy
+  - query "cara/langkah" → mix tapi condong ke legacy
+
+==================================================
+
+4. Validasi Output
+
+- Apakah hasil akhir sudah:
+  - di-sort berdasarkan finalScore
+  - di-limit (8–10 item)
+- Apakah tidak ada duplicate result?
+- Apakah hasil tidak selalu didominasi news atau legacy?
+
+==================================================
+
+5. Validasi Logging
+
+- Apakah log muncul seperti:
+  [Smart] intent=... legacy=... news=... final=...
+- Apakah bisa terlihat source mana yang dipilih?
+
+==================================================
+
+6. Validasi Safety
+
+- Jika smart retrieval error → apakah fallback ke hybrid?
+- Jika hybrid error → apakah fallback ke legacy?
+- Apakah tidak ada throw error ke user?
+
+==================================================
+
+7. Validasi Non-Breaking
+
+- Apakah UI tetap tidak berubah?
+- Apakah engine (promptBuilder, intentDetector, dll) tidak disentuh?
+- Apakah server start tanpa error?
+
+==================================================
+
+8. Simulasi Nyata
+
+Jelaskan behavior untuk 3 query:
+
+1. "update iqomah terbaru"
+2. "apa itu iqomah"
+3. "cara perpanjang visa"
+
+Tunjukkan:
+- source mana yang diprioritaskan
+- apakah sesuai intent
+
+==================================================
+
+9. Risiko & Bug Potensial
+
+Cari kemungkinan:
+
+- scoring bias (news selalu menang / legacy selalu menang)
+- freshness tidak berfungsi
+- intent salah klasifikasi
+- performa lambat (karena terlalu banyak processing)
+- over-fetch data
+
+==================================================
+
+10. Kesimpulan
+
+Berikan verdict:
+- AMAN
+- PERLU FIX
+- BERISIKO
+
+==================================================
+
+11. Bonus Improvement
+
+Berikan saran ringan:
+- optimasi scoring
+- ranking improvement
+- performance improvement
