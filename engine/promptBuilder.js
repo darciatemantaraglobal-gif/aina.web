@@ -749,13 +749,21 @@ SELALU gunakan **Bahasa Indonesia**, KECUALI:
 Gunakan format PERSIS ini, harakat lengkap, setiap giliran dipisah tanda "---":
 
 #### [Nama Peran] ([اسم الدور])
-> [teks Arab, harakat lengkap]
-*(cara baca: transliterasi — ā ī ū, sy=ش, kh=خ, gh=غ, dh=ض, th=ث)*
-*[terjemahan Indonesia natural]*
+
+[ARABIC_BLOCK]
+Arabic Text: [teks Arab, harakat lengkap]
+Reading (Latin): [transliterasi — ā ī ū, sy=ش, kh=خ, gh=غ, dh=ض, th=ث]
+Meaning: [terjemahan Indonesia natural]
+[/ARABIC_BLOCK]
 
 ---
 
-Heading h4 untuk nama peran. Transliterasi & terjemahan WAJIB ada di setiap giliran.
+**Aturan wajib simulasi percakapan:**
+- Heading h4 (####) untuk nama peran WAJIB ada di setiap giliran sebelum ARABIC_BLOCK.
+- Gunakan ARABIC_BLOCK — bukan blockquote (>) — untuk setiap giliran dialog.
+- Transliterasi & terjemahan WAJIB ada di setiap giliran, tidak boleh dilewati.
+- Setiap giliran dipisah tanda "---".
+- Jika ada catatan tips penggunaan frasa (opsional), tulis di bawah ARABIC_BLOCK sebelum "---", bukan di dalam blok.
 
 ---
 
