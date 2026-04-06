@@ -10,6 +10,7 @@ import {
   GraduationCap, Sparkles, Brain, Pencil, AlertTriangle, Loader2,
   Target, ClipboardList, BookOpen, RefreshCw, Bell, Mail, Send,
   CheckCheck, SkipForward, X, Save, StickyNote, ListTodo, ListChecks, Layers,
+  ShieldCheck, Timer,
 } from "lucide-react";
 import FlashcardPage from "./FlashcardPage";
 
@@ -653,6 +654,238 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
 }
 
 /* ════════════════════════════════════════════════════════
+   IQOMAH COUNTDOWN CARD
+   ════════════════════════════════════════════════════════ */
+const IQOMAH_LS_KEY = "aina_iqomah_dates";
+
+interface IqomahDates { issue_date: string; expiry_date: string; }
+
+function loadIqomahDates(): IqomahDates | null {
+  try {
+    const raw = localStorage.getItem(IQOMAH_LS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function saveIqomahDates(d: IqomahDates) {
+  localStorage.setItem(IQOMAH_LS_KEY, JSON.stringify(d));
+}
+
+function iqomahCountdown(expiry_date: string): number {
+  const now  = new Date(); now.setHours(0, 0, 0, 0);
+  const exp  = new Date(expiry_date + "T00:00:00");
+  return Math.round((exp.getTime() - now.getTime()) / 86400000);
+}
+
+function iqomahProgress(issue_date: string, expiry_date: string): number {
+  const start  = new Date(issue_date  + "T00:00:00").getTime();
+  const end    = new Date(expiry_date + "T00:00:00").getTime();
+  const now    = Date.now();
+  if (end <= start) return 100;
+  const pct = ((now - start) / (end - start)) * 100;
+  return Math.min(100, Math.max(0, pct));
+}
+
+function fmtDate(iso: string) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function IqomahCountdownCard() {
+  const [dates,    setDates]    = useState<IqomahDates | null>(null);
+  const [editing,  setEditing]  = useState(false);
+  const [form,     setForm]     = useState({ issue_date: "", expiry_date: "" });
+
+  useEffect(() => {
+    const saved = loadIqomahDates();
+    setDates(saved);
+  }, []);
+
+  const openEdit = () => {
+    setForm(dates ?? { issue_date: "", expiry_date: "" });
+    setEditing(true);
+  };
+
+  const handleSave = () => {
+    if (!form.issue_date || !form.expiry_date) {
+      toast.error("Isi kedua tanggal dulu");
+      return;
+    }
+    if (form.expiry_date <= form.issue_date) {
+      toast.error("Tanggal expired harus setelah tanggal terbit");
+      return;
+    }
+    saveIqomahDates(form);
+    setDates(form);
+    setEditing(false);
+    toast.success("Data iqomah disimpan");
+  };
+
+  const handleDelete = () => {
+    localStorage.removeItem(IQOMAH_LS_KEY);
+    setDates(null);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-violet-400 shrink-0" />
+          <p className="text-xs font-semibold text-violet-300">Masa Berlaku Iqomah</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Tanggal Terbit</label>
+            <input
+              type="date"
+              value={form.issue_date}
+              onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))}
+              className="w-full rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-muted-foreground">Tanggal Expired</label>
+            <input
+              type="date"
+              value={form.expiry_date}
+              onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))}
+              className="w-full rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={handleSave} className="h-8 text-xs gap-1.5 flex-1">
+            <Save className="h-3.5 w-3.5" /> Simpan
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setEditing(false)} className="h-8 text-xs">
+            Batal
+          </Button>
+          {dates && (
+            <Button size="sm" variant="ghost" onClick={handleDelete} className="h-8 text-xs text-destructive hover:text-destructive px-2">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!dates) {
+    return (
+      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 px-4 py-3.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <ShieldCheck className="h-4 w-4 text-violet-400 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-foreground">Countdown Iqomah</p>
+            <p className="text-[11px] text-muted-foreground">Atur tanggal iqomah kamu untuk pantau masa berlakunya</p>
+          </div>
+        </div>
+        <Button size="sm" variant="outline" onClick={openEdit} className="shrink-0 h-7 text-[11px] border-violet-500/30 text-violet-300 hover:bg-violet-500/10">
+          Atur
+        </Button>
+      </div>
+    );
+  }
+
+  const daysLeft   = iqomahCountdown(dates.expiry_date);
+  const progress   = iqomahProgress(dates.issue_date, dates.expiry_date);
+  const isCritical = daysLeft <= 30;
+  const isWarn     = daysLeft > 30 && daysLeft <= 60;
+  const isGood     = daysLeft > 60;
+  const isExpired  = daysLeft < 0;
+
+  const colorRing  = isExpired  ? "border-red-600/60 bg-red-500/8"
+                   : isCritical ? "border-red-500/50 bg-red-500/8"
+                   : isWarn     ? "border-orange-500/40 bg-orange-500/6"
+                   :              "border-emerald-500/30 bg-emerald-500/5";
+
+  const colorNum   = isExpired  ? "text-red-500"
+                   : isCritical ? "text-red-400"
+                   : isWarn     ? "text-orange-400"
+                   :              "text-emerald-400";
+
+  const colorBar   = isExpired  ? "bg-red-500"
+                   : isCritical ? "bg-red-400"
+                   : isWarn     ? "bg-orange-400"
+                   :              "bg-emerald-400";
+
+  const label      = isExpired  ? "Iqomah Kadaluarsa!"
+                   : isCritical ? "Segera Perbarui Iqomah"
+                   : isWarn     ? "Masa Berlaku Hampir Habis"
+                   :              "Iqomah Aktif";
+
+  const labelColor = isExpired  ? "text-red-400"
+                   : isCritical ? "text-red-400"
+                   : isWarn     ? "text-orange-400"
+                   :              "text-emerald-400";
+
+  return (
+    <div className={`rounded-2xl border px-4 py-3.5 space-y-3 ${colorRing} ${isCritical && !isExpired ? "relative overflow-hidden" : ""}`}>
+      {isCritical && !isExpired && (
+        <span className="absolute inset-0 rounded-2xl border-2 border-red-500/40 animate-ping pointer-events-none" />
+      )}
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className={`h-4 w-4 shrink-0 ${labelColor}`} />
+          <div>
+            <p className={`text-xs font-bold ${labelColor}`}>{label}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Terbit: {fmtDate(dates.issue_date)} &nbsp;·&nbsp; Expired: {fmtDate(dates.expiry_date)}
+            </p>
+          </div>
+        </div>
+        <button onClick={openEdit} className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5">
+          <Pencil className="h-3 w-3" />
+        </button>
+      </div>
+
+      <div className="flex items-end gap-4">
+        <div className="flex items-baseline gap-1">
+          <span className={`text-5xl font-black tabular-nums leading-none ${colorNum}`}>
+            {isExpired ? Math.abs(daysLeft) : daysLeft}
+          </span>
+          <span className="text-xs text-muted-foreground mb-1">
+            {isExpired ? "hari kadaluarsa" : "hari lagi"}
+          </span>
+        </div>
+        <div className="flex-1 space-y-1.5 pb-0.5">
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><Timer className="h-3 w-3" />Sudah terpakai</span>
+            <span>{Math.round(progress)}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-secondary overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${colorBar}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {isCritical && !isExpired && (
+        <div className="flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+          <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" />
+          <p className="text-[11px] text-red-300 leading-relaxed">
+            Segera urus perpanjangan iqomah ke imigrasi sebelum masa berlakunya habis.
+          </p>
+        </div>
+      )}
+      {isExpired && (
+        <div className="flex items-center gap-1.5 rounded-lg bg-red-600/10 border border-red-600/30 px-3 py-2">
+          <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+          <p className="text-[11px] text-red-400 leading-relaxed">
+            Iqomah sudah kadaluarsa {Math.abs(daysLeft)} hari yang lalu. Segera urus perpanjangan!
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════
    TAB 2: ADMIN TRACKER
    ════════════════════════════════════════════════════════ */
 function TrackerTab() {
@@ -777,6 +1010,9 @@ function TrackerTab() {
 
   return (
     <div className="space-y-4">
+      {/* Iqomah Countdown Card */}
+      <IqomahCountdownCard />
+
       {/* Smart Expiry Alert Banners */}
       {criticalAlerts.length > 0 && (
         <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/8 px-3.5 py-3">
