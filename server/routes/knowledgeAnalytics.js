@@ -30,19 +30,21 @@ export function createKnowledgeAnalyticsRouter({ getAdminClient, verifyAuth }) {
   const router = Router();
   const svc    = createAnalyticsService({ getAdminClient });
 
-  // ── Auth guard — identik dengan knowledgeMonitor.js ───────────────────────
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  // Prioritas 1: X-Internal-Key header (server-to-server / automation)
+  // Prioritas 2: Bearer token (admin UI di browser)
   async function guardInternal(req, res) {
-    const envKey = process.env.INTERNAL_API_KEY;
+    const envKey   = process.env.INTERNAL_API_KEY;
+    const provided = req.headers["x-internal-key"];
 
-    if (envKey) {
-      const provided = req.headers["x-internal-key"];
-      if (provided !== envKey) {
-        res.status(403).json({ error: "X-Internal-Key tidak valid" });
-        return false;
-      }
-      return true;
+    // Jika X-Internal-Key dikirim → validasi ketat (langsung terima atau tolak)
+    if (provided) {
+      if (envKey && provided === envKey) return true;
+      res.status(403).json({ error: "X-Internal-Key tidak valid" });
+      return false;
     }
 
+    // Fallback: Bearer token (admin yang login lewat browser)
     try {
       const user = await verifyAuth(req.headers.authorization);
       if (!user) { res.status(401).json({ error: "Login diperlukan" }); return false; }
