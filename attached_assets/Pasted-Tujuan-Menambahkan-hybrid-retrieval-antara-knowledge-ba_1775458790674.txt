@@ -1,0 +1,92 @@
+Tujuan:
+Menambahkan hybrid retrieval antara knowledge_base (lama) dan knowledge_sources + knowledge_chunks (baru), TANPA merusak flow existing.
+
+Aturan:
+- Tidak boleh ubah logic existing (fetchRelevantArticles)
+- Tidak boleh ubah UI
+- Semua additive-only
+- Harus ada fallback ke sistem lama jika error
+
+==================================================
+
+STEP 1 — Buat Hybrid Service
+
+File:
+server/services/hybridRetrievalService.js
+
+Isi:
+
+import { fetchRelevantArticles } from "../server.js" // sesuaikan path
+import { newsKnowledgeService } from "./newsKnowledgeService.js"
+import { adaptRetrievalResult } from "./newsKnowledgeAdapter.js"
+
+export async function hybridRetrieve(query) {
+  try {
+    const legacyResults = await fetchRelevantArticles(query)
+
+    let newsResults = []
+    try {
+      const rawNews = await newsKnowledgeService.retrieveByKeywords(query)
+      newsResults = adaptRetrievalResult(rawNews)
+    } catch (err) {
+      console.warn("[Hybrid] News error:", err.message)
+    }
+
+    const combined = [
+      ...legacyResults,
+      ...newsResults
+    ]
+
+    console.log("[Hybrid] Legacy:", legacyResults.length)
+    console.log("[Hybrid] News:", newsResults.length)
+
+    return combined.slice(0, 10)
+
+  } catch (err) {
+    console.error("[Hybrid] fallback to legacy:", err)
+    return await fetchRelevantArticles(query)
+  }
+}
+
+==================================================
+
+STEP 2 — Integrasi ke Chat (SAFE)
+
+Di server.js:
+
+Import:
+import { hybridRetrieve } from "./services/hybridRetrievalService.js"
+
+Cari:
+fetchRelevantArticles(query)
+
+Ganti jadi:
+
+let results
+if (process.env.USE_HYBRID_RETRIEVAL === "true") {
+  results = await hybridRetrieve(query)
+} else {
+  results = await fetchRelevantArticles(query)
+}
+
+==================================================
+
+STEP 3 — ENV FLAG
+
+Tambahkan:
+USE_HYBRID_RETRIEVAL=true
+
+==================================================
+
+STEP 4 — Safety Rules
+
+- Jika news error → tetap pakai legacy
+- Jangan pernah throw error ke user
+- Jangan ubah struktur response AI
+
+==================================================
+
+Output:
+- Chat tetap normal
+- Jawaban lebih kaya (gabungan KB + news)
+- Bisa dimatikan kapan saja via ENV

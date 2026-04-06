@@ -18,7 +18,8 @@ import { detectMasisirContext } from './engine/contextDetector.js';
 import { expandQuery } from './engine/queryExpander.js';
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
-import { createKnowledgeTestRouter }  from "./server/routes/knowledgeTest.js";
+import { createKnowledgeTestRouter }      from "./server/routes/knowledgeTest.js";
+import { createHybridRetrievalService }  from "./server/services/hybridRetrievalService.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
 import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
@@ -1348,6 +1349,20 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 }
 
 const DAILY_FREE_LIMIT = 5;
+
+// ── Hybrid retrieval — lazy init (only when USE_HYBRID_RETRIEVAL=true) ────────
+// fetchRelevantArticles is fully defined above — safe to reference here.
+// _hybridRetriever is created on first use to avoid any startup-time issues.
+let _hybridRetriever = null;
+function getHybridRetriever() {
+  if (!_hybridRetriever) {
+    _hybridRetriever = createHybridRetrievalService({
+      getAdminClient,
+      legacyFetch: fetchRelevantArticles,
+    });
+  }
+  return _hybridRetriever;
+}
 
 /* ── Fetch active pinned/breaking updates ────────────── */
 async function fetchPinnedUpdates() {
@@ -3958,7 +3973,9 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // kbQuery = expanded/enriched query for better KB hit-rate; retrievalQuery used for everything else
   _chatDebugStep = "wave1-fetches";
   const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
-    fetchRelevantArticles(kbQuery, intent.primary),
+    process.env.USE_HYBRID_RETRIEVAL === "true"
+      ? getHybridRetriever().retrieve(kbQuery, intent.primary)
+      : fetchRelevantArticles(kbQuery, intent.primary),
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
