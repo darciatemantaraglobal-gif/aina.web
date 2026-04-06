@@ -1,0 +1,64 @@
+Saya ingin melakukan audit terhadap perubahan terakhir yang baru saja dilakukan pada repo AINA (`aina.web`).
+
+Tujuan audit:
+- Memastikan tidak ada perubahan yang merusak flow utama AINA
+- Memastikan chat, retrieval, dan UI existing tetap aman
+- Memastikan semua perubahan bersifat additive (penambahan), bukan mengganti logic existing
+- Memastikan fondasi integrasi hanya disiapkan, belum dijadikan default
+
+Tolong lakukan audit dengan format berikut:
+
+1. Ringkasan Perubahan
+- Jelaskan singkat apa saja yang ditambahkan atau diubah
+- Fokus pada perubahan utama saja
+
+2. Daftar File
+- Sebutkan file apa saja yang:
+  a) ditambahkan
+  b) diubah
+- Untuk setiap file yang diubah, jelaskan singkat fungsi perubahannya
+
+3. Validasi Flow Existing
+Jawab dengan jelas:
+- Apakah flow chat utama masih sama seperti sebelumnya?
+- Apakah retrieval / knowledge query lama masih tetap dipakai sebagai default?
+- Apakah UI tidak berubah?
+- Apakah ada logic lama yang dihapus, diganti, atau dialihkan?
+
+4. Layer Baru yang Ditambahkan
+- Helper/service/repository apa saja yang baru ditambahkan untuk persiapan integrasi?
+- Apakah layer baru ini sudah terpisah dari flow existing?
+- Apakah layer baru ini belum menjadi default?
+
+5. Risiko & Potensi Error
+- Apakah ada perubahan yang berpotensi menyebabkan bug?
+- Apakah ada file kritikal yang tersentuh?
+- Apakah ada dependency baru yang ditambahkan?
+- Apakah ada risiko import/syntax/runtime error walaupun layer baru belum dipakai?
+
+6. Simulasi Before vs After
+Jelaskan singkat:
+- Sebelum perubahan: flow knowledge/retrieval AINA seperti apa
+- Setelah perubahan: apa yang berubah dan apa yang tetap sama
+Pastikan terlihat jelas bahwa flow existing masih berjalan
+
+7. Kesimpulan (WAJIB JELAS)
+Pilih salah satu:
+- AMAN
+- PERLU PERBAIKAN
+- BERISIKO
+
+Lalu jelaskan alasannya secara singkat dan tegas.
+
+8. Verifikasi Tambahan
+Jawab ya/tidak dengan penjelasan singkat:
+- Apakah layer baru sudah dipanggil oleh chat utama?
+- Apakah query lama masih jadi default?
+- Apakah perubahan ini hanya persiapan fondasi?
+- Apakah app masih build/run normal?
+
+PENTING:
+- Jangan menambah fitur baru
+- Jangan menulis ulang code
+- Fokus hanya pada audit dan pelaporan
+- Jawaban harus jujur, jelas, dan spesifik
