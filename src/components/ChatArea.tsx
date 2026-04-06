@@ -375,6 +375,15 @@ function isMajorityArabic(node: any): boolean {
 const MD_COMPONENTS = {
   br: () => <br />,
   p: ({ children }: any) => {
+    const text = extractMdText(children);
+    if (/^reading\s*\(latin\)\s*:/i.test(text.trim())) {
+      const value = text.replace(/^reading\s*\(latin\)\s*:\s*/i, "").trim();
+      return (
+        <p dir="ltr" className="text-sm text-sky-400 italic my-1 text-left" style={{ fontFamily: "'SF Pro Display', sans-serif" }}>
+          🔊 {value}
+        </p>
+      );
+    }
     const isArabic = containsArabic(children);
     return isArabic ? (
       <p dir="auto" className="mb-5 last:mb-0 break-words text-foreground/90"
