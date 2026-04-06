@@ -33,19 +33,24 @@ export function createHybridRetrievalService({ getAdminClient, legacyFetch }) {
      * @returns {Promise<object[]>} Array artikel kompatibel dengan format fetchRelevantArticles
      */
     async retrieve(query, intentType) {
-      // ── Step 1: Legacy retrieval (selalu jalan, tidak boleh di-skip) ──────
-      const legacyResults = await legacyFetch(query, intentType);
-
-      // ── Step 2: News retrieval — best-effort, error tidak propagate ───────
-      let newsResults = [];
-      try {
-        const rawNews = await newsSvc.retrieveByKeywords(query, {
-          limit:        5,
-          preferChunks: true,
+      // ── Steps 1 & 2 — parallel: legacy (mandatory) + news (best-effort) ──
+      // News error is caught inside newsPromise so it never rejects Promise.all.
+      // Returning null as sentinel lets us distinguish "failed" from "0 results".
+      const newsPromise = newsSvc
+        .retrieveByKeywords(query, { limit: 5, preferChunks: true })
+        .catch(err => {
+          console.warn("[Hybrid] News retrieval error (ignored, using legacy only):", err.message);
+          return null; // sentinel: news side failed
         });
+
+      const [legacyResults, rawNews] = await Promise.all([
+        legacyFetch(query, intentType),
+        newsPromise,
+      ]);
+
+      let newsResults = [];
+      if (rawNews !== null) {
         newsResults = adaptRetrievalResult(rawNews, { preferChunks: true, limit: 5 });
-      } catch (err) {
-        console.warn("[Hybrid] News retrieval error (ignored, using legacy only):", err.message);
       }
 
       console.log(`[Hybrid] legacy=${legacyResults.length} news=${newsResults.length} total_before_cap=${legacyResults.length + newsResults.length}`);
@@ -67,9 +72,20 @@ export function createHybridRetrievalService({ getAdminClient, legacyFetch }) {
       // Legacy results first (higher trust), unique news appended after
       const combined = [...legacyResults, ...uniqueNews];
 
-      console.log(`[Hybrid] unique_news=${uniqueNews.length} final=${Math.min(combined.length, 10)}`);
+      // ── _topScore carry-over ──────────────────────────────────────────────
+      // fetchRelevantArticles attaches _topScore as a custom property on the
+      // array (keyword-search path). Spread and .slice() both create new arrays
+      // and drop custom properties, so we carry it over explicitly to ensure
+      // assessKBStrength() uses the score-based branch instead of the less-
+      // precise "vector path" fallback.
+      const final = combined.slice(0, 10);
+      if (legacyResults._topScore !== undefined) {
+        final._topScore = legacyResults._topScore;
+      }
 
-      return combined.slice(0, 10);
+      console.log(`[Hybrid] unique_news=${uniqueNews.length} final=${final.length} _topScore=${final._topScore ?? "n/a"}`);
+
+      return final;
     },
   };
 }
