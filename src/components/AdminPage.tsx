@@ -18,7 +18,7 @@ import {
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
   Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags, Heading,
-  Loader2,
+  Loader2, BarChart2,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -6754,8 +6754,243 @@ function LibraryManagementTab() {
   );
 }
 
+/* ─── Query Analytics Tab (Master Admin only) ─────────── */
+type QASummary  = { period_days: number; total_queries: number; by_intent_class: Record<string,number>; by_retrieval_mode: Record<string,number>; used_external_fallback: number; external_fallback_pct: number };
+type QATopQ     = { query: string; count: number };
+type QAWeakQ    = { query_text: string | null; intent_class: string | null; kb_strength: string | null; retrieval_mode: string; used_external_fallback: boolean; created_at: string };
+type QASrcMix   = { total: number; by_origin: { legacy: number; news: number; mixed: number }; pct: { legacy: number; news: number; mixed: number } };
+type QAFeedback = { total: number; up: number; down: number; approval: number | null };
+
+function QueryAnalyticsTab() {
+  const [summary,   setSummary]   = useState<QASummary | null>(null);
+  const [topQ,      setTopQ]      = useState<QATopQ[]>([]);
+  const [weakQ,     setWeakQ]     = useState<QAWeakQ[]>([]);
+  const [srcMix,    setSrcMix]    = useState<QASrcMix | null>(null);
+  const [fb,        setFb]        = useState<QAFeedback | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [days,      setDays]      = useState(7);
+  const [migration, setMigration] = useState(false);
+  const [err,       setErr]       = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null); setMigration(false);
+    try {
+      const [s, t, w, m, f] = await Promise.all([
+        adminFetch(`/api/internal/knowledge-analytics/summary?days=${days}`),
+        adminFetch(`/api/internal/knowledge-analytics/top-queries?limit=10&days=${days}`),
+        adminFetch(`/api/internal/knowledge-analytics/weak-queries?limit=10`),
+        adminFetch(`/api/internal/knowledge-analytics/source-mix?days=${days}`),
+        adminFetch(`/api/internal/knowledge-analytics/feedback-summary`),
+      ]);
+      setSummary(s); setTopQ(t.queries ?? []); setWeakQ(w.queries ?? []);
+      setSrcMix(m);  setFb(f);
+    } catch (e: any) {
+      if (e.message?.includes("belum ada") || e.message?.includes("migration")) setMigration(true);
+      else setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [days]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const MODE_COLOR: Record<string, string> = { smart: "text-violet-400", hybrid: "text-blue-400", legacy: "text-muted-foreground" };
+  const KB_COLOR:   Record<string, string> = { strong: "text-green-400", weak: "text-yellow-400", absent: "text-red-400" };
+
+  if (loading) return (
+    <div className="flex justify-center py-20">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+
+  if (migration) return (
+    <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-6 space-y-3">
+      <div className="flex items-center gap-2 text-yellow-400 font-semibold text-sm">
+        <AlertTriangle className="h-4 w-4" />Migration diperlukan
+      </div>
+      <p className="text-sm text-muted-foreground">Tabel analytics belum tersedia. Jalankan file ini di Supabase SQL Editor:</p>
+      <code className="block rounded-lg bg-secondary px-3 py-2 text-xs font-mono text-foreground">migrations/001_query_analytics.sql</code>
+      <p className="text-xs text-muted-foreground">Setelah dijalankan, data analytics otomatis terkumpul dari setiap percakapan — tanpa mengubah flow chat.</p>
+    </div>
+  );
+
+  if (err) return (
+    <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">Error: {err}</div>
+  );
+
+  const dominantMode = Object.entries(summary?.by_retrieval_mode ?? {}).sort(([,a],[,b]) => b - a)[0]?.[0] ?? "—";
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Query Analytics</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Pola retrieval &amp; pertanyaan user — {days} hari terakhir</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={days}
+            onChange={e => setDays(Number(e.target.value))}
+            className="rounded-lg border border-border bg-secondary px-2 py-1.5 text-xs text-foreground"
+          >
+            <option value={7}>7 hari</option>
+            <option value={14}>14 hari</option>
+            <option value={30}>30 hari</option>
+          </select>
+          <button
+            onClick={load}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <RefreshCw className="h-3 w-3" />Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: "Total Query",       value: summary.total_queries.toString(),              sub: `${summary.period_days} hari`,             cls: "text-foreground" },
+            { label: "External Fallback", value: `${summary.external_fallback_pct}%`,           sub: `${summary.used_external_fallback} query`,  cls: summary.external_fallback_pct > 30 ? "text-yellow-400" : "text-foreground" },
+            { label: "Feedback Approval", value: fb?.total ? `${fb.approval ?? 0}%` : "—",     sub: fb?.total ? `👍${fb.up} 👎${fb.down}` : "Belum ada", cls: "text-green-400" },
+            { label: "Retrieval Mode",    value: dominantMode,                                  sub: "dominan saat ini",                         cls: MODE_COLOR[dominantMode] ?? "text-foreground" },
+          ].map(c => (
+            <div key={c.label} className="rounded-xl border border-border bg-card p-4 space-y-1">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{c.label}</p>
+              <p className={`text-2xl font-bold capitalize tabular-nums ${c.cls}`}>{c.value}</p>
+              <p className="text-[10px] text-muted-foreground">{c.sub}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Retrieval mode + Source mix */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {summary && (
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <p className="text-xs font-semibold text-foreground">Retrieval Mode</p>
+            {Object.keys(summary.by_retrieval_mode).length === 0
+              ? <p className="text-xs text-muted-foreground">Belum ada data</p>
+              : <div className="space-y-2">
+                  {Object.entries(summary.by_retrieval_mode).sort(([,a],[,b]) => b - a).map(([mode, count]) => {
+                    const pct = summary.total_queries > 0 ? Math.round(count / summary.total_queries * 100) : 0;
+                    return (
+                      <div key={mode} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className={`capitalize ${MODE_COLOR[mode] ?? "text-muted-foreground"}`}>{mode}</span>
+                          <span className="text-muted-foreground tabular-nums">{count} ({pct}%)</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
+                          <div className="h-full rounded-full bg-primary/60" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+            }
+          </div>
+        )}
+
+        {srcMix && (
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <p className="text-xs font-semibold text-foreground">Source Mix</p>
+            {srcMix.total === 0
+              ? <p className="text-xs text-muted-foreground">Belum ada data</p>
+              : <div className="space-y-2">
+                  {([
+                    ["legacy", "Legacy KB", "bg-blue-500/60"],
+                    ["news",   "News",      "bg-green-500/60"],
+                    ["mixed",  "Mixed",     "bg-purple-500/60"],
+                  ] as const).map(([key, label, color]) => {
+                    const cnt = srcMix.by_origin[key] ?? 0;
+                    const pct = srcMix.pct[key] ?? 0;
+                    return (
+                      <div key={key} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="text-muted-foreground tabular-nums">{cnt} ({pct}%)</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
+                          <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+            }
+          </div>
+        )}
+      </div>
+
+      {/* Top Queries */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="border-b border-border px-4 py-3 flex items-center justify-between">
+          <p className="text-xs font-semibold text-foreground">Pertanyaan Paling Sering</p>
+          <span className="text-[10px] text-muted-foreground">{days} hari terakhir</span>
+        </div>
+        {topQ.length === 0
+          ? <div className="px-4 py-6 text-center text-xs text-muted-foreground">Belum ada data query</div>
+          : <div className="divide-y divide-border">
+              {topQ.map((q, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="w-5 shrink-0 text-center text-[10px] font-bold text-muted-foreground/40 tabular-nums">{i + 1}</span>
+                  <p className="flex-1 text-xs text-foreground truncate">{q.query}</p>
+                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary tabular-nums">{q.count}×</span>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+
+      {/* Weak Queries */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="border-b border-border px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-foreground">Query KB Lemah</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Kandidat konten baru untuk Knowledge Base</p>
+          </div>
+          <AlertTriangle className="h-3.5 w-3.5 text-yellow-400 shrink-0" />
+        </div>
+        {weakQ.length === 0
+          ? <div className="px-4 py-6 text-center text-xs text-muted-foreground">KB kuat — tidak ada query lemah saat ini</div>
+          : <div className="divide-y divide-border">
+              {weakQ.map((q, i) => (
+                <div key={i} className="px-4 py-2.5 space-y-0.5">
+                  <p className="text-xs text-foreground truncate">{q.query_text ?? "—"}</p>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className={KB_COLOR[q.kb_strength ?? ""] ?? ""}>{q.kb_strength ?? "—"}</span>
+                    <span>·</span>
+                    <span className={MODE_COLOR[q.retrieval_mode] ?? ""}>{q.retrieval_mode}</span>
+                    {q.used_external_fallback && <><span>·</span><span className="text-yellow-400">external</span></>}
+                    {q.intent_class && <><span>·</span><span>{q.intent_class}</span></>}
+                  </div>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+
+      {/* Intent distribution */}
+      {summary && Object.keys(summary.by_intent_class).length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground">Distribusi Intent</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {Object.entries(summary.by_intent_class).sort(([,a],[,b]) => b - a).map(([intent, count]) => (
+              <div key={intent} className="flex items-center justify-between rounded-lg bg-secondary/50 px-3 py-2">
+                <span className="text-xs text-muted-foreground capitalize">{intent}</span>
+                <span className="text-xs font-semibold text-foreground tabular-nums">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library" | "query-analytics";
 
 interface NavItem { id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }
 interface NavGroup { label: string; masterOnly?: boolean; items: NavItem[] }
@@ -6848,9 +7083,10 @@ const AdminPage = () => {
       label: "Analitik",
       masterOnly: true,
       items: [
-        { id: "performance", label: "Performa AI", icon: TrendingUp },
-        { id: "coverage",    label: "Coverage KB", icon: Search },
-        { id: "insights",    label: "Insights",    icon: Sparkles },
+        { id: "performance",     label: "Performa AI",       icon: TrendingUp },
+        { id: "coverage",        label: "Coverage KB",        icon: Search },
+        { id: "insights",        label: "Insights",           icon: Sparkles },
+        { id: "query-analytics", label: "Query Analytics",   icon: BarChart2 },
       ],
     },
   ];
@@ -6877,9 +7113,10 @@ const AdminPage = () => {
       {activeTab === "signals"       && isMasterAdmin && <FeedbackSignalsTab />}
       {activeTab === "news"          && <NewsManagementTab />}
       {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
-      {activeTab === "coverage"      && isMasterAdmin && <CoverageTab />}
-      {activeTab === "insights"      && isMasterAdmin && <InsightsTab />}
-      {activeTab === "library"       && <LibraryManagementTab />}
+      {activeTab === "coverage"        && isMasterAdmin && <CoverageTab />}
+      {activeTab === "insights"        && isMasterAdmin && <InsightsTab />}
+      {activeTab === "library"         && <LibraryManagementTab />}
+      {activeTab === "query-analytics" && isMasterAdmin && <QueryAnalyticsTab />}
     </>
   );
 
