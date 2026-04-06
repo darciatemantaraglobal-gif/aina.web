@@ -14,6 +14,139 @@ import {
 import FlashcardPage from "./FlashcardPage";
 
 /* ════════════════════════════════════════════════════════
+   GAMIFICATION — levels, streak, progress
+   ════════════════════════════════════════════════════════ */
+const MASISIR_LEVELS = [
+  { min: 0,   max: 4,          icon: "🌱", label: "Benih",                 color: "text-emerald-400",  bg: "bg-emerald-500/10 border-emerald-500/20" },
+  { min: 5,   max: 19,         icon: "⚡", label: "Pelajar Aktif",         color: "text-blue-400",     bg: "bg-blue-500/10 border-blue-500/20" },
+  { min: 20,  max: 49,         icon: "🔥", label: "Santri Produktif",      color: "text-orange-400",   bg: "bg-orange-500/10 border-orange-500/20" },
+  { min: 50,  max: 99,         icon: "🌟", label: "Masisir Berpengalaman", color: "text-amber-400",    bg: "bg-amber-500/10 border-amber-500/20" },
+  { min: 100, max: Infinity,   icon: "🏆", label: "Veteran Masisir",       color: "text-violet-400",   bg: "bg-violet-500/10 border-violet-500/20" },
+];
+
+function getMasisirLevel(totalDone: number) {
+  return MASISIR_LEVELS.find(l => totalDone >= l.min && totalDone <= l.max) ?? MASISIR_LEVELS[0];
+}
+
+function calcStreak(doneDates: string[]): number {
+  if (!doneDates.length) return 0;
+  const doneSet = new Set(doneDates);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  // If today already has done items, start counting from today; otherwise from yesterday
+  let cursor = new Date(today);
+  if (!doneSet.has(fmt(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (doneSet.has(fmt(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+function GamificationBar({
+  userId, refreshKey,
+}: { userId: string; refreshKey: number }) {
+  const [stats, setStats] = useState<{
+    streak: number; totalDone: number;
+    todayDone: number; todayTotal: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    (async () => {
+      try {
+        // Fetch last 120 days of done items for streak + level
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 120);
+        const { data: allDone } = await supabase
+          .from("daily_focus_items")
+          .select("focus_date")
+          .eq("user_id", userId)
+          .eq("status", "done")
+          .gte("focus_date", cutoff.toISOString().slice(0, 10));
+
+        // Today's total items
+        const { data: todayItems } = await supabase
+          .from("daily_focus_items")
+          .select("status")
+          .eq("user_id", userId)
+          .eq("focus_date", todayStr);
+
+        const doneDates = [...new Set((allDone ?? []).map((d: any) => d.focus_date))];
+        const todayDone  = (todayItems ?? []).filter((i: any) => i.status === "done").length;
+        const todayTotal = (todayItems ?? []).length;
+        setStats({ streak: calcStreak(doneDates), totalDone: (allDone ?? []).length, todayDone, todayTotal });
+      } catch {}
+    })();
+  }, [userId, refreshKey]);
+
+  if (!stats) return null;
+
+  const level = getMasisirLevel(stats.totalDone);
+  const pct   = stats.todayTotal > 0 ? Math.round((stats.todayDone / stats.todayTotal) * 100) : 0;
+
+  let motivText: string;
+  if (stats.todayTotal === 0)   motivText = "Yuk tambah fokus hari ini! 💪";
+  else if (pct === 100)         motivText = "Semua fokus hari ini selesai! Lo luar biasa 🎉";
+  else if (pct >= 67)           motivText = `Hampir selesai! Tinggal ${stats.todayTotal - stats.todayDone} fokus lagi 🔥`;
+  else if (stats.todayDone > 0) motivText = `Hari ini lo udah nyelesain ${stats.todayDone} dari ${stats.todayTotal} fokus 🔥`;
+  else                          motivText = `Ada ${stats.todayTotal} fokus menunggumu hari ini 💪`;
+
+  const nextLevel = MASISIR_LEVELS.find(l => l.min > (getMasisirLevel(stats.totalDone).min));
+  const toNext = nextLevel ? nextLevel.min - stats.totalDone : 0;
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-card/50 px-4 py-3 space-y-3">
+      {/* Row 1: streak + level */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+          stats.streak > 0
+            ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
+            : "bg-secondary border-border text-muted-foreground"
+        }`}>
+          🔥 {stats.streak > 0 ? `${stats.streak} hari streak` : "Mulai streak hari ini"}
+        </span>
+        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${level.bg} ${level.color}`}>
+          {level.icon} {level.label}
+        </span>
+      </div>
+
+      {/* Row 2: today's progress bar + motivational text */}
+      <div className="space-y-1.5">
+        {stats.todayTotal > 0 && (
+          <div className="flex items-center gap-2">
+            <div className="relative h-2 flex-1 rounded-full bg-secondary overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  pct === 100
+                    ? "bg-gradient-to-r from-emerald-500 to-green-400"
+                    : "bg-gradient-to-r from-primary to-violet-500"
+                }`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground tabular-nums">
+              {stats.todayDone}/{stats.todayTotal}
+            </span>
+          </div>
+        )}
+        <p className="text-[11px] text-muted-foreground leading-relaxed">{motivText}</p>
+      </div>
+
+      {/* Row 3: XP / next level hint */}
+      {nextLevel && (
+        <p className="text-[10px] text-muted-foreground/50">
+          {toNext} fokus lagi untuk naik ke level <span className="font-medium">{nextLevel.icon} {nextLevel.label}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════
    TYPES
    ════════════════════════════════════════════════════════ */
 interface FocusItem {
@@ -116,7 +249,7 @@ function dueBadge(dateStr: string | null) {
 /* ════════════════════════════════════════════════════════
    TAB 1: DAILY FOCUS
    ════════════════════════════════════════════════════════ */
-function FocusTab() {
+function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
   const [items, setItems] = useState<FocusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<"none" | "manual" | "ai_assist" | "ai_suggest">("none");
@@ -128,6 +261,10 @@ function FocusTab() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ title: "", description: "" });
+
+  // Notify parent when items change so GamificationBar can refresh
+  const doneCount_ = items.filter(i => i.status === "done").length;
+  useEffect(() => { onFocusChange?.(); }, [doneCount_, items.length]);
 
   const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
   const activeCount = items.filter(i => i.status !== "done").length;
@@ -1808,6 +1945,8 @@ function NotesTab() {
 const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [userId, setUserId] = useState(userIdProp ?? "");
   const [tab, setTab] = useState<"fokus" | "dokumen" | "flashcard" | "catatan" | "pengingat">("fokus");
+  const [gamRefreshKey, setGamRefreshKey] = useState(0);
+  const handleFocusChange = useCallback(() => setGamRefreshKey(k => k + 1), []);
 
   useEffect(() => {
     if (userIdProp) { setUserId(userIdProp); return; }
@@ -1830,6 +1969,11 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
       <div className="shrink-0 px-5 pt-5 pb-4 border-b border-border">
         <h1 className="text-lg font-bold font-display text-foreground">Ruang Produktif</h1>
         <p className="text-xs text-muted-foreground mt-0.5">Fokus harian, urusan penting, dan panduan prosedur Masisir</p>
+
+        {/* Gamification bar — always visible regardless of active tab */}
+        {userId && (
+          <GamificationBar userId={userId} refreshKey={gamRefreshKey} />
+        )}
 
         {/* Tab pills */}
         <div className="flex gap-1 mt-4 overflow-x-auto scrollbar-hide">
@@ -1860,7 +2004,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {tab === "fokus"     && <FocusTab />}
+          {tab === "fokus"     && <FocusTab onFocusChange={handleFocusChange} />}
           {tab === "dokumen"   && <TrackerTab />}
           {tab === "catatan"   && <NotesTab />}
           {tab === "pengingat" && <ReminderTab />}
