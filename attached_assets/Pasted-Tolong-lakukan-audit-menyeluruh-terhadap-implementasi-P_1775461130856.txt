@@ -1,0 +1,110 @@
+Tolong lakukan audit menyeluruh terhadap implementasi Phase 5 Step 1 pada repo AINA (`aina.web`).
+
+Tujuan audit:
+- Memastikan monitoring internal knowledge pipeline sudah ada dan aman
+- Memastikan flow chat utama tetap utuh
+- Memastikan route monitoring bersifat internal/admin-only
+- Memastikan semua perubahan additive-only dan non-breaking
+
+Fokus audit:
+
+==================================================
+
+1. Validasi Struktur Perubahan
+
+- File apa saja yang ditambahkan?
+- File apa saja yang diubah?
+- Apakah ada perubahan destructive pada file existing?
+- Apakah semua perubahan bersifat additive-only?
+
+==================================================
+
+2. Validasi Internal Monitoring Route
+
+- Apakah route internal monitoring benar-benar ada?
+- Endpoint apa saja yang tersedia?
+  Contoh:
+  - /health
+  - /latest-sources
+  - /summary
+  - /latest-ingestion-runs
+- Apakah route ini sepenuhnya terpisah dari flow chat user?
+
+==================================================
+
+3. Validasi Proteksi
+
+- Bagaimana endpoint monitoring diproteksi?
+- Apakah memakai X-Internal-Key?
+- Apakah ada auth fallback?
+- Apakah endpoint ini aman dari akses user biasa?
+
+==================================================
+
+4. Validasi Monitoring Data
+
+- Apakah endpoint bisa membaca:
+  - total knowledge_sources
+  - breakdown by status
+  - total knowledge_chunks
+  - latest sources
+  - latest ingestion runs (jika tersedia)
+- Apakah response JSON jelas dan stabil?
+- Jika tabel baru belum ada / kosong, apakah error ditangani dengan aman?
+
+==================================================
+
+5. Validasi Non-Breaking
+
+Jawab jelas:
+- Apakah /api/chat tetap sama?
+- Apakah retrieval smart/hybrid/legacy tidak berubah karena monitoring ini?
+- Apakah UI/frontend user tidak berubah?
+- Apakah monitoring route tidak dipanggil dari user flow utama?
+
+==================================================
+
+6. Simulasi Before vs After
+
+Jelaskan singkat:
+- sebelum Phase 5 Step 1: bagaimana admin mengecek knowledge pipeline
+- setelah Phase 5 Step 1: bagaimana admin bisa monitor pipeline
+Pastikan jelas bahwa perubahan ini hanya untuk observability, bukan behavior chat
+
+==================================================
+
+7. Risiko & Bug Potensial
+
+Cari kemungkinan:
+- monitoring route bocor ke user biasa
+- query monitoring terlalu berat
+- endpoint monitoring error lalu mengganggu startup/server
+- latest ingestion runs tidak sinkron dengan real pipeline
+- dependency pada data harvester belum stabil
+
+==================================================
+
+8. Kesimpulan
+
+Berikan verdict:
+- AMAN
+- PERLU FIX
+- BERISIKO
+
+Dan jelaskan alasannya secara tegas.
+
+==================================================
+
+9. Bonus Improvement
+
+Berikan saran ringan:
+- pagination untuk latest sources
+- caching ringan untuk summary
+- health badge / status code yang lebih jelas
+- filtering by source_type / source_category
+
+PENTING:
+- Jangan menambah fitur baru
+- Jangan menulis ulang code
+- Fokus hanya pada audit dan pelaporan
+- Jawaban harus jujur, spesifik, dan ringkas
