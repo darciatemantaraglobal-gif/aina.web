@@ -1523,7 +1523,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       </header>
 
       {/* Desktop header */}
-      <header className="hidden md:flex shrink-0 items-center justify-between border-b border-border bg-background px-6 h-14">
+      <header className="hidden md:flex shrink-0 items-center justify-between border-b border-border bg-background px-8 h-14">
         {/* Left: AINA branding */}
         <div className="flex items-center gap-2.5 w-40 shrink-0">
           <AinaLogo className="h-7 w-7 object-contain" />
@@ -1634,7 +1634,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </div>
         ) : (
           <>
-          <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
+          <div className="mx-auto w-full max-w-3xl xl:max-w-4xl space-y-8 px-4 py-8 md:px-8">
             {messages.map((msg, msgIdx) => {
               const isLastAI = msg.role === "assistant" && msgIdx === messages.length - 1 && !isLoading && !streamingMsg;
               const isArabicMsg = isArabicText(msg.content ?? "");
@@ -2093,17 +2093,17 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       )}
 
       {/* Input bar — always at bottom */}
-      <div className="pb-input-safe shrink-0 px-4 pt-2 md:px-6 md:pb-7">
+      <div className="pb-input-safe shrink-0 px-4 pt-2 md:px-8 md:pb-8">
         {limitReached ? (
           <div
             onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
-            className="mx-auto flex max-w-3xl cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400 transition-colors hover:border-amber-500/40"
+            className="mx-auto flex max-w-3xl xl:max-w-4xl cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400 transition-colors hover:border-amber-500/40"
           >
             <Zap className="h-4 w-4 shrink-0" />
             <span>Batas harian tercapai — <span className="font-semibold underline-offset-2 hover:underline">Upgrade atau jadi Kontributor</span></span>
           </div>
         ) : (
-          <form onSubmit={handleFormSubmit} className="mx-auto max-w-3xl">
+          <form onSubmit={handleFormSubmit} className="mx-auto max-w-3xl xl:max-w-4xl">
             {/* File preview above textarea */}
             {(attachedFile || isUploadingFile) && (
               <div className="mb-2 flex items-center gap-2 rounded-2xl border border-border bg-secondary/60 px-3 py-2">

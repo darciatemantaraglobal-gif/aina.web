@@ -943,7 +943,7 @@ const DashboardSidebar = ({
   return (
     <aside
       className={`flex h-full flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ${
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-16" : "w-72"
       }`}
     >
       {/* ── Header ─────────────────────────────────────── */}
@@ -979,10 +979,10 @@ const DashboardSidebar = ({
       </div>
 
       {/* ── Top: Nav items ──────────────────────────────── */}
-      <div className="shrink-0 px-3 pt-3 pb-1 space-y-0.5">
+      <div className="shrink-0 px-3 pt-3 pb-1 space-y-1">
         <button
           onClick={onNewChat}
-          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
+          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
             collapsed ? "justify-center" : ""
           }`}
           title="Chat Baru"
@@ -993,7 +993,7 @@ const DashboardSidebar = ({
 
         <button
           onClick={() => setShowHistoryPopup(true)}
-          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent ${
+          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent ${
             collapsed ? "justify-center" : ""
           }`}
           title="Riwayat Chat"
@@ -1014,7 +1014,7 @@ const DashboardSidebar = ({
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="mt-2 mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">
+              <p className="mt-3 mb-1 px-3 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">
                 {group.label}
               </p>
             )}
@@ -1023,7 +1023,7 @@ const DashboardSidebar = ({
                 key={item.id}
                 data-tour={`nav-${item.id}`}
                 onClick={() => onTabChange(item.id)}
-                className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200 ${
+                className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ${
                   activeTab === item.id
                     ? "bg-primary/15 text-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -1042,14 +1042,14 @@ const DashboardSidebar = ({
         {isAdmin && (
           <div>
             {!collapsed && (
-              <p className="mt-2 mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">
+              <p className="mt-3 mb-1 px-3 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">
                 Admin
               </p>
             )}
             <button
               data-tour="nav-admin"
               onClick={() => onTabChange("admin")}
-              className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200 ${
+              className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-200 ${
                 activeTab === "admin"
                   ? "bg-primary/15 text-primary font-medium"
                   : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -1070,13 +1070,13 @@ const DashboardSidebar = ({
       <div className="flex-1" />
 
       {/* ── Bottom: Notifications + Home + Profile ───────── */}
-      <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-16 md:pb-3 space-y-0.5">
+      <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-16 md:pb-3 space-y-1">
         <NotificationBell collapsed={collapsed} />
 
         {onStartTour && (
           <button
             onClick={onStartTour}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground ${
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground ${
               collapsed ? "justify-center" : ""
             }`}
             title="Panduan Fitur"
@@ -1088,7 +1088,7 @@ const DashboardSidebar = ({
 
         <button
           onClick={handleGoHome}
-          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
+          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
             collapsed ? "justify-center" : ""
           }`}
           title="Halaman Utama"
@@ -1104,7 +1104,7 @@ const DashboardSidebar = ({
               if (!collapsed) setProfileMenuOpen((o) => !o);
               else onTabChange("profile");
             }}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-sidebar-accent ${
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-sidebar-accent ${
               profileMenuOpen ? "bg-sidebar-accent" : ""
             } ${collapsed ? "justify-center" : ""}`}
             title={collapsed ? "Profil" : "Buka menu profil"}
