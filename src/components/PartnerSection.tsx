@@ -1,4 +1,5 @@
-import { MessageCircle, ArrowRight, Plus } from "lucide-react";
+import { MessageCircle, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useInView } from "@/hooks/useInView";
 
 interface Partner {
@@ -25,74 +26,42 @@ const PartnerSection = () => {
       <div className={`relative z-10 mx-auto max-w-4xl transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
         <div className="flex flex-col sm:flex-row rounded-2xl overflow-hidden border border-border/50 shadow-xl">
 
-          {/* ── Left panel ── */}
-          <div className="sm:w-56 shrink-0 flex flex-col justify-between bg-gradient-to-br from-[#1a1040] via-[#160d38] to-[#0d0824] px-7 py-8">
-            <div>
-              <p className="font-display text-[13px] font-semibold uppercase tracking-[0.18em] text-white/50">Our</p>
-              <h2 className="font-display text-4xl sm:text-5xl font-black text-white leading-[1.05] mt-1">
-                PARTNER
-              </h2>
-              <div className="mt-3 flex items-center gap-2">
-                <img src="/aina-icon.png" alt="AINA" className="h-6 w-6 object-contain opacity-80" />
-                <span className="text-xs font-bold tracking-widest text-primary/80 uppercase">AINA</span>
+          {/* ── Left panel — image background ── */}
+          <div
+            className="sm:w-56 shrink-0 min-h-[180px] sm:min-h-0 bg-cover bg-center relative"
+            style={{ backgroundImage: "url('/partner-bg.jpg')" }}
+          >
+            {/* Overlay so text stays readable */}
+            <div className="absolute inset-0 bg-black/30" />
+            <div className="relative h-full flex flex-col justify-between px-7 py-8">
+              <div>
+                <p className="font-display text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">Our</p>
+                <h2 className="font-display text-4xl sm:text-5xl font-black text-white leading-[1.05] mt-1">
+                  PART<br />NER
+                </h2>
               </div>
+              <p className="text-xs text-white/40 leading-relaxed hidden sm:block">
+                Kolaborasi terpercaya untuk komunitas Masisir.
+              </p>
             </div>
-            <p className="mt-8 sm:mt-0 text-xs text-white/35 leading-relaxed">
-              Kolaborasi kami dengan mitra terpercaya untuk mendukung komunitas Masisir.
-            </p>
           </div>
 
           {/* ── Right panel: logo grid ── */}
           <div className="flex-1 bg-card/30">
-            {/* Row 1 */}
+            {/* Logo row — only logos, no labels */}
             <div className="grid grid-cols-2 divide-x divide-border/50">
               {PARTNERS.map((p) => (
                 <div
                   key={p.name}
-                  className="flex flex-col items-center justify-center gap-2.5 px-6 py-8 hover:bg-primary/[0.04] transition-colors duration-200 group"
+                  className="flex items-center justify-center px-8 py-10 hover:bg-primary/[0.04] transition-colors duration-200 group"
                 >
                   <img
                     src={p.logo}
                     alt={p.name}
-                    className={`object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-9 w-28" : "h-12 w-12"}`}
+                    className={`object-contain opacity-55 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-9 w-28" : "h-14 w-14"}`}
                   />
-                  <span className="text-[11px] font-semibold tracking-wide text-muted-foreground/50 group-hover:text-muted-foreground transition-colors duration-200 uppercase">
-                    {p.name}
-                  </span>
                 </div>
               ))}
-            </div>
-
-            {/* Divider */}
-            <div className="h-px bg-border/50" />
-
-            {/* Row 2 — CTA + placeholder */}
-            <div className="grid grid-cols-2 divide-x divide-border/50">
-              {/* Join slot */}
-              <a
-                href={`https://wa.me/${waNumber}?text=${waMessage}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col items-center justify-center gap-2 px-6 py-8 hover:bg-primary/[0.06] transition-colors duration-200 group"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-dashed border-primary/40 group-hover:border-primary/80 group-hover:bg-primary/10 transition-all duration-200">
-                  <Plus className="h-4 w-4 text-primary/50 group-hover:text-primary transition-colors" />
-                </div>
-                <div className="text-center">
-                  <p className="text-[11px] font-semibold text-muted-foreground/40 group-hover:text-primary/70 transition-colors uppercase tracking-wide">
-                    Jadi Partner
-                  </p>
-                  <p className="text-[10px] text-muted-foreground/30 group-hover:text-muted-foreground/50 transition-colors mt-0.5">
-                    Hubungi kami
-                  </p>
-                </div>
-              </a>
-
-              {/* Coming soon slot */}
-              <div className="flex flex-col items-center justify-center gap-2 px-6 py-8 opacity-30">
-                <div className="h-10 w-10 rounded-full border border-dashed border-border/60" />
-                <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wide">Segera</p>
-              </div>
             </div>
 
             {/* Divider */}
@@ -115,6 +84,32 @@ const PartnerSection = () => {
           </div>
 
         </div>
+
+        {/* ── CTA ── */}
+        <div className={`mt-6 transition-all duration-700 delay-200 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <div className="relative rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-purple-500/5 backdrop-blur-xl px-6 py-8 text-center overflow-hidden">
+            <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 h-24 w-40 rounded-full bg-primary/10 blur-3xl" />
+            <div className="relative">
+              <p className="font-display text-xl font-bold text-gradient-purple">Bergabung Sebagai Partner</p>
+              <p className="mt-1.5 text-xs text-muted-foreground max-w-xs mx-auto">
+                Jangkau 15.000+ mahasiswa Indonesia di Mesir. Hubungi kami sekarang.
+              </p>
+              <a
+                href={`https://wa.me/${waNumber}?text=${waMessage}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-5 inline-block"
+              >
+                <Button variant="hero" size="default" className="group/btn">
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Hubungi via WhatsApp
+                  <ArrowRight className="ml-2 h-4 w-4 opacity-0 -translate-x-1 group-hover/btn:opacity-100 group-hover/btn:translate-x-0 transition-all duration-200" />
+                </Button>
+              </a>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
   );
