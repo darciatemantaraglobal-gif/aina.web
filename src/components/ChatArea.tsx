@@ -1559,6 +1559,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         ref={scrollContainerRef}
         onScroll={handleScrollContainer}
         className="relative flex-1 overflow-y-auto overflow-x-hidden"
+        onClick={(e) => {
+          const tag = (e.target as HTMLElement).closest("a,button,input,textarea,select,label,[contenteditable]");
+          if (!tag) textareaRef.current?.focus();
+        }}
       >
         {loadingHistory ? (
           <div className="flex h-full items-center justify-center">
