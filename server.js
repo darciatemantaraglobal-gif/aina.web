@@ -2452,6 +2452,69 @@ ${convText}`;
   }
 }
 
+/* ── Preference Detection: detect & save chat style preferences ── */
+// Quick regex screen — only do AI extraction if keywords are present
+const PREFERENCE_SCREEN_REGEX = /\b(panggil\s+(aku|saya|gue|gw|ku|ana)|nama\s+panggilanku?|suka\s+dipanggil|dipanggil\s+\w+|bicara\s+(formal|santai)|jangan\s+(terlalu\s+)?formal|lebih\s+santai|jawab\s+(singkat|pendek|panjang|detail|lengkap)|aku\s+(lebih\s+)?suka\s+|saya\s+(lebih\s+)?suka\s+|gue\s+(lebih\s+)?suka\s+|tolong\s+selalu|mohon\s+selalu|selalu\s+(gunakan|pakai|tulis)|aku\s+mau\s+kamu|saya\s+mau\s+kamu|perlakukan\s+aku|gaya\s+bicaramu|cara\s+bicaramu|treat\s+me)\b/i;
+
+async function detectAndSaveUserPreference(userId, message, apiKey) {
+  try {
+    // Use lightweight AI to extract the preference cleanly
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Preference Detector",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-lite-001",
+        messages: [{
+          role: "user",
+          content: `Pengguna mengirim pesan berikut dalam konteks chat dengan AI asisten:
+"${message.slice(0, 500)}"
+
+Apakah pesan ini mengandung instruksi/preferensi tentang bagaimana user ingin diperlakukan atau bagaimana AI harus berbicara?
+Contoh: nama panggilan, gaya bahasa (formal/santai), preferensi jawaban, dll.
+
+Jika YA: balas dengan format JSON: {"is_preference": true, "preference_text": "ringkasan preferensi dalam 1 kalimat singkat", "chat_style": "formal|santai|null", "user_name": "nama panggilan jika disebutkan|null"}
+Jika TIDAK: balas dengan JSON: {"is_preference": false}
+Balas HANYA dengan JSON.`,
+        }],
+        max_tokens: 150,
+        temperature: 0.0,
+      }),
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    let raw = data.choices?.[0]?.message?.content?.trim() || "{}";
+    raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const result = JSON.parse(raw);
+    if (!result.is_preference || !result.preference_text) return;
+
+    // Save to user_memories as preference_memory (long-term)
+    await supabase.from("user_memories").insert({
+      user_id: userId,
+      memory: result.preference_text,
+      memory_type: "preference_memory",
+      is_long_term: true,
+    });
+    console.log(`[Pref] saved preference for ${userId.slice(0, 8)}: "${result.preference_text}"`);
+
+    // If chatStyle or userName detected, update the profile
+    const profileUpdates = {};
+    if (result.chat_style === "formal") profileUpdates.chat_style = "formal";
+    if (result.chat_style === "santai") profileUpdates.chat_style = "santai";
+    if (result.user_name && result.user_name !== "null") profileUpdates.nickname = result.user_name.slice(0, 50);
+    if (Object.keys(profileUpdates).length > 0) {
+      await supabase.from("profiles").update(profileUpdates).eq("user_id", userId);
+      console.log(`[Pref] updated profile for ${userId.slice(0, 8)}: ${JSON.stringify(profileUpdates)}`);
+    }
+  } catch (e) {
+    console.warn("[Pref] detection error:", e.message);
+  }
+}
+
 /* ── Health check ────────────────────────────────────── */
 app.get("/api/ping", (_req, res) => res.json({ status: "ok" }));
 
@@ -3879,6 +3942,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const lastUserMessage = Array.isArray(rawLastContent)
     ? (rawLastContent.find(p => p.type === "text")?.text ?? "")
     : rawLastContent;
+
+  // Non-blocking preference detection — fire and forget, never delays the response
+  if (lastUserMessage.length > 10 && PREFERENCE_SCREEN_REGEX.test(lastUserMessage)) {
+    const prefApiKey = process.env.OPENROUTER_API_KEY;
+    if (prefApiKey) detectAndSaveUserPreference(user.id, lastUserMessage, prefApiKey).catch(() => {});
+  }
 
   // Typo-normalized version for retrieval only — original preserved for display & model context
   const retrievalQuery = applyTypoNormalization(lastUserMessage);
@@ -12066,16 +12135,12 @@ app.post("/api/flashcards/generate", chatLimiter, async (req, res) => {
   const { topic, content, count = 8, bilingual = false } = req.body;
   if (!topic && !content) return res.status(400).json({ error: "topic atau content harus diisi" });
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: "OPENAI_API_KEY belum dikonfigurasi" });
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: "API tidak dikonfigurasi" });
 
   const safeCount = Math.max(3, Math.min(20, Number(count) || 8));
 
-  const userPrompt = content
-    ? `Buat tepat ${safeCount} flashcard dari teks berikut:\n\n${content.slice(0, 8000)}`
-    : `Buat tepat ${safeCount} flashcard tentang topik: "${topic}"`;
-
-  let systemPrompt, formatInstruction;
+  let systemPrompt, userPrompt;
   if (bilingual) {
     systemPrompt = `Kamu adalah asisten belajar untuk mahasiswa Indonesia di Mesir (Masisir) yang belajar di Al-Azhar.
 Tugasmu membuat flashcard belajar bilingual (Arab–Indonesia) berkualitas tinggi dalam format JSON.
@@ -12084,42 +12149,59 @@ Setiap flashcard memiliki 4 field:
 - question_id : terjemahan Indonesia dari pertanyaan
 - answer_ar   : jawaban singkat-padat dalam bahasa Arab (maks 2-3 kalimat)
 - answer_id   : terjemahan Indonesia dari jawaban
-Gunakan bahasa Arab fusha (فصحى) yang sesuai konteks akademik Al-Azhar. Jawaban harus singkat, padat, dan akurat.`;
-    formatInstruction = `\n\nKembalikan HANYA JSON dengan format:\n{"flashcards":[{"question_ar":"...","question_id":"...","answer_ar":"...","answer_id":"..."}]}`;
+Gunakan bahasa Arab fusha (فصحى) yang sesuai konteks akademik Al-Azhar. Jawaban harus singkat, padat, dan akurat.
+Kembalikan HANYA JSON tanpa markdown, format: {"flashcards":[{"question_ar":"...","question_id":"...","answer_ar":"...","answer_id":"..."}]}`;
+    userPrompt = content
+      ? `Buat tepat ${safeCount} flashcard bilingual dari teks berikut:\n\n${content.slice(0, 8000)}`
+      : `Buat tepat ${safeCount} flashcard bilingual tentang topik: "${topic}"`;
   } else {
     systemPrompt = `Kamu adalah asisten belajar untuk mahasiswa Indonesia di Mesir (Masisir).
 Tugasmu membuat flashcard belajar berkualitas tinggi dalam format JSON.
 Setiap flashcard berisi pertanyaan (question) dan jawaban singkat-padat (answer).
-Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia.`;
-    formatInstruction = `\n\nKembalikan HANYA JSON dengan format:\n{"flashcards":[{"question":"...","answer":"..."}]}`;
+Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia yang jelas dan natural.
+Kembalikan HANYA JSON tanpa markdown, format: {"flashcards":[{"question":"...","answer":"..."}]}`;
+    userPrompt = content
+      ? `Buat tepat ${safeCount} flashcard dari teks berikut:\n\n${content.slice(0, 8000)}`
+      : `Buat tepat ${safeCount} flashcard tentang topik: "${topic}"`;
   }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Flashcard Generator",
+      },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "google/gemini-2.0-flash-001",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user",   content: userPrompt + formatInstruction },
+          { role: "user",   content: userPrompt },
         ],
-        max_tokens: bilingual ? 3000 : 2000,
+        max_tokens: bilingual ? 4000 : 2500,
         temperature: 0.4,
-        response_format: { type: "json_object" },
       }),
     });
 
     if (!response.ok) {
       const err = await response.text();
-      console.error("[Flashcard] OpenAI error:", err.slice(0, 200));
+      console.error("[Flashcard] OpenRouter error:", err.slice(0, 200));
       return res.status(502).json({ error: "Gagal menghubungi AI. Coba lagi." });
     }
 
     const data = await response.json();
-    const raw  = data.choices?.[0]?.message?.content || "{}";
+    let raw = data.choices?.[0]?.message?.content || "{}";
+    // Strip markdown code fences if present (Gemini sometimes wraps JSON in ```json...```)
+    raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
     let parsed;
-    try { parsed = JSON.parse(raw); } catch { return res.status(502).json({ error: "Format flashcard tidak valid dari AI." }); }
+    try { parsed = JSON.parse(raw); } catch {
+      // Try extracting JSON object/array from the response
+      const jsonMatch = raw.match(/\{[\s\S]*\}/) || raw.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return res.status(502).json({ error: "Format flashcard tidak valid dari AI." });
+      try { parsed = JSON.parse(jsonMatch[0]); } catch { return res.status(502).json({ error: "Format flashcard tidak valid dari AI." }); }
+    }
 
     // Accept { flashcards: [...] } or { cards: [...] } or a bare array
     const cards = Array.isArray(parsed) ? parsed
@@ -12154,6 +12236,75 @@ Jawaban maksimal 2-3 kalimat atau daftar poin singkat. Bahasa Indonesia.`;
     res.status(500).json({ error: "Gagal membuat flashcard: " + err.message });
   }
 });
+
+/* ── Flashcard: Suggest Topics ────────────────────────────────── */
+// GET /api/flashcards/suggest-topics — AI-generated topic suggestions based on user profile
+app.get("/api/flashcards/suggest-topics", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.json({ topics: defaultFlashcardTopics() });
+
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("faculty, study_field, level, arrival_year")
+      .eq("user_id", user.id)
+      .single();
+
+    const ctx = [
+      profile?.faculty && `Fakultas: ${profile.faculty}`,
+      profile?.study_field && `Jurusan: ${profile.study_field}`,
+      profile?.level && profile.level !== "User" && `Level: ${profile.level}`,
+    ].filter(Boolean).join("; ");
+
+    const prompt = `Berikan tepat 8 saran topik flashcard yang relevan dan spesifik untuk mahasiswa Indonesia di Al-Azhar Mesir (Masisir).${ctx ? `\nProfil: ${ctx}` : ""}
+
+Topik harus spesifik dan langsung berguna, contoh: "Bab Taharah — Fiqih Hanafi", "Kosakata Bahasa Arab Sehari-hari", "Prosedur Perpanjang Iqomah", bukan yang terlalu umum.
+Variasikan antara: materi akademik Al-Azhar, bahasa Arab, kehidupan di Mesir, dan info praktis Masisir.
+
+Balas HANYA dengan JSON array: ["topik 1", "topik 2", ..., "topik 8"]`;
+
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Topic Suggestions",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-lite-001",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 300,
+        temperature: 0.85,
+      }),
+    });
+
+    const data = await resp.json();
+    let raw = data.choices?.[0]?.message?.content?.trim() || "[]";
+    raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const match = raw.match(/\[[\s\S]*\]/);
+    const topics = match ? JSON.parse(match[0]).filter(t => typeof t === "string").slice(0, 8) : [];
+    res.json({ topics: topics.length >= 4 ? topics : defaultFlashcardTopics() });
+  } catch {
+    res.json({ topics: defaultFlashcardTopics() });
+  }
+});
+
+function defaultFlashcardTopics() {
+  return [
+    "Bab Taharah — Fiqih Dasar",
+    "Kosakata Bahasa Arab Sehari-hari",
+    "Nahwu: Isim, Fi'il, Harf",
+    "Prosedur Perpanjang Iqomah",
+    "Ushul Fiqih — Kaidah Dasar",
+    "Sejarah Peradaban Islam",
+    "Ilmu Tafsir — Metode & Istilah",
+    "Biaya & Kehidupan di Kairo",
+  ];
+}
 
 /* ── Flashcard Sets CRUD ────────────────────────────────────── */
 // GET /api/flashcards/sets — list saved sets for current user (last 30)

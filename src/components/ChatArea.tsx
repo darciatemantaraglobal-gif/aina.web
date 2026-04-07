@@ -1610,7 +1610,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           <div className="flex h-full flex-col items-center justify-center px-4 pb-16 select-none">
             <AinaLogo className="mb-6 h-16 w-16 object-contain drop-shadow-[0_0_24px_rgba(139,92,246,0.9)]" />
             <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground text-center">
-              {timeGreeting}!
+              {timeGreeting}{userProfile?.full_name ? `, ${userProfile.full_name.split(" ")[0]}` : ""}!
             </h1>
             <p className="mt-3 max-w-xs text-center text-base text-muted-foreground leading-relaxed">
               {welcomeSubtitle}

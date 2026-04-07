@@ -173,8 +173,11 @@ export function buildPersonalizationContext(userProfile) {
   if (parts.length === 0 && !customAbout && !customInstructions) return "";
 
   let styleNote = "";
-  if (chatStyle === "formal") styleNote += "\nGunakan bahasa yang formal dan sopan dalam setiap jawaban.";
-  else styleNote += "\nGunakan bahasa yang santai, akrab, dan bersahabat (bisa pakai 'kamu', 'nih', 'ya', dsb).";
+  if (chatStyle === "formal") {
+    styleNote += "\n⚠️ GAYA BAHASA WAJIB: User memilih gaya FORMAL. Gunakan bahasa baku, sopan, dan profesional dalam SETIAP kalimat jawaban. Gunakan 'Anda', 'Bapak/Ibu', hindari kata santai atau slang.";
+  } else {
+    styleNote += "\n⚠️ GAYA BAHASA WAJIB: User memilih gaya SANTAI. Gunakan bahasa sehari-hari yang akrab dan natural dalam SETIAP kalimat. Boleh pakai 'kamu', 'nih', 'ya', 'sih', 'dong', 'lho' — seperti ngobrol dengan teman.";
+  }
 
   let customBlock = "";
   if (customAbout)        customBlock += `\n\n**Tentang user (ditulis sendiri oleh user):**\n${customAbout}`;

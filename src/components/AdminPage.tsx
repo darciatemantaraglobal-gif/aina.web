@@ -2177,7 +2177,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const handleReformatOne = async (id: string) => {
     setReformattingId(id);
     try {
-      await adminFetch(`/api/admin/articles/${id}/reformat`, { method: "POST" });
+      await adminFetch(`/api/admin/articles/${id}/reformat`, { method: "POST" }, 120000);
       toast.success("Artikel berhasil diformat ulang");
       load();
     } catch (e: any) { toast.error(e.message); }
@@ -2201,7 +2201,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     if (!confirm(`Yakin ingin reformat semua artikel yang sudah disetujui? AI akan merapikan struktur tulisan tanpa mengubah isi. Proses ini butuh waktu beberapa menit.`)) return;
     setReformatLoading(true);
     try {
-      const result = await adminFetch("/api/admin/articles/reformat-all", { method: "POST" });
+      const result = await adminFetch("/api/admin/articles/reformat-all", { method: "POST" }, 600000);
       toast.success(`Selesai! ${result.reformatted} artikel berhasil diformat${result.failed > 0 ? `, ${result.failed} gagal` : ""}.`);
       load();
     } catch (e: any) { toast.error(e.message); }

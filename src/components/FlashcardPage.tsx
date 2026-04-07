@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Sparkles, RotateCcw, ChevronLeft, ChevronRight, Shuffle,
   BookOpen, FileText, Upload, X, FileUp, Save, Trash2,
-  Library, CheckCircle, XCircle, RefreshCw,
+  Library, CheckCircle, XCircle, RefreshCw, Lightbulb,
 } from "lucide-react";
 
 /* ── Types ─────────────────────────────────────────────────── */
@@ -221,9 +221,25 @@ export default function FlashcardPage() {
   const [savedSets, setSavedSets]     = useState<SavedSet[]>([]);
   const [setsLoading, setSetsLoading] = useState(false);
 
+  /* Suggest topics */
+  const [suggestLoading, setSuggestLoading]   = useState(false);
+  const [suggestedTopics, setSuggestedTopics] = useState<string[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ── Fetch saved sets ── */
+  const fetchSuggestTopics = useCallback(async () => {
+    setSuggestLoading(true);
+    try {
+      const data = await apiReq("GET", "/api/flashcards/suggest-topics");
+      setSuggestedTopics(data.topics || []);
+    } catch {
+      toast.error("Gagal mengambil saran topik");
+    } finally {
+      setSuggestLoading(false);
+    }
+  }, []);
+
   const fetchSets = useCallback(async () => {
     setSetsLoading(true);
     try {
@@ -646,8 +662,21 @@ export default function FlashcardPage() {
                   </div>
 
                   {inputMode === "topic" && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">Topik</label>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-muted-foreground">Topik</label>
+                        <button
+                          type="button"
+                          onClick={() => { setSuggestedTopics([]); fetchSuggestTopics(); }}
+                          disabled={suggestLoading}
+                          className="flex items-center gap-1 text-[11px] text-primary/70 hover:text-primary transition-colors disabled:opacity-50"
+                        >
+                          {suggestLoading
+                            ? <RefreshCw className="h-3 w-3 animate-spin" />
+                            : <Lightbulb className="h-3 w-3" />}
+                          {suggestLoading ? "Mengambil saran..." : "Saran Topik"}
+                        </button>
+                      </div>
                       <Input
                         placeholder="Contoh: Hukum Fikih Zakat, Nahwu Shorof, Sejarah Islam..."
                         value={topic}
@@ -656,6 +685,20 @@ export default function FlashcardPage() {
                         className="bg-secondary"
                         autoFocus
                       />
+                      {suggestedTopics.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {suggestedTopics.map(t => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => { setTopic(t); setSuggestedTopics([]); }}
+                              className="rounded-full border border-border bg-secondary/80 px-3 py-1 text-[11px] text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all"
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-[11px] text-muted-foreground/60">
                         Masukkan topik spesifik untuk hasil yang lebih baik.
                       </p>
