@@ -36,6 +36,14 @@ const PartnerSection = () => {
                 className="h-10 object-contain opacity-90 hover:opacity-100 transition-opacity"
               />
             </div>
+            <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-border/50 bg-card/40 backdrop-blur-sm px-8 py-5">
+              <img
+                src="/ppmi-mesir-logo.png"
+                alt="PPMI Mesir — Persatuan Pelajar & Mahasiswa Indonesia"
+                className="h-14 w-14 object-contain opacity-90 hover:opacity-100 transition-opacity"
+              />
+              <span className="text-[10px] font-semibold tracking-wide text-muted-foreground/70 uppercase">PPMI Mesir</span>
+            </div>
           </div>
         </div>
 
