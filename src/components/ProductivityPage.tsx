@@ -104,11 +104,11 @@ function GamificationBar({
   const progressOffset = circumference - (pct / 100) * circumference;
 
   return (
-    <div className="mt-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-card/60 px-4 py-3.5">
-      <div className="flex items-center gap-4">
+    <div className="mt-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-card/60 px-4 py-3.5 md:px-5 md:py-4">
+      <div className="flex items-center gap-4 md:gap-5">
         {/* Progress ring */}
-        <div className="relative shrink-0 w-14 h-14">
-          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+        <div className="relative shrink-0 w-14 h-14 md:w-16 md:h-16">
+          <svg className="w-14 h-14 md:w-16 md:h-16 -rotate-90" viewBox="0 0 56 56">
             <circle cx="28" cy="28" r={radius} strokeWidth="4" className="stroke-secondary fill-none" />
             <circle
               cx="28" cy="28" r={radius} strokeWidth="4"
@@ -120,30 +120,30 @@ function GamificationBar({
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className={`text-sm font-bold tabular-nums leading-none ${pct === 100 ? "text-emerald-400" : "text-foreground"}`}>
+            <span className={`text-sm md:text-base font-bold tabular-nums leading-none ${pct === 100 ? "text-emerald-400" : "text-foreground"}`}>
               {stats.todayTotal === 0 ? "–" : `${stats.todayDone}/${stats.todayTotal}`}
             </span>
-            <span className="text-[9px] text-muted-foreground mt-0.5">hari ini</span>
+            <span className="text-[9px] md:text-[11px] text-muted-foreground mt-0.5">hari ini</span>
           </div>
         </div>
 
         {/* Right side */}
         <div className="flex-1 min-w-0 space-y-2">
-          <p className="text-[11px] text-muted-foreground leading-snug">{motivText}</p>
+          <p className="text-[11px] md:text-sm text-muted-foreground leading-snug">{motivText}</p>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] md:text-xs font-semibold ${
               stats.streak > 0
                 ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
                 : "bg-secondary border-border text-muted-foreground"
             }`}>
               🔥 {stats.streak > 0 ? `${stats.streak} hari` : "Mulai streak"}
             </span>
-            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${level.bg} ${level.color}`}>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] md:text-xs font-semibold ${level.bg} ${level.color}`}>
               {level.icon} {level.label}
             </span>
           </div>
           {nextLevel && (
-            <p className="text-[10px] text-muted-foreground/50">
+            <p className="text-[10px] md:text-xs text-muted-foreground/50">
               {toNext} fokus lagi → <span className="font-medium">{nextLevel.icon} {nextLevel.label}</span>
             </p>
           )}
