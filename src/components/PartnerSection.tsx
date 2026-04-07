@@ -76,13 +76,11 @@ const PartnerSection = () => {
 
               {/* Logo + info */}
               <div className="mt-4 flex items-center gap-4">
-                <div className={`shrink-0 flex items-center justify-center rounded-xl bg-transparent shadow-[0_0_18px_-4px_hsl(var(--primary)/0.35)] ${p.wide ? "h-20 w-36 p-3" : "h-20 w-20 p-2"}`}>
-                  <img
-                    src={p.logo}
-                    alt={p.name}
-                    className="h-full w-full object-contain"
-                  />
-                </div>
+                <img
+                  src={p.logo}
+                  alt={p.name}
+                  className={`shrink-0 object-contain ${p.wide ? "h-14 w-32" : "h-16 w-16"}`}
+                />
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground text-sm leading-tight">{p.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{p.description}</p>
