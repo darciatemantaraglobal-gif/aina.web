@@ -99,50 +99,56 @@ function GamificationBar({
   const nextLevel = MASISIR_LEVELS.find(l => l.min > (getMasisirLevel(stats.totalDone).min));
   const toNext = nextLevel ? nextLevel.min - stats.totalDone : 0;
 
-  return (
-    <div className="mt-3 rounded-xl border border-border bg-card/50 px-4 py-3 space-y-3">
-      {/* Row 1: streak + level */}
-      <div className="flex items-center justify-between gap-2">
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${
-          stats.streak > 0
-            ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
-            : "bg-secondary border-border text-muted-foreground"
-        }`}>
-          🔥 {stats.streak > 0 ? `${stats.streak} hari streak` : "Mulai streak hari ini"}
-        </span>
-        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${level.bg} ${level.color}`}>
-          {level.icon} {level.label}
-        </span>
-      </div>
+  const radius = 22;
+  const circumference = 2 * Math.PI * radius;
+  const progressOffset = circumference - (pct / 100) * circumference;
 
-      {/* Row 2: today's progress bar + motivational text */}
-      <div className="space-y-1.5">
-        {stats.todayTotal > 0 && (
-          <div className="flex items-center gap-2">
-            <div className="relative h-2 flex-1 rounded-full bg-secondary overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  pct === 100
-                    ? "bg-gradient-to-r from-emerald-500 to-green-400"
-                    : "bg-gradient-to-r from-primary to-violet-500"
-                }`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground tabular-nums">
-              {stats.todayDone}/{stats.todayTotal}
+  return (
+    <div className="mt-3 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-card/60 px-4 py-3.5">
+      <div className="flex items-center gap-4">
+        {/* Progress ring */}
+        <div className="relative shrink-0 w-14 h-14">
+          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+            <circle cx="28" cy="28" r={radius} strokeWidth="4" className="stroke-secondary fill-none" />
+            <circle
+              cx="28" cy="28" r={radius} strokeWidth="4"
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={stats.todayTotal === 0 ? circumference : progressOffset}
+              className={`transition-all duration-700 ${pct === 100 ? "stroke-emerald-400" : "stroke-primary"}`}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className={`text-sm font-bold tabular-nums leading-none ${pct === 100 ? "text-emerald-400" : "text-foreground"}`}>
+              {stats.todayTotal === 0 ? "–" : `${stats.todayDone}/${stats.todayTotal}`}
+            </span>
+            <span className="text-[9px] text-muted-foreground mt-0.5">hari ini</span>
+          </div>
+        </div>
+
+        {/* Right side */}
+        <div className="flex-1 min-w-0 space-y-2">
+          <p className="text-[11px] text-muted-foreground leading-snug">{motivText}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+              stats.streak > 0
+                ? "bg-orange-500/10 border-orange-500/25 text-orange-400"
+                : "bg-secondary border-border text-muted-foreground"
+            }`}>
+              🔥 {stats.streak > 0 ? `${stats.streak} hari` : "Mulai streak"}
+            </span>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${level.bg} ${level.color}`}>
+              {level.icon} {level.label}
             </span>
           </div>
-        )}
-        <p className="text-[11px] text-muted-foreground leading-relaxed">{motivText}</p>
+          {nextLevel && (
+            <p className="text-[10px] text-muted-foreground/50">
+              {toNext} fokus lagi → <span className="font-medium">{nextLevel.icon} {nextLevel.label}</span>
+            </p>
+          )}
+        </div>
       </div>
-
-      {/* Row 3: XP / next level hint */}
-      {nextLevel && (
-        <p className="text-[10px] text-muted-foreground/50">
-          {toNext} fokus lagi untuk naik ke level <span className="font-medium">{nextLevel.icon} {nextLevel.label}</span>
-        </p>
-      )}
     </div>
   );
 }
@@ -230,6 +236,17 @@ function getStatusStyle(s: string) {
 }
 function getStatusLabel(s: string) {
   return TRACKER_STATUSES.find(x => x.value === s)?.label ?? s;
+}
+function getCatTopColor(cat: string): string {
+  const map: Record<string, string> = {
+    iqomah: "bg-violet-500/50",
+    paspor: "bg-rose-500/50",
+    visa:   "bg-blue-500/50",
+    kampus: "bg-amber-500/50",
+    safar:  "bg-emerald-500/50",
+    lainnya:"bg-zinc-500/30",
+  };
+  return map[cat] ?? "bg-zinc-500/30";
 }
 
 function daysUntil(dateStr: string) {
@@ -384,140 +401,155 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Panel description */}
-      <div className="flex items-start gap-2.5 rounded-xl border border-violet-500/20 bg-violet-500/5 px-3.5 py-3">
-        <Target className="h-4 w-4 text-violet-400 shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Tentukan <span className="text-foreground font-medium">maksimal 3 hal terpenting</span> yang ingin kamu selesaikan hari ini. Bisa dibuat manual atau dibantu AI dari kegiatanmu.
-        </p>
-      </div>
-
-      {/* Date header + progress */}
-      <div className="rounded-xl border border-border bg-card p-4">
+    <div className="space-y-3">
+      {/* Date header + slot indicator */}
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card to-card/40 px-4 py-3.5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-muted-foreground capitalize">{today}</p>
-            <p className="text-sm font-semibold text-foreground mt-0.5">
-              {items.length === 0 ? "Belum ada fokus hari ini" : `${doneCount}/${items.length} selesai`}
+            <p className="text-[11px] text-muted-foreground capitalize tracking-wide">{today}</p>
+            <p className="text-base font-bold text-foreground mt-0.5 leading-tight">
+              {items.length === 0
+                ? "Tentukan fokusmu hari ini"
+                : doneCount === items.length
+                ? "Semua fokus selesai! 🎉"
+                : `${doneCount} dari ${items.length} selesai`}
             </p>
           </div>
-          {items.length > 0 && (
-            <div className="text-right">
-              <div className="flex gap-1 justify-end mb-1">
-                {items.map(i => (
-                  <div key={i.id} className={`h-2 w-8 rounded-full ${i.status === "done" ? "bg-emerald-500" : i.status === "in_progress" ? "bg-amber-400" : "bg-secondary"}`} />
-                ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground">{activeCount} aktif</p>
+          {/* Slot bubbles */}
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex gap-1.5">
+              {[0, 1, 2].map(idx => {
+                const item = items.filter(i => i.status !== "done")[idx];
+                return (
+                  <div key={idx} className={`h-3 w-3 rounded-full border-2 transition-all ${
+                    item
+                      ? item.status === "in_progress"
+                        ? "border-amber-400 bg-amber-400/40"
+                        : "border-primary bg-primary/40"
+                      : "border-border bg-transparent"
+                  }`} />
+                );
+              })}
             </div>
-          )}
+            <p className="text-[10px] text-muted-foreground">{3 - activeCount} slot tersisa</p>
+          </div>
         </div>
       </div>
 
       {/* Focus items */}
       {loading ? (
         <div className="space-y-2">
-          {[1,2].map(i => <div key={i} className="h-16 rounded-xl bg-secondary/40 animate-pulse" />)}
+          {[1,2].map(i => <div key={i} className="h-20 rounded-2xl bg-secondary/30 animate-pulse" />)}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+          <div className="w-14 h-14 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+            <Target className="h-7 w-7 text-violet-400/60" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Belum ada fokus hari ini</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-[220px] leading-relaxed">Tentukan 1–3 hal terpenting yang ingin kamu selesaikan. AI bisa bantu!</p>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">
-          {items.map(item => (
-            <div key={item.id} className={`group rounded-xl border transition-all ${
-              editingId === item.id ? "border-primary/40 bg-card p-3" :
-              item.status === "done" ? "border-border bg-card/50 opacity-60 px-3 py-3" :
-              item.status === "in_progress" ? "border-amber-500/20 bg-amber-500/5 px-3 py-3" :
-              "border-border bg-card px-3 py-3"
-            }`}>
+          {items.map((item, idx) => (
+            <div
+              key={item.id}
+              className={`group rounded-2xl border transition-all duration-200 overflow-hidden ${
+                editingId === item.id
+                  ? "border-primary/50 bg-card"
+                  : item.status === "done"
+                  ? "border-border/40 bg-card/30 opacity-55"
+                  : item.status === "in_progress"
+                  ? "border-amber-500/25 bg-gradient-to-r from-amber-500/5 to-card"
+                  : "border-border/60 bg-card hover:border-primary/30 hover:bg-card/80"
+              }`}
+            >
+              {/* Coloured left bar */}
+              {editingId !== item.id && (
+                <div className={`h-0.5 w-full ${
+                  item.status === "done" ? "bg-emerald-500/30" :
+                  item.status === "in_progress" ? "bg-amber-400/50" :
+                  "bg-primary/20"
+                }`} />
+              )}
 
-              {/* ── Edit mode ── */}
-              {editingId === item.id ? (
-                <div className="space-y-2">
-                  <Input
-                    value={editForm.title}
-                    onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-                    className="bg-secondary text-sm h-8"
-                    placeholder="Judul fokus..."
-                    autoFocus
-                    onKeyDown={e => { if (e.key === "Enter") saveEditFocus(item.id); if (e.key === "Escape") setEditingId(null); }}
-                  />
-                  <Input
-                    value={editForm.description}
-                    onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
-                    className="bg-secondary text-xs h-7"
-                    placeholder="Deskripsi (opsional)..."
-                    onKeyDown={e => { if (e.key === "Escape") setEditingId(null); }}
-                  />
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary transition-all"
-                    >
-                      <X className="h-3 w-3" /> Batal
-                    </button>
-                    <button
-                      onClick={() => saveEditFocus(item.id)}
-                      className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 px-2 py-1 rounded-lg hover:bg-primary/10 transition-all font-medium"
-                    >
-                      <Save className="h-3 w-3" /> Simpan
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* ── Normal view ── */
-                <div className="flex items-start gap-3">
-                  <button
-                    onClick={() => updateStatus(item.id, statusCycle[item.status])}
-                    className="shrink-0 mt-0.5 transition-colors"
-                  >
-                    {item.status === "done"
-                      ? <CheckCircle2 className="h-4.5 w-4.5 text-emerald-400" />
-                      : item.status === "in_progress"
-                      ? <div className="h-4.5 w-4.5 rounded-full border-2 border-amber-400 flex items-center justify-center"><div className="h-2 w-2 rounded-full bg-amber-400" /></div>
-                      : <Circle className="h-4.5 w-4.5 text-muted-foreground/50" />
-                    }
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium leading-snug ${item.status === "done" ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                      {item.title}
-                    </p>
-                    {item.description && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.description}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1">
-                      {item.source_type !== "manual" && (
-                        <span className="text-[10px] text-violet-400 flex items-center gap-0.5">
-                          <Sparkles className="h-2.5 w-2.5" />
-                          AI
-                        </span>
-                      )}
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                        item.status === "done" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5" :
-                        item.status === "in_progress" ? "text-amber-400 border-amber-500/20 bg-amber-500/5" :
-                        "text-muted-foreground border-border"
-                      }`}>
-                        {item.status === "done" ? "Selesai" : item.status === "in_progress" ? "Sedang berjalan" : "Pending"}
-                      </span>
+              <div className="px-4 py-3">
+                {/* ── Edit mode ── */}
+                {editingId === item.id ? (
+                  <div className="space-y-2 py-1">
+                    <Input
+                      value={editForm.title}
+                      onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                      className="bg-secondary text-sm h-8"
+                      placeholder="Judul fokus..."
+                      autoFocus
+                      onKeyDown={e => { if (e.key === "Enter") saveEditFocus(item.id); if (e.key === "Escape") setEditingId(null); }}
+                    />
+                    <Input
+                      value={editForm.description}
+                      onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                      className="bg-secondary text-xs h-7"
+                      placeholder="Deskripsi (opsional)..."
+                      onKeyDown={e => { if (e.key === "Escape") setEditingId(null); }}
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setEditingId(null)} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary transition-all">
+                        <X className="h-3 w-3" /> Batal
+                      </button>
+                      <button onClick={() => saveEditFocus(item.id)} className="flex items-center gap-1 text-[11px] text-primary font-medium px-2 py-1 rounded-lg hover:bg-primary/10 transition-all">
+                        <Save className="h-3 w-3" /> Simpan
+                      </button>
                     </div>
                   </div>
-                  <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                ) : (
+                  /* ── Normal view ── */
+                  <div className="flex items-start gap-3">
                     <button
-                      onClick={() => startEditFocus(item)}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-all"
-                      title="Edit"
+                      onClick={() => updateStatus(item.id, statusCycle[item.status])}
+                      className="shrink-0 mt-0.5 transition-transform active:scale-90"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      {item.status === "done"
+                        ? <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                        : item.status === "in_progress"
+                        ? <div className="h-5 w-5 rounded-full border-2 border-amber-400 flex items-center justify-center"><div className="h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse" /></div>
+                        : <Circle className="h-5 w-5 text-muted-foreground/40 hover:text-primary/60 transition-colors" />
+                      }
                     </button>
-                    <button
-                      onClick={() => deleteItem(item.id)}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
-                      title="Hapus"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-semibold leading-snug ${item.status === "done" ? "line-through text-muted-foreground/60" : "text-foreground"}`}>
+                        {item.title}
+                      </p>
+                      {item.description && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{item.description}</p>
+                      )}
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        {item.source_type !== "manual" && (
+                          <span className="text-[10px] text-violet-400/80 flex items-center gap-0.5 bg-violet-500/8 border border-violet-500/15 rounded-full px-1.5 py-0.5">
+                            <Sparkles className="h-2.5 w-2.5" /> AI
+                          </span>
+                        )}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+                          item.status === "done" ? "text-emerald-400 border-emerald-500/20 bg-emerald-500/5" :
+                          item.status === "in_progress" ? "text-amber-400 border-amber-500/20 bg-amber-500/5" :
+                          "text-muted-foreground/60 border-border/50"
+                        }`}>
+                          {item.status === "done" ? "Selesai ✓" : item.status === "in_progress" ? "Berjalan..." : "Pending"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button onClick={() => startEditFocus(item)} className="rounded-xl p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-all" title="Edit">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => deleteItem(item.id)} className="rounded-xl p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all" title="Hapus">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -525,41 +557,43 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
 
       {/* Add mode buttons */}
       {mode === "none" && activeCount < 3 && (
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            onClick={() => setMode("manual")}
-            className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground hover:border-primary/30 hover:text-foreground transition-all"
-          >
-            <Pencil className="h-4 w-4" />
-            Manual
-          </button>
-          <button
-            onClick={() => setMode("ai_assist")}
-            className="flex flex-col items-center gap-1.5 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 text-xs text-violet-400 hover:border-violet-500/40 hover:bg-violet-500/10 transition-all"
-          >
-            <Brain className="h-4 w-4" />
-            AI Bantu
-          </button>
-          <button
-            onClick={() => { setMode("ai_suggest"); handleAiSuggest(); }}
-            className="flex flex-col items-center gap-1.5 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 text-xs text-violet-400 hover:border-violet-500/40 hover:bg-violet-500/10 transition-all"
-          >
-            <Sparkles className="h-4 w-4" />
-            AI Sarankan
-          </button>
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => setMode("manual")}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-2 py-3.5 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-card transition-all group"
+            >
+              <Pencil className="h-4.5 w-4.5 group-hover:text-primary transition-colors" />
+              <span className="font-medium">Manual</span>
+            </button>
+            <button
+              onClick={() => setMode("ai_assist")}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-violet-500/25 bg-gradient-to-b from-violet-500/8 to-violet-500/4 px-2 py-3.5 text-xs text-violet-400 hover:border-violet-500/50 hover:from-violet-500/15 hover:to-violet-500/8 transition-all"
+            >
+              <Brain className="h-4.5 w-4.5" />
+              <span className="font-semibold">AI Bantu</span>
+            </button>
+            <button
+              onClick={() => { setMode("ai_suggest"); handleAiSuggest(); }}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-violet-500/25 bg-gradient-to-b from-violet-500/8 to-violet-500/4 px-2 py-3.5 text-xs text-violet-400 hover:border-violet-500/50 hover:from-violet-500/15 hover:to-violet-500/8 transition-all"
+            >
+              <Sparkles className="h-4.5 w-4.5" />
+              <span className="font-semibold">AI Sarankan</span>
+            </button>
+          </div>
         </div>
       )}
 
       {/* Manual form */}
       {mode === "manual" && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Pencil className="h-3.5 w-3.5" /> Fokus Manual</p>
-          <Input placeholder="Apa yang mau kamu fokuskan hari ini?" value={manualTitle} onChange={e => setManualTitle(e.target.value)} className="bg-secondary text-sm" autoFocus />
+        <div className="rounded-2xl border border-primary/30 bg-card/60 p-4 space-y-3">
+          <p className="text-xs font-bold text-foreground flex items-center gap-1.5"><Pencil className="h-3.5 w-3.5 text-primary" /> Fokus Manual</p>
+          <Input placeholder="Apa yang mau kamu selesaikan hari ini?" value={manualTitle} onChange={e => setManualTitle(e.target.value)} className="bg-secondary text-sm" autoFocus />
           <Input placeholder="Catatan singkat (opsional)" value={manualDesc} onChange={e => setManualDesc(e.target.value)} className="bg-secondary text-sm" />
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setMode("none")} className="flex-1 h-8 text-xs">Batal</Button>
             <Button size="sm" onClick={addManual} disabled={saving} className="flex-1 h-8 text-xs">
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Simpan"}
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Tambah Fokus"}
             </Button>
           </div>
         </div>
@@ -567,26 +601,26 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
 
       {/* AI Assist form */}
       {mode === "ai_assist" && (
-        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Brain className="h-3.5 w-3.5 text-violet-400" /> AI Bantu Rapi-in Rencanamu</p>
+        <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-b from-violet-500/8 to-card p-4 space-y-3">
+          <p className="text-xs font-bold text-foreground flex items-center gap-1.5"><Brain className="h-3.5 w-3.5 text-violet-400" /> AI Bantu Rapi-in Rencanamu</p>
           <textarea
             placeholder='Tulis rencanamu bebas... contoh: "Hari ini gue mau belajar, urus iqomah, sama lanjut revisi tugas"'
             value={aiInput}
             onChange={e => setAiInput(e.target.value)}
             rows={3}
-            className="w-full rounded-lg border border-violet-500/20 bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-violet-500/40 resize-none"
+            className="w-full rounded-xl border border-violet-500/20 bg-secondary/80 px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-violet-500/40 resize-none"
           />
           {aiLoading && (
-            <div className="flex items-center gap-2 text-xs text-violet-400">
+            <div className="flex items-center gap-2 text-xs text-violet-400 py-1">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> AI sedang memproses...
             </div>
           )}
           {aiSuggestions.length > 0 && !aiLoading && (
             <div className="space-y-2">
-              <p className="text-[11px] text-muted-foreground">Hasil dari AI — simpan semua atau edit dulu:</p>
+              <p className="text-[11px] text-muted-foreground">Hasil dari AI:</p>
               {aiSuggestions.map((s, i) => (
-                <div key={i} className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2">
-                  <p className="text-xs font-medium text-foreground">{i + 1}. {s.title}</p>
+                <div key={i} className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-foreground">{i + 1}. {s.title}</p>
                   {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
                 </div>
               ))}
@@ -608,8 +642,8 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
 
       {/* AI Suggest */}
       {mode === "ai_suggest" && (
-        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-violet-400" /> Saran Fokus dari AINA</p>
+        <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-b from-violet-500/8 to-card p-4 space-y-3">
+          <p className="text-xs font-bold text-foreground flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-violet-400" /> Saran Fokus dari AINA</p>
           {aiLoading && (
             <div className="flex items-center gap-2 text-xs text-violet-400 py-2">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> AINA sedang analisis konteksmu...
@@ -618,15 +652,15 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
           {aiSuggestions.length > 0 && !aiLoading && (
             <div className="space-y-2">
               {aiSuggestions.map((s, i) => (
-                <div key={i} className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2">
-                  <p className="text-xs font-medium text-foreground">{i + 1}. {s.title}</p>
+                <div key={i} className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-foreground">{i + 1}. {s.title}</p>
                   {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
                 </div>
               ))}
             </div>
           )}
           {!aiLoading && aiSuggestions.length === 0 && (
-            <p className="text-xs text-muted-foreground py-2">Gagal mendapatkan saran.</p>
+            <p className="text-xs text-muted-foreground py-2">Gagal mendapatkan saran. Coba lagi.</p>
           )}
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => { setMode("none"); setAiSuggestions([]); }} className="flex-1 h-8 text-xs">Batal</Button>
@@ -645,9 +679,10 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
       )}
 
       {activeCount >= 3 && mode === "none" && (
-        <p className="text-center text-xs text-muted-foreground py-2">
-          Sudah 3 fokus aktif — selesaikan dulu sebelum menambah yang baru.
-        </p>
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-center">
+          <p className="text-xs font-semibold text-amber-400">3 fokus aktif sudah penuh</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Selesaikan dulu sebelum menambah yang baru.</p>
+        </div>
       )}
     </div>
   );
@@ -1067,25 +1102,19 @@ function TrackerTab() {
         </div>
       )}
 
-      {/* Panel description */}
-      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-3">
-        <ClipboardList className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Lacak urusan administratif kamu — iqomah, visa, paspor, kampus, dan lainnya. <span className="text-foreground font-medium">Tandai yang mendesak</span> agar tidak ada yang terlewat.
-        </p>
-      </div>
-
-      {/* Summary */}
+      {/* Summary bar */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-muted-foreground">{pendingCount} pending</p>
+        <div className="flex items-center gap-2.5">
+          <p className="text-xs text-muted-foreground font-medium">
+            {pendingCount > 0 ? `${pendingCount} urusan aktif` : "Semua urusan selesai 🎉"}
+          </p>
           {urgentCount > 0 && (
-            <span className="text-xs text-orange-400 flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 text-[11px] text-orange-400 bg-orange-500/8 border border-orange-500/20 rounded-full px-2 py-0.5 font-semibold">
               <AlertTriangle className="h-3 w-3" />{urgentCount} urgent
             </span>
           )}
         </div>
-        <Button size="sm" onClick={() => setShowForm(v => !v)} className="gap-1.5 h-8 text-xs">
+        <Button size="sm" onClick={() => setShowForm(v => !v)} className="gap-1.5 h-8 text-xs rounded-xl">
           <Plus className="h-3.5 w-3.5" /> Tambah
         </Button>
       </div>
@@ -1115,8 +1144,8 @@ function TrackerTab() {
 
       {/* Add form */}
       {showForm && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground">Urusan Baru</p>
+        <div className="rounded-2xl border border-primary/30 bg-card/60 p-4 space-y-3">
+          <p className="text-xs font-bold text-foreground">Urusan Baru</p>
           <Input
             placeholder="Nama urusan / dokumen..."
             value={form.title}
@@ -1173,34 +1202,43 @@ function TrackerTab() {
       {/* List */}
       {loading ? (
         <div className="space-y-2">
-          {[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-secondary/40 animate-pulse" />)}
+          {[1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-secondary/30 animate-pulse" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center opacity-40">
-          <ClipboardList className="h-8 w-8 mb-3 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            {filterStatus === "completed" ? "Belum ada yang selesai" : "Tidak ada urusan yang pending"}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Tambahkan urusan penting seperti iqomah, visa, atau dokumen kampus</p>
+        <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+          <div className="w-14 h-14 rounded-full bg-amber-500/8 border border-amber-500/15 flex items-center justify-center">
+            <ClipboardList className="h-7 w-7 text-amber-400/50" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              {filterStatus === "completed" ? "Belum ada yang selesai" : "Tidak ada urusan aktif"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-[220px] leading-relaxed">Tambahkan urusan penting seperti iqomah, visa, atau dokumen kampus</p>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">
           {filtered.map(item => {
             const due = dueBadge(item.due_date);
             const isEditing = editingId === item.id;
+            const catColor = getCatTopColor(item.category);
             return (
               <div
                 key={item.id}
-                className={`group rounded-xl border transition-all ${
-                  isEditing ? "border-primary/40 bg-card p-3" :
-                  item.status === "completed" ? "border-border bg-card/50 opacity-60 px-3 py-3" :
-                  item.is_urgent ? "border-orange-500/20 bg-orange-500/5 px-3 py-3" :
-                  "border-border bg-card px-3 py-3"
+                className={`group rounded-2xl border transition-all overflow-hidden ${
+                  isEditing ? "border-primary/40 bg-card" :
+                  item.status === "completed" ? "border-border/40 bg-card/30 opacity-55" :
+                  item.is_urgent ? "border-orange-500/25 bg-gradient-to-r from-orange-500/5 to-card" :
+                  "border-border/60 bg-card hover:border-primary/30"
                 }`}
               >
+                {/* Category top strip */}
+                {!isEditing && (
+                  <div className={`h-0.5 w-full ${catColor}`} />
+                )}
                 {/* ── Edit mode ── */}
                 {isEditing ? (
-                  <div className="space-y-2">
+                  <div className="p-4 space-y-2">
                     <Input
                       value={editForm.title}
                       onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
@@ -1258,11 +1296,11 @@ function TrackerTab() {
                   </div>
                 ) : (
                   /* ── Normal view ── */
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 px-4 py-3">
                     {/* Status cycle button */}
                     <button
                       onClick={() => updateStatus(item.id, STATUS_CYCLE[item.status])}
-                      className={`shrink-0 mt-0.5 rounded-full border-2 h-4.5 w-4.5 flex items-center justify-center transition-colors ${
+                      className={`shrink-0 mt-0.5 rounded-full border-2 h-5 w-5 flex items-center justify-center transition-colors active:scale-90 ${
                         item.status === "completed"
                           ? "border-emerald-500 bg-emerald-500"
                           : item.status === "submitted"
@@ -2176,6 +2214,17 @@ function NotesTab() {
 }
 
 /* ════════════════════════════════════════════════════════
+   GREETING HELPER
+   ════════════════════════════════════════════════════════ */
+function getDayGreeting(): { text: string; emoji: string } {
+  const h = new Date().getHours();
+  if (h >= 4  && h < 11) return { text: "Selamat pagi",  emoji: "☀️" };
+  if (h >= 11 && h < 15) return { text: "Selamat siang", emoji: "🌤️" };
+  if (h >= 15 && h < 18) return { text: "Selamat sore",  emoji: "🌅" };
+  return { text: "Selamat malam", emoji: "🌙" };
+}
+
+/* ════════════════════════════════════════════════════════
    MAIN COMPONENT
    ════════════════════════════════════════════════════════ */
 const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
@@ -2183,6 +2232,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [tab, setTab] = useState<"fokus" | "dokumen" | "flashcard" | "catatan" | "pengingat">("fokus");
   const [gamRefreshKey, setGamRefreshKey] = useState(0);
   const handleFocusChange = useCallback(() => setGamRefreshKey(k => k + 1), []);
+  const greeting = getDayGreeting();
 
   useEffect(() => {
     if (userIdProp) { setUserId(userIdProp); return; }
@@ -2192,40 +2242,53 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   }, [userIdProp]);
 
   const tabs = [
-    { id: "fokus"     as const, label: "Fokus Harian",    icon: Target },
-    { id: "dokumen"   as const, label: "Dokumen & Admin", icon: ClipboardList },
-    { id: "flashcard" as const, label: "Flashcard AI",    icon: Layers },
-    { id: "catatan"   as const, label: "Catatan",         icon: StickyNote },
-    { id: "pengingat" as const, label: "Pengingat",       icon: Bell },
+    { id: "fokus"     as const, label: "Fokus",     icon: Target,        desc: "Harian" },
+    { id: "dokumen"   as const, label: "Dokumen",   icon: ClipboardList, desc: "& Admin" },
+    { id: "flashcard" as const, label: "Flashcard", icon: Layers,        desc: "AI" },
+    { id: "catatan"   as const, label: "Catatan",   icon: StickyNote,    desc: "" },
+    { id: "pengingat" as const, label: "Pengingat", icon: Bell,          desc: "" },
   ];
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 px-5 pt-5 pb-4 border-b border-border">
-        <h1 className="text-lg font-bold font-display text-foreground">Ruang Produktif</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Fokus harian, urusan penting, dan panduan prosedur Masisir</p>
+      <div className="shrink-0 px-5 pt-5 pb-0 border-b border-border/50">
+        {/* Greeting */}
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div>
+            <p className="text-[11px] text-muted-foreground font-medium tracking-wide uppercase">
+              {greeting.emoji} {greeting.text}, Masisir
+            </p>
+            <h1 className="text-xl font-extrabold text-foreground leading-tight mt-0.5">
+              Ruang Produktif
+            </h1>
+          </div>
+          <div className="shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500/20 to-primary/10 border border-violet-500/20 flex items-center justify-center mt-0.5">
+            <Target className="h-5 w-5 text-violet-400" />
+          </div>
+        </div>
 
-        {/* Gamification bar — always visible regardless of active tab */}
+        {/* Gamification bar */}
         {userId && (
           <GamificationBar userId={userId} refreshKey={gamRefreshKey} />
         )}
 
-        {/* Tab pills */}
-        <div className="flex gap-1 mt-4 overflow-x-auto scrollbar-hide">
+        {/* Tab nav */}
+        <div className="flex gap-1 mt-4 pb-0 overflow-x-auto scrollbar-hide -mx-1 px-1">
           {tabs.map(t => {
             const Icon = t.icon;
+            const isActive = tab === t.id;
             return (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  tab === t.id
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                className={`relative flex items-center gap-1.5 shrink-0 px-3.5 py-2 text-xs font-semibold transition-all rounded-t-xl ${
+                  isActive
+                    ? "text-foreground bg-background border border-b-background border-border/60 -mb-px z-10 pb-[calc(0.5rem+1px)]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 mb-0"
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className={`h-3.5 w-3.5 ${isActive ? "text-primary" : ""}`} />
                 {t.label}
               </button>
             );
@@ -2233,7 +2296,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
         </div>
       </div>
 
-      {/* Tab content — Flashcard gets its own flex-1 container; others share a scrollable padded area */}
+      {/* Tab content */}
       {tab === "flashcard" ? (
         <div className="flex-1 min-h-0 overflow-hidden">
           <FlashcardPage />
