@@ -138,10 +138,16 @@
     touch-action: manipulation;
   }
 
-  /* Mobile & PWA: increase base font by 2px for better readability */
+  /* Mobile & PWA: scale up all text to match ChatGPT readability standard.
+     Setting html root to 18px scales every rem-based Tailwind class
+     (text-sm → ~16px, text-base → 18px, text-lg → 20px, etc.) */
   @media (max-width: 767px) {
+    html {
+      font-size: 18px;
+    }
     body {
-      font-size: 19px;
+      font-size: 1rem;   /* inherits 18px from html */
+      line-height: 1.75; /* spacious like ChatGPT */
     }
   }
 
