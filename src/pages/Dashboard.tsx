@@ -572,7 +572,9 @@ const Dashboard = () => {
       <div
         ref={sidebarPanelRef}
         className={`
-          fixed inset-y-0 left-0 z-40 md:relative md:z-auto md:flex md:translate-x-0
+          fixed top-0 left-0 z-40
+          bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))]
+          md:relative md:z-auto md:flex md:translate-x-0 md:bottom-auto md:inset-y-0
           transition-transform duration-300 ease-in-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
