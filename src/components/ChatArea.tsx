@@ -682,6 +682,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [copyAnim, setCopyAnim] = useState<{ x: number; y: number } | null>(null);
+  const copyAnimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeChatIdRef   = useRef<string | null>(chatId);
@@ -828,6 +830,29 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       return () => clearTimeout(timer);
     }
   }, [initialMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Copy animation: show "Disalin ✓" badge near the selection when user copies text
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleCopy = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.toString().trim().length === 0) return;
+      const range = sel.getRangeAt(0);
+      const rect  = range.getBoundingClientRect();
+      const cRect = container.getBoundingClientRect();
+      const x = rect.left + rect.width / 2 - cRect.left;
+      const y = rect.top - cRect.top - 10;
+      if (copyAnimTimerRef.current) clearTimeout(copyAnimTimerRef.current);
+      setCopyAnim({ x, y });
+      copyAnimTimerRef.current = setTimeout(() => setCopyAnim(null), 1800);
+    };
+    container.addEventListener("copy", handleCopy);
+    return () => {
+      container.removeEventListener("copy", handleCopy);
+      if (copyAnimTimerRef.current) clearTimeout(copyAnimTimerRef.current);
+    };
+  }, []);
 
   // Fetch daily chat count, paid status, and user profile on mount
   useEffect(() => {
@@ -1564,6 +1589,19 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           if (!tag) textareaRef.current?.focus();
         }}
       >
+        {/* Copy animation badge */}
+        {copyAnim && (
+          <div
+            className="pointer-events-none absolute z-50 flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg animate-in fade-in zoom-in-75 duration-150"
+            style={{ left: copyAnim.x, top: copyAnim.y, transform: "translate(-50%, -100%)" }}
+          >
+            <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="2,6 5,9 10,3" />
+            </svg>
+            Disalin
+          </div>
+        )}
+
         {loadingHistory ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
