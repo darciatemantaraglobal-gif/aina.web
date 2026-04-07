@@ -978,8 +978,8 @@ const DashboardSidebar = ({
       </div>
       </div>
 
-      {/* ── Top: Nav items ──────────────────────────────── */}
-      <div className="shrink-0 px-3 pt-3 pb-1 space-y-1">
+      {/* ── Top: Nav items (scrollable so bottom profile stays pinned) ── */}
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-3 pt-3 pb-1 space-y-1">
         <button
           onClick={onNewChat}
           className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent ${
@@ -1066,11 +1066,8 @@ const DashboardSidebar = ({
         )}
       </div>
 
-      {/* ── Middle: flex spacer ──────────────────────────── */}
-      <div className="flex-1" />
-
       {/* ── Bottom: Notifications + Home + Profile ───────── */}
-      <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-16 md:pb-3 space-y-1">
+      <div className="shrink-0 border-t border-sidebar-border px-3 pt-2 pb-3 space-y-1">
         <NotificationBell collapsed={collapsed} />
 
         {onStartTour && (
