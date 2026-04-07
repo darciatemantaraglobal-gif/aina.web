@@ -126,25 +126,24 @@
     @apply border-border;
     -webkit-tap-highlight-color: transparent;
   }
-  /* Global base: 18px root so all rem-based Tailwind classes are consistent
-     across every feature and screen size (text-sm → ~16px, text-base → 18px).
-     Input/textarea locked at 16px to keep the chat prompt unchanged and
-     prevent iOS Safari auto-zoom on focus. */
   html {
-    font-size: 18px;
+    font-size: 16px;
   }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: "SF Pro Display", sans-serif;
     font-size: 1rem;
     font-weight: 400;
-    line-height: 1.75;
+    line-height: 1.6;
     overscroll-behavior: none;
   }
-  input,
-  textarea,
-  select {
-    font-size: 16px !important;
+  /* Prevent iOS Safari auto-zoom on input focus */
+  @media (max-width: 768px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
   }
   button, a, [role="button"] {
     touch-action: manipulation;
