@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense, Component, ReactNode, useCallback } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import MobileBottomNav from "@/components/MobileBottomNav";
@@ -12,7 +12,7 @@ import AnnouncementPopup from "@/components/AnnouncementPopup";
 import SystemRestartBanner from "@/components/SystemRestartBanner";
 import GuidedTour, { type TourStep } from "@/components/GuidedTour";
 import { supabase } from "@/integrations/supabase/client";
-import { Menu, RefreshCw } from "lucide-react";
+import { Menu, RefreshCw, LayoutDashboard, Newspaper, BookOpen, Hash, Trophy, Users, UserCircle, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 // Per-feature tour storage keys (each feature has its own first-visit tracking)
@@ -171,7 +171,7 @@ interface Chat {
 
 const tabTitles: Record<string, string> = {
   chat: "Chat AI",
-  productivity: "Productivity",
+  productivity: "Ruang Produktif",
   berita: "Berita Masisir",
   library: "Library",
   threads: "Threads",
@@ -179,6 +179,17 @@ const tabTitles: Record<string, string> = {
   contributor: "Contributor",
   profile: "Profile",
   admin: "Admin",
+};
+
+const tabIcons: Record<string, React.ElementType> = {
+  productivity: LayoutDashboard,
+  berita: Newspaper,
+  library: BookOpen,
+  threads: Hash,
+  leaderboard: Trophy,
+  contributor: Users,
+  profile: UserCircle,
+  admin: Shield,
 };
 
 
@@ -639,6 +650,24 @@ const Dashboard = () => {
                 </div>
               </div>
             </header>
+
+            {/* Desktop header */}
+            {(() => {
+              const TabIcon = tabIcons[activeTab];
+              return (
+                <header className="hidden md:flex shrink-0 items-center justify-between border-b border-border bg-background px-8 h-14">
+                  <div className="flex items-center gap-2.5">
+                    <img src="/aina-icon.png" alt="AINA" className="h-6 w-6 object-contain opacity-70" />
+                    <span className="font-sunspire text-lg tracking-wider text-foreground">AINA</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-foreground">
+                    {TabIcon && <TabIcon className="h-4 w-4 text-primary" />}
+                    <span className="text-sm font-semibold">{tabTitles[activeTab] ?? "AINA"}</span>
+                  </div>
+                  <div className="w-32" />
+                </header>
+              );
+            })()}
 
             <div className="flex-1 min-h-0 h-full overflow-hidden" key={activeTab}>
               {activeTab === "productivity" && (

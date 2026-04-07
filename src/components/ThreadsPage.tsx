@@ -967,64 +967,67 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b border-border px-4 py-3 md:px-6 md:py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-base font-bold text-foreground sm:text-lg">Threads</h2>
-            <p className="hidden sm:block text-xs text-muted-foreground mt-0.5">
-              Sharing informasi, pengalaman, dan tips seputar kehidupan di Mesir
-            </p>
+      <div className="shrink-0 border-b border-border px-4 py-3 md:px-8 md:py-5">
+        <div className="md:max-w-5xl md:mx-auto">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-bold text-foreground sm:text-lg md:text-xl">Threads</h2>
+              <p className="hidden sm:block text-xs md:text-sm text-muted-foreground mt-0.5">
+                Sharing informasi, pengalaman, dan tips seputar kehidupan di Mesir
+              </p>
+            </div>
+            <Button
+              onClick={() => setCreateOpen(true)}
+              size="sm"
+              className="shrink-0 gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Buat Thread</span>
+              <span className="sm:hidden">Buat</span>
+            </Button>
           </div>
-          <Button
-            onClick={() => setCreateOpen(true)}
-            size="sm"
-            className="shrink-0 gap-1.5 bg-gradient-purple text-primary-foreground hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Buat Thread</span>
-            <span className="sm:hidden">Buat</span>
-          </Button>
-        </div>
 
-        <div className="mt-3 relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Cari thread..."
-            className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-          />
-        </div>
+          <div className="mt-3 relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Cari thread..."
+              className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+          </div>
 
-        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
-          <button
-            onClick={() => setCategoryFilter("all")}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-              categoryFilter === "all"
-                ? "bg-primary text-primary-foreground"
-                : "bg-card border border-border text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Semua
-          </button>
-          {CATEGORIES.map(c => (
+          <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
             <button
-              key={c}
-              onClick={() => setCategoryFilter(c)}
+              onClick={() => setCategoryFilter("all")}
               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                categoryFilter === c
+                categoryFilter === "all"
                   ? "bg-primary text-primary-foreground"
                   : "bg-card border border-border text-muted-foreground hover:text-foreground"
               }`}
             >
-              {c}
+              Semua
             </button>
-          ))}
+            {CATEGORIES.map(c => (
+              <button
+                key={c}
+                onClick={() => setCategoryFilter(c)}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  categoryFilter === c
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card border border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Thread List */}
-      <div className="flex-1 overflow-y-auto p-3 md:p-6">
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-3 md:py-6">
+        <div className="md:max-w-5xl md:mx-auto">
         {loading ? (
           <div className="space-y-2">
             {[...Array(5)].map((_, i) => (
@@ -1141,6 +1144,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
             )}
           </div>
         )}
+        </div>
       </div>
 
       <CreateThreadSheet

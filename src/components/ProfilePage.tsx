@@ -460,8 +460,8 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
       )}
 
       {profileTab === "profil" && (
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="mx-auto max-w-md space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 md:px-8 md:py-7">
+        <div className="mx-auto max-w-md md:max-w-2xl space-y-4 md:space-y-6">
           <Card className="border-border bg-card overflow-hidden">
             {/* Header — no banner, just ambient glow background */}
             <div className="relative flex flex-col items-center px-6 pb-6 pt-10">

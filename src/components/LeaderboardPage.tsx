@@ -518,14 +518,14 @@ export default function LeaderboardPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b border-border px-4 py-4 md:px-6">
-        <div className="flex items-center justify-between gap-3">
+      <div className="shrink-0 border-b border-border px-4 py-4 md:px-8 md:py-5">
+        <div className="md:max-w-5xl md:mx-auto flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-display text-lg font-bold text-foreground flex items-center gap-2">
+            <h2 className="font-display text-lg md:text-xl font-bold text-foreground flex items-center gap-2">
               <Trophy className="h-5 w-5 text-amber-400" />
               Leaderboard
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
               Kontributor terbaik dan artikel terpopuler di AINA
             </p>
           </div>
@@ -543,12 +543,12 @@ export default function LeaderboardPage() {
       {/* Tabs */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <Tabs defaultValue="contributors" className="flex h-full flex-col">
-          <TabsList className="mx-4 mt-4 md:mx-6 shrink-0 grid w-auto grid-cols-2 max-w-xs">
-            <TabsTrigger value="contributors" className="gap-1.5 text-xs">
+          <TabsList className="mx-4 mt-4 md:mx-auto md:mt-6 shrink-0 grid w-auto grid-cols-2 max-w-xs md:max-w-sm">
+            <TabsTrigger value="contributors" className="gap-1.5 text-xs md:text-sm">
               <Medal className="h-3.5 w-3.5" />
               Top Kontributor
             </TabsTrigger>
-            <TabsTrigger value="articles" className="gap-1.5 text-xs">
+            <TabsTrigger value="articles" className="gap-1.5 text-xs md:text-sm">
               <BookOpen className="h-3.5 w-3.5" />
               Artikel Terpopuler
             </TabsTrigger>
@@ -556,7 +556,8 @@ export default function LeaderboardPage() {
 
           {/* Contributors */}
           <TabsContent value="contributors" className="flex-1 min-h-0 flex flex-col mt-0 data-[state=inactive]:hidden">
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 pt-4 md:px-6">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-8 pb-6 pt-4">
+              <div className="md:max-w-5xl md:mx-auto">
               {loading ? (
                 <div className="space-y-2">
                   {[...Array(6)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}
@@ -575,13 +576,15 @@ export default function LeaderboardPage() {
                   ))}
                 </div>
               )}
+              </div>
             </div>
           </TabsContent>
 
           {/* Articles */}
           <TabsContent value="articles" className="flex-1 min-h-0 flex flex-col mt-0 data-[state=inactive]:hidden">
             {/* Search bar */}
-            <div className="shrink-0 px-4 pt-4 md:px-6 space-y-3">
+            <div className="shrink-0 px-4 pt-4 md:px-8 space-y-3">
+              <div className="md:max-w-5xl md:mx-auto space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                 <input
@@ -627,10 +630,12 @@ export default function LeaderboardPage() {
                   );
                 })}
               </div>
+              </div>
             </div>
 
             {/* Article list */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 pt-3 md:px-6">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-8 pb-6 pt-3">
+              <div className="md:max-w-5xl md:mx-auto">
               {loading ? (
                 <div className="space-y-2">
                   {[...Array(6)].map((_, i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-card" />)}
@@ -684,6 +689,7 @@ export default function LeaderboardPage() {
                   ))}
                 </div>
               )}
+              </div>
             </div>
           </TabsContent>
         </Tabs>

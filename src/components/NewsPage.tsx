@@ -241,26 +241,29 @@ const NewsPage = () => {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border px-5 py-4 shrink-0">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600">
-          <Newspaper className="h-4 w-4 text-white" />
+      <div className="shrink-0 border-b border-border px-5 md:px-8 py-4 md:py-5">
+        <div className="md:max-w-5xl md:mx-auto flex items-center gap-3">
+          <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600">
+            <Newspaper className="h-4 w-4 md:h-5 md:w-5 text-white" />
+          </div>
+          <div className="flex-1">
+            <h1 className="font-display text-lg md:text-xl font-bold text-foreground">Berita Masisir</h1>
+            <p className="text-xs md:text-sm text-muted-foreground">Update terkini untuk Masisir di Mesir</p>
+          </div>
+          <button
+            onClick={() => fetchNews(true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs md:text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
         </div>
-        <div className="flex-1">
-          <h1 className="font-display text-lg font-bold text-foreground">Berita Masisir</h1>
-          <p className="text-xs text-muted-foreground">Update terkini untuk Masisir di Mesir</p>
-        </div>
-        <button
-          onClick={() => fetchNews(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
       </div>
 
       {/* Category filter pills */}
-      <div className="flex gap-2 overflow-x-auto px-5 py-3 shrink-0 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
+      <div className="flex gap-2 overflow-x-auto px-5 md:px-8 py-3 shrink-0 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
+        <div className="md:max-w-5xl md:mx-auto flex gap-2 w-full">
         {CATEGORIES.map(cat => {
           const Icon = cat.icon;
           const isActive = activeCategory === cat.id;
@@ -291,12 +294,14 @@ const NewsPage = () => {
             </button>
           );
         })}
+        </div>
       </div>
 
       {/* News grid */}
-      <div className="flex-1 overflow-y-auto px-5 pb-6">
+      <div className="flex-1 overflow-y-auto px-5 md:px-8 pb-6 md:pb-8">
+        <div className="md:max-w-5xl md:mx-auto">
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
             {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : news.length === 0 ? (
@@ -312,10 +317,11 @@ const NewsPage = () => {
             </p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
             {news.map(item => <NewsCard key={item.id} item={item} />)}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

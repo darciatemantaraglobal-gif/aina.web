@@ -681,11 +681,11 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4 md:p-6">
-      <div className="mx-auto max-w-3xl space-y-6">
+    <div className="h-full overflow-y-auto p-4 md:px-8 md:py-7">
+      <div className="mx-auto max-w-3xl md:max-w-4xl space-y-6">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Contributor</h1>
-          <p className="text-sm text-muted-foreground">Bergabung sebagai kontributor dan bagikan pengetahuanmu.</p>
+          <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">Contributor</h1>
+          <p className="text-sm md:text-base text-muted-foreground">Bergabung sebagai kontributor dan bagikan pengetahuanmu.</p>
         </div>
 
         {/* Registration / Status */}

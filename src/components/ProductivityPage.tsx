@@ -2252,47 +2252,49 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 px-5 pt-5 pb-0 border-b border-border/50">
-        {/* Greeting */}
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <div>
-            <p className="text-[11px] text-muted-foreground font-medium tracking-wide uppercase">
-              {greeting.emoji} {greeting.text}, Masisir
-            </p>
-            <h1 className="text-xl font-extrabold text-foreground leading-tight mt-0.5">
-              Ruang Produktif
-            </h1>
+      <div className="shrink-0 border-b border-border/50">
+        <div className="px-5 md:px-10 pt-5 md:pt-7 pb-0 md:max-w-5xl md:mx-auto">
+          {/* Greeting */}
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <div>
+              <p className="text-[11px] md:text-xs text-muted-foreground font-medium tracking-wide uppercase">
+                {greeting.emoji} {greeting.text}, Masisir
+              </p>
+              <h1 className="text-xl md:text-2xl font-extrabold text-foreground leading-tight mt-0.5">
+                Ruang Produktif
+              </h1>
+            </div>
+            <div className="shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-gradient-to-br from-violet-500/20 to-primary/10 border border-violet-500/20 flex items-center justify-center mt-0.5">
+              <Target className="h-5 w-5 md:h-6 md:w-6 text-violet-400" />
+            </div>
           </div>
-          <div className="shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500/20 to-primary/10 border border-violet-500/20 flex items-center justify-center mt-0.5">
-            <Target className="h-5 w-5 text-violet-400" />
+
+          {/* Gamification bar */}
+          {userId && (
+            <GamificationBar userId={userId} refreshKey={gamRefreshKey} />
+          )}
+
+          {/* Tab nav */}
+          <div className="flex gap-1 mt-4 pb-0 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            {tabs.map(t => {
+              const Icon = t.icon;
+              const isActive = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`relative flex items-center gap-1.5 shrink-0 px-3.5 md:px-4 py-2 md:py-2.5 text-xs md:text-sm font-semibold transition-all rounded-t-xl ${
+                    isActive
+                      ? "text-foreground bg-background border border-b-background border-border/60 -mb-px z-10 pb-[calc(0.5rem+1px)] md:pb-[calc(0.625rem+1px)]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 mb-0"
+                  }`}
+                >
+                  <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${isActive ? "text-primary" : ""}`} />
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
-        </div>
-
-        {/* Gamification bar */}
-        {userId && (
-          <GamificationBar userId={userId} refreshKey={gamRefreshKey} />
-        )}
-
-        {/* Tab nav */}
-        <div className="flex gap-1 mt-4 pb-0 overflow-x-auto scrollbar-hide -mx-1 px-1">
-          {tabs.map(t => {
-            const Icon = t.icon;
-            const isActive = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`relative flex items-center gap-1.5 shrink-0 px-3.5 py-2 text-xs font-semibold transition-all rounded-t-xl ${
-                  isActive
-                    ? "text-foreground bg-background border border-b-background border-border/60 -mb-px z-10 pb-[calc(0.5rem+1px)]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 mb-0"
-                }`}
-              >
-                <Icon className={`h-3.5 w-3.5 ${isActive ? "text-primary" : ""}`} />
-                {t.label}
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -2302,11 +2304,13 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
           <FlashcardPage />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {tab === "fokus"     && <FocusTab onFocusChange={handleFocusChange} />}
-          {tab === "dokumen"   && <TrackerTab />}
-          {tab === "catatan"   && <NotesTab />}
-          {tab === "pengingat" && <ReminderTab />}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-5 md:px-10 py-4 md:py-7 md:max-w-5xl md:mx-auto">
+            {tab === "fokus"     && <FocusTab onFocusChange={handleFocusChange} />}
+            {tab === "dokumen"   && <TrackerTab />}
+            {tab === "catatan"   && <NotesTab />}
+            {tab === "pengingat" && <ReminderTab />}
+          </div>
         </div>
       )}
     </div>

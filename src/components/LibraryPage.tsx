@@ -178,14 +178,15 @@ export default function LibraryPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b border-border px-4 py-4 sm:px-6">
+      <div className="shrink-0 border-b border-border px-4 py-4 md:px-8 md:py-5">
+        <div className="md:max-w-5xl md:mx-auto">
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-500">
-            <BookOpen className="h-4.5 w-4.5 text-white" />
+          <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-500">
+            <BookOpen className="h-4 w-4 md:h-5 md:w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-foreground leading-tight">Library Masisir</h1>
-            <p className="text-xs text-foreground/40">Muqorror, panduan, dan referensi untuk Masisir</p>
+            <h1 className="text-base md:text-xl font-bold text-foreground leading-tight">Library Masisir</h1>
+            <p className="text-xs md:text-sm text-foreground/40">Muqorror, panduan, dan referensi untuk Masisir</p>
           </div>
         </div>
 
@@ -247,10 +248,12 @@ export default function LibraryPage() {
             </button>
           )}
         </div>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+      <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6">
+        <div className="md:max-w-5xl md:mx-auto">
         {loading ? (
           <div className="flex h-40 items-center justify-center">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
@@ -287,6 +290,7 @@ export default function LibraryPage() {
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );
