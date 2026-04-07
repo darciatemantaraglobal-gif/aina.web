@@ -76,16 +76,12 @@ const PartnerSection = () => {
               <div className="w-px self-stretch bg-border/50" />
               {/* Info */}
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-foreground">{p.name}</p>
-                  <span className="hidden sm:inline-flex items-center rounded-full bg-primary/8 border border-primary/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/60">
+                  <span className="inline-flex items-center rounded-full bg-primary/8 border border-primary/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/60">
                     {p.badge}
                   </span>
                 </div>
-                <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{p.description}</p>
-                <span className="mt-1 inline-flex sm:hidden items-center rounded-full bg-primary/8 border border-primary/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/60">
-                  {p.badge}
-                </span>
               </div>
             </div>
           ))}
