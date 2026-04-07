@@ -7492,24 +7492,11 @@ app.get("/api/admin/usage-stats", async (req, res) => {
 });
 
 /* ── Master Admin: Reformat Single Article ──────────── */
-app.post("/api/admin/articles/:id/reformat", async (req, res) => {
-  const admin = await verifyMasterAdmin(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+/* ── Shared reformat prompt ──────────────────────────────────── */
+function buildReformatPrompt(art) {
+  return `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
-
-  const supabase = getAdminClient();
-  const { data: art } = await supabase
-    .from("knowledge_base")
-    .select("id, title, content, category")
-    .eq("id", req.params.id)
-    .single();
-  if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
-
-  const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
-
-Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur rapi.
+Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur dengan format terbaik sesuai konteksnya.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -7530,15 +7517,36 @@ Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
 - ❌ Buang: opini, penilaian subjektif, atau kalimat yang tidak menambah informasi faktual
 - ⚠️ Jika artikel sudah padat dan informatif, pertahankan semua — hanya perbaiki formatnya
 
-## TAHAP 2 — FORMAT MARKDOWN BERSIH
+## TAHAP 2 — PILIH FORMAT SESUAI KONTEKS KONTEN
+
+Analisis isi konten, lalu pilih format yang PALING tepat untuk setiap bagian artikel. Kamu bebas kombinasikan format berbeda dalam satu artikel.
+
+### 📊 Gunakan TABEL jika:
+- Ada 2+ item dengan atribut yang bisa dibandingkan (contoh: daftar dokumen + biaya + keterangan)
+- Data terstruktur dengan kolom seragam: jadwal per hari, biaya per kategori, syarat per kondisi
+- Perbandingan pilihan atau opsi (contoh: tipe visa, jenis kelas, paket harga)
+- Format tabel lebih ringkas daripada list panjang untuk data yang sama
+- **Contoh penggunaan tabel:** daftar persyaratan dokumen beserta biaya, jadwal keberangkatan, daftar mata kuliah + SKS
+
+### 🔢 Gunakan NUMBERED LIST jika:
+- Prosedur atau langkah yang HARUS dilakukan berurutan
+- Cara mendaftar, cara mengurus, alur proses yang memiliki urutan wajib
+
+### • Gunakan BULLET LIST jika:
+- Daftar item tanpa urutan wajib: syarat-syarat, fitur, pilihan, tips
+- Fakta pendek yang tidak cocok untuk tabel
+
+### 📝 Gunakan PARAGRAF jika:
+- Penjelasan konsep, definisi, atau latar belakang
+- Narasi yang mengalir lebih alami sebagai prosa
+- Informasi yang saling berkaitan erat dan tidak terpotong-potong
+
+### 💡 Aturan format umum:
 - Gunakan **##** untuk subjudul utama (JANGAN gunakan # — judul sudah ditampilkan terpisah)
 - Gunakan **###** untuk sub-bagian dalam subjudul
-- Satu baris kosong di antara setiap paragraf dan section
-- Gunakan **-** untuk list tidak berurutan
-- Gunakan **1. 2. 3.** untuk langkah berurutan atau prosedur wajib
-- Gunakan `**teks**` untuk: nama dokumen, istilah kunci, angka penting, biaya, tanggal
+- Satu baris kosong di antara setiap section
+- Gunakan \`**teks**\` untuk: nama dokumen, istilah kunci, angka penting, biaya, tanggal
 - Gunakan **>** (blockquote) untuk catatan penting, peringatan, atau info kritis
-- JANGAN gunakan tabel kecuali konten aslinya memang berbentuk perbandingan
 - JANGAN tambahkan section baru yang tidak ada di konten asli
 
 ## ATURAN KONTEN KHUSUS
@@ -7548,6 +7556,24 @@ Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
 - Bahasa Indonesia tetap natural dan mudah dipahami
 
 Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda \`\`\`markdown.`;
+}
+
+app.post("/api/admin/articles/:id/reformat", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
+
+  const supabase = getAdminClient();
+  const { data: art } = await supabase
+    .from("knowledge_base")
+    .select("id, title, content, category")
+    .eq("id", req.params.id)
+    .single();
+  if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
+
+  const prompt = buildReformatPrompt(art);
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -7602,47 +7628,7 @@ app.post("/api/admin/articles/reformat-all", async (req, res) => {
   let failed = 0;
 
   for (const art of articles) {
-    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
-
-Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur rapi.
-
-Judul artikel: "${art.title}"
-Kategori: "${art.category}"
-
-Konten asli:
-<KONTEN>
-${art.content.slice(0, 10000)}
-</KONTEN>
-
-## TAHAP 1 — EKSTRAKSI INFORMASI INTI
-Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
-- ✅ Fakta, angka, tanggal, nama tempat, instansi, dokumen
-- ✅ Prosedur, langkah-langkah, syarat, biaya, kontak
-- ✅ Informasi yang menjawab: "Apa?", "Di mana?", "Bagaimana?", "Berapa?", "Kapan?", "Siapa?"
-- ❌ Buang: kalimat pembuka basa-basi ("Halo Masisir...", "Selamat datang...", "Artikel ini akan membahas...")
-- ❌ Buang: kalimat penutup motivasi/basa-basi ("Semoga bermanfaat...", "Demikian informasi...")
-- ❌ Buang: pengulangan informasi yang sama
-- ❌ Buang: opini, penilaian subjektif, atau kalimat yang tidak menambah informasi faktual
-- ⚠️ Jika artikel sudah padat dan informatif, pertahankan semua — hanya perbaiki formatnya
-
-## TAHAP 2 — FORMAT MARKDOWN BERSIH
-- Gunakan **##** untuk subjudul utama (JANGAN gunakan # — judul sudah ditampilkan terpisah)
-- Gunakan **###** untuk sub-bagian dalam subjudul
-- Satu baris kosong di antara setiap paragraf dan section
-- Gunakan **-** untuk list tidak berurutan
-- Gunakan **1. 2. 3.** untuk langkah berurutan atau prosedur wajib
-- Gunakan `**teks**` untuk: nama dokumen, istilah kunci, angka penting, biaya, tanggal
-- Gunakan **>** (blockquote) untuk catatan penting, peringatan, atau info kritis
-- JANGAN gunakan tabel kecuali konten aslinya memang berbentuk perbandingan
-- JANGAN tambahkan section baru yang tidak ada di konten asli
-
-## ATURAN KONTEN KHUSUS
-- PERTAHANKAN semua teks Arab (ayat, hadits, istilah, nama) PERSIS seperti aslinya
-- PERTAHANKAN transliterasi Arab-Latin (contoh: "Shahada Qaid", "iqomah", "imtihan")
-- JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
-- Bahasa Indonesia tetap natural dan mudah dipahami
-
-Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda \`\`\`markdown.`;
+    const prompt = buildReformatPrompt(art);
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -7708,47 +7694,7 @@ app.post("/api/admin/articles/bulk-reformat", async (req, res) => {
   let failed = 0;
 
   for (const art of articles) {
-    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
-
-Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur rapi.
-
-Judul artikel: "${art.title}"
-Kategori: "${art.category}"
-
-Konten asli:
-<KONTEN>
-${art.content.slice(0, 10000)}
-</KONTEN>
-
-## TAHAP 1 — EKSTRAKSI INFORMASI INTI
-Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
-- ✅ Fakta, angka, tanggal, nama tempat, instansi, dokumen
-- ✅ Prosedur, langkah-langkah, syarat, biaya, kontak
-- ✅ Informasi yang menjawab: "Apa?", "Di mana?", "Bagaimana?", "Berapa?", "Kapan?", "Siapa?"
-- ❌ Buang: kalimat pembuka basa-basi ("Halo Masisir...", "Selamat datang...", "Artikel ini akan membahas...")
-- ❌ Buang: kalimat penutup motivasi/basa-basi ("Semoga bermanfaat...", "Demikian informasi...")
-- ❌ Buang: pengulangan informasi yang sama
-- ❌ Buang: opini, penilaian subjektif, atau kalimat yang tidak menambah informasi faktual
-- ⚠️ Jika artikel sudah padat dan informatif, pertahankan semua — hanya perbaiki formatnya
-
-## TAHAP 2 — FORMAT MARKDOWN BERSIH
-- Gunakan **##** untuk subjudul utama (JANGAN gunakan # — judul sudah ditampilkan terpisah)
-- Gunakan **###** untuk sub-bagian dalam subjudul
-- Satu baris kosong di antara setiap paragraf dan section
-- Gunakan **-** untuk list tidak berurutan
-- Gunakan **1. 2. 3.** untuk langkah berurutan atau prosedur wajib
-- Gunakan `**teks**` untuk: nama dokumen, istilah kunci, angka penting, biaya, tanggal
-- Gunakan **>** (blockquote) untuk catatan penting, peringatan, atau info kritis
-- JANGAN gunakan tabel kecuali konten aslinya memang berbentuk perbandingan
-- JANGAN tambahkan section baru yang tidak ada di konten asli
-
-## ATURAN KONTEN KHUSUS
-- PERTAHANKAN semua teks Arab (ayat, hadits, istilah, nama) PERSIS seperti aslinya
-- PERTAHANKAN transliterasi Arab-Latin (contoh: "Shahada Qaid", "iqomah", "imtihan")
-- JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
-- Bahasa Indonesia tetap natural dan mudah dipahami
-
-Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda \`\`\`markdown.`;
+    const prompt = buildReformatPrompt(art);
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
