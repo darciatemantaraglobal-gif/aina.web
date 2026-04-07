@@ -3239,6 +3239,15 @@ function ChatMonitorTab() {
   const [confirmBulk, setConfirmBulk] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  /* Fix It state */
+  const [fixPanel, setFixPanel] = useState<{
+    msgId: string; chatId: string;
+    userQuestion: string; wrongAnswer: string;
+  } | null>(null);
+  const [fixCorrect, setFixCorrect] = useState("");
+  const [fixTitle, setFixTitle] = useState("");
+  const [fixLoading, setFixLoading] = useState(false);
+
   const load = useCallback(async (q = "") => {
     setLoading(true);
     setSelectedIds(new Set());
@@ -3321,6 +3330,51 @@ function ChatMonitorTab() {
       load(search);
     } catch (e: any) { toast.error(e.message); }
     setBulkDeleting(false);
+  };
+
+  /* Fix It helpers */
+  const openFixPanel = (msgId: string, idx: number) => {
+    if (!selected) return;
+    // Find the user question immediately before this AI message
+    const prevUser = [...messages].slice(0, idx).reverse().find(m => m.role === "user");
+    const wrongAnswer = messages[idx]?.content ?? "";
+    setFixPanel({
+      msgId,
+      chatId: selected.id,
+      userQuestion: prevUser?.content ?? "",
+      wrongAnswer,
+    });
+    setFixCorrect("");
+    setFixTitle(`Koreksi: ${(prevUser?.content ?? "").slice(0, 60).trim()}`);
+  };
+
+  const submitFix = async (autoFix: boolean) => {
+    if (!fixPanel) return;
+    setFixLoading(true);
+    try {
+      const result = await adminFetch(
+        `/api/admin/chats/${fixPanel.chatId}/messages/${fixPanel.msgId}/fix`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            user_question: fixPanel.userQuestion,
+            wrong_answer: fixPanel.wrongAnswer,
+            correct_answer: fixCorrect.trim() || undefined,
+            auto_fix: autoFix,
+            article_title: fixTitle.trim() || undefined,
+          }),
+        }
+      );
+      if (autoFix && result.corrected_answer) {
+        setFixCorrect(result.corrected_answer);
+        toast.success("AI menghasilkan jawaban koreksi — periksa dan simpan jika sudah benar");
+      } else {
+        toast.success("Koreksi berhasil disimpan ke knowledge base AINA");
+        setFixPanel(null);
+        setFixCorrect("");
+      }
+    } catch (e: any) { toast.error(e.message); }
+    setFixLoading(false);
   };
 
   const allSelected = chats.length > 0 && selectedIds.size === chats.length;
@@ -3491,7 +3545,7 @@ function ChatMonitorTab() {
                   </div>
                 ) : (
                   <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-8">
-                    {messages.map(m => (
+                    {messages.map((m, msgIdx) => (
                       <div
                         key={m.id}
                         className={`flex gap-3 min-w-0 ${m.role === "user" ? "justify-end" : "justify-start"}`}
@@ -3515,16 +3569,25 @@ function ChatMonitorTab() {
                             </p>
                           </div>
                         ) : (
-                          /* AI response — exact copy from ChatArea */
-                          <div className="min-w-0 flex-1 min-h-0">
+                          /* AI response — exact copy from ChatArea + Fix It button */
+                          <div className="min-w-0 flex-1 min-h-0 group">
                             <div className="py-1.5 text-[15px] leading-[1.7]">
                               <ReactMarkdown remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
                                 {m.content}
                               </ReactMarkdown>
                             </div>
-                            <p className="mt-1 text-[10px] text-muted-foreground/40">
-                              {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                            </p>
+                            <div className="mt-1.5 flex items-center gap-3">
+                              <p className="text-[10px] text-muted-foreground/40">
+                                {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                              <button
+                                onClick={() => openFixPanel(m.id, msgIdx)}
+                                className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 opacity-0 group-hover:opacity-100 transition-all hover:bg-amber-500/20"
+                              >
+                                <Wand2 className="h-2.5 w-2.5" />
+                                Fix It
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -3538,6 +3601,111 @@ function ChatMonitorTab() {
                 <div className="flex items-center gap-3 rounded-2xl border border-border bg-secondary/50 px-4 py-3 text-sm text-muted-foreground/40 cursor-default select-none">
                   <MessageSquare className="h-4 w-4 shrink-0" />
                   <span>Kirim pesan…</span>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Fix It Dialog */}
+      <Dialog open={!!fixPanel} onOpenChange={open => !open && setFixPanel(null)}>
+        <DialogContent className="max-w-2xl gap-0 p-0 overflow-hidden max-h-[90vh] flex flex-col">
+          {fixPanel && (
+            <>
+              {/* Header */}
+              <div className="flex items-center gap-3 border-b border-border px-5 py-4 shrink-0">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/15">
+                  <Wand2 className="h-4 w-4 text-amber-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <DialogTitle className="text-sm font-semibold text-foreground">Fix It — Koreksi Jawaban AINA</DialogTitle>
+                  <p className="text-xs text-muted-foreground">Perbaiki jawaban yang salah & simpan ke knowledge base</p>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {/* Context: user question */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pertanyaan User</label>
+                  <div className="rounded-xl bg-secondary/60 px-4 py-3 text-sm text-foreground leading-relaxed max-h-24 overflow-y-auto">
+                    {fixPanel.userQuestion || <span className="italic text-muted-foreground">Tidak ditemukan (pesan sistem/pertama)</span>}
+                  </div>
+                </div>
+
+                {/* Context: wrong answer */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400" />
+                    Jawaban AINA yang Perlu Diperbaiki
+                  </label>
+                  <div className="rounded-xl border border-red-200/40 bg-red-50/5 px-4 py-3 text-sm text-foreground/80 leading-relaxed max-h-40 overflow-y-auto font-mono text-xs">
+                    {fixPanel.wrongAnswer.slice(0, 600)}{fixPanel.wrongAnswer.length > 600 ? "…" : ""}
+                  </div>
+                </div>
+
+                {/* Correct answer input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
+                    Jawaban yang Benar
+                  </label>
+                  <Textarea
+                    value={fixCorrect}
+                    onChange={e => setFixCorrect(e.target.value)}
+                    placeholder="Tulis jawaban yang benar di sini, atau kosongkan dan klik 'Biarkan AI Perbaiki' untuk auto-fix..."
+                    rows={7}
+                    className="resize-none text-sm font-mono bg-secondary/50 leading-relaxed"
+                  />
+                  <p className="text-[11px] text-muted-foreground/60">
+                    Boleh tulis petunjuk singkat (AI akan kembangkan), atau langsung tulis jawaban lengkap.
+                    Disimpan ke knowledge base sebagai artikel "Koreksi AI" — langsung aktif untuk query serupa.
+                  </p>
+                </div>
+
+                {/* Article title */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Judul Artikel KB</label>
+                  <input
+                    value={fixTitle}
+                    onChange={e => setFixTitle(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-secondary/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    placeholder="Judul untuk artikel knowledge base..."
+                  />
+                </div>
+              </div>
+
+              {/* Footer actions */}
+              <div className="shrink-0 border-t border-border px-5 py-3.5 flex items-center justify-between gap-3 bg-card/50">
+                <button
+                  onClick={() => setFixPanel(null)}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Batal
+                </button>
+                <div className="flex items-center gap-2">
+                  {/* Auto-fix button */}
+                  <button
+                    onClick={() => submitFix(true)}
+                    disabled={fixLoading}
+                    className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {fixLoading
+                      ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                      : <Sparkles className="h-3 w-3" />}
+                    Biarkan AI Perbaiki
+                  </button>
+                  {/* Save button */}
+                  <button
+                    onClick={() => submitFix(false)}
+                    disabled={fixLoading || !fixCorrect.trim()}
+                    className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
+                  >
+                    {fixLoading
+                      ? <span className="h-3 w-3 animate-spin rounded-full border border-white/50 border-t-white" />
+                      : <Save className="h-3 w-3" />}
+                    Simpan ke KB
+                  </button>
                 </div>
               </div>
             </>

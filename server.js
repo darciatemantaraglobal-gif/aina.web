@@ -10189,6 +10189,92 @@ app.get("/api/admin/chats/:chatId/messages", async (req, res) => {
   res.json(data ?? []);
 });
 
+/* ── Fix It: Admin corrects AI response & saves to KB ─── */
+app.post("/api/admin/chats/:chatId/messages/:msgId/fix", async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
+
+  const { user_question, wrong_answer, correct_answer, auto_fix, article_title } = req.body;
+  if (!user_question?.trim()) return res.status(400).json({ error: "user_question wajib diisi" });
+
+  const supabase = getAdminClient();
+  let finalAnswer = correct_answer?.trim() || "";
+
+  // Auto-fix: let AI generate the corrected response
+  if (auto_fix || !finalAnswer) {
+    try {
+      const fixPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Al-Azhar Mesir (Masisir).
+
+Seorang admin telah menandai bahwa respons AINA berikut kurang tepat atau perlu diperbaiki.
+
+**Pertanyaan user:**
+${user_question.slice(0, 1000)}
+
+**Respons AINA yang perlu diperbaiki:**
+${wrong_answer.slice(0, 3000)}
+
+${correct_answer ? `**Petunjuk koreksi dari admin:**\n${correct_answer.slice(0, 1000)}\n\n` : ""}Tugasmu: Buat respons yang BENAR dan LEBIH BAIK untuk pertanyaan ini. 
+- Fokus pada akurasi, kejelasan, dan relevansi bagi Masisir
+- Gunakan format markdown yang rapi (##, bullet, tabel jika perlu)
+- Jika ada info spesifik yang admin berikan, gunakan sebagai dasar koreksi
+- Jangan menyebut bahwa ini adalah koreksi — tulis seolah ini adalah jawaban asli
+
+Tulis respons yang diperbaiki:`;
+
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://ainalabs.pro",
+          "X-Title": "AINA Fix It",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.0-flash-001",
+          messages: [{ role: "user", content: fixPrompt }],
+          max_tokens: 3000,
+          temperature: 0.3,
+        }),
+      });
+      const data = await resp.json();
+      const aiAnswer = data.choices?.[0]?.message?.content?.trim();
+      if (aiAnswer) finalAnswer = aiAnswer;
+    } catch (e) {
+      console.warn("[FixIt] AI generation failed:", e.message);
+    }
+  }
+
+  if (!finalAnswer) return res.status(400).json({ error: "Tidak ada jawaban koreksi yang dihasilkan" });
+
+  // Save the corrected answer to knowledge_base as an approved article
+  const title = article_title?.trim() || `Koreksi: ${user_question.slice(0, 80).trim()}`;
+  const content = `## Pertanyaan\n\n${user_question.trim()}\n\n## Jawaban\n\n${finalAnswer}`;
+
+  const { data: kbRow, error: kbErr } = await supabase
+    .from("knowledge_base")
+    .insert({
+      title,
+      content,
+      category: "Koreksi AI",
+      status: "approved",
+      source_url: null,
+      submitted_by: admin.id,
+    })
+    .select("id")
+    .single();
+
+  if (kbErr) {
+    console.error("[FixIt] KB insert failed:", kbErr.message);
+    return res.status(500).json({ error: "Gagal menyimpan ke knowledge base: " + sanitizeErr(kbErr) });
+  }
+
+  console.log(`[FixIt] admin=${admin.id} chat=${req.params.chatId} msg=${req.params.msgId} kb=${kbRow.id}`);
+  res.json({ corrected_answer: finalAnswer, kb_id: kbRow.id });
+});
+
 /* ── Bulk Delete Users (Master Admin only) ───────────── */
 app.post("/api/admin/users/bulk-delete", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
