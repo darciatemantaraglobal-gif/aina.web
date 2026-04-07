@@ -7432,9 +7432,9 @@ app.post("/api/admin/articles/:id/reformat", async (req, res) => {
     .single();
   if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
 
-  const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform informasi mahasiswa Indonesia di Mesir (Masisir).
+  const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
 
-Tugasmu: Format ulang artikel berikut menjadi Markdown yang bersih, terstruktur, dan mudah dibaca. JANGAN mengubah, menambah, atau menghilangkan informasi apapun — tugasmu hanya memperbaiki format dan struktur.
+Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur rapi.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -7444,22 +7444,35 @@ Konten asli:
 ${art.content.slice(0, 10000)}
 </KONTEN>
 
-ATURAN FORMAT (wajib diikuti):
-- Gunakan ## untuk subjudul utama, ### untuk sub-bagian (JANGAN gunakan # karena judul artikel sudah ditampilkan terpisah)
-- Pisahkan setiap paragraf dengan satu baris kosong
-- Gunakan - untuk poin-poin dalam list yang tidak berurutan
-- Gunakan 1. 2. 3. untuk langkah-langkah yang berurutan
-- Gunakan **teks** untuk istilah penting, nama dokumen, atau hal yang perlu ditekankan
-- Jangan gunakan tabel
-- Jika konten sudah terstruktur dengan baik, pertahankan strukturnya — jangan ubah yang tidak perlu
+## TAHAP 1 — EKSTRAKSI INFORMASI INTI
+Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
+- ✅ Fakta, angka, tanggal, nama tempat, instansi, dokumen
+- ✅ Prosedur, langkah-langkah, syarat, biaya, kontak
+- ✅ Informasi yang menjawab: "Apa?", "Di mana?", "Bagaimana?", "Berapa?", "Kapan?", "Siapa?"
+- ❌ Buang: kalimat pembuka basa-basi ("Halo Masisir...", "Selamat datang...", "Artikel ini akan membahas...")
+- ❌ Buang: kalimat penutup motivasi/basa-basi ("Semoga bermanfaat...", "Demikian informasi...")
+- ❌ Buang: pengulangan informasi yang sama
+- ❌ Buang: opini, penilaian subjektif, atau kalimat yang tidak menambah informasi faktual
+- ⚠️ Jika artikel sudah padat dan informatif, pertahankan semua — hanya perbaiki formatnya
 
-ATURAN KONTEN (wajib diikuti):
-- PERTAHANKAN semua teks Arab (ayat Al-Qur'an, hadits, istilah Arab, nama Arab) PERSIS seperti aslinya — JANGAN diterjemahkan, JANGAN diubah, JANGAN dihapus
-- PERTAHANKAN transliterasi Arab-Latin jika ada (contoh: "Shahada Qaid", "iqomah", "imtihan")
-- JANGAN menambahkan terjemahan baru untuk teks Arab yang tidak ada terjemahannya di konten asli
-- Bahasa Indonesia di artikel tetap ditulis dalam bahasa Indonesia yang natural
+## TAHAP 2 — FORMAT MARKDOWN BERSIH
+- Gunakan **##** untuk subjudul utama (JANGAN gunakan # — judul sudah ditampilkan terpisah)
+- Gunakan **###** untuk sub-bagian dalam subjudul
+- Satu baris kosong di antara setiap paragraf dan section
+- Gunakan **-** untuk list tidak berurutan
+- Gunakan **1. 2. 3.** untuk langkah berurutan atau prosedur wajib
+- Gunakan `**teks**` untuk: nama dokumen, istilah kunci, angka penting, biaya, tanggal
+- Gunakan **>** (blockquote) untuk catatan penting, peringatan, atau info kritis
+- JANGAN gunakan tabel kecuali konten aslinya memang berbentuk perbandingan
+- JANGAN tambahkan section baru yang tidak ada di konten asli
 
-Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, tanpa komentar tambahan.`;
+## ATURAN KONTEN KHUSUS
+- PERTAHANKAN semua teks Arab (ayat, hadits, istilah, nama) PERSIS seperti aslinya
+- PERTAHANKAN transliterasi Arab-Latin (contoh: "Shahada Qaid", "iqomah", "imtihan")
+- JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
+- Bahasa Indonesia tetap natural dan mudah dipahami
+
+Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda ```markdown.`;
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -7473,7 +7486,7 @@ Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, 
       body: JSON.stringify({
         model: "google/gemini-2.0-flash-001",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 4000,
+        max_tokens: 6000,
       }),
     });
     const data = await resp.json();
@@ -7514,9 +7527,9 @@ app.post("/api/admin/articles/reformat-all", async (req, res) => {
   let failed = 0;
 
   for (const art of articles) {
-    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform informasi mahasiswa Indonesia di Mesir (Masisir).
+    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
 
-Tugasmu: Format ulang artikel berikut menjadi Markdown yang bersih, terstruktur, dan mudah dibaca. JANGAN mengubah, menambah, atau menghilangkan informasi apapun — tugasmu hanya memperbaiki format dan struktur.
+Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur rapi.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -7526,22 +7539,35 @@ Konten asli:
 ${art.content.slice(0, 10000)}
 </KONTEN>
 
-ATURAN FORMAT (wajib diikuti):
-- Gunakan ## untuk subjudul utama, ### untuk sub-bagian (JANGAN gunakan # karena judul artikel sudah ditampilkan terpisah)
-- Pisahkan setiap paragraf dengan satu baris kosong
-- Gunakan - untuk poin-poin dalam list yang tidak berurutan
-- Gunakan 1. 2. 3. untuk langkah-langkah yang berurutan
-- Gunakan **teks** untuk istilah penting, nama dokumen, atau hal yang perlu ditekankan
-- Jangan gunakan tabel
-- Jika konten sudah terstruktur dengan baik, pertahankan strukturnya — jangan ubah yang tidak perlu
+## TAHAP 1 — EKSTRAKSI INFORMASI INTI
+Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
+- ✅ Fakta, angka, tanggal, nama tempat, instansi, dokumen
+- ✅ Prosedur, langkah-langkah, syarat, biaya, kontak
+- ✅ Informasi yang menjawab: "Apa?", "Di mana?", "Bagaimana?", "Berapa?", "Kapan?", "Siapa?"
+- ❌ Buang: kalimat pembuka basa-basi ("Halo Masisir...", "Selamat datang...", "Artikel ini akan membahas...")
+- ❌ Buang: kalimat penutup motivasi/basa-basi ("Semoga bermanfaat...", "Demikian informasi...")
+- ❌ Buang: pengulangan informasi yang sama
+- ❌ Buang: opini, penilaian subjektif, atau kalimat yang tidak menambah informasi faktual
+- ⚠️ Jika artikel sudah padat dan informatif, pertahankan semua — hanya perbaiki formatnya
 
-ATURAN KONTEN (wajib diikuti):
-- PERTAHANKAN semua teks Arab (ayat Al-Qur'an, hadits, istilah Arab, nama Arab) PERSIS seperti aslinya — JANGAN diterjemahkan, JANGAN diubah, JANGAN dihapus
-- PERTAHANKAN transliterasi Arab-Latin jika ada (contoh: "Shahada Qaid", "iqomah", "imtihan")
-- JANGAN menambahkan terjemahan baru untuk teks Arab yang tidak ada terjemahannya di konten asli
-- Bahasa Indonesia di artikel tetap ditulis dalam bahasa Indonesia yang natural
+## TAHAP 2 — FORMAT MARKDOWN BERSIH
+- Gunakan **##** untuk subjudul utama (JANGAN gunakan # — judul sudah ditampilkan terpisah)
+- Gunakan **###** untuk sub-bagian dalam subjudul
+- Satu baris kosong di antara setiap paragraf dan section
+- Gunakan **-** untuk list tidak berurutan
+- Gunakan **1. 2. 3.** untuk langkah berurutan atau prosedur wajib
+- Gunakan `**teks**` untuk: nama dokumen, istilah kunci, angka penting, biaya, tanggal
+- Gunakan **>** (blockquote) untuk catatan penting, peringatan, atau info kritis
+- JANGAN gunakan tabel kecuali konten aslinya memang berbentuk perbandingan
+- JANGAN tambahkan section baru yang tidak ada di konten asli
 
-Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, tanpa komentar tambahan.`;
+## ATURAN KONTEN KHUSUS
+- PERTAHANKAN semua teks Arab (ayat, hadits, istilah, nama) PERSIS seperti aslinya
+- PERTAHANKAN transliterasi Arab-Latin (contoh: "Shahada Qaid", "iqomah", "imtihan")
+- JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
+- Bahasa Indonesia tetap natural dan mudah dipahami
+
+Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda ```markdown.`;
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -7555,7 +7581,7 @@ Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, 
         body: JSON.stringify({
           model: "google/gemini-2.0-flash-001",
           messages: [{ role: "user", content: prompt }],
-          max_tokens: 4000,
+          max_tokens: 6000,
         }),
       });
 
@@ -7607,9 +7633,9 @@ app.post("/api/admin/articles/bulk-reformat", async (req, res) => {
   let failed = 0;
 
   for (const art of articles) {
-    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform informasi mahasiswa Indonesia di Mesir (Masisir).
+    const prompt = `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
 
-Tugasmu: Format ulang artikel berikut menjadi Markdown yang bersih, terstruktur, dan mudah dibaca. JANGAN mengubah, menambah, atau menghilangkan informasi apapun — tugasmu hanya memperbaiki format dan struktur.
+Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur rapi.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -7619,22 +7645,35 @@ Konten asli:
 ${art.content.slice(0, 10000)}
 </KONTEN>
 
-ATURAN FORMAT (wajib diikuti):
-- Gunakan ## untuk subjudul utama, ### untuk sub-bagian (JANGAN gunakan # karena judul artikel sudah ditampilkan terpisah)
-- Pisahkan setiap paragraf dengan satu baris kosong
-- Gunakan - untuk poin-poin dalam list yang tidak berurutan
-- Gunakan 1. 2. 3. untuk langkah-langkah yang berurutan
-- Gunakan **teks** untuk istilah penting, nama dokumen, atau hal yang perlu ditekankan
-- Jangan gunakan tabel
-- Jika konten sudah terstruktur dengan baik, pertahankan strukturnya — jangan ubah yang tidak perlu
+## TAHAP 1 — EKSTRAKSI INFORMASI INTI
+Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
+- ✅ Fakta, angka, tanggal, nama tempat, instansi, dokumen
+- ✅ Prosedur, langkah-langkah, syarat, biaya, kontak
+- ✅ Informasi yang menjawab: "Apa?", "Di mana?", "Bagaimana?", "Berapa?", "Kapan?", "Siapa?"
+- ❌ Buang: kalimat pembuka basa-basi ("Halo Masisir...", "Selamat datang...", "Artikel ini akan membahas...")
+- ❌ Buang: kalimat penutup motivasi/basa-basi ("Semoga bermanfaat...", "Demikian informasi...")
+- ❌ Buang: pengulangan informasi yang sama
+- ❌ Buang: opini, penilaian subjektif, atau kalimat yang tidak menambah informasi faktual
+- ⚠️ Jika artikel sudah padat dan informatif, pertahankan semua — hanya perbaiki formatnya
 
-ATURAN KONTEN (wajib diikuti):
-- PERTAHANKAN semua teks Arab (ayat Al-Qur'an, hadits, istilah Arab, nama Arab) PERSIS seperti aslinya — JANGAN diterjemahkan, JANGAN diubah, JANGAN dihapus
-- PERTAHANKAN transliterasi Arab-Latin jika ada (contoh: "Shahada Qaid", "iqomah", "imtihan")
-- JANGAN menambahkan terjemahan baru untuk teks Arab yang tidak ada terjemahannya di konten asli
-- Bahasa Indonesia di artikel tetap ditulis dalam bahasa Indonesia yang natural
+## TAHAP 2 — FORMAT MARKDOWN BERSIH
+- Gunakan **##** untuk subjudul utama (JANGAN gunakan # — judul sudah ditampilkan terpisah)
+- Gunakan **###** untuk sub-bagian dalam subjudul
+- Satu baris kosong di antara setiap paragraf dan section
+- Gunakan **-** untuk list tidak berurutan
+- Gunakan **1. 2. 3.** untuk langkah berurutan atau prosedur wajib
+- Gunakan `**teks**` untuk: nama dokumen, istilah kunci, angka penting, biaya, tanggal
+- Gunakan **>** (blockquote) untuk catatan penting, peringatan, atau info kritis
+- JANGAN gunakan tabel kecuali konten aslinya memang berbentuk perbandingan
+- JANGAN tambahkan section baru yang tidak ada di konten asli
 
-Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, tanpa komentar tambahan.`;
+## ATURAN KONTEN KHUSUS
+- PERTAHANKAN semua teks Arab (ayat, hadits, istilah, nama) PERSIS seperti aslinya
+- PERTAHANKAN transliterasi Arab-Latin (contoh: "Shahada Qaid", "iqomah", "imtihan")
+- JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
+- Bahasa Indonesia tetap natural dan mudah dipahami
+
+Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda ```markdown.`;
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -7648,7 +7687,7 @@ Kembalikan HANYA teks konten yang sudah diformat. Tanpa JSON, tanpa penjelasan, 
         body: JSON.stringify({
           model: "google/gemini-2.0-flash-001",
           messages: [{ role: "user", content: prompt }],
-          max_tokens: 4000,
+          max_tokens: 6000,
         }),
       });
 
