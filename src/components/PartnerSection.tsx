@@ -5,26 +5,16 @@ import { useInView } from "@/hooks/useInView";
 interface Partner {
   logo: string;
   name: string;
-  description: string;
-  badge: string;
   wide?: boolean;
 }
 
 const PARTNERS: Partner[] = [
-  {
-    logo: "/temantiket-logo.png",
-    name: "Temantiket",
-    description: "Tiket perjalanan mudah, cepat, amanah",
-    badge: "Travel Partner",
-    wide: true,
-  },
-  {
-    logo: "/ppmi-mesir-logo.png",
-    name: "PPMI Mesir",
-    description: "Persatuan Pelajar & Mahasiswa Indonesia",
-    badge: "Community Partner",
-  },
+  { logo: "/temantiket-logo.png", name: "Temantiket", wide: true },
+  { logo: "/ppmi-mesir-logo.png", name: "PPMI Mesir" },
 ];
+
+/* Duplicate for seamless infinite loop */
+const TRACK = [...PARTNERS, ...PARTNERS, ...PARTNERS, ...PARTNERS];
 
 const PartnerSection = () => {
   const { ref: sectionRef, inView: visible } = useInView<HTMLElement>();
@@ -34,6 +24,20 @@ const PartnerSection = () => {
 
   return (
     <section ref={sectionRef} className="relative py-20 px-4 overflow-hidden">
+      <style>{`
+        @keyframes marquee {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .marquee-track {
+          animation: marquee 18s linear infinite;
+          will-change: transform;
+        }
+        .marquee-track:hover {
+          animation-play-state: paused;
+        }
+      `}</style>
+
       {/* Background glows */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/20 to-background" />
@@ -41,7 +45,8 @@ const PartnerSection = () => {
         <div className="absolute right-1/4 bottom-1/3 h-48 w-48 rounded-full bg-purple-500/5 blur-3xl" />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-lg">
+      <div className="relative z-10 mx-auto max-w-2xl">
+
         {/* Header */}
         <div className={`text-center transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
           <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-sm border border-primary/20">
@@ -62,29 +67,33 @@ const PartnerSection = () => {
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
         </div>
 
-        {/* Partner list — no cards, clean rows */}
-        <div className={`mt-6 space-y-5 transition-all duration-700 delay-150 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          {PARTNERS.map((p) => (
-            <div key={p.name} className="flex items-center gap-4">
-              {/* Logo */}
-              <img
-                src={p.logo}
-                alt={p.name}
-                className={`shrink-0 object-contain ${p.wide ? "h-10 w-28" : "h-12 w-12"}`}
-              />
-              {/* Divider */}
-              <div className="w-px self-stretch bg-border/50" />
-              {/* Info */}
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold text-foreground">{p.name}</p>
-                  <span className="inline-flex items-center rounded-full bg-primary/8 border border-primary/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/60">
-                    {p.badge}
-                  </span>
+        {/* Marquee ticker */}
+        <div className={`mt-8 transition-all duration-700 delay-150 ${visible ? "opacity-100" : "opacity-0"}`}>
+          {/* Fade masks on edges */}
+          <div className="relative overflow-hidden"
+            style={{
+              maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent)",
+              WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent)",
+            }}
+          >
+            <div className="flex marquee-track w-max">
+              {TRACK.map((p, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 mx-8 shrink-0"
+                >
+                  <img
+                    src={p.logo}
+                    alt={p.name}
+                    className={`object-contain opacity-75 hover:opacity-100 transition-opacity ${p.wide ? "h-8 w-24" : "h-10 w-10"}`}
+                  />
+                  <span className="text-sm font-semibold text-muted-foreground/60 whitespace-nowrap">{p.name}</span>
+                  {/* Dot separator */}
+                  <span className="ml-4 h-1 w-1 rounded-full bg-border/60 shrink-0" />
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
 
         {/* CTA */}
@@ -111,6 +120,7 @@ const PartnerSection = () => {
             </div>
           </div>
         </div>
+
       </div>
     </section>
   );
