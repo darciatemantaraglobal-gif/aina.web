@@ -3177,32 +3177,36 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   );
 }
 
-/* ─── Markdown components for chat monitor ────────────── */
+/* ─── Markdown components for chat viewer — mirrors real ChatArea styling ── */
 const MONITOR_MD = {
   br: () => <br />,
   a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a>,
-  p: ({ children }: any) => <p className="mb-2 last:mb-0 break-words leading-relaxed">{children}</p>,
+  p: ({ children }: any) => <p className="mb-3 last:mb-0 break-words leading-[1.7] text-[15px]">{children}</p>,
   strong: ({ children }: any) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }: any) => <em className="italic text-muted-foreground/80">{children}</em>,
-  ul: ({ children }: any) => <ul className="mb-2 ml-4 list-disc space-y-0.5">{children}</ul>,
-  ol: ({ children }: any) => <ol className="mb-2 ml-4 list-decimal space-y-0.5">{children}</ol>,
-  li: ({ children }: any) => <li className="leading-relaxed break-words">{children}</li>,
-  h1: ({ children }: any) => <h1 className="mb-1.5 mt-3 text-sm font-bold text-foreground first:mt-0">{children}</h1>,
-  h2: ({ children }: any) => <h2 className="mb-1 mt-2.5 text-sm font-bold text-foreground first:mt-0">{children}</h2>,
-  h3: ({ children }: any) => <h3 className="mb-1 mt-2 text-xs font-semibold text-foreground first:mt-0">{children}</h3>,
+  ul: ({ children }: any) => <ul className="mb-3 ml-5 list-disc space-y-1">{children}</ul>,
+  ol: ({ children }: any) => <ol className="mb-3 ml-5 list-decimal space-y-1">{children}</ol>,
+  li: ({ children }: any) => <li className="text-[15px] leading-[1.7] break-words">{children}</li>,
+  h1: ({ children }: any) => <h1 className="mb-2 mt-4 text-lg font-bold text-foreground first:mt-0">{children}</h1>,
+  h2: ({ children }: any) => <h2 className="mb-1.5 mt-3.5 text-base font-bold text-foreground first:mt-0">{children}</h2>,
+  h3: ({ children }: any) => <h3 className="mb-1 mt-3 text-sm font-semibold text-foreground first:mt-0">{children}</h3>,
   code: ({ children, className }: any) => {
     if (className?.includes("language-")) return <code className={className}>{children}</code>;
-    return <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[11px] text-foreground break-all">{children}</code>;
+    return <code className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[13px] text-foreground break-all">{children}</code>;
   },
   pre: ({ children }: any) => (
-    <div className="mb-2 overflow-x-auto rounded-lg bg-muted/60">
-      <pre className="p-2.5 font-mono text-[11px] text-foreground">{children}</pre>
+    <div className="mb-3 overflow-x-auto rounded-xl bg-muted/60">
+      <pre className="p-3.5 font-mono text-[13px] text-foreground">{children}</pre>
     </div>
   ),
   blockquote: ({ children }: any) => (
-    <blockquote className="mb-2 border-l-2 border-primary/40 pl-3 text-muted-foreground">{children}</blockquote>
+    <blockquote className="mb-3 border-l-2 border-primary/40 pl-4 text-muted-foreground leading-[1.7]">{children}</blockquote>
   ),
-  hr: () => <hr className="my-2 border-border/50" />,
+  hr: () => <hr className="my-4 border-border/50" />,
+  table: ({ children }: any) => <div className="mb-3 overflow-x-auto rounded-xl border border-border"><table className="w-full text-[14px]">{children}</table></div>,
+  thead: ({ children }: any) => <thead className="bg-muted/40">{children}</thead>,
+  th: ({ children }: any) => <th className="px-3 py-2 text-left font-semibold text-foreground">{children}</th>,
+  td: ({ children }: any) => <td className="border-t border-border/50 px-3 py-2 text-foreground/90">{children}</td>,
 };
 
 /* ─── Chat Monitor Tab (Master Admin only) ───────────── */
@@ -3327,7 +3331,7 @@ function ChatMonitorTab() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-display text-lg font-bold text-foreground">Monitor Chat</h2>
+            <h2 className="font-display text-lg font-bold text-foreground">Log Sesi</h2>
             <p className="text-sm text-muted-foreground">{chats.length} percakapan terbaru</p>
           </div>
           <div className="flex items-center gap-2">
@@ -3441,80 +3445,100 @@ function ChatMonitorTab() {
         )}
       </div>
 
-      {/* Conversation Viewer Dialog */}
+      {/* Conversation Viewer Dialog — mirrors exact ChatArea user view */}
       <Dialog open={!!selected} onOpenChange={open => !open && setSelected(null)}>
-        <DialogContent className="max-w-2xl gap-0 p-0 overflow-hidden max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-3xl gap-0 p-0 overflow-hidden max-h-[92vh] flex flex-col">
           {selected && (
             <>
-              {/* Header — no delete button here anymore */}
-              <div className="flex items-center gap-3 border-b border-border p-4 shrink-0">
-                <AvatarDisplay name={selected.profile?.full_name ?? null} avatarUrl={selected.profile?.avatar_url ?? null} size={9} />
+              {/* Header — matches ChatArea top bar style */}
+              <div className="flex items-center gap-3 border-b border-border/60 bg-background/95 px-4 py-3 shrink-0 backdrop-blur">
+                <AvatarDisplay name={selected.profile?.full_name ?? null} avatarUrl={selected.profile?.avatar_url ?? null} size={8} />
                 <div className="min-w-0 flex-1">
-                  <DialogTitle className="text-sm font-semibold text-foreground truncate">{selected.profile?.full_name ?? selected.profile?.email ?? "Pengguna"}</DialogTitle>
+                  <DialogTitle className="text-sm font-semibold text-foreground truncate">
+                    {selected.profile?.full_name ?? selected.profile?.email ?? "Pengguna"}
+                  </DialogTitle>
                   <p className="text-xs text-muted-foreground truncate">{selected.title}</p>
                 </div>
-                <span className="shrink-0 text-xs text-muted-foreground">{fmtDate(selected.updated_at)}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-muted-foreground">{fmtDate(selected.updated_at)}</span>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Hapus chat "${selected.title}"? Semua pesan akan ikut terhapus permanen.`)) {
+                        deleteChat(selected.id);
+                      }
+                    }}
+                    disabled={deletingId === selected.id}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-40"
+                    title="Hapus chat ini"
+                  >
+                    {deletingId === selected.id
+                      ? <span className="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent" />
+                      : <Trash2 className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
               </div>
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {/* Messages — exact same layout as ChatArea */}
+              <div className="flex-1 overflow-y-auto">
                 {msgLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                  <div className="flex justify-center py-16">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
                   </div>
                 ) : messages.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada pesan.</p>
+                  <div className="flex flex-col items-center py-16 text-center">
+                    <MessageSquare className="mb-3 h-8 w-8 text-muted-foreground/30" />
+                    <p className="text-sm text-muted-foreground">Tidak ada pesan.</p>
+                  </div>
                 ) : (
-                  messages.map(m => (
-                    <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                      {m.role === "assistant" && (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-purple-700 mt-0.5">
-                          <Shield className="h-3.5 w-3.5 text-white" />
-                        </div>
-                      )}
-                      {m.role === "user" ? (
-                        <div className="max-w-[70%] rounded-2xl bg-primary px-3 py-2 text-xs leading-relaxed text-primary-foreground">
-                          <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                          <p className="mt-1 text-[10px] text-primary-foreground/60">
-                            {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="max-w-[85%] rounded-2xl bg-secondary px-3 py-2.5 text-xs text-secondary-foreground">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
-                            {m.content}
-                          </ReactMarkdown>
-                          <p className="mt-1.5 text-[10px] text-muted-foreground/60">
-                            {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                        </div>
-                      )}
-                      {m.role === "user" && (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted mt-0.5">
-                          <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-                  ))
+                  <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-8">
+                    {messages.map(m => (
+                      <div
+                        key={m.id}
+                        className={`flex gap-3 min-w-0 ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        {/* AINA logo — same as real chat */}
+                        {m.role === "assistant" && (
+                          <img src="/aina-icon.png" alt="AINA" className="mt-1 h-7 w-7 shrink-0 object-contain" />
+                        )}
+
+                        {m.role === "user" ? (
+                          /* User bubble — exact copy from ChatArea */
+                          <div className="max-w-[85%] space-y-2">
+                            <div
+                              className="rounded-3xl bg-secondary px-5 py-3.5 text-base text-foreground whitespace-pre-wrap break-words"
+                              dir="auto"
+                            >
+                              {m.content}
+                            </div>
+                            <p className="text-right text-[10px] text-muted-foreground/50 pr-1">
+                              {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        ) : (
+                          /* AI response — exact copy from ChatArea */
+                          <div className="min-w-0 flex-1 min-h-0">
+                            <div className="py-1.5 text-[15px] leading-[1.7]">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
+                                {m.content}
+                              </ReactMarkdown>
+                            </div>
+                            <p className="mt-1 text-[10px] text-muted-foreground/40">
+                              {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
-              {/* Footer with delete button */}
-              <div className="shrink-0 border-t border-border px-4 py-3 flex justify-end">
-                <button
-                  onClick={() => {
-                    if (window.confirm(`Hapus chat "${selected.title}"? Semua pesan akan ikut terhapus permanen.`)) {
-                      deleteChat(selected.id);
-                    }
-                  }}
-                  disabled={deletingId === selected.id}
-                  className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/15 transition-colors disabled:opacity-50"
-                >
-                  {deletingId === selected.id
-                    ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-                    : <Trash2 className="h-3.5 w-3.5" />}
-                  Hapus Chat Ini
-                </button>
+              {/* Fake input bar — read-only, just for visual mirroring */}
+              <div className="shrink-0 border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur">
+                <div className="flex items-center gap-3 rounded-2xl border border-border bg-secondary/50 px-4 py-3 text-sm text-muted-foreground/40 cursor-default select-none">
+                  <MessageSquare className="h-4 w-4 shrink-0" />
+                  <span>Kirim pesan…</span>
+                </div>
               </div>
             </>
           )}
@@ -7067,7 +7091,7 @@ const AdminPage = () => {
       label: "Monitoring",
       masterOnly: true,
       items: [
-        { id: "monitor",  label: "Chat Monitor", icon: Eye },
+        { id: "monitor",  label: "Log Sesi",     icon: Eye },
         { id: "security", label: "Security",     icon: ShieldAlert },
         { id: "signals",  label: "Sinyal User",  icon: ThumbsUp },
       ],
