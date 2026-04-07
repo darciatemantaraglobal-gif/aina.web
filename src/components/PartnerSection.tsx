@@ -36,8 +36,8 @@ const PartnerSection = () => {
             <div className="relative h-full flex flex-col justify-between px-7 py-8">
               <div>
                 <p className="font-display text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">Our</p>
-                <h2 className="font-display text-4xl sm:text-5xl font-black text-white leading-[1.05] mt-1">
-                  PART<br />NER
+                <h2 className="font-display text-3xl sm:text-4xl font-black text-white leading-[1.05] mt-1 whitespace-nowrap">
+                  PARTNER
                 </h2>
               </div>
               <p className="text-xs text-white/40 leading-relaxed hidden sm:block">
