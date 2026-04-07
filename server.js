@@ -7492,8 +7492,80 @@ app.get("/api/admin/usage-stats", async (req, res) => {
 });
 
 /* ── Master Admin: Reformat Single Article ──────────── */
-/* ── Shared reformat prompt ──────────────────────────────────── */
+/* ── Shared reformat helpers ─────────────────────────────────── */
+
+// Detect if content is predominantly Arabic (>25% Arabic chars by ratio)
+function isArabicContent(text) {
+  const sample = text.slice(0, 3000);
+  if (sample.length < 30) return false;
+  const arabicChars = (sample.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g) || []).length;
+  return arabicChars / sample.length > 0.25;
+}
+
 function buildReformatPrompt(art) {
+  const arabic = isArabicContent(art.content);
+
+  if (arabic) {
+    return `Kamu adalah editor konten bilingual (Arab–Indonesia) untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
+
+Artikel ini ditulis dalam bahasa Arab. Tugasmu adalah merapikan dan menyajikannya dalam format BILINGUAL yang mudah dipahami mahasiswa Indonesia.
+
+Judul artikel: "${art.title}"
+Kategori: "${art.category}"
+
+Konten asli (Arab):
+<KONTEN>
+${art.content.slice(0, 10000)}
+</KONTEN>
+
+## TAHAP 1 — EKSTRAKSI & ORGANISASI KONTEN
+- Pertahankan SEMUA konten Arab yang bermakna (teks, hadits, ayat, istilah fiqih, dll)
+- Hapus basa-basi pembuka/penutup yang tidak informatif
+- Susun ulang bagian-bagian agar mengalir logis (definisi → penjelasan → contoh/hukum)
+
+## TAHAP 2 — FORMAT BILINGUAL ARAB–INDONESIA
+
+Untuk setiap bagian, sajikan dengan struktur berikut:
+
+**Pola untuk teks Arab + penjelasan Indonesia:**
+\`\`\`
+## Judul Bagian
+
+<div dir="rtl">
+
+نَصُّ الْعَرَبِيَّةِ هُنَا
+
+</div>
+
+**Penjelasan:** Terjemahan dan penjelasan dalam Bahasa Indonesia yang jelas dan mudah dipahami mahasiswa. Jelaskan makna, konteks, dan implikasinya bagi Masisir jika relevan.
+\`\`\`
+
+**Aturan penting:**
+- Teks Arab SELALU diletakkan di dalam tag \`<div dir="rtl">\` dan \`</div>\` agar tampil dari kanan ke kiri
+- Setiap blok Arab WAJIB diikuti **Penjelasan:** dalam Bahasa Indonesia
+- Jika ada istilah teknis Arab (فقه، أصول، إجماع، dll), tulis istilahnya lalu jelaskan artinya
+- Untuk hadits: cantumkan matan Arab → penjelasan → perawi/sumber jika ada di konten asli
+- Untuk ayat Al-Qur'an: cantumkan teks Arab → terjemahan → tafsir singkat jika ada
+- JANGAN menambahkan terjemahan/penjelasan yang tidak berdasar dari konten asli
+
+## TAHAP 3 — PILIH FORMAT DATA YANG TEPAT
+
+Untuk data terstruktur yang ada dalam konten:
+- **Tabel** → perbandingan hukum, daftar syarat + keterangan, jadwal
+- **Numbered list** → langkah berurutan, urutan prosedur
+- **Bullet list** → daftar tanpa urutan, syarat-syarat, contoh-contoh
+- **Paragraf** → penjelasan konsep, narasi yang mengalir
+
+## ATURAN FORMAT UMUM
+- Gunakan **##** untuk subjudul utama (JANGAN gunakan # tunggal)
+- Gunakan **###** untuk sub-bagian
+- Satu baris kosong antara setiap section
+- Gunakan \`**teks**\` untuk istilah kunci, angka penting, nama dokumen
+
+Kembalikan HANYA konten yang sudah diformat bilingual. Tanpa penjelasan meta, tanpa komentar, tanpa tanda \`\`\`markdown di luar yang sudah ditentukan.`;
+  }
+
+  // Default prompt for Indonesian/mixed content
   return `Kamu adalah editor konten profesional untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
 
 Tugasmu adalah MENYARING dan MEREFORMAT artikel berikut menjadi konten knowledge base yang padat, informatif, dan terstruktur dengan format terbaik sesuai konteksnya.
