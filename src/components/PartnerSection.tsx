@@ -1,4 +1,4 @@
-import { Handshake, MessageCircle, ArrowRight } from "lucide-react";
+import { MessageCircle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useInView } from "@/hooks/useInView";
 
@@ -13,9 +13,6 @@ const PARTNERS: Partner[] = [
   { logo: "/ppmi-mesir-logo.png", name: "PPMI Mesir" },
 ];
 
-/* Duplicate for seamless infinite loop */
-const TRACK = [...PARTNERS, ...PARTNERS, ...PARTNERS, ...PARTNERS];
-
 const PartnerSection = () => {
   const { ref: sectionRef, inView: visible } = useInView<HTMLElement>();
 
@@ -24,80 +21,70 @@ const PartnerSection = () => {
 
   return (
     <section ref={sectionRef} className="relative py-20 px-4 overflow-hidden">
-      <style>{`
-        @keyframes marquee {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .marquee-track {
-          animation: marquee 18s linear infinite;
-          will-change: transform;
-        }
-        .marquee-track:hover {
-          animation-play-state: paused;
-        }
-      `}</style>
-
-      {/* Background glows */}
+      {/* Subtle background */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/20 to-background" />
-        <div className="absolute left-1/4 top-1/3 h-64 w-64 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute right-1/4 bottom-1/3 h-48 w-48 rounded-full bg-purple-500/5 blur-3xl" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-2xl">
+      <div className="relative z-10 mx-auto max-w-4xl">
 
-        {/* Header */}
-        <div className={`text-center transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
-          <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 backdrop-blur-sm border border-primary/20">
-            <Handshake className="h-6 w-6 text-primary" />
+        {/* ── Main block: title left + logos right ── */}
+        <div className={`flex flex-col sm:flex-row sm:items-center gap-8 sm:gap-12 transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+
+          {/* Left: title */}
+          <div className="sm:w-52 shrink-0">
+            <p className="font-display text-2xl sm:text-3xl font-bold text-foreground leading-snug">
+              Dipercaya oleh<br />
+              <span className="text-gradient-purple">komunitas &amp;</span><br />
+              partner kami
+            </p>
           </div>
-          <h2 className="font-display text-3xl font-bold text-foreground">
-            Partner <span className="text-gradient-purple">AINA</span>
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground max-w-xs mx-auto">
-            Kolaborasi dengan ekosistem terpercaya untuk Masisir.
-          </p>
-        </div>
 
-        {/* Divider */}
-        <div className={`mt-8 flex items-center gap-4 transition-all duration-700 delay-100 ${visible ? "opacity-100" : "opacity-0"}`}>
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/50">Partner Resmi</span>
-          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-        </div>
+          {/* Vertical divider — desktop only */}
+          <div className="hidden sm:block w-px self-stretch bg-border/50" />
 
-        {/* Marquee ticker */}
-        <div className={`mt-8 transition-all duration-700 delay-150 ${visible ? "opacity-100" : "opacity-0"}`}>
-          {/* Fade masks on edges */}
-          <div className="relative overflow-hidden"
-            style={{
-              maskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent)",
-              WebkitMaskImage: "linear-gradient(to right, transparent, black 15%, black 85%, transparent)",
-            }}
-          >
-            <div className="flex marquee-track w-max">
-              {TRACK.map((p, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 mx-8 shrink-0"
-                >
+          {/* Right: logo grid */}
+          <div className="flex-1 min-w-0">
+            {/* Row 1 */}
+            <div className="flex items-center gap-6 sm:gap-10 py-4">
+              {PARTNERS.map((p) => (
+                <div key={p.name} className="flex items-center gap-2.5 group cursor-default">
                   <img
                     src={p.logo}
                     alt={p.name}
-                    className={`object-contain opacity-75 hover:opacity-100 transition-opacity ${p.wide ? "h-8 w-24" : "h-10 w-10"}`}
+                    className={`object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-200 ${p.wide ? "h-7 w-20" : "h-8 w-8"}`}
                   />
-                  <span className="text-sm font-semibold text-muted-foreground/60 whitespace-nowrap">{p.name}</span>
-                  {/* Dot separator */}
-                  <span className="ml-4 h-1 w-1 rounded-full bg-border/60 shrink-0" />
+                  <span className="text-sm font-semibold text-muted-foreground/70 group-hover:text-foreground transition-colors duration-200 whitespace-nowrap">
+                    {p.name}
+                  </span>
                 </div>
               ))}
+            </div>
+
+            {/* Divider */}
+            <div className="h-px bg-border/40" />
+
+            {/* Row 2 — "Jadi partner berikutnya" placeholder slot */}
+            <div className="flex items-center py-4">
+              <a
+                href={`https://wa.me/${waNumber}?text=${waMessage}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 group"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-dashed border-primary/40 bg-primary/5 group-hover:border-primary/70 group-hover:bg-primary/10 transition-all duration-200">
+                  <span className="text-primary/60 text-lg leading-none group-hover:text-primary transition-colors">+</span>
+                </div>
+                <span className="text-sm font-medium text-muted-foreground/50 group-hover:text-primary transition-colors duration-200">
+                  Jadi partner berikutnya
+                </span>
+              </a>
             </div>
           </div>
         </div>
 
-        {/* CTA */}
-        <div className={`mt-10 transition-all duration-700 delay-300 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+        {/* ── CTA ── */}
+        <div className={`mt-10 transition-all duration-700 delay-200 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
           <div className="relative rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-purple-500/5 backdrop-blur-xl px-6 py-8 text-center overflow-hidden">
             <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 h-24 w-40 rounded-full bg-primary/10 blur-3xl" />
             <div className="relative">
