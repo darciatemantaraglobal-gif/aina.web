@@ -76,7 +76,7 @@ const PartnerSection = () => {
 
               {/* Logo + info */}
               <div className="mt-4 flex items-center gap-4">
-                <div className={`shrink-0 flex items-center justify-center rounded-xl bg-background/80 border border-border/40 ${p.wide ? "h-14 w-24 p-2" : "h-14 w-14 p-1"}`}>
+                <div className={`shrink-0 flex items-center justify-center rounded-xl bg-background/80 border border-border/40 ${p.wide ? "h-20 w-36 p-3" : "h-20 w-20 p-2"}`}>
                   <img
                     src={p.logo}
                     alt={p.name}
