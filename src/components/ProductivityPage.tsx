@@ -2229,16 +2229,32 @@ function getDayGreeting(): { text: string; emoji: string } {
    ════════════════════════════════════════════════════════ */
 const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [userId, setUserId] = useState(userIdProp ?? "");
+  const [userName, setUserName] = useState<string>("Masisir");
   const [tab, setTab] = useState<"fokus" | "dokumen" | "flashcard" | "catatan" | "pengingat">("fokus");
   const [gamRefreshKey, setGamRefreshKey] = useState(0);
   const handleFocusChange = useCallback(() => setGamRefreshKey(k => k + 1), []);
   const greeting = getDayGreeting();
 
   useEffect(() => {
-    if (userIdProp) { setUserId(userIdProp); return; }
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.id) setUserId(session.user.id);
-    });
+    const init = async () => {
+      let uid = userIdProp;
+      if (!uid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        uid = session?.user?.id;
+      }
+      if (!uid) return;
+      setUserId(uid);
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", uid)
+        .single();
+      if (data?.full_name) {
+        const firstName = data.full_name.trim().split(" ")[0];
+        setUserName(firstName);
+      }
+    };
+    init();
   }, [userIdProp]);
 
   const tabs = [
@@ -2258,7 +2274,7 @@ const ProductivityPage = ({ userId: userIdProp }: { userId?: string }) => {
           <div className="flex items-start justify-between gap-2 mb-1">
             <div>
               <p className="text-[11px] md:text-xs text-muted-foreground font-medium tracking-wide uppercase">
-                {greeting.emoji} {greeting.text}, Masisir
+                {greeting.emoji} {greeting.text}, {userName}
               </p>
               <h1 className="text-xl md:text-2xl font-extrabold text-foreground leading-tight mt-0.5">
                 Ruang Produktif

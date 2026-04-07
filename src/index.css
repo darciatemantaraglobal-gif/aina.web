@@ -138,6 +138,13 @@
     touch-action: manipulation;
   }
 
+  /* Mobile & PWA: increase base font by 2px for better readability */
+  @media (max-width: 767px) {
+    body {
+      font-size: 19px;
+    }
+  }
+
   /* Prevent iOS Safari auto-zoom on input focus.
      iOS zooms in when font-size < 16px — this locks it at 16px on mobile. */
   @media (max-width: 768px) {
