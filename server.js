@@ -5,6 +5,9 @@ import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
 import { createHash } from "crypto";
+import { fileURLToPath } from "url";
+import path from "path";
+import fs from "fs";
 import {
   buildKnowledgeContext, buildPinnedContext, buildPersonalizationContext,
   buildMemoryContext, buildExchangeContext, buildWikiContext,
@@ -28,6 +31,9 @@ import { createSmartRetrievalService }   from "./server/services/smartRetrievalS
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
 import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 // Trust the first proxy (Vercel / Replit / nginx) so rate-limit can read the real client IP
@@ -7472,7 +7478,7 @@ Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
 - JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
 - Bahasa Indonesia tetap natural dan mudah dipahami
 
-Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda ```markdown.`;
+Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda \`\`\`markdown.`;
 
   try {
     const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -7567,7 +7573,7 @@ Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
 - JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
 - Bahasa Indonesia tetap natural dan mudah dipahami
 
-Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda ```markdown.`;
+Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda \`\`\`markdown.`;
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -7673,7 +7679,7 @@ Pertahankan HANYA informasi yang benar-benar berguna bagi Masisir:
 - JANGAN tambahkan terjemahan Arab yang tidak ada di konten asli
 - Bahasa Indonesia tetap natural dan mudah dipahami
 
-Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda ```markdown.`;
+Kembalikan HANYA konten yang sudah disaring dan diformat. Tanpa penjelasan, tanpa komentar, tanpa tanda \`\`\`markdown.`;
 
     try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -12579,6 +12585,16 @@ async function autoSummarizeMissingArticles() {
     }
   }
   console.log(`[Summary] Auto-summarize complete: ${ok} done, ${fail} failed`);
+}
+
+// Serve built frontend assets in production (when dist/ exists after `npm run build`)
+const distPath = path.join(__dirname, "dist");
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(distPath, "index.html"));
+  });
 }
 
 // On Vercel (serverless) we export the app; listen() is only called in local dev.

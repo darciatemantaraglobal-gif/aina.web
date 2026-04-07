@@ -7,7 +7,7 @@
     "dev": "node_modules/.bin/concurrently \"node server.js\" \"vite\"",
     "start": "node server.js",
     "server": "node server.js",
-    "build": "vite build",
+    "build": "vite build && node scripts/create-prod-entry.js",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
