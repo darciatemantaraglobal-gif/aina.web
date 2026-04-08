@@ -5768,7 +5768,8 @@ function NewsManagementTab() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<NewsItem | null>(null);
-  const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true });
+  const todayLocal = () => new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true, published_at: todayLocal() });
   const [saving, setSaving] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -5818,13 +5819,23 @@ function NewsManagementTab() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true });
+    setForm({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true, published_at: todayLocal() });
     setShowForm(true);
   }
 
   function openEdit(item: NewsItem) {
     setEditing(item);
-    setForm({ title: item.title, content: item.content, category: item.category, image_url: item.image_url ?? "", source_url: item.source_url ?? "", source_name: item.source_name ?? "", is_pinned: item.is_pinned, is_active: item.is_active });
+    setForm({
+      title: item.title,
+      content: item.content,
+      category: item.category,
+      image_url: item.image_url ?? "",
+      source_url: item.source_url ?? "",
+      source_name: item.source_name ?? "",
+      is_pinned: item.is_pinned,
+      is_active: item.is_active,
+      published_at: item.published_at ? item.published_at.slice(0, 10) : todayLocal(),
+    });
     setShowForm(true);
   }
 
@@ -5835,8 +5846,13 @@ function NewsManagementTab() {
       const token = await getToken();
       const url = editing ? `/api/admin/news/${editing.id}` : "/api/admin/news";
       const method = editing ? "PUT" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(form) });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+      // Convert YYYY-MM-DD to full ISO timestamp
+      const publishedAtISO = form.published_at
+        ? new Date(form.published_at + "T12:00:00").toISOString()
+        : new Date().toISOString();
+      const payload = { ...form, published_at: publishedAtISO };
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Gagal menyimpan berita"); }
       toast.success(editing ? "Berita diperbarui" : "Berita ditambahkan");
       setShowForm(false);
       fetchNews();
@@ -6002,6 +6018,15 @@ function NewsManagementTab() {
                 <Input placeholder="mis: KBRI Kairo" value={form.source_name} onChange={e => setForm(f => ({ ...f, source_name: e.target.value }))} />
               </div>
             </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Tanggal Publish</label>
+              <Input
+                type="date"
+                value={form.published_at}
+                onChange={e => setForm(f => ({ ...f, published_at: e.target.value }))}
+                className="text-sm"
+              />
+            </div>
             <div className="flex items-center gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.is_pinned} onChange={e => setForm(f => ({ ...f, is_pinned: e.target.checked }))} className="rounded" />
@@ -6050,6 +6075,9 @@ function NewsManagementTab() {
                     <span className="text-[10px] text-muted-foreground">{getCatLabel(item.category)}</span>
                     {item.image_url && <Image className="h-3 w-3 text-muted-foreground shrink-0" />}
                   </div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                    {new Date(item.published_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                  </p>
                   <p className="mt-0.5 text-[12px] text-muted-foreground line-clamp-2">{item.content}</p>
                 </div>
                 {item.image_url && (

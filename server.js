@@ -171,6 +171,8 @@ app.use(rl(60_000, 200, "Terlalu banyak permintaan, coba lagi sebentar."));
 
 // Strict: auth-sensitive & expensive endpoints
 const strictLimiter   = rl(60_000,  10, "Terlalu banyak percobaan, tunggu 1 menit.");
+// Admin content limiter: admin CRUD ops (news, KB, etc.) — more lenient
+const adminContentLimiter = rl(60_000, 60, "Terlalu banyak operasi admin, tunggu sebentar.");
 // Chat limiter uses JWT user ID as the rate-limit key when available,
 // so dormitory shared-IP networks don't cause false positives for other users.
 const chatLimiter = rateLimit({
@@ -9493,6 +9495,84 @@ const NEWS_CATEGORIES = new Set([
   "kehidupan_mesir", "transportasi", "aigypt",
 ]);
 
+const NEWS_KB_CATEGORY_MAP = {
+  breaking_news:   "Kehidupan Mesir",
+  administrasi:    "Administrasi",
+  kuliner:         "Kuliner",
+  kehidupan_mesir: "Kehidupan Mesir",
+  transportasi:    "Transport",
+  aigypt:          "Akademik",
+};
+
+/* Sync a news item into the Knowledge Base so AINA can answer based on it */
+async function syncNewsToKB(newsItem) {
+  try {
+    const supabase = getAdminClient();
+    if (!supabase) return;
+
+    const markerKeyword = `news-id-${newsItem.id}`;
+    const kbCategory = NEWS_KB_CATEGORY_MAP[newsItem.category] ?? "Kehidupan Mesir";
+
+    const dateStr = new Date(newsItem.published_at).toLocaleDateString("id-ID", {
+      day: "numeric", month: "long", year: "numeric",
+    });
+
+    let kbContent = newsItem.content.trim();
+    if (newsItem.source_name) kbContent += `\n\n📰 Sumber: ${newsItem.source_name}`;
+    if (newsItem.source_url)  kbContent += `\n🔗 ${newsItem.source_url}`;
+    kbContent += `\n📅 Tanggal berita: ${dateStr}`;
+
+    const kbKeywords = `berita-masisir,${newsItem.category},${markerKeyword}`;
+    const catLabel   = newsItem.category === "breaking_news" ? "breaking news" : "terkini";
+
+    const kbData = {
+      title:           `[Berita] ${newsItem.title}`,
+      content:         kbContent,
+      category:        kbCategory,
+      keywords:        kbKeywords,
+      summary:         `Berita ${catLabel}: ${newsItem.title.slice(0, 120)}`,
+      article_type:    "narrative",
+      status:          "approved",
+      hidden:          !newsItem.is_active,
+      last_updated:    new Date().toISOString(),
+    };
+
+    // Check if KB article already exists for this news item
+    const { data: existing } = await supabase
+      .from("knowledge_base")
+      .select("id")
+      .ilike("keywords", `%${markerKeyword}%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) {
+      const { error: ue } = await supabase.from("knowledge_base").update(kbData).eq("id", existing.id);
+      if (ue) console.warn(`[NewsKB] Update failed for ${newsItem.id}:`, ue.message);
+      else    console.log(`[NewsKB] ✓ Updated KB article for "${newsItem.title}"`);
+    } else {
+      const { error: ie } = await supabase.from("knowledge_base").insert({ ...kbData, submitted_by: null });
+      if (ie) console.warn(`[NewsKB] Insert failed for ${newsItem.id}:`, ie.message);
+      else    console.log(`[NewsKB] ✓ Created KB article for "${newsItem.title}"`);
+    }
+  } catch (e) {
+    console.warn("[NewsKB] Sync error:", e.message);
+  }
+}
+
+/* Remove a news item's KB article when it is deleted */
+async function deleteNewsFromKB(newsId) {
+  try {
+    const supabase = getAdminClient();
+    if (!supabase) return;
+    const markerKeyword = `news-id-${newsId}`;
+    const { error } = await supabase.from("knowledge_base").delete().ilike("keywords", `%${markerKeyword}%`);
+    if (error) console.warn(`[NewsKB] Delete failed for ${newsId}:`, error.message);
+    else       console.log(`[NewsKB] ✓ Removed KB article for news ${newsId}`);
+  } catch (e) {
+    console.warn("[NewsKB] Delete error:", e.message);
+  }
+}
+
 /* GET /api/news — public, paginated, filterable by category */
 app.get("/api/news", async (req, res) => {
   const supabase = getAdminClient();
@@ -9565,11 +9645,11 @@ app.get("/api/admin/news", async (req, res) => {
 });
 
 /* POST /api/admin/news — create news item (admin only) */
-app.post("/api/admin/news", strictLimiter, async (req, res) => {
+app.post("/api/admin/news", adminContentLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
-  const { title, content, category, image_url, source_url, source_name, is_pinned = false, published_at } = req.body;
+  const { title, content, category, image_url, source_url, source_name, is_pinned = false, is_active = true, published_at } = req.body;
   if (!title?.trim() || !content?.trim()) return res.status(400).json({ error: "Judul dan konten wajib diisi" });
   if (category && !NEWS_CATEGORIES.has(category)) return res.status(400).json({ error: "Kategori tidak valid" });
 
@@ -9584,18 +9664,25 @@ app.post("/api/admin/news", strictLimiter, async (req, res) => {
       source_url: source_url?.trim() || null,
       source_name: source_name?.trim() || null,
       is_pinned: !!is_pinned,
-      author_id: admin.id,
+      is_active: is_active !== false,
       published_at: published_at || new Date().toISOString(),
     })
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  if (error) {
+    console.error("[POST /api/admin/news] Insert error:", error.message, error.code, error.details);
+    return res.status(500).json({ error: sanitizeErr(error) });
+  }
+
+  // Sync to KB so AINA can answer based on this news
+  syncNewsToKB(data).catch(() => {});
+
   res.json({ news: data });
 });
 
 /* PUT /api/admin/news/:id — update news item (admin only) */
-app.put("/api/admin/news/:id", strictLimiter, async (req, res) => {
+app.put("/api/admin/news/:id", adminContentLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
 
@@ -9621,13 +9708,20 @@ app.put("/api/admin/news/:id", strictLimiter, async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  if (error) {
+    console.error("[PUT /api/admin/news] Update error:", error.message, error.code);
+    return res.status(500).json({ error: sanitizeErr(error) });
+  }
+
+  // Sync updated news to KB
+  if (data) syncNewsToKB(data).catch(() => {});
+
   res.json({ news: data });
 });
 
 /* DELETE /api/admin/news/bulk — hapus berita secara bulk (admin only) */
 /* MUST be registered BEFORE /:id to avoid Express matching "bulk" as an id */
-app.delete("/api/admin/news/bulk", strictLimiter, async (req, res) => {
+app.delete("/api/admin/news/bulk", adminContentLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
   const ids = req.body?.ids;
@@ -9635,16 +9729,19 @@ app.delete("/api/admin/news/bulk", strictLimiter, async (req, res) => {
   const supabase = getAdminClient();
   const { error, count } = await supabase.from("masisir_news").delete({ count: "exact" }).in("id", ids);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  // Remove corresponding KB articles
+  ids.forEach(id => deleteNewsFromKB(id).catch(() => {}));
   res.json({ deleted: count ?? ids.length });
 });
 
 /* DELETE /api/admin/news/:id — delete news item (admin only) */
-app.delete("/api/admin/news/:id", strictLimiter, async (req, res) => {
+app.delete("/api/admin/news/:id", adminContentLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
   const supabase = getAdminClient();
   const { error } = await supabase.from("masisir_news").delete().eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  deleteNewsFromKB(req.params.id).catch(() => {});
   res.json({ success: true });
 });
 

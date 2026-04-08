@@ -133,6 +133,14 @@ const BeritaSection = () => {
                           </div>
                         )}
                         <div className="px-5 pb-5 pt-4 space-y-3">
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <Clock className="h-3 w-3 shrink-0" />
+                            <span>
+                              {new Date(item.published_at).toLocaleDateString("id-ID", {
+                                weekday: "long", day: "numeric", month: "long", year: "numeric",
+                              })}
+                            </span>
+                          </div>
                           <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{item.content}</p>
                           {item.source_url && (
                             <a href={item.source_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors">
