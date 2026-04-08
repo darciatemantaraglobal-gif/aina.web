@@ -60,24 +60,24 @@ export default function PartnerSection() {
           {/* Top rule */}
           <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-          <div className="flex items-stretch divide-x divide-white/8">
+          <div className="flex flex-col sm:flex-row sm:items-stretch sm:divide-x sm:divide-y-0 divide-y divide-white/8">
             {PARTNERS.map((p) => (
-              <div key={p.name} className="group flex-1 flex flex-col items-center justify-center gap-5 py-10 px-8 hover:bg-white/2 transition-colors duration-300">
+              <div key={p.name} className="group flex-1 flex flex-col items-center justify-center gap-4 py-9 px-6 sm:py-10 sm:px-8 hover:bg-white/2 transition-colors duration-300">
                 {/* Type label */}
                 <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/20 group-hover:text-primary/40 transition-colors duration-300">
                   {p.type}
                 </span>
 
                 {/* Logos */}
-                <div className="flex items-center justify-center gap-4">
+                <div className="flex items-center justify-center gap-3">
                   <img
                     src={p.logo}
                     alt={p.name}
-                    className={`object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-10 w-28" : "h-12 w-12"}`}
+                    className={`object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-9 w-28" : "h-12 w-12"}`}
                   />
                   {p.logo2 && (
                     <>
-                      <span className="h-10 w-px bg-white/10" />
+                      <span className="h-9 w-px bg-white/10" />
                       <img
                         src={p.logo2}
                         alt={p.subtitle ?? ""}
