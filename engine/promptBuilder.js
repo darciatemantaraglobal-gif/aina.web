@@ -40,7 +40,7 @@ export function buildKnowledgeContext(articles) {
         ? " [FORMAT: Panduan Langkah-langkah — WAJIB gunakan numbered markdown list: 1. ... 2. ... 3. ... (satu aksi per nomor, tiap langkah di baris baru). JANGAN gunakan **Langkah 1:** atau format lain — hanya angka diikuti titik dan spasi: '1. teks']"
         : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
 
-    const cleanedContent = trimToSentence(a.content, 2000);
+    const cleanedContent = trimToSentence(a.content, 4000);
     if (cleanedContent.length < a.content.length) {
       console.log(`[CtxClean] Article "${a.title}": ${a.content.length} → ${cleanedContent.length} chars`);
     }
