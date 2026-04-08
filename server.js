@@ -378,25 +378,49 @@ async function initKBKeywordsCol() {
     { col: "important_notes", sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS important_notes TEXT;" },
     { col: "last_updated",    sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ;" },
     { col: "content_ar",      sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS content_ar TEXT;" },
+    { col: "image_url",       sql: "ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS image_url TEXT;" },
   ];
   const dbUrl = process.env.DATABASE_URL;
   for (const { col, sql } of checks) {
     const { error: ce } = await supabase.from("knowledge_base").select(col).limit(1);
     if (ce?.message?.includes("does not exist") || ce?.code === "42703") {
       console.warn(`[KB] ⚠ '${col}' column missing — attempting auto-add...`);
-      if (dbUrl) {
+      let migrated = false;
+      // Try 1: pg with DATABASE_URL (works if DATABASE_URL is Supabase)
+      if (dbUrl && !migrated) {
         try {
           const { Client } = await import("pg");
           const pgClient = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
           await pgClient.connect();
           await pgClient.query(sql);
           await pgClient.end();
-          console.log(`[KB] ✓ '${col}' column added automatically`);
+          console.log(`[KB] ✓ '${col}' column added automatically (pg)`);
+          migrated = true;
         } catch (pgErr) {
-          console.warn(`[KB] ⚠ Auto-add '${col}' failed: ${pgErr.message}`);
-          console.warn(`[KB]   Run manually in Supabase SQL Editor:\n  ${sql}`);
+          if (!pgErr.message.includes("does not exist")) {
+            console.warn(`[KB] ⚠ pg auto-add failed: ${pgErr.message}`);
+          }
         }
-      } else {
+      }
+      // Try 2: Supabase pg-meta REST API (works with service role key)
+      if (!migrated && SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const pgMetaUrl = `${SUPABASE_URL.replace(/\/$/, "")}/pg-meta/v1/query`;
+          const r = await fetch(pgMetaUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({ query: sql }),
+          });
+          if (r.ok) {
+            console.log(`[KB] ✓ '${col}' column added via pg-meta API`);
+            migrated = true;
+          }
+        } catch {}
+      }
+      if (!migrated) {
         console.warn(`[KB]   Run manually in Supabase SQL Editor:\n  ${sql}`);
       }
     } else {
@@ -776,6 +800,7 @@ let _hasKeywordsCol     = null;
 let _hasMapsUrlCol      = null;
 let _hasSummaryCol      = null;
 let _hasImportantNotes  = null;
+let _hasImageUrlKbCol   = null;
 
 async function detectArticleTypeCol(supabase) {
   if (_hasArticleTypeCol !== null) return _hasArticleTypeCol;
@@ -825,6 +850,13 @@ async function detectImportantNotesCol(supabase) {
   const { error } = await supabase.from("knowledge_base").select("important_notes").limit(1);
   _hasImportantNotes = !error;
   return _hasImportantNotes;
+}
+
+async function detectImageUrlKbCol(supabase) {
+  if (_hasImageUrlKbCol !== null) return _hasImageUrlKbCol;
+  const { error } = await supabase.from("knowledge_base").select("image_url").limit(1);
+  _hasImageUrlKbCol = !error;
+  return _hasImageUrlKbCol;
 }
 
 /* ── AI keyword generation for KB articles ───────────── */
@@ -1128,12 +1160,13 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   const supabase = getAdminClient();
   if (!supabase) return [];
 
-  const [hasTypeCol, hasKwCol, hasMapsUrlCol, hasSummaryCol, hasNotesCol] = await Promise.all([
+  const [hasTypeCol, hasKwCol, hasMapsUrlCol, hasSummaryCol, hasNotesCol, hasImgUrlCol] = await Promise.all([
     detectArticleTypeCol(supabase),
     detectKeywordsCol(supabase),
     detectMapsUrlCol(supabase),
     detectSummaryCol(supabase),
     detectImportantNotesCol(supabase),
+    detectImageUrlKbCol(supabase),
   ]);
 
   const selectCols = [
@@ -1143,6 +1176,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     hasMapsUrlCol ? ", maps_url"         : "",
     hasSummaryCol ? ", summary"          : "",
     hasNotesCol   ? ", important_notes"  : "",
+    hasImgUrlCol  ? ", image_url"        : "",
   ].join("");
 
   // ── Indonesian stopwords — high-frequency words that add search noise ───────
@@ -4990,6 +5024,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   }
 
   // ── Send done event with final metadata ─────────────────────────────────────
+  const kbImages = (articles || [])
+    .filter(a => a.image_url && typeof a.image_url === "string" && a.image_url.trim())
+    .map(a => a.image_url.trim())
+    .filter((url, i, arr) => arr.indexOf(url) === i) // dedupe
+    .slice(0, 3); // max 3 posters
+
   res.write(`data: ${JSON.stringify({
     type:        "done",
     reply,
@@ -5002,6 +5042,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     citation_urls: perplexityResult?.citations ?? [],
     suggestions: followUpSuggestions,
     clarification_pending: clarificationDetected || undefined,
+    kb_images:   kbImages.length > 0 ? kbImages : undefined,
     sourceMetadata: {
       confidence:      normalizedConfidence,
       primary_source:  sourceResult.primary_source,
@@ -7288,7 +7329,7 @@ app.post("/api/admin/articles", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category, maps_url, contact_number: rawAdminContact } = req.body;
+  const { title, content, category, maps_url, contact_number: rawAdminContact, image_url: rawImageUrl } = req.body;
   if (!title || !content || !category) return res.status(400).json({ error: "title, content, category required" });
 
   const insertPayload = {
@@ -7303,6 +7344,9 @@ app.post("/api/admin/articles", async (req, res) => {
   }
   if (typeof rawAdminContact === "string" && rawAdminContact.trim()) {
     insertPayload.contact_number = rawAdminContact.trim().slice(0, 50);
+  }
+  if (typeof rawImageUrl === "string" && rawImageUrl.trim()) {
+    insertPayload.image_url = rawImageUrl.trim().slice(0, 2000);
   }
 
   const { data: inserted, error } = await supabase.from("knowledge_base").insert(insertPayload).select("id").single();
@@ -7450,7 +7494,7 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { title, content, category, keywords, maps_url, contact_number, article_type, summary, important_notes } = req.body;
+  const { title, content, category, keywords, maps_url, contact_number, article_type, summary, important_notes, image_url: rawImg } = req.body;
   const updatePayload = { title, content, category };
   if (typeof keywords === "string") updatePayload.keywords = keywords.trim().slice(0, 500);
   if (typeof maps_url === "string") updatePayload.maps_url = maps_url.trim().slice(0, 1000) || null;
@@ -7459,6 +7503,7 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   if (VALID_TYPES.includes(article_type)) updatePayload.article_type = article_type;
   if (typeof summary === "string") updatePayload.summary = summary.trim().slice(0, 600) || null;
   if (typeof important_notes === "string") updatePayload.important_notes = important_notes.trim().slice(0, 1000) || null;
+  if (rawImg !== undefined) updatePayload.image_url = typeof rawImg === "string" && rawImg.trim() ? rawImg.trim().slice(0, 2000) : null;
   const { error } = await supabase.from("knowledge_base").update(updatePayload).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ success: true });

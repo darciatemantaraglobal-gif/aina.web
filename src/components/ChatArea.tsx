@@ -28,6 +28,7 @@ interface Message {
   citation_urls?: string[];
   sourceMetadata?: SourceMetadata;
   suggestions?: string[];
+  kbImages?: string[];
 }
 
 interface AttachedFile {
@@ -642,6 +643,7 @@ interface StreamingMsg {
   sourceMetadata?: SourceMetadata;
   suggestions?: string[];
   isStreaming?: boolean;
+  kbImages?: string[];
 }
 
 const STREAM_CHARS_PER_TICK = 6;
@@ -793,6 +795,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         sources:        streamingMsg.sources,
         sourceMetadata: streamingMsg.sourceMetadata,
         suggestions:    streamingMsg.suggestions,
+        kbImages:       streamingMsg.kbImages,
       }]);
       setStreamingMsg(null);
       return;
@@ -1392,6 +1395,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         sourceMetadata: doneEvent!.sourceMetadata ?? undefined,
         suggestions:    doneEvent!.suggestions ?? [],
         isStreaming:    false,
+        kbImages:       (doneEvent as any).kb_images ?? [],
       } : null);
 
       await supabase
@@ -1677,6 +1681,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       {renderWithArabicBlocks(msg.content)}
                     </div>
 
+                    {/* KB poster images */}
+                    {msg.kbImages && msg.kbImages.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {msg.kbImages.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-border/50 hover:border-primary/40 transition-colors">
+                            <img
+                              src={url}
+                              alt={`Poster ${i + 1}`}
+                              className="max-h-56 max-w-full object-contain bg-black/10"
+                              onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Source badges + confidence badge + freshness warning */}
                     {(() => {
                       if (msg.intent === "casual") return null;
@@ -1928,6 +1948,21 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       <span className="inline-block h-[1em] w-[2px] rounded-full bg-primary animate-streaming-cursor align-middle ml-0.5" />
                     )}
                   </div>
+                  {/* KB poster images — shown after streaming completes */}
+                  {!streamingMsg.isStreaming && streamingMsg.kbImages && streamingMsg.kbImages.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {streamingMsg.kbImages.map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-border/50 hover:border-primary/40 transition-colors">
+                          <img
+                            src={url}
+                            alt={`Poster ${i + 1}`}
+                            className="max-h-56 max-w-full object-contain bg-black/10"
+                            onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {/* Stop button — visible while stream is active */}
                   {streamingMsg.isStreaming && (
                     <div className="mt-2">

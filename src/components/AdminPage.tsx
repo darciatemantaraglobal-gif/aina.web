@@ -47,6 +47,7 @@ interface Article {
   article_type?: string | null;
   summary?: string | null;
   important_notes?: string | null;
+  image_url?: string | null;
 }
 interface Stats {
   totalUsers: number; totalChats: number; pendingRequests: number;
@@ -1841,6 +1842,7 @@ type ArticleFormData = {
   article_type?: string; keywords?: string;
   summary?: string; important_notes?: string;
   maps_url?: string; contact_number?: string;
+  image_url?: string;
 };
 
 function ArticleFormDialog({
@@ -1865,7 +1867,52 @@ function ArticleFormDialog({
   const [contentAr, setContentAr] = useState<string | null>(null);
   const [showAr, setShowAr] = useState(false);
   const [previewContent, setPreviewContent] = useState(false);
+  const [imageUrl, setImageUrl] = useState(initial?.image_url ?? "");
+  const [imgUploading, setImgUploading] = useState(false);
+  const kbImgInputRef = useRef<HTMLInputElement>(null);
   const prevOpenRef = useRef(false);
+
+  // Client-side image compression — resize to max 900px, target <200KB JPEG
+  const compressImage = (file: File): Promise<File> => new Promise(resolve => {
+    const img = new window.Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let { width, height } = img;
+      const MAX_W = 900;
+      if (width > MAX_W) { height = Math.round(height * MAX_W / width); width = MAX_W; }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      const tryBlob = (q: number) => {
+        canvas.toBlob(blob => {
+          if (!blob) { resolve(file); return; }
+          if (blob.size <= 200 * 1024 || q <= 0.3) {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+          } else { tryBlob(Math.max(0.3, q - 0.12)); }
+        }, "image/jpeg", q);
+      };
+      tryBlob(0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+    img.src = objectUrl;
+  });
+
+  const uploadKbImage = async (file: File) => {
+    setImgUploading(true);
+    try {
+      const compressed = await compressImage(file);
+      const auth = await getAuthHeader();
+      const fd = new FormData();
+      fd.append("file", compressed);
+      const res = await fetch("/api/admin/upload-image", { method: "POST", headers: { Authorization: auth }, body: fd });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error ?? "Gagal upload gambar"); return; }
+      setImageUrl(json.publicUrl);
+      toast.success(`Poster diupload (${Math.round(compressed.size / 1024)} KB)`);
+    } catch { toast.error("Upload gagal. Coba lagi."); }
+    finally { setImgUploading(false); }
+  };
 
   useEffect(() => {
     if (open && !prevOpenRef.current) {
@@ -1878,6 +1925,7 @@ function ArticleFormDialog({
       setImportantNotes(initial?.important_notes ?? "");
       setMapsUrl(initial?.maps_url ?? "");
       setContactNumber(initial?.contact_number ?? "");
+      setImageUrl(initial?.image_url ?? "");
       setContentAr(null);
       setShowAr(false);
       setPreviewContent(false);
@@ -1896,6 +1944,7 @@ function ArticleFormDialog({
       important_notes: importantNotes.trim() || undefined,
       maps_url: mapsUrl.trim() || undefined,
       contact_number: contactNumber.trim() || undefined,
+      image_url: imageUrl.trim() || undefined,
     });
     setSaving(false);
   };
@@ -2113,6 +2162,55 @@ function ArticleFormDialog({
                 className="bg-secondary text-xs"
               />
             </div>
+          </div>
+
+          {/* Poster / Gambar — dengan kompresi client-side */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              🖼️ Poster / Gambar
+              <span className="font-normal text-muted-foreground/60">(opsional — otomatis dikompres &lt;200KB)</span>
+            </label>
+            <input
+              ref={kbImgInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadKbImage(f); e.target.value = ""; }}
+            />
+            {imageUrl ? (
+              <div className="relative rounded-xl overflow-hidden border border-border">
+                <img src={imageUrl} alt="Preview poster" className="w-full max-h-44 object-contain bg-black/10" />
+                <div className="absolute top-2 right-2 flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => kbImgInputRef.current?.click()}
+                    disabled={imgUploading}
+                    className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-black/80 transition-colors"
+                  >
+                    {imgUploading ? "Mengupload..." : "Ganti"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl("")}
+                    className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-600/80 transition-colors"
+                  >
+                    Hapus
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => kbImgInputRef.current?.click()}
+                disabled={imgUploading}
+                className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 py-5 text-center hover:bg-muted/50 transition-colors disabled:opacity-60"
+              >
+                {imgUploading
+                  ? <><RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" /><span className="text-xs text-muted-foreground">Mengompresi & mengupload...</span></>
+                  : <><Image className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Upload poster (JPG/PNG/WebP) — dikompres otomatis</span></>
+                }
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2 pt-1">
@@ -3017,6 +3115,11 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                             💬 Klarifikasi User
                           </span>
                         )}
+                        {art.image_url && (
+                          <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-xs text-sky-400 flex items-center gap-1" title="Artikel ini punya poster — akan dikirim AINA saat menjawab">
+                            <Image className="h-2.5 w-2.5" /> Poster
+                          </span>
+                        )}
                         {art.status === "approved" && (
                           art.has_embedding
                             ? (
@@ -3161,6 +3264,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
           important_notes: editArticle.important_notes ?? "",
           maps_url: editArticle.maps_url ?? "",
           contact_number: editArticle.contact_number ?? "",
+          image_url: editArticle.image_url ?? "",
         } : undefined}
       />
       <BulkImportDialog
