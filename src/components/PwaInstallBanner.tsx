@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Download, X, Share } from "lucide-react";
+import { Download, X, Share, RefreshCw } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { toast } from "sonner";
 
 const DISMISS_KEY  = "pwa-install-dismissed-at";
 const COOLDOWN_MS  = 7 * 24 * 60 * 60 * 1000; // 7 hari
@@ -26,19 +27,22 @@ export default function PwaInstallBanner() {
 
   const {
     needRefresh: [needRefresh],
+    offlineReady: [offlineReady],
     updateServiceWorker,
   } = useRegisterSW({
     onRegistered(r) { if (r) console.log("[PWA] Service Worker registered"); },
     onRegisterError(e) { console.warn("[PWA] SW error:", e); },
   });
 
-  // Auto-update: langsung apply service worker baru tanpa perlu klik tombol
+  // Notify user when app is ready for offline use (first time only)
   useEffect(() => {
-    if (needRefresh) {
-      console.log("[PWA] New version detected — auto-updating...");
-      updateServiceWorker(true);
+    if (offlineReady) {
+      toast.success("AINA siap digunakan offline", {
+        description: "Konten yang sudah dimuat tersedia tanpa internet.",
+        duration: 4000,
+      });
     }
-  }, [needRefresh, updateServiceWorker]);
+  }, [offlineReady]);
 
   useEffect(() => {
     if (isInStandalone() || isDismissedRecently()) return;
@@ -74,8 +78,22 @@ export default function PwaInstallBanner() {
     setShowIOS(false);
   };
 
-  // Auto-update sudah ditangani oleh useEffect di atas — tidak perlu banner manual
-  if (needRefresh) return null;
+  // ── Update available banner — shown at top, user decides when to refresh ────
+  // (tidak auto-reload agar tidak memutus sesi chat yang sedang berjalan)
+  if (needRefresh) {
+    return (
+      <div className="fixed top-0 inset-x-0 z-[9997] flex items-center justify-center gap-3 bg-primary/95 px-4 py-2.5 text-[13px] text-primary-foreground backdrop-blur-sm shadow-md">
+        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-medium">Versi baru AINA tersedia</span>
+        <button
+          onClick={() => updateServiceWorker(true)}
+          className="rounded-lg bg-primary-foreground/20 px-3 py-1 text-[12px] font-semibold hover:bg-primary-foreground/30 transition-colors shrink-0"
+        >
+          Perbarui
+        </button>
+      </div>
+    );
+  }
 
   // ── iOS install guide ────────────────────────────────────────────────────
   if (showIOS) {
