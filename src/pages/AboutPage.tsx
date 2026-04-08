@@ -94,6 +94,7 @@ const TEAM_GROUPS: TeamGroup[] = [
       { name: "Sulthan Nadzir", role: "Creative & Media Lead", initial: "S", photo: "/team/sulthan.jpg" },
       { name: "Navis Athiyatul Hafidz", role: "Creative & Media", initial: "Na", photo: "/team/navis.jpg" },
       { name: "Hafidz Majduddin", role: "Creative & Media", initial: "H", photo: "/team/hafidz.jpg" },
+      { name: "Arnaf Hamdan Farros", role: "Creative & Media", initial: "Af", photo: "/arnaf.png" },
     ],
   },
 ];
@@ -338,6 +339,8 @@ const AboutPage = () => {
                 members.length === 1
                   ? "flex justify-center"
                   : members.length === 2
+                  ? "grid grid-cols-2 gap-3 max-w-xs mx-auto w-full md:max-w-sm md:gap-5"
+                  : members.length === 4
                   ? "grid grid-cols-2 gap-3 max-w-xs mx-auto w-full md:max-w-sm md:gap-5"
                   : "grid grid-cols-3 gap-3 md:gap-5";
 
