@@ -48,6 +48,9 @@ SUPABASE_URL = "https://qyzimrshfcenpwvuownz.supabase.co"
 MASTER_ADMIN_IDS = "38a8f526-b1a7-47ef-9a04-ecc8b2b63f27"
 CLIENT_URL = "https://aaa6fd4a-2c61-42cf-a2bf-af2ee78ab9fb-00-lsr8pi7mrgzq.worf.replit.dev"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5emltcnNoZmNlbnB3dnVvd256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMjEyOTIsImV4cCI6MjA4ODg5NzI5Mn0.BzAZKpc1Ygux7MSScbLPqq0wmgmgrTcqqRZi2q_iLLs"
+PAYMENT_ENABLED = "false"
+USE_HYBRID_RETRIEVAL = "false"
+USE_SMART_RETRIEVAL = "false"
 
 [[ports]]
 localPort = 3001
