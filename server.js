@@ -1524,7 +1524,7 @@ function assessKBStrength(articles) {
  */
 function shouldFetchExternal(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
-  if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
+  if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q) || STANDALONE_CMD_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
   if (intentPrimary === "arabic_writing" || intentPrimary === "arabic_analysis") return false; // Pure language/writing task — no external needed
   if (intentPrimary === "fiqh") return false; // Dorar.net handles Islamic references — Wikipedia/DDG not reliable for fiqh
@@ -1642,6 +1642,8 @@ function extractWikipediaSearchTerm(query) {
 }
 
 const WIKI_SKIP_PATTERNS = /^(ok|oke|okay|iya|ya|yap|yep|haha|hehe|wkwk|lol|makasih|thanks|thank you|terima kasih|sip|siap|mantap|beres|done|good|great|nice|oke bro|sip bro|iyaa|ooh|ohh|wah|wow|hmm|hm|eh|ah|uh|gitu|gitu ya|gitu deh|paham|ngerti|mengerti|udah|sudah|lanjut|next|teruskan|lanjutkan)\b/i;
+// Standalone imperative commands with no topic — must be treated as follow-ups, not new queries
+const STANDALONE_CMD_PATTERNS = /^(jelaskan|jelasin|ceritakan|coba jelaskan|coba jelasin|lanjutkan|teruskan|kasih tahu|beritahu|elaborasi|uraikan|lanjut dong|jelasin dong|jelaskan dong)[!?.,\s]*$/i;
 
 /* ── Source trust scores (Phase 9) ───────────────────── */
 // Rule-based numeric trust tiers — no external API needed.
@@ -1819,7 +1821,7 @@ async function fetchWikipediaSummary(query) {
   const TIMEOUT = 4000;
   const trimmed = query.trim();
   // Skip very short or purely conversational messages
-  if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed)) return null;
+  if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed) || STANDALONE_CMD_PATTERNS.test(trimmed)) return null;
 
   try {
     const searchTerm = extractWikipediaSearchTerm(query);
@@ -1872,7 +1874,7 @@ async function fetchWikipediaSummary(query) {
 async function fetchDuckDuckGoAnswer(query) {
   const TIMEOUT = 3000;
   const trimmed = query.trim();
-  if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed)) return null;
+  if (trimmed.length < 8 || WIKI_SKIP_PATTERNS.test(trimmed) || STANDALONE_CMD_PATTERNS.test(trimmed)) return null;
   try {
     const q = encodeURIComponent(trimmed.slice(0, 200));
     const res = await fetch(
@@ -2100,7 +2102,7 @@ function isMasisirInternalOrg(q) {
  */
 function needsPerplexity(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
-  if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q)) return false;
+  if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q) || STANDALONE_CMD_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
   if (intentPrimary === "arabic_writing" || intentPrimary === "arabic_analysis") return false; // Pure language/writing task — no web context needed
   if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Gemini not used for fiqh
