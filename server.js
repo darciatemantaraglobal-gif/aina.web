@@ -10297,7 +10297,8 @@ Tulis respons yang diperbaiki:`;
       category: "Koreksi AI",
       status: "approved",
       source_url: null,
-      submitted_by: admin.id,
+      author_id: admin.id,
+      article_type: "narrative",
     })
     .select("id")
     .single();
