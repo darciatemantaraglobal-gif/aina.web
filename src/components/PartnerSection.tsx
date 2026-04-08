@@ -1,112 +1,102 @@
-import { MessageCircle, ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MessageCircle, ChevronRight } from "lucide-react";
 import { useInView } from "@/hooks/useInView";
-
-interface Partner {
-  logo: string;
-  name: string;
-  wide?: boolean;
-}
-
-const PARTNERS: Partner[] = [
-  { logo: "/temantiket-logo.png", name: "Temantiket", wide: true },
-  { logo: "/ppmi-mesir-logo.png", name: "PPMI Mesir" },
-];
 
 const waNumber = "6281311506025";
 const waMessage = encodeURIComponent("Halo, saya tertarik untuk menjadi partner AINA. Bisa jelaskan lebih lanjut?");
 
+const PARTNERS = [
+  {
+    logo: "/temantiket-logo.png",
+    name: "Temantiket",
+    tagline: "Travel Partner",
+    wide: true,
+  },
+  {
+    logo: "/ppmi-mesir-logo.png",
+    name: "PPMI Mesir",
+    tagline: "Community Partner",
+    wide: false,
+  },
+];
+
 const PartnerSection = () => {
-  const { ref: sectionRef, inView: visible } = useInView<HTMLElement>();
+  const { ref, inView: visible } = useInView<HTMLElement>();
 
   return (
-    <section ref={sectionRef} className="relative py-20 px-4 overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background via-purple-subtle/10 to-background" />
+    <section ref={ref} className="relative w-full overflow-hidden bg-background py-16">
 
-      <div className={`relative z-10 mx-auto max-w-4xl transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-        <div className="flex flex-col sm:flex-row rounded-2xl overflow-hidden border border-border/50 shadow-xl">
+      {/* Cinematic top fade */}
+      <div className="pointer-events-none absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-background to-transparent z-10" />
+      {/* Cinematic bottom fade */}
+      <div className="pointer-events-none absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-background to-transparent z-10" />
 
-          {/* ── Left panel — image background ── */}
-          <div
-            className="sm:w-56 shrink-0 min-h-[180px] sm:min-h-0 bg-cover bg-center relative"
-            style={{ backgroundImage: "url('/partner-bg.jpg')" }}
+      {/* Full-bleed background image strip */}
+      <div
+        className="absolute inset-0 bg-cover bg-center opacity-20"
+        style={{ backgroundImage: "url('/partner-bg.jpg')" }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-background" />
+
+      <div className="relative z-20 px-6 sm:px-12 lg:px-20">
+
+        {/* Row header — Netflix-style */}
+        <div className={`flex items-baseline gap-3 mb-6 transition-all duration-700 ${visible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"}`}>
+          <h2 className="font-display text-lg sm:text-xl font-bold text-white tracking-tight">
+            Partner Resmi
+          </h2>
+          <a
+            href={`https://wa.me/${waNumber}?text=${waMessage}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-0.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors group"
           >
-            {/* Overlay so text stays readable */}
-            <div className="absolute inset-0 bg-black/30" />
-            <div className="relative h-full flex flex-col justify-between px-7 py-8">
-              <div>
-                <p className="font-display text-[11px] font-semibold uppercase tracking-[0.2em] text-white/50">Our</p>
-                <h2 className="font-display text-3xl sm:text-4xl font-black text-white leading-[1.05] mt-1 whitespace-nowrap">
-                  PARTNER
-                </h2>
-              </div>
-              <p className="text-xs text-white/40 leading-relaxed hidden sm:block">
-                Kolaborasi terpercaya untuk komunitas Masisir.
-              </p>
-            </div>
-          </div>
-
-          {/* ── Right panel: logo grid ── */}
-          <div className="flex-1 bg-card/30">
-            {/* Logo row — only logos, no labels */}
-            <div className="grid grid-cols-2 divide-x divide-border/50">
-              {PARTNERS.map((p) => (
-                <div
-                  key={p.name}
-                  className="flex items-center justify-center px-8 py-10 hover:bg-primary/[0.04] transition-colors duration-200 group"
-                >
-                  <img
-                    src={p.logo}
-                    alt={p.name}
-                    className={`object-contain opacity-55 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-9 w-28" : "h-14 w-14"}`}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Divider */}
-            <div className="h-px bg-border/50" />
-
-            {/* Footer bar */}
-            <div className="flex items-center justify-between px-6 py-3">
-              <p className="text-[10px] text-muted-foreground/30 uppercase tracking-widest">Partner Resmi</p>
-              <a
-                href={`https://wa.me/${waNumber}?text=${waMessage}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[10px] font-medium text-primary/50 hover:text-primary transition-colors group"
-              >
-                <MessageCircle className="h-3 w-3" />
-                Daftar Partnership
-                <ArrowRight className="h-3 w-3 opacity-0 -translate-x-0.5 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150" />
-              </a>
-            </div>
-          </div>
-
+            Gabung
+            <ChevronRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+          </a>
         </div>
 
-        {/* ── CTA ── */}
-        <div className={`mt-6 transition-all duration-700 delay-200 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <div className="relative rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card/60 to-purple-500/5 backdrop-blur-xl px-6 py-8 text-center overflow-hidden">
-            <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 h-24 w-40 rounded-full bg-primary/10 blur-3xl" />
-            <div className="relative">
-              <p className="font-display text-xl font-bold text-gradient-purple">Bergabung Sebagai Partner</p>
-              <p className="mt-1.5 text-xs text-muted-foreground max-w-xs mx-auto">
-                Jangkau 15.000+ mahasiswa Indonesia di Mesir. Hubungi kami sekarang.
-              </p>
-              <a
-                href={`https://wa.me/${waNumber}?text=${waMessage}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-5 inline-block"
-              >
-                <Button variant="hero" size="default" className="group/btn">
-                  <MessageCircle className="mr-2 h-4 w-4" />
-                  Hubungi via WhatsApp
-                  <ArrowRight className="ml-2 h-4 w-4 opacity-0 -translate-x-1 group-hover/btn:opacity-100 group-hover/btn:translate-x-0 transition-all duration-200" />
-                </Button>
-              </a>
+        {/* Partner logos row */}
+        <div className={`flex items-center gap-12 sm:gap-20 transition-all duration-700 delay-100 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          {PARTNERS.map((p) => (
+            <div
+              key={p.name}
+              className="group flex flex-col items-center gap-3 cursor-default"
+            >
+              <img
+                src={p.logo}
+                alt={p.name}
+                className={`object-contain grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500 ease-out group-hover:scale-110 ${p.wide ? "h-10 w-36 sm:h-12 sm:w-44" : "h-14 w-14 sm:h-16 sm:w-16"}`}
+              />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/20 group-hover:text-white/60 transition-colors duration-300">
+                {p.tagline}
+              </span>
             </div>
+          ))}
+        </div>
+
+        {/* CTA — Netflix-style inline */}
+        <div className={`mt-16 sm:mt-20 transition-all duration-700 delay-200 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <div className="max-w-xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/70 mb-2">
+              Jadi Bagian dari AINA
+            </p>
+            <h3 className="font-display text-2xl sm:text-3xl font-bold text-white leading-snug">
+              Bergabung sebagai<br />
+              <span className="text-gradient-purple">Partner AINA</span>
+            </h3>
+            <p className="mt-3 text-sm text-white/40 max-w-sm leading-relaxed">
+              Jangkau 15.000+ mahasiswa Indonesia di Mesir. Program partnership terbuka untuk semua kategori.
+            </p>
+            <a
+              href={`https://wa.me/${waNumber}?text=${waMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 hover:border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 group"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Hubungi via WhatsApp
+              <ChevronRight className="h-4 w-4 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200" />
+            </a>
           </div>
         </div>
 
