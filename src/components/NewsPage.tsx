@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { NewsModal, timeAgo } from "@/components/NewsModal";
 import type { NewsItem } from "@/components/NewsModal";
 
-function stripMarkdown(text: string, max = 180): string {
+function stripMarkdown(text: string, max = 120): string {
   return text
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
@@ -26,100 +26,71 @@ function stripMarkdown(text: string, max = 180): string {
 }
 
 const CATEGORIES = [
-  {
-    id: "all",
-    label: "Semua",
-    icon: Newspaper,
-    activeBg: "bg-foreground",
-    activeText: "text-background",
-  },
-  {
-    id: "breaking_news",
-    label: "Breaking",
-    icon: Zap,
-    bg: "bg-red-500/10 border border-red-500/20",
-    activeBg: "bg-red-500",
-    activeText: "text-white",
-    dot: "bg-red-500",
-    color: "text-red-500",
-    pulse: true,
-  },
-  {
-    id: "administrasi",
-    label: "Admin",
-    icon: FileText,
-    bg: "bg-blue-500/10 border border-blue-500/20",
-    activeBg: "bg-blue-500",
-    activeText: "text-white",
-    dot: "bg-blue-500",
-    color: "text-blue-500",
-  },
-  {
-    id: "kuliner",
-    label: "Kuliner",
-    icon: Utensils,
-    bg: "bg-orange-500/10 border border-orange-500/20",
-    activeBg: "bg-orange-500",
-    activeText: "text-white",
-    dot: "bg-orange-500",
-    color: "text-orange-500",
-  },
-  {
-    id: "kehidupan_mesir",
-    label: "Kehidupan",
-    icon: Globe,
-    bg: "bg-green-500/10 border border-green-500/20",
-    activeBg: "bg-green-500",
-    activeText: "text-white",
-    dot: "bg-green-500",
-    color: "text-green-500",
-  },
-  {
-    id: "transportasi",
-    label: "Transportasi",
-    icon: Bus,
-    bg: "bg-cyan-500/10 border border-cyan-500/20",
-    activeBg: "bg-cyan-500",
-    activeText: "text-white",
-    dot: "bg-cyan-500",
-    color: "text-cyan-500",
-  },
-  {
-    id: "aigypt",
-    label: "AIGYPT",
-    icon: GraduationCap,
-    bg: "bg-violet-500/10 border border-violet-500/20",
-    activeBg: "bg-violet-500",
-    activeText: "text-white",
-    dot: "bg-violet-500",
-    color: "text-violet-500",
-  },
+  { id: "all",           label: "Semua",       icon: Newspaper,    activeBg: "bg-foreground",  activeText: "text-background" },
+  { id: "breaking_news", label: "Breaking",    icon: Zap,          activeBg: "bg-red-500",     activeText: "text-white", bg: "bg-red-500/10 border border-red-500/20",    dot: "bg-red-500",    color: "text-red-500",    pulse: true },
+  { id: "administrasi",  label: "Admin",       icon: FileText,     activeBg: "bg-blue-500",    activeText: "text-white", bg: "bg-blue-500/10 border border-blue-500/20",   dot: "bg-blue-500",   color: "text-blue-500"  },
+  { id: "kuliner",       label: "Kuliner",     icon: Utensils,     activeBg: "bg-orange-500",  activeText: "text-white", bg: "bg-orange-500/10 border border-orange-500/20",dot: "bg-orange-500", color: "text-orange-500"},
+  { id: "kehidupan_mesir",label:"Kehidupan",   icon: Globe,        activeBg: "bg-green-500",   activeText: "text-white", bg: "bg-green-500/10 border border-green-500/20",  dot: "bg-green-500",  color: "text-green-500" },
+  { id: "transportasi",  label: "Transportasi",icon: Bus,          activeBg: "bg-cyan-500",    activeText: "text-white", bg: "bg-cyan-500/10 border border-cyan-500/20",    dot: "bg-cyan-500",   color: "text-cyan-500"  },
+  { id: "aigypt",        label: "AIGYPT",      icon: GraduationCap,activeBg: "bg-violet-500",  activeText: "text-white", bg: "bg-violet-500/10 border border-violet-500/20",dot: "bg-violet-500", color: "text-violet-500"},
 ];
 
-function getCategoryMeta(categoryId: string) {
-  return CATEGORIES.find(c => c.id === categoryId) ?? CATEGORIES[0];
+function getCategoryMeta(id: string) {
+  return CATEGORIES.find(c => c.id === id) ?? CATEGORIES[0];
 }
 
-/* ─── News Card ─────────────────────────────────────────────────────────────
-   Mobile  : horizontal compact row (thumbnail right + text left)
-   Desktop : vertical card (image top + text below)                        */
+/* ─── Unified grid card — compact on mobile, fuller on desktop ─────────── */
 function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   const meta = getCategoryMeta(item.category);
   const Icon = meta.icon;
-  const preview = stripMarkdown(item.content, 120);
+  const preview = stripMarkdown(item.content, 100);
 
   return (
     <button
       onClick={onClick}
-      className={`group w-full text-left rounded-xl sm:rounded-2xl border bg-card transition-all duration-200 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] overflow-hidden ${item.is_pinned ? "border-primary/30 ring-1 ring-primary/10" : "border-border"}`}
+      className={`group w-full text-left flex flex-col rounded-xl sm:rounded-2xl border bg-card transition-all duration-200 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] overflow-hidden ${
+        item.is_pinned ? "border-primary/30 ring-1 ring-primary/10" : "border-border"
+      }`}
     >
-      {/* ── Mobile layout: horizontal row ── */}
-      <div className="flex items-stretch gap-0 sm:hidden">
-        {/* Text side */}
-        <div className="flex-1 min-w-0 p-3">
-          {/* Category + time */}
-          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-            <div className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${meta.bg ?? "bg-muted"} ${meta.color ?? "text-foreground"}`}>
+      {/* Image */}
+      {item.image_url ? (
+        <div className="relative w-full overflow-hidden bg-muted" style={{ paddingBottom: "56.25%" /* 16:9 */ }}>
+          <img
+            src={item.image_url}
+            alt={item.title}
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+          />
+          {/* Pinned badge */}
+          {item.is_pinned && (
+            <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 rounded-full bg-primary px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold text-primary-foreground shadow">
+              <Pin className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="hidden sm:inline">Pinned</span>
+            </div>
+          )}
+          {/* Category badge over image */}
+          <div className={`absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold backdrop-blur-md bg-black/50 text-white shadow`}>
+            {meta.pulse && (
+              <span className="relative flex h-1.5 w-1.5">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75`} />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+              </span>
+            )}
+            <Icon className="h-2.5 w-2.5" />
+            <span className="hidden sm:inline">{meta.label}</span>
+          </div>
+        </div>
+      ) : (
+        /* No image — color accent strip */
+        <div className={`h-1.5 w-full ${meta.dot ?? "bg-muted"}`} />
+      )}
+
+      {/* Text content */}
+      <div className="flex flex-col flex-1 p-2.5 sm:p-4">
+        {/* If no image, show category here */}
+        {!item.image_url && (
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${meta.bg ?? "bg-muted"} ${meta.color ?? "text-foreground"}`}>
               {meta.pulse && (
                 <span className="relative flex h-1.5 w-1.5">
                   <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${meta.dot} opacity-75`} />
@@ -128,132 +99,55 @@ function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
               )}
               <Icon className="h-2.5 w-2.5" />
               {meta.label}
-            </div>
+            </span>
             {item.is_pinned && <Pin className="h-2.5 w-2.5 text-primary shrink-0" />}
-            <span className="ml-auto flex items-center gap-0.5 text-[10px] text-muted-foreground">
-              <Clock className="h-2.5 w-2.5" />
-              {timeAgo(item.published_at)}
-            </span>
-          </div>
-          {/* Title */}
-          <h3 className="font-semibold text-foreground leading-snug text-[13px] line-clamp-2 mb-1">{item.title}</h3>
-          {/* Preview — only show if no image */}
-          {!item.image_url && (
-            <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{preview}</p>
-          )}
-          {/* CTA */}
-          <div className="mt-2 flex items-center gap-1 text-[10px] text-primary font-medium">
-            <MessageSquare className="h-2.5 w-2.5" />
-            <span>Lihat & Komentar</span>
-          </div>
-        </div>
-        {/* Thumbnail side — only if image exists */}
-        {item.image_url && (
-          <div className="shrink-0 w-24 relative overflow-hidden bg-muted">
-            <img
-              src={item.image_url}
-              alt={item.title}
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
-            />
-            {item.is_pinned && (
-              <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-semibold text-primary-foreground">
-                <Pin className="h-2 w-2" />
-              </div>
-            )}
           </div>
         )}
-      </div>
 
-      {/* ── Desktop layout: vertical card ── */}
-      <div className="hidden sm:block">
-        {item.image_url && (
-          <div className="relative h-44 w-full overflow-hidden bg-muted">
-            <img
-              src={item.image_url}
-              alt={item.title}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-            {item.is_pinned && (
-              <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
-                <Pin className="h-2.5 w-2.5" />
-                Pinned
-              </div>
-            )}
-          </div>
-        )}
-        <div className="p-4">
-          <div className="mb-2.5 flex items-center gap-2 flex-wrap">
-            <div className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.bg ?? "bg-muted"} ${meta.color ?? "text-foreground"}`}>
-              {meta.pulse && (
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${meta.dot} opacity-75`} />
-                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-                </span>
-              )}
-              <Icon className="h-3 w-3" />
-              {meta.label}
-            </div>
-            {!item.image_url && item.is_pinned && (
-              <div className="flex items-center gap-1 text-[10px] text-primary font-medium">
-                <Pin className="h-2.5 w-2.5" />
-                Pinned
-              </div>
-            )}
-            <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Clock className="h-3 w-3" />
-              {timeAgo(item.published_at)}
-            </span>
-          </div>
-          <h3 className="mb-2 font-semibold text-foreground leading-snug text-sm">{item.title}</h3>
-          <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-3">{preview}</p>
-          <div className="mt-3 flex items-center gap-1 text-[11px] text-primary font-medium">
-            <MessageSquare className="h-3 w-3" />
-            <span>Lihat & Komentar</span>
-          </div>
+        {/* Title */}
+        <h3 className="font-semibold text-foreground leading-snug text-[12px] sm:text-sm line-clamp-2 flex-1">
+          {item.title}
+        </h3>
+
+        {/* Preview text — hidden on mobile to keep cards compact */}
+        <p className="hidden sm:block mt-1.5 text-[12px] text-muted-foreground leading-relaxed line-clamp-2">
+          {preview}
+        </p>
+
+        {/* Footer: time + comments */}
+        <div className="mt-2 flex items-center justify-between gap-1">
+          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <Clock className="h-2.5 w-2.5" />
+            {timeAgo(item.published_at)}
+          </span>
+          <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium">
+            <MessageSquare className="h-2.5 w-2.5" />
+            <span className="hidden sm:inline">Komentar</span>
+          </span>
         </div>
       </div>
     </button>
   );
 }
 
+/* ─── Skeleton ───────────────────────────────────────────────────────────── */
 function SkeletonCard() {
   return (
-    <>
-      {/* Mobile skeleton */}
-      <div className="sm:hidden flex gap-0 rounded-xl border border-border bg-card overflow-hidden animate-pulse">
-        <div className="flex-1 p-3 space-y-2">
-          <div className="flex gap-1.5">
-            <div className="h-4 w-16 rounded-full bg-muted" />
-            <div className="ml-auto h-3 w-12 rounded bg-muted" />
-          </div>
-          <div className="h-3.5 w-full rounded bg-muted" />
-          <div className="h-3.5 w-4/5 rounded bg-muted" />
-          <div className="h-3 w-20 rounded bg-muted" />
-        </div>
-        <div className="w-24 bg-muted shrink-0" />
+    <div className="rounded-xl sm:rounded-2xl border border-border bg-card overflow-hidden animate-pulse">
+      <div className="w-full bg-muted" style={{ paddingBottom: "56.25%" }} />
+      <div className="p-2.5 sm:p-4 space-y-2">
+        <div className="h-3 w-full rounded bg-muted" />
+        <div className="h-3 w-4/5 rounded bg-muted" />
+        <div className="h-3 w-1/2 rounded bg-muted" />
       </div>
-      {/* Desktop skeleton */}
-      <div className="hidden sm:block rounded-2xl border border-border bg-card p-4 space-y-3 animate-pulse">
-        <div className="flex items-center gap-2">
-          <div className="h-5 w-24 rounded-full bg-muted" />
-          <div className="ml-auto h-4 w-16 rounded bg-muted" />
-        </div>
-        <div className="h-4 w-3/4 rounded bg-muted" />
-        <div className="space-y-1.5">
-          <div className="h-3 w-full rounded bg-muted" />
-          <div className="h-3 w-5/6 rounded bg-muted" />
-          <div className="h-3 w-4/6 rounded bg-muted" />
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
+/* ─── Page ───────────────────────────────────────────────────────────────── */
 const NewsPage = () => {
   const [activeCategory, setActiveCategory] = useState("all");
-  const [news, setNews]     = useState<NewsItem[]>([]);
+  const [news, setNews]       = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<NewsItem | null>(null);
@@ -264,7 +158,7 @@ const NewsPage = () => {
     try {
       const params = activeCategory !== "all" ? `?category=${activeCategory}` : "";
       const res = await fetch(`/api/news${params}`);
-      if (!res.ok) throw new Error("Gagal memuat berita");
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setNews(data.news ?? []);
     } catch {
@@ -278,13 +172,12 @@ const NewsPage = () => {
   useEffect(() => { fetchNews(); }, [fetchNews]);
 
   const counts: Record<string, number> = {};
-  for (const item of news) {
-    counts[item.category] = (counts[item.category] ?? 0) + 1;
-  }
+  for (const item of news) counts[item.category] = (counts[item.category] ?? 0) + 1;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="shrink-0 border-b border-border px-4 md:px-8 py-3 md:py-5">
         <div className="md:max-w-5xl md:mx-auto flex items-center gap-3">
           <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600">
@@ -305,8 +198,8 @@ const NewsPage = () => {
         </div>
       </div>
 
-      {/* Category filter — compact scrollable pills */}
-      <div className="shrink-0 overflow-x-auto px-4 md:px-8 py-2.5 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
+      {/* ── Category filter pills ── */}
+      <div className="shrink-0 overflow-x-auto px-4 md:px-8 py-2 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
         <div className="md:max-w-5xl md:mx-auto flex gap-1.5 w-max md:w-full">
           {CATEGORIES.map(cat => {
             const Icon = cat.icon;
@@ -322,7 +215,7 @@ const NewsPage = () => {
                     : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
                 }`}
               >
-                {cat.pulse && isActive && (
+                {(cat as any).pulse && isActive && (
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
@@ -341,11 +234,11 @@ const NewsPage = () => {
         </div>
       </div>
 
-      {/* News list/grid */}
+      {/* ── News grid ── */}
       <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-6 md:pb-8">
         <div className="md:max-w-5xl md:mx-auto">
           {loading ? (
-            <div className="grid gap-2 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 pt-3">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-4 pt-3">
               {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : news.length === 0 ? (
@@ -361,8 +254,7 @@ const NewsPage = () => {
               </p>
             </div>
           ) : (
-            /* Mobile: compact list | Desktop: grid cards */
-            <div className="grid gap-2 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 pt-3">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-4 pt-3">
               {news.map(item => (
                 <NewsCard key={item.id} item={item} onClick={() => setSelected(item)} />
               ))}
@@ -371,7 +263,6 @@ const NewsPage = () => {
         </div>
       </div>
 
-      {/* Modal */}
       {selected && <NewsModal item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
