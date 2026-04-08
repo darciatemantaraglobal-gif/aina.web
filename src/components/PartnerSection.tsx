@@ -93,18 +93,35 @@ export default function PartnerSection() {
       </div>
 
       {/* CTA */}
-      <div className={`relative z-10 mt-12 px-6 text-center transition-all duration-700 delay-200 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-        <p className="text-sm text-white/30 mb-3">Tertarik bergabung sebagai partner?</p>
-        <a
-          href={`https://wa.me/${waNumber}?text=${waMessage}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group inline-flex items-center gap-2 text-sm font-semibold text-primary/80 hover:text-primary transition-colors duration-200"
-        >
-          <MessageCircle className="h-4 w-4" />
-          Hubungi via WhatsApp
-          <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform duration-200" />
-        </a>
+      <div className={`relative z-10 mt-12 px-6 transition-all duration-700 delay-200 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+        <div className="mx-auto max-w-3xl relative rounded-2xl overflow-hidden">
+          {/* Background layers */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-[#1a0a3a] to-purple-900/30" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_hsl(var(--primary)/0.25),_transparent_60%)]" />
+          <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-primary/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-purple-500/15 blur-3xl" />
+          {/* Border glow */}
+          <div className="absolute inset-0 rounded-2xl border border-primary/25" />
+
+          <div className="relative flex flex-col sm:flex-row items-center justify-between gap-6 px-8 py-8">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/60 mb-1.5">Buka Peluang Kolaborasi</p>
+              <h3 className="font-display text-xl sm:text-2xl font-bold text-white leading-tight">
+                Jangkau 15.000+ Masisir<br className="hidden sm:block" /> bersama AINA
+              </h3>
+            </div>
+            <a
+              href={`https://wa.me/${waNumber}?text=${waMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group shrink-0 inline-flex items-center gap-2.5 rounded-xl bg-white px-6 py-3 text-sm font-bold text-[#0d0824] hover:bg-white/90 active:scale-95 transition-all duration-200 shadow-[0_0_24px_-4px_hsl(var(--primary)/0.5)]"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Hubungi via WhatsApp
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform duration-200" />
+            </a>
+          </div>
+        </div>
       </div>
     </section>
   );
