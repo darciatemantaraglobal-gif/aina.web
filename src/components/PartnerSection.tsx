@@ -55,48 +55,55 @@ export default function PartnerSection() {
           </p>
         </div>
 
-        {/* Partner cards */}
-        <div className={`mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 transition-all duration-700 delay-150 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          {PARTNERS.map((p) => (
-            <div
-              key={p.name}
-              className="group relative rounded-2xl border border-white/8 bg-white/3 backdrop-blur-sm px-8 py-8 flex flex-col items-center text-center hover:border-primary/25 hover:bg-primary/5 transition-all duration-300"
-            >
-              {/* Type badge */}
-              <span className="absolute top-4 right-4 text-[10px] font-semibold uppercase tracking-widest text-white/25 group-hover:text-primary/50 transition-colors duration-300">
-                {p.type}
-              </span>
+        {/* Partner strip */}
+        <div className={`mt-14 transition-all duration-700 delay-150 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          {/* Top rule */}
+          <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-              {/* Logos */}
-              <div className="flex items-center justify-center gap-3 mb-5">
-                <img
-                  src={p.logo}
-                  alt={p.name}
-                  className={`object-contain ${p.wide ? "h-10 w-32" : "h-14 w-14"}`}
-                />
-                {p.logo2 && (
-                  <>
-                    <span className="h-8 w-px bg-white/10" />
-                    <img
-                      src={p.logo2}
-                      alt={p.subtitle ?? ""}
-                      className="h-12 w-12 object-contain"
-                    />
-                  </>
-                )}
+          <div className="flex items-stretch divide-x divide-white/8">
+            {PARTNERS.map((p) => (
+              <div key={p.name} className="group flex-1 flex flex-col items-center justify-center gap-5 py-10 px-8 hover:bg-white/2 transition-colors duration-300">
+                {/* Type label */}
+                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/20 group-hover:text-primary/40 transition-colors duration-300">
+                  {p.type}
+                </span>
+
+                {/* Logos */}
+                <div className="flex items-center justify-center gap-4">
+                  <img
+                    src={p.logo}
+                    alt={p.name}
+                    className={`object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-10 w-28" : "h-12 w-12"}`}
+                  />
+                  {p.logo2 && (
+                    <>
+                      <span className="h-10 w-px bg-white/10" />
+                      <img
+                        src={p.logo2}
+                        alt={p.subtitle ?? ""}
+                        className="h-12 w-12 object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300"
+                      />
+                    </>
+                  )}
+                </div>
+
+                {/* Name + subtitle */}
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-white/60 group-hover:text-white/90 transition-colors duration-300">{p.name}</p>
+                  {p.subtitle && (
+                    <p className="mt-0.5 text-[11px] text-white/25 group-hover:text-white/45 transition-colors duration-300">{p.subtitle}</p>
+                  )}
+                </div>
               </div>
+            ))}
+          </div>
 
-              {/* Name + subtitle */}
-              <p className="font-display text-base font-bold text-white">{p.name}</p>
-              {p.subtitle && (
-                <p className="mt-1 text-[11px] text-white/35">{p.subtitle}</p>
-              )}
-            </div>
-          ))}
+          {/* Bottom rule */}
+          <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
         </div>
 
         {/* CTA */}
-        <div className={`mt-12 text-center transition-all duration-700 delay-200 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+        <div className={`mt-10 text-center transition-all duration-700 delay-200 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
           <p className="text-sm text-white/35 mb-4">Ingin jadi partner AINA?</p>
           <a
             href={`https://wa.me/${waNumber}?text=${waMessage}`}
