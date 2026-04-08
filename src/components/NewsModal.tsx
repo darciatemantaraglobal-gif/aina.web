@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Newspaper, Clock, ExternalLink, Pin, X, MessageSquare, Send,
-  RefreshCw, LogIn, Trash2,
+  RefreshCw, LogIn, Trash2, ZoomIn,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 
 export interface NewsItem {
   id: string; title: string; content: string; category: string;
@@ -43,6 +46,19 @@ function getInitials(name: string) {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
 }
 
+const MD_COMPONENTS = {
+  h2: ({ children }: any) => <h2 className="text-sm font-bold text-foreground mt-4 mb-1.5">{children}</h2>,
+  h3: ({ children }: any) => <h3 className="text-sm font-semibold text-foreground mt-3 mb-1">{children}</h3>,
+  p: ({ children }: any) => <p className="text-sm text-muted-foreground leading-relaxed mb-2">{children}</p>,
+  strong: ({ children }: any) => <strong className="font-semibold text-foreground">{children}</strong>,
+  ul: ({ children }: any) => <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 mb-2 pl-1">{children}</ul>,
+  ol: ({ children }: any) => <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-1 mb-2 pl-1">{children}</ol>,
+  li: ({ children }: any) => <li className="leading-relaxed">{children}</li>,
+  hr: () => <hr className="border-border/40 my-3" />,
+  a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80">{children}</a>,
+  blockquote: ({ children }: any) => <blockquote className="border-l-2 border-primary/40 pl-3 italic text-muted-foreground my-2">{children}</blockquote>,
+};
+
 export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => void }) {
   const meta = CAT_META[item.category] ?? { label: item.category, color: "text-muted-foreground", dot: "bg-muted-foreground", bg: "bg-muted" };
 
@@ -53,6 +69,7 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
   const [cmtError, setCmtError]         = useState("");
   const [session, setSession]           = useState<any>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [imgExpanded, setImgExpanded]   = useState(false);
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -123,16 +140,36 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
       {/* Panel */}
       <div className="relative z-10 w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-t-2xl sm:rounded-2xl bg-card border border-border/60 shadow-2xl overflow-hidden">
 
-        {/* Cover image */}
+        {/* Cover image — clickable to expand */}
         {item.image_url && (
-          <div className="w-full h-44 sm:h-52 shrink-0 overflow-hidden">
-            <img
-              src={item.image_url}
-              alt={item.title}
-              className="w-full h-full object-cover"
-              onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
-            />
-          </div>
+          <>
+            <div
+              className="relative w-full shrink-0 overflow-hidden cursor-zoom-in group"
+              style={{ maxHeight: imgExpanded ? "80vh" : "14rem" }}
+              onClick={() => setImgExpanded(v => !v)}
+            >
+              <img
+                src={item.image_url}
+                alt={item.title}
+                className={`w-full transition-all duration-300 ${imgExpanded ? "object-contain bg-black/90" : "h-56 sm:h-64 object-cover"}`}
+                onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+              />
+              {!imgExpanded && (
+                <div className="absolute inset-0 flex items-end justify-end p-2 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] text-white">
+                    <ZoomIn className="h-2.5 w-2.5" /> Perbesar
+                  </div>
+                </div>
+              )}
+              {imgExpanded && (
+                <div className="absolute top-2 right-2">
+                  <div className="flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] text-white">
+                    <X className="h-2.5 w-2.5" /> Kecilkan
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         {/* Header */}
@@ -169,7 +206,14 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
               <Clock className="h-3 w-3 shrink-0" />
               <span>{fullDate(item.published_at)}</span>
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{item.content}</p>
+            <div className="text-sm text-muted-foreground">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkBreaks]}
+                components={MD_COMPONENTS}
+              >
+                {item.content}
+              </ReactMarkdown>
+            </div>
             {item.source_url && (
               <a
                 href={item.source_url}

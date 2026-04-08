@@ -9751,6 +9751,71 @@ app.get("/api/admin/news", async (req, res) => {
   res.json({ news: data ?? [] });
 });
 
+/* POST /api/admin/news/ai-polish — AI-polish news content into proper Markdown */
+app.post("/api/admin/news/ai-polish", adminContentLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "API key tidak dikonfigurasi" });
+
+  const { title, content, category } = req.body;
+  if (!content?.trim()) return res.status(400).json({ error: "Konten tidak boleh kosong" });
+
+  const catLabels = {
+    breaking_news: "Breaking News", administrasi: "Administrasi",
+    kuliner: "Kuliner", kehidupan_mesir: "Kehidupan Mesir",
+    transportasi: "Transportasi", aigypt: "AIGYPT / Akademik",
+  };
+  const catLabel = catLabels[category] ?? category;
+
+  const prompt = `Kamu adalah editor berita profesional untuk platform berita Masisir (mahasiswa Indonesia di Mesir).
+
+Tugas: Format ulang konten berita berikut menjadi artikel berita yang rapi menggunakan Markdown.
+
+JUDUL: ${title || "(tidak ada)"}
+KATEGORI: ${catLabel}
+KONTEN ASLI:
+---
+${content}
+---
+
+INSTRUKSI:
+- Tulis ulang agar enak dibaca sebagai berita, tetapi JANGAN ubah fakta atau informasi apapun
+- Gunakan format Markdown: heading (##), bold (**teks**), bullet list (- item), dan separator (---) jika perlu
+- Mulai langsung dengan paragraf pembuka berita (lead paragraph) yang informatif
+- Gunakan bullet list untuk info detail seperti jadwal, syarat, atau langkah-langkah
+- Tambahkan 1-2 heading section jika konten cukup panjang
+- Akhiri dengan kalimat penutup yang informatif
+- Bahasa Indonesia yang baik dan jurnalistik
+- Panjang ideal: 150–400 kata
+- HANYA keluarkan konten Markdown saja, tanpa penjelasan, tanpa judul H1`;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA News Polisher",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-001",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 2000,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) return res.status(500).json({ error: sanitizeErr(data.error) || "AI error" });
+    const polished = data.choices?.[0]?.message?.content?.trim();
+    if (!polished || polished.length < 30) return res.status(500).json({ error: "Hasil AI kosong" });
+    res.json({ content: polished });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* POST /api/admin/news — create news item (admin only) */
 app.post("/api/admin/news", adminContentLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);

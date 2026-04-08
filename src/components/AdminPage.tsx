@@ -5772,6 +5772,8 @@ function NewsManagementTab() {
   const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true, published_at: todayLocal() });
   const [saving, setSaving] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
+  const [aiPolishing, setAiPolishing] = useState(false);
+  const [contentTab, setContentTab] = useState<"edit" | "preview">("edit");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const newsImgInputRef = useRef<HTMLInputElement>(null);
@@ -5820,6 +5822,7 @@ function NewsManagementTab() {
   function openCreate() {
     setEditing(null);
     setForm({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true, published_at: todayLocal() });
+    setContentTab("edit");
     setShowForm(true);
   }
 
@@ -5836,6 +5839,7 @@ function NewsManagementTab() {
       is_active: item.is_active,
       published_at: item.published_at ? item.published_at.slice(0, 10) : todayLocal(),
     });
+    setContentTab("edit");
     setShowForm(true);
   }
 
@@ -5898,6 +5902,24 @@ function NewsManagementTab() {
     fetchNews();
   }
 
+  async function handleAiPolish() {
+    if (!form.content.trim()) return toast.error("Tulis konten dulu sebelum diperbaiki AI");
+    setAiPolishing(true);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/admin/news/ai-polish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: form.title, content: form.content, category: form.category }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? "AI gagal memproses"); return; }
+      setForm(f => ({ ...f, content: data.content }));
+      setContentTab("preview");
+      toast.success("Konten berhasil diperbaiki AI!");
+    } catch { toast.error("Gagal terhubung ke AI"); } finally { setAiPolishing(false); }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -5948,8 +5970,47 @@ function NewsManagementTab() {
               </Select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Konten *</label>
-              <Textarea placeholder="Isi berita..." value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={6} />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-muted-foreground">Konten * <span className="text-muted-foreground/60">(Markdown didukung)</span></label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setContentTab("edit")}
+                    className={`px-2 py-0.5 text-[11px] rounded-md transition-colors ${contentTab === "edit" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >Edit</button>
+                  <button
+                    type="button"
+                    onClick={() => setContentTab("preview")}
+                    className={`px-2 py-0.5 text-[11px] rounded-md transition-colors ${contentTab === "preview" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >Preview</button>
+                </div>
+              </div>
+              {contentTab === "edit" ? (
+                <Textarea
+                  placeholder="Isi berita... (Markdown: **bold**, ## heading, - bullet)"
+                  value={form.content}
+                  onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+                  rows={8}
+                  className="font-mono text-xs"
+                />
+              ) : (
+                <div className="min-h-[10rem] rounded-md border border-border bg-muted/20 px-3 py-2 text-sm prose prose-sm prose-invert max-w-none overflow-y-auto">
+                  {form.content.trim() ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_LINK}>{form.content}</ReactMarkdown>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">Belum ada konten...</span>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleAiPolish}
+                disabled={aiPolishing || !form.content.trim()}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {aiPolishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {aiPolishing ? "AI sedang memproses..." : "Perbaiki dengan AI"}
+              </button>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Foto Berita (opsional)</label>

@@ -7,6 +7,24 @@ import { toast } from "sonner";
 import { NewsModal, timeAgo } from "@/components/NewsModal";
 import type { NewsItem } from "@/components/NewsModal";
 
+function stripMarkdown(text: string, max = 180): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`{1,3}[^`]*`{1,3}/g, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/---+/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\n{2,}/g, " ")
+    .replace(/\n/g, " ")
+    .trim()
+    .slice(0, max) + (text.length > max ? "…" : "");
+}
+
 const CATEGORIES = [
   {
     id: "all",
@@ -85,7 +103,7 @@ function getCategoryMeta(categoryId: string) {
 function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   const meta = getCategoryMeta(item.category);
   const Icon = meta.icon;
-  const preview = item.content.length > 180 ? item.content.slice(0, 180).trimEnd() + "…" : item.content;
+  const preview = stripMarkdown(item.content, 180);
 
   return (
     <button
