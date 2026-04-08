@@ -5125,12 +5125,55 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[MissingTopics] pure-model answer → logged for KB gap analysis (intent=${intent.primary})`);
   }
 
+  // ── Smart poster visibility — shown only when context justifies it ───────────
+  // Three signals decide how many posters to show:
+  // 1) User explicitly requests an image (tunjukkan, kirim posternya, dll.)
+  // 2) Intent type — informational intents benefit from visuals; casual/emotional don't
+  // 3) KB strength — only strong matches warrant a visual attachment
+
+  const VISUAL_REQUEST_RE = /\b(gambar|foto|poster|tunjukk?an|tunjukkan|kirim|lihat|tampil|tampilkan|show|image|picture|visual|infografis|infographic|fotonya|gambarnya|posternya)\b/i;
+  const userWantsImage = VISUAL_REQUEST_RE.test(lastUserMessage);
+
+  // Intents where a visual genuinely adds informational value
+  const VISUAL_BENEFIT_INTENTS = new Set([
+    "factual", "procedural", "confused_procedural", "recommendation", "location", "academic",
+  ]);
+  // Intents where attaching images would feel out of place or intrusive
+  const VISUAL_SKIP_INTENTS = new Set([
+    "casual", "emotional_support", "greeting", "profanity", "out_of_scope",
+  ]);
+
+  let maxPosterCount = 0;
+  if (userWantsImage) {
+    // User explicitly asked for a visual → always honour, up to 3
+    maxPosterCount = 3;
+  } else if (VISUAL_SKIP_INTENTS.has(intent.primary)) {
+    // Casual / emotional context — images would feel random
+    maxPosterCount = 0;
+  } else if (kbStrength === "strong" && VISUAL_BENEFIT_INTENTS.has(intent.primary)) {
+    // Strong KB match + informational intent → show up to 2 posters
+    maxPosterCount = 2;
+  } else if (kbStrength === "strong") {
+    // Strong KB but intent is not visually oriented → single poster at most
+    maxPosterCount = 1;
+  } else {
+    // Weak / absent KB — a poster would be misleading or irrelevant
+    maxPosterCount = 0;
+  }
+
+  const kbImages = maxPosterCount > 0
+    ? (articles || [])
+        .filter(a => a.image_url && typeof a.image_url === "string" && a.image_url.trim())
+        .map(a => a.image_url.trim())
+        .filter((url, i, arr) => arr.indexOf(url) === i) // dedupe
+        .slice(0, maxPosterCount)
+    : [];
+
+  if (kbImages.length > 0) {
+    console.log(`[KB-Poster] showing ${kbImages.length} poster(s) — intent=${intent.primary} kbStrength=${kbStrength} userWantsImage=${userWantsImage}`);
+  }
+
   // ── Send done event with final metadata ─────────────────────────────────────
-  const kbImages = (articles || [])
-    .filter(a => a.image_url && typeof a.image_url === "string" && a.image_url.trim())
-    .map(a => a.image_url.trim())
-    .filter((url, i, arr) => arr.indexOf(url) === i) // dedupe
-    .slice(0, 3); // max 3 posters
 
   res.write(`data: ${JSON.stringify({
     type:        "done",
