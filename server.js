@@ -10226,6 +10226,11 @@ app.get("/api/admin/chats/:chatId/messages", async (req, res) => {
 });
 
 /* ── Fix It: Admin corrects AI response & saves to KB ─── */
+/*
+ * Two modes:
+ *  auto_fix=true  → generate AI preview ONLY, return corrected_answer (no KB save yet)
+ *  auto_fix=false → save correct_answer (manually written or previously generated) to KB
+ */
 app.post("/api/admin/chats/:chatId/messages/:msgId/fix", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
@@ -10237,12 +10242,10 @@ app.post("/api/admin/chats/:chatId/messages/:msgId/fix", async (req, res) => {
   if (!user_question?.trim()) return res.status(400).json({ error: "user_question wajib diisi" });
 
   const supabase = getAdminClient();
-  let finalAnswer = correct_answer?.trim() || "";
 
-  // Auto-fix: let AI generate the corrected response
-  if (auto_fix || !finalAnswer) {
-    try {
-      const fixPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Al-Azhar Mesir (Masisir).
+  // ── Mode 1: Generate preview (auto_fix=true) — do NOT save to KB yet ────────
+  if (auto_fix) {
+    const fixPrompt = `Kamu adalah AINA, asisten AI untuk mahasiswa Indonesia di Al-Azhar Mesir (Masisir).
 
 Seorang admin telah menandai bahwa respons AINA berikut kurang tepat atau perlu diperbaiki.
 
@@ -10252,7 +10255,7 @@ ${user_question.slice(0, 1000)}
 **Respons AINA yang perlu diperbaiki:**
 ${wrong_answer.slice(0, 3000)}
 
-${correct_answer ? `**Petunjuk koreksi dari admin:**\n${correct_answer.slice(0, 1000)}\n\n` : ""}Tugasmu: Buat respons yang BENAR dan LEBIH BAIK untuk pertanyaan ini. 
+${correct_answer?.trim() ? `**Petunjuk koreksi dari admin:**\n${correct_answer.slice(0, 1000)}\n\n` : ""}Tugasmu: Buat respons yang BENAR dan LEBIH BAIK untuk pertanyaan ini.
 - Fokus pada akurasi, kejelasan, dan relevansi bagi Masisir
 - Gunakan format markdown yang rapi (##, bullet, tabel jika perlu)
 - Jika ada info spesifik yang admin berikan, gunakan sebagai dasar koreksi
@@ -10260,6 +10263,7 @@ ${correct_answer ? `**Petunjuk koreksi dari admin:**\n${correct_answer.slice(0, 
 
 Tulis respons yang diperbaiki:`;
 
+    try {
       const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -10277,15 +10281,19 @@ Tulis respons yang diperbaiki:`;
       });
       const data = await resp.json();
       const aiAnswer = data.choices?.[0]?.message?.content?.trim();
-      if (aiAnswer) finalAnswer = aiAnswer;
+      if (!aiAnswer) return res.status(500).json({ error: "AI tidak menghasilkan jawaban. Coba lagi." });
+      console.log(`[FixIt/preview] admin=${admin.id} chat=${req.params.chatId} msg=${req.params.msgId}`);
+      return res.json({ corrected_answer: aiAnswer });
     } catch (e) {
-      console.warn("[FixIt] AI generation failed:", e.message);
+      console.error("[FixIt/preview] AI generation failed:", e.message);
+      return res.status(500).json({ error: "Gagal menghubungi AI. Coba lagi." });
     }
   }
 
-  if (!finalAnswer) return res.status(400).json({ error: "Tidak ada jawaban koreksi yang dihasilkan" });
+  // ── Mode 2: Save to KB (auto_fix=false) — correct_answer must be provided ───
+  const finalAnswer = correct_answer?.trim();
+  if (!finalAnswer) return res.status(400).json({ error: "Jawaban koreksi tidak boleh kosong sebelum disimpan." });
 
-  // Save the corrected answer to knowledge_base as an approved article
   const title = article_title?.trim() || `Koreksi: ${user_question.slice(0, 80).trim()}`;
   const content = `## Pertanyaan\n\n${user_question.trim()}\n\n## Jawaban\n\n${finalAnswer}`;
 
@@ -10308,7 +10316,7 @@ Tulis respons yang diperbaiki:`;
     return res.status(500).json({ error: "Gagal menyimpan ke knowledge base: " + sanitizeErr(kbErr) });
   }
 
-  console.log(`[FixIt] admin=${admin.id} chat=${req.params.chatId} msg=${req.params.msgId} kb=${kbRow.id}`);
+  console.log(`[FixIt/save] admin=${admin.id} chat=${req.params.chatId} msg=${req.params.msgId} kb=${kbRow.id}`);
   res.json({ corrected_answer: finalAnswer, kb_id: kbRow.id });
 });
 
