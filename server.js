@@ -2108,10 +2108,12 @@ function needsPerplexity(intentPrimary, kbStrength, query) {
   if (intentPrimary === "fiqh") return false; // Dorar.net is the authoritative Islamic source — Gemini not used for fiqh
   // Dynamic override: jabatan/pejabat/office-holder queries ALWAYS need Perplexity,
   // even when KB is strong — KB data for public office holders can be stale.
-  // Exception: Masisir-internal orgs (PPMI, kekeluargaan, forkom, dll.) are NOT on
-  // public web indices — Perplexity will return nothing useful. Trust KB instead.
+  // Exception: Masisir-internal orgs (PPMI, PPMI Mesir, kekeluargaan, forkom, dll.)
+  // are NEVER indexed by public search engines — Perplexity will return either nothing
+  // or misleading data (e.g. PPMI Indonesia instead of PPMI Mesir). Always skip Perplexity
+  // for these orgs regardless of KB strength; use KB or model knowledge with caveats.
   if (isDynamicRoleQuery(q)) {
-    if (isMasisirInternalOrg(q) && kbStrength === "strong") return false;
+    if (isMasisirInternalOrg(q)) return false;
     return true;
   }
   if (kbStrength === "strong") return false;
@@ -3603,17 +3605,25 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
     // Exception: Masisir-internal organisations (PPMI, kekeluargaan, forkom, dll.)
     // are NOT indexed by public search engines.  Their leadership roster lives only
     // in the AINA KB — so when KB has any hit, trust it (strong = high, weak = medium).
-    if (hasKB && isMasisirInternalOrg(query)) {
-      if (kbStrength === "strong") {
+    if (isMasisirInternalOrg(query)) {
+      if (hasKB && kbStrength === "strong") {
         return {
           level: "high_confidence",
           hint: "\n\n**[KB INTERNAL MASISIR — DIPERCAYA]** Jawab berdasarkan data KB yang tersedia. Boleh sebutkan nama/jabatan yang tertulis di KB dengan percaya diri. Jika info terasa mungkin sudah berubah, tambahkan 1 kalimat saran konfirmasi ringan di akhir.",
         };
       }
-      // Weak KB — partial info, but still the best available source for internal orgs
+      if (hasKB) {
+        // Weak KB — partial info, but still the best available source for internal orgs
+        return {
+          level: "medium_confidence",
+          hint: "\n\n**[KB INTERNAL MASISIR — PARSIAL]** Knowledge Base AINA memiliki beberapa info tentang organisasi ini. Gunakan info yang tersedia dengan percaya diri. Sarankan user untuk konfirmasi langsung ke pengurus PPMI/kekeluargaan jika butuh data yang lebih lengkap.",
+        };
+      }
+      // No KB at all — use model knowledge but with honest caveat. PPMI Mesir & similar
+      // internal orgs are never on public web, so don't block — answer from training + caveat.
       return {
         level: "medium_confidence",
-        hint: "\n\n**[KB INTERNAL MASISIR — PARSIAL]** Knowledge Base AINA memiliki beberapa info tentang organisasi ini. Gunakan info yang tersedia dengan percaya diri. Sarankan user untuk konfirmasi langsung ke pengurus PPMI/kekeluargaan jika butuh data yang lebih lengkap.",
+        hint: "\n\n**[ORG INTERNAL MASISIR — TIDAK ADA DATA KB]** Jawab sesuai yang kamu ketahui dari training data. Sampaikan bahwa info mungkin belum terbaru dan sarankan konfirmasi langsung ke pengurus atau anggota senior. JANGAN blokir total — tetap berikan jawaban yang berguna.",
       };
     }
     if (hasPerplexity) {
