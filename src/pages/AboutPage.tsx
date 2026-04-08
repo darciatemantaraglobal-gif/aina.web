@@ -407,9 +407,7 @@ const AboutPage = () => {
             {/* Android */}
             <div className="rounded-2xl border border-border/50 bg-card/40 p-5 backdrop-blur-sm">
               <div className="mb-4 flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-green-500/10 border border-green-500/20">
-                  <span className="text-base">🤖</span>
-                </div>
+                <img src="/android.png" alt="Android" className="h-7 w-7 object-contain" style={{ filter: "invert(1) brightness(2)" }} />
                 <span className="font-display text-sm font-bold text-foreground">Android (Chrome)</span>
               </div>
               <ol className="space-y-2.5 text-sm text-muted-foreground">
@@ -435,9 +433,7 @@ const AboutPage = () => {
             {/* iOS */}
             <div className="rounded-2xl border border-border/50 bg-card/40 p-5 backdrop-blur-sm">
               <div className="mb-4 flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/20">
-                  <span className="text-base">🍎</span>
-                </div>
+                <img src="/apple-.png" alt="Apple" className="h-7 w-7 object-contain" style={{ filter: "invert(1) brightness(2)" }} />
                 <span className="font-display text-sm font-bold text-foreground">iPhone / iPad (Safari)</span>
               </div>
               <ol className="space-y-2.5 text-sm text-muted-foreground">
