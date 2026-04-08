@@ -432,6 +432,47 @@ async function initKBKeywordsCol() {
 }
 initKBKeywordsCol();
 
+/* ── Fix masisir_news category check constraint ──────────────────────────────
+ * The table may have been created with a stale CHECK constraint that rejects
+ * valid category values. Drop it on startup — server-side validation in the
+ * POST/PUT handlers makes the DB constraint redundant.
+ */
+async function fixNewsTableConstraint() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+
+  const sql = "ALTER TABLE public.masisir_news DROP CONSTRAINT IF EXISTS masisir_news_category_check;";
+  let fixed = false;
+
+  // Try 1: exec_sql RPC (works if the function was bootstrapped previously)
+  try {
+    const { error } = await supabase.rpc("exec_sql", { sql });
+    if (!error) { console.log("[News] ✓ category constraint removed (exec_sql)"); fixed = true; }
+  } catch { /* ignore */ }
+
+  // Try 2: pg-meta REST API (works on Supabase Cloud with service role key)
+  if (!fixed && SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const r = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/pg-meta/v1/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ query: sql }),
+      });
+      if (r.ok) { console.log("[News] ✓ category constraint removed (pg-meta)"); fixed = true; }
+    } catch { /* ignore */ }
+  }
+
+  if (!fixed) {
+    console.warn("[News] ⚠ Could not auto-drop masisir_news_category_check.");
+    console.warn("[News]   Run manually in Supabase SQL Editor:");
+    console.warn(`[News]   ${sql}`);
+  }
+}
+fixNewsTableConstraint();
+
 /* ── Self-Improvement: query_log + missing_topics (Supabase) ────────────────
  * All logging now uses Supabase so it works in both dev (Replit) and prod
  * (Railway). Tables must exist in Supabase — run the SQL below once:
@@ -12009,7 +12050,7 @@ async function runColumnMigrations() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title TEXT NOT NULL,
       content TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT 'kehidupan_mesir' CHECK (category IN ('breaking_news','administrasi','kuliner','kehidupan_mesir','transportasi','aigypt')),
+      category TEXT NOT NULL DEFAULT 'kehidupan_mesir',
       image_url TEXT,
       source_url TEXT,
       source_name TEXT,
@@ -12020,6 +12061,9 @@ async function runColumnMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );`,
+    // Drop the masisir_news category check constraint — server-side validation handles this already.
+    // The old constraint used stale category values and blocked valid inserts.
+    "ALTER TABLE public.masisir_news DROP CONSTRAINT IF EXISTS masisir_news_category_check;",
     // ── AI Performance intel tables ──────────────────────────────────────────
     `CREATE TABLE IF NOT EXISTS public.intel_retrieval_stats (
       id BIGSERIAL PRIMARY KEY,
