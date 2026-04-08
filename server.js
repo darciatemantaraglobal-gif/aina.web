@@ -7541,7 +7541,7 @@ function buildReformatPrompt(art) {
   if (arabic) {
     return `Kamu adalah editor konten bilingual (Arab–Indonesia) untuk knowledge base AINA — platform AI khusus mahasiswa Indonesia di Mesir (Masisir).
 
-Artikel ini ditulis dalam bahasa Arab. Tugasmu adalah merapikan dan menyajikannya dalam format BILINGUAL yang mudah dipahami mahasiswa Indonesia.
+Artikel ini ditulis dalam bahasa Arab. Tugasmu adalah menyajikan ulang SELURUH kontennya dalam format bilingual yang terstruktur.
 
 Judul artikel: "${art.title}"
 Kategori: "${art.category}"
@@ -7551,51 +7551,54 @@ Konten asli (Arab):
 ${art.content.slice(0, 10000)}
 </KONTEN>
 
-## TAHAP 1 — EKSTRAKSI & ORGANISASI KONTEN
-- Pertahankan SEMUA konten Arab yang bermakna (teks, hadits, ayat, istilah fiqih, dll)
-- Hapus basa-basi pembuka/penutup yang tidak informatif
-- Susun ulang bagian-bagian agar mengalir logis (definisi → penjelasan → contoh/hukum)
+---
 
-## TAHAP 2 — FORMAT BILINGUAL ARAB–INDONESIA
+## ⚠️ ATURAN UTAMA — WAJIB DIIKUTI TANPA PENGECUALIAN
 
-Untuk setiap bagian, sajikan dengan struktur berikut:
+### 1. TIDAK BOLEH MEMBUANG TEKS ARAB
+Setiap kalimat / paragraf Arab yang mengandung makna (definisi, hukum, syarat, contoh, dalil, penjelasan) WAJIB dikutip PERSIS apa adanya — tidak boleh diringkas, dipotong, diparafrase, atau dilewati. Satu-satunya yang boleh dihilangkan: kalimat pembuka/penutup basa-basi yang benar-benar tidak informatif (contoh: "بسم الله والحمد لله" tanpa konteks, atau salam penutup saja).
 
-**Pola untuk teks Arab + penjelasan Indonesia:**
-\`\`\`
-## Judul Bagian
+### 2. SETIAP BLOK ARAB WAJIB DIIKUTI PENJELASAN INDONESIA
+Setelah setiap kutipan Arab, tambahkan **Penjelasan:** dalam Bahasa Indonesia yang mencakup:
+- Terjemahan makna
+- Penjelasan istilah teknis (فقه، أصول، إجماع، كفارة, dll)
+- Konteks / implikasi bagi mahasiswa jika relevan
+
+### 3. FORMAT BLOK ARAB (WAJIB PAKAI div dir=rtl)
+Setiap teks Arab HARUS dibungkus seperti ini agar tampil kanan ke kiri:
 
 <div dir="rtl">
 
-نَصُّ الْعَرَبِيَّةِ هُنَا
+نَصُّ الْعَرَبِيَّةِ هُنَا كَامِلاً
 
 </div>
 
-**Penjelasan:** Terjemahan dan penjelasan dalam Bahasa Indonesia yang jelas dan mudah dipahami mahasiswa. Jelaskan makna, konteks, dan implikasinya bagi Masisir jika relevan.
-\`\`\`
+**Penjelasan:** Terjemahan dan penjelasan dalam Bahasa Indonesia.
 
-**Aturan penting:**
-- Teks Arab SELALU diletakkan di dalam tag \`<div dir="rtl">\` dan \`</div>\` agar tampil dari kanan ke kiri
-- Setiap blok Arab WAJIB diikuti **Penjelasan:** dalam Bahasa Indonesia
-- Jika ada istilah teknis Arab (فقه، أصول، إجماع، dll), tulis istilahnya lalu jelaskan artinya
-- Untuk hadits: cantumkan matan Arab → penjelasan → perawi/sumber jika ada di konten asli
-- Untuk ayat Al-Qur'an: cantumkan teks Arab → terjemahan → tafsir singkat jika ada
-- JANGAN menambahkan terjemahan/penjelasan yang tidak berdasar dari konten asli
+---
 
-## TAHAP 3 — PILIH FORMAT DATA YANG TEPAT
+## TAHAP 1 — ORGANISASI KONTEN
 
-Untuk data terstruktur yang ada dalam konten:
-- **Tabel** → perbandingan hukum, daftar syarat + keterangan, jadwal
-- **Numbered list** → langkah berurutan, urutan prosedur
-- **Bullet list** → daftar tanpa urutan, syarat-syarat, contoh-contoh
-- **Paragraf** → penjelasan konsep, narasi yang mengalir
+- Kelompokkan isi ke dalam bagian-bagian logis: definisi → dalil/dasar → hukum/syarat → contoh → kesimpulan
+- Beri heading **##** untuk setiap bagian utama
+- Beri heading **###** untuk sub-bagian
+- Hapus HANYA kalimat basa-basi yang tidak mengandung informasi (salam pembuka kosong, kalimat penutup motivasi tanpa isi)
+- ❌ DILARANG: meringkas, menggabungkan, atau menghilangkan paragraf Arab yang berisi pengertian / hukum / dalil
+
+## TAHAP 2 — FORMAT DATA TERSTRUKTUR
+
+Jika dalam konten ada data yang bisa disajikan lebih jelas:
+- **Tabel** → perbandingan hukum, daftar syarat + keterangan
+- **Numbered list** → langkah berurutan / prosedur
+- **Bullet list** → daftar tanpa urutan
+- **Paragraf** → penjelasan konsep, narasi
 
 ## ATURAN FORMAT UMUM
-- Gunakan **##** untuk subjudul utama (JANGAN gunakan # tunggal)
-- Gunakan **###** untuk sub-bagian
+- Gunakan **##** untuk subjudul utama (JANGAN gunakan # tunggal — judul sudah ada di luar)
 - Satu baris kosong antara setiap section
 - Gunakan \`**teks**\` untuk istilah kunci, angka penting, nama dokumen
 
-Kembalikan HANYA konten yang sudah diformat bilingual. Tanpa penjelasan meta, tanpa komentar, tanpa tanda \`\`\`markdown di luar yang sudah ditentukan.`;
+Kembalikan HANYA konten yang sudah diformat bilingual. Tanpa penjelasan meta, tanpa komentar, tanpa blok \`\`\`markdown di luar konten.`;
   }
 
   // Default prompt for Indonesian/mixed content

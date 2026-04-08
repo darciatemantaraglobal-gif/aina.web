@@ -35,7 +35,7 @@ export function buildKnowledgeContext(articles) {
     const hasArabicText = arabicCharCount >= 80 && (arabicCharCount / a.content.length) >= 0.12;
 
     const typeHint = hasArabicText
-      ? " [FORMAT: Muqorror/Kitab Arab — ATURAN WAJIB: (1) Kutip paragraf Arab yang relevan persis dari artikel sebagai blockquote (awali dengan '>'), (2) Tulis terjemahan/maknanya dalam Bahasa Indonesia di bawah kutipan, (3) Jelaskan maksud dan poin-poin pentingnya. DILARANG menjelaskan tanpa menampilkan teks Arabnya terlebih dahulu.]"
+      ? " [FORMAT: Muqorror/Kitab Arab — ATURAN WAJIB: (1) Kutip SEMUA paragraf/kalimat Arab yang berisi definisi, hukum, syarat, dalil, atau penjelasan — persis apa adanya — sebagai blockquote (awali setiap baris dengan '>'). JANGAN hanya kutip sebagian kecil atau meringkas teks Arabnya. (2) Tulis terjemahan/makna tiap blok kutipan dalam Bahasa Indonesia langsung di bawahnya. (3) Jelaskan maksud, istilah teknis, dan poin-poin penting dari blok tersebut. DILARANG menjelaskan tanpa menampilkan teks Arabnya terlebih dahulu. DILARANG menggantikan kutipan Arab dengan parafrase Indonesia saja.]"
       : a.article_type === "step_by_step"
         ? " [FORMAT: Panduan Langkah-langkah — WAJIB gunakan numbered markdown list: 1. ... 2. ... 3. ... (satu aksi per nomor, tiap langkah di baris baru). JANGAN gunakan **Langkah 1:** atau format lain — hanya angka diikuti titik dan spasi: '1. teks']"
         : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
@@ -92,7 +92,7 @@ export function buildKnowledgeContext(articles) {
     return n >= 80 && (n / a.content.length) >= 0.12;
   });
   const arabicKbRule = hasAnyArabicArticle
-    ? "\n8. 📖 ATURAN MUQORROR/KITAB: Artikel di bawah mengandung teks Arab dari kitab. Saat menjelaskan, WAJIB kutip dulu potongan teks Arab yang relevan sebagai blockquote (baris dimulai dengan '>'), diikuti terjemahan, lalu penjelasan. Ini seperti seorang ustaz yang menjelaskan dengan berpedoman pada kitabnya — teks Arabnya HARUS terlihat, bukan hanya penjelasannya saja."
+    ? "\n8. 📖 ATURAN MUQORROR/KITAB: Artikel di bawah mengandung teks Arab dari kitab/muqorror. Saat menjelaskan, WAJIB kutip terlebih dahulu SEMUA paragraf/kalimat Arab yang berisi definisi, pengertian istilah, hukum, syarat, atau dalil — persis apa adanya — sebagai blockquote (setiap baris dimulai dengan '>'). Ini BUKAN pilihan; ini kewajiban. JANGAN hanya mengutip satu-dua kata atau menggantikan teks Arab dengan parafrase/ringkasan Indonesia saja. Setelah setiap blok kutipan Arab → tulis terjemahan → lalu jelaskan. Bayangkan seperti ustaz yang berpedoman pada kitabnya — teks Arabnya HARUS terlihat lengkap, bukan hanya kesimpulannya."
     : "";
 
   const kbHardRule =
