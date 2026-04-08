@@ -5952,8 +5952,8 @@ function NewsManagementTab() {
       )}
 
       {/* Form dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={showForm} onOpenChange={open => { if (!open && !cropFile) setShowForm(false); }}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto relative">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit Berita" : "Tambah Berita Baru"}</DialogTitle>
           </DialogHeader>
@@ -6105,6 +6105,15 @@ function NewsManagementTab() {
               <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Menyimpan..." : (editing ? "Simpan Perubahan" : "Tambah")}</Button>
             </div>
           </div>
+
+          {/* Crop overlay — rendered inside DialogContent so Radix pointer events work */}
+          {cropFile && (
+            <NewsImageCropper
+              file={cropFile}
+              onDone={croppedFile => { setCropFile(null); uploadNewsImage(croppedFile); }}
+              onCancel={() => setCropFile(null)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -6168,17 +6177,6 @@ function NewsManagementTab() {
         </div>
       )}
 
-      {/* Image Crop Modal */}
-      {cropFile && (
-        <NewsImageCropper
-          file={cropFile}
-          onDone={croppedFile => {
-            setCropFile(null);
-            uploadNewsImage(croppedFile);
-          }}
-          onCancel={() => setCropFile(null)}
-        />
-      )}
     </div>
   );
 }
