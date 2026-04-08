@@ -69,19 +69,19 @@ export default function PartnerSection() {
                 </span>
 
                 {/* Logos */}
-                <div className="flex items-center justify-center gap-3">
+                <div className="flex items-center justify-center gap-4">
                   <img
                     src={p.logo}
                     alt={p.name}
-                    className={`object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-9 w-28" : "h-12 w-12"}`}
+                    className={`object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300 ${p.wide ? "h-12 w-36 md:h-14 md:w-44" : "h-20 w-20 md:h-24 md:w-24"}`}
                   />
                   {p.logo2 && (
                     <>
-                      <span className="h-9 w-px bg-white/10" />
+                      <span className="h-14 w-px bg-white/10 md:h-16" />
                       <img
                         src={p.logo2}
                         alt={p.subtitle ?? ""}
-                        className="h-12 w-12 object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300"
+                        className="h-20 w-20 object-contain opacity-60 group-hover:opacity-100 transition-opacity duration-300 md:h-24 md:w-24"
                       />
                     </>
                   )}
