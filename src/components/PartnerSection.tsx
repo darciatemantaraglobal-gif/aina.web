@@ -5,8 +5,8 @@ const waNumber = "6281311506025";
 const waMessage = encodeURIComponent("Halo, saya tertarik untuk menjadi partner AINA. Bisa jelaskan lebih lanjut?");
 
 const PARTNERS = [
-  { logo: "/temantiket-logo.png", name: "Temantiket", type: "Travel Partner", wide: true },
-  { logo: "/ppmi-mesir-logo.png", name: "PPMI Mesir", type: "Community Partner", wide: false },
+  { logo: "/temantiket-logo.png", name: "Temantiket", type: "Travel Partner", wide: true, logo2: null, subtitle: null },
+  { logo: "/ppmi-mesir-logo.png", name: "PPMI Mesir", type: "Community Partner", wide: false, logo2: "/ppmi-kabinet-logo.png", subtitle: "Kabinet Poros Persatuan" },
 ];
 
 /* Duplicate enough times for seamless loop */
@@ -72,14 +72,31 @@ export default function PartnerSection() {
           <div className="flex w-max marquee-run">
             {TRACK.map((p, i) => (
               <div key={i} className="group flex items-center gap-3 mx-10 shrink-0">
+                {/* Primary logo */}
                 <img
                   src={p.logo}
                   alt={p.name}
                   className={`object-contain grayscale brightness-75 group-hover:grayscale-0 group-hover:brightness-100 transition-all duration-400 ${p.wide ? "h-7 w-24" : "h-9 w-9"}`}
                 />
-                <span className="text-xs font-semibold text-white/25 group-hover:text-white/70 transition-colors duration-300 whitespace-nowrap">
-                  {p.name}
-                </span>
+                {/* Secondary logo (kabinet) */}
+                {p.logo2 && (
+                  <img
+                    src={p.logo2}
+                    alt={p.subtitle ?? ""}
+                    className="h-8 w-8 object-contain grayscale brightness-75 group-hover:grayscale-0 group-hover:brightness-100 transition-all duration-400"
+                  />
+                )}
+                {/* Name + subtitle */}
+                <div className="flex flex-col leading-tight">
+                  <span className="text-xs font-semibold text-white/25 group-hover:text-white/70 transition-colors duration-300 whitespace-nowrap">
+                    {p.name}
+                  </span>
+                  {p.subtitle && (
+                    <span className="text-[9px] text-white/15 group-hover:text-white/40 transition-colors duration-300 whitespace-nowrap">
+                      {p.subtitle}
+                    </span>
+                  )}
+                </div>
                 {/* Dot separator */}
                 <span className="ml-6 h-1 w-1 rounded-full bg-white/10 shrink-0" />
               </div>
