@@ -5598,8 +5598,33 @@ function NewsManagementTab() {
   const [editing, setEditing] = useState<NewsItem | null>(null);
   const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true });
   const [saving, setSaving] = useState(false);
+  const [imgUploading, setImgUploading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const newsImgInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadNewsImage = async (file: File) => {
+    setImgUploading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? "";
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/upload-image", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error ?? "Gagal upload gambar"); return; }
+      setForm(f => ({ ...f, image_url: json.publicUrl }));
+      toast.success("Foto berhasil diupload");
+    } catch {
+      toast.error("Upload gagal. Coba lagi.");
+    } finally {
+      setImgUploading(false);
+    }
+  };
 
   const fetchNews = useCallback(async () => {
     setLoading(true);
@@ -5739,8 +5764,61 @@ function NewsManagementTab() {
               <Textarea placeholder="Isi berita..." value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={6} />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">URL Gambar (opsional)</label>
-              <Input placeholder="https://..." value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} />
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Foto Berita (opsional)</label>
+              <input
+                ref={newsImgInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadNewsImage(f); e.target.value = ""; }}
+              />
+              {form.image_url ? (
+                <div className="relative rounded-xl overflow-hidden border border-border">
+                  <img src={form.image_url} alt="Preview" className="w-full h-36 object-cover" />
+                  <div className="absolute top-2 right-2 flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => newsImgInputRef.current?.click()}
+                      disabled={imgUploading}
+                      className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-black/80 transition-colors"
+                    >
+                      {imgUploading ? "Mengupload..." : "Ganti Foto"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, image_url: "" }))}
+                      className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-600/80 transition-colors"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => newsImgInputRef.current?.click()}
+                  disabled={imgUploading}
+                  className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 py-6 text-center hover:bg-muted/50 transition-colors disabled:opacity-60"
+                >
+                  {imgUploading ? (
+                    <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Image className="h-5 w-5 text-muted-foreground" />
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {imgUploading ? "Mengupload foto..." : "Klik untuk upload foto (JPG, PNG, WebP)"}
+                  </span>
+                </button>
+              )}
+              {/* Fallback URL manual jika perlu */}
+              {!form.image_url && (
+                <Input
+                  placeholder="atau tempel URL gambar langsung..."
+                  value={form.image_url}
+                  onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))}
+                  className="mt-2 text-xs"
+                />
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -5798,9 +5876,15 @@ function NewsManagementTab() {
                     {item.is_pinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
                     {!item.is_active && <span className="text-[10px] font-medium rounded-full px-1.5 py-0.5 bg-muted text-muted-foreground">Nonaktif</span>}
                     <span className="text-[10px] text-muted-foreground">{getCatLabel(item.category)}</span>
+                    {item.image_url && <Image className="h-3 w-3 text-muted-foreground shrink-0" />}
                   </div>
                   <p className="mt-0.5 text-[12px] text-muted-foreground line-clamp-2">{item.content}</p>
                 </div>
+                {item.image_url && (
+                  <div className="shrink-0 w-12 h-10 rounded-lg overflow-hidden border border-border">
+                    <img src={item.image_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }} />
+                  </div>
+                )}
                 <div className="flex shrink-0 items-center gap-1">
                   <button onClick={() => togglePin(item)} title={item.is_pinned ? "Unpin" : "Pin"} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                     <Pin className={`h-3.5 w-3.5 ${item.is_pinned ? "text-primary fill-primary" : ""}`} />

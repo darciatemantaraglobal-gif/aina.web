@@ -85,6 +85,18 @@ const BeritaSection = () => {
                     key={item.id}
                     className={`rounded-2xl border bg-card/60 backdrop-blur-sm overflow-hidden transition-all duration-500 ${i === 0 ? "delay-0" : i === 1 ? "delay-100" : "delay-200"} ${item.is_pinned ? "border-primary/30" : "border-border/50"}`}
                   >
+                    {/* Cover image */}
+                    {item.image_url && !isOpen && (
+                      <div className="w-full h-36 overflow-hidden">
+                        <img
+                          src={item.image_url}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </div>
+                    )}
+
                     {/* Card header */}
                     <button
                       className="w-full text-left px-5 py-4 flex items-start gap-3 hover:bg-secondary/30 transition-colors"
@@ -109,13 +121,25 @@ const BeritaSection = () => {
 
                     {/* Expanded content */}
                     {isOpen && (
-                      <div className="px-5 pb-5 border-t border-border/30 pt-4 space-y-3">
-                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{item.content}</p>
-                        {item.source_url && (
-                          <a href={item.source_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors">
-                            <ExternalLink className="h-3 w-3" /> Baca selengkapnya
-                          </a>
+                      <div className="border-t border-border/30">
+                        {item.image_url && (
+                          <div className="w-full overflow-hidden max-h-56">
+                            <img
+                              src={item.image_url}
+                              alt={item.title}
+                              className="w-full object-cover"
+                              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                          </div>
                         )}
+                        <div className="px-5 pb-5 pt-4 space-y-3">
+                          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{item.content}</p>
+                          {item.source_url && (
+                            <a href={item.source_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors">
+                              <ExternalLink className="h-3 w-3" /> Baca selengkapnya
+                            </a>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
