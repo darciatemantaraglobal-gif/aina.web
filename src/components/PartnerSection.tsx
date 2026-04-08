@@ -1,43 +1,40 @@
-import { ArrowRight, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { useInView } from "@/hooks/useInView";
 
 const waNumber = "6281311506025";
 const waMessage = encodeURIComponent("Halo, saya tertarik untuk menjadi partner AINA. Bisa jelaskan lebih lanjut?");
 
 const PARTNERS = [
-  { logo: "/temantiket-logo.png", name: "Temantiket", type: "Travel Partner", wide: true, logo2: null, subtitle: null },
-  { logo: "/ppmi-mesir-logo.png", name: "PPMI Mesir", type: "Community Partner", wide: false, logo2: "/ppmi-kabinet-logo.png", subtitle: "Kabinet Poros Persatuan" },
+  {
+    logo: "/temantiket-logo.png",
+    name: "Temantiket",
+    type: "Travel Partner",
+    wide: true,
+    logo2: null,
+    subtitle: null,
+  },
+  {
+    logo: "/ppmi-mesir-logo.png",
+    name: "PPMI Mesir",
+    type: "Community Partner",
+    wide: false,
+    logo2: "/ppmi-kabinet-logo.png",
+    subtitle: "Kabinet Poros Persatuan",
+  },
 ];
-
-/* Duplicate enough times for seamless loop */
-const TRACK = [...PARTNERS, ...PARTNERS, ...PARTNERS, ...PARTNERS, ...PARTNERS, ...PARTNERS];
 
 export default function PartnerSection() {
   const { ref, inView } = useInView<HTMLElement>({ threshold: 0.1 });
 
   return (
     <section ref={ref} className="relative pt-8 pb-20 overflow-hidden">
-      <style>{`
-        @keyframes marquee-scroll {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .marquee-run {
-          animation: marquee-scroll 22s linear infinite;
-          will-change: transform;
-        }
-        .marquee-run:hover {
-          animation-play-state: paused;
-        }
-      `}</style>
-
       {/* Ambient background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-gradient-to-b from-background via-[#0e0820] to-background" />
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[400px] w-[600px] rounded-full bg-primary/6 blur-[100px]" />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-3xl px-6">
+      <div className="relative z-10 mx-auto max-w-4xl px-6">
 
         {/* Badge */}
         <div className={`text-center transition-all duration-500 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
@@ -57,88 +54,61 @@ export default function PartnerSection() {
             Kolaborasi strategis dengan mitra terpercaya untuk mendukung kehidupan mahasiswa Indonesia di Mesir.
           </p>
         </div>
-      </div>
 
-      {/* Marquee strip — full width, no max-w */}
-      <div className={`relative mt-12 transition-all duration-700 delay-150 ${inView ? "opacity-100" : "opacity-0"}`}>
-        {/* Fade masks */}
-        <div
-          className="relative overflow-hidden py-2"
-          style={{
-            maskImage: "linear-gradient(to right, transparent, black 12%, black 88%, transparent)",
-            WebkitMaskImage: "linear-gradient(to right, transparent, black 12%, black 88%, transparent)",
-          }}
-        >
-          <div className="flex w-max marquee-run">
-            {TRACK.map((p, i) => (
-              <div key={i} className="group flex items-center gap-3 mx-10 shrink-0">
-                {/* Primary logo */}
+        {/* Partner cards */}
+        <div className={`mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 transition-all duration-700 delay-150 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          {PARTNERS.map((p) => (
+            <div
+              key={p.name}
+              className="group relative rounded-2xl border border-white/8 bg-white/3 backdrop-blur-sm px-8 py-8 flex flex-col items-center text-center hover:border-primary/25 hover:bg-primary/5 transition-all duration-300"
+            >
+              {/* Type badge */}
+              <span className="absolute top-4 right-4 text-[10px] font-semibold uppercase tracking-widest text-white/25 group-hover:text-primary/50 transition-colors duration-300">
+                {p.type}
+              </span>
+
+              {/* Logos */}
+              <div className="flex items-center justify-center gap-3 mb-5">
                 <img
                   src={p.logo}
                   alt={p.name}
-                  className={`object-contain grayscale brightness-75 group-hover:grayscale-0 group-hover:brightness-100 transition-all duration-400 ${p.wide ? "h-7 w-24" : "h-9 w-9"}`}
+                  className={`object-contain ${p.wide ? "h-10 w-32" : "h-14 w-14"}`}
                 />
-                {/* Secondary logo (kabinet) */}
                 {p.logo2 && (
-                  <img
-                    src={p.logo2}
-                    alt={p.subtitle ?? ""}
-                    className="h-8 w-8 object-contain grayscale brightness-75 group-hover:grayscale-0 group-hover:brightness-100 transition-all duration-400"
-                  />
+                  <>
+                    <span className="h-8 w-px bg-white/10" />
+                    <img
+                      src={p.logo2}
+                      alt={p.subtitle ?? ""}
+                      className="h-12 w-12 object-contain"
+                    />
+                  </>
                 )}
-                {/* Name + subtitle */}
-                <div className="flex flex-col leading-tight">
-                  <span className="text-xs font-semibold text-white/25 group-hover:text-white/70 transition-colors duration-300 whitespace-nowrap">
-                    {p.name}
-                  </span>
-                  {p.subtitle && (
-                    <span className="text-[9px] text-white/15 group-hover:text-white/40 transition-colors duration-300 whitespace-nowrap">
-                      {p.subtitle}
-                    </span>
-                  )}
-                </div>
-                {/* Dot separator */}
-                <span className="ml-6 h-1 w-1 rounded-full bg-white/10 shrink-0" />
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Decorative line above and below strip */}
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/6 to-transparent" />
-        <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/6 to-transparent" />
-      </div>
-
-      {/* CTA */}
-      <div className={`relative z-10 mt-12 px-6 transition-all duration-700 delay-200 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-        <div className="mx-auto max-w-3xl relative rounded-2xl overflow-hidden">
-          {/* Background layers */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-[#1a0a3a] to-purple-900/30" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_hsl(var(--primary)/0.25),_transparent_60%)]" />
-          <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-primary/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-purple-500/15 blur-3xl" />
-          {/* Border glow */}
-          <div className="absolute inset-0 rounded-2xl border border-primary/25" />
-
-          <div className="relative flex flex-col sm:flex-row items-center justify-between gap-6 px-8 py-8">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/60 mb-1.5">Buka Peluang Kolaborasi</p>
-              <h3 className="font-display text-xl sm:text-2xl font-bold text-white leading-tight">
-                Jangkau 15.000+ Masisir<br className="hidden sm:block" /> bersama AINA
-              </h3>
+              {/* Name + subtitle */}
+              <p className="font-display text-base font-bold text-white">{p.name}</p>
+              {p.subtitle && (
+                <p className="mt-1 text-[11px] text-white/35">{p.subtitle}</p>
+              )}
             </div>
-            <a
-              href={`https://wa.me/${waNumber}?text=${waMessage}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group shrink-0 inline-flex items-center gap-2.5 rounded-xl bg-white px-6 py-3 text-sm font-bold text-[#0d0824] hover:bg-white/90 active:scale-95 transition-all duration-200 shadow-[0_0_24px_-4px_hsl(var(--primary)/0.5)]"
-            >
-              <MessageCircle className="h-4 w-4" />
-              Hubungi via WhatsApp
-              <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform duration-200" />
-            </a>
-          </div>
+          ))}
         </div>
+
+        {/* CTA */}
+        <div className={`mt-12 text-center transition-all duration-700 delay-200 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <p className="text-sm text-white/35 mb-4">Ingin jadi partner AINA?</p>
+          <a
+            href={`https://wa.me/${waNumber}?text=${waMessage}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white hover:bg-primary/90 active:scale-95 transition-all duration-200"
+          >
+            <MessageCircle className="h-4 w-4" />
+            Hubungi Kami
+          </a>
+        </div>
+
       </div>
     </section>
   );
