@@ -3253,7 +3253,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                         {art.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </Button>
                     )}
-                    {isMasterAdmin && art.status === "approved" && (
+                    {isMasterAdmin && (
                       <Button
                         size="sm" variant="outline"
                         className="h-8 gap-1 text-muted-foreground hover:text-foreground"
