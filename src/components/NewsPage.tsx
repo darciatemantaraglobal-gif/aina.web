@@ -35,7 +35,7 @@ const CATEGORIES = [
   },
   {
     id: "breaking_news",
-    label: "Breaking News",
+    label: "Breaking",
     icon: Zap,
     bg: "bg-red-500/10 border border-red-500/20",
     activeBg: "bg-red-500",
@@ -46,7 +46,7 @@ const CATEGORIES = [
   },
   {
     id: "administrasi",
-    label: "Administrasi",
+    label: "Admin",
     icon: FileText,
     bg: "bg-blue-500/10 border border-blue-500/20",
     activeBg: "bg-blue-500",
@@ -66,7 +66,7 @@ const CATEGORIES = [
   },
   {
     id: "kehidupan_mesir",
-    label: "Kehidupan Mesir",
+    label: "Kehidupan",
     icon: Globe,
     bg: "bg-green-500/10 border border-green-500/20",
     activeBg: "bg-green-500",
@@ -86,7 +86,7 @@ const CATEGORIES = [
   },
   {
     id: "aigypt",
-    label: "Berita AIGYPT",
+    label: "AIGYPT",
     icon: GraduationCap,
     bg: "bg-violet-500/10 border border-violet-500/20",
     activeBg: "bg-violet-500",
@@ -100,63 +100,118 @@ function getCategoryMeta(categoryId: string) {
   return CATEGORIES.find(c => c.id === categoryId) ?? CATEGORIES[0];
 }
 
+/* ─── News Card ─────────────────────────────────────────────────────────────
+   Mobile  : horizontal compact row (thumbnail right + text left)
+   Desktop : vertical card (image top + text below)                        */
 function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   const meta = getCategoryMeta(item.category);
   const Icon = meta.icon;
-  const preview = stripMarkdown(item.content, 180);
+  const preview = stripMarkdown(item.content, 120);
 
   return (
     <button
       onClick={onClick}
-      className={`group w-full text-left relative rounded-2xl border bg-card transition-all duration-200 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] overflow-hidden ${item.is_pinned ? "border-primary/30 ring-1 ring-primary/10" : "border-border"}`}
+      className={`group w-full text-left rounded-xl sm:rounded-2xl border bg-card transition-all duration-200 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] overflow-hidden ${item.is_pinned ? "border-primary/30 ring-1 ring-primary/10" : "border-border"}`}
     >
-      {item.image_url && (
-        <div className="relative h-44 w-full overflow-hidden bg-muted">
-          <img
-            src={item.image_url}
-            alt={item.title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-          />
-          {item.is_pinned && (
-            <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
-              <Pin className="h-2.5 w-2.5" />
-              Pinned
+      {/* ── Mobile layout: horizontal row ── */}
+      <div className="flex items-stretch gap-0 sm:hidden">
+        {/* Text side */}
+        <div className="flex-1 min-w-0 p-3">
+          {/* Category + time */}
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            <div className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${meta.bg ?? "bg-muted"} ${meta.color ?? "text-foreground"}`}>
+              {meta.pulse && (
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${meta.dot} opacity-75`} />
+                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                </span>
+              )}
+              <Icon className="h-2.5 w-2.5" />
+              {meta.label}
             </div>
-          )}
-        </div>
-      )}
-
-      <div className="p-4">
-        <div className="mb-2.5 flex items-center gap-2 flex-wrap">
-          <div className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.bg ?? "bg-muted"} ${meta.color ?? "text-foreground"}`}>
-            {meta.pulse && (
-              <span className="relative flex h-1.5 w-1.5">
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${meta.dot} opacity-75`} />
-                <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-              </span>
-            )}
-            <Icon className="h-3 w-3" />
-            {meta.label}
+            {item.is_pinned && <Pin className="h-2.5 w-2.5 text-primary shrink-0" />}
+            <span className="ml-auto flex items-center gap-0.5 text-[10px] text-muted-foreground">
+              <Clock className="h-2.5 w-2.5" />
+              {timeAgo(item.published_at)}
+            </span>
           </div>
-          {!item.image_url && item.is_pinned && (
-            <div className="flex items-center gap-1 text-[10px] text-primary font-medium">
-              <Pin className="h-2.5 w-2.5" />
-              Pinned
-            </div>
+          {/* Title */}
+          <h3 className="font-semibold text-foreground leading-snug text-[13px] line-clamp-2 mb-1">{item.title}</h3>
+          {/* Preview — only show if no image */}
+          {!item.image_url && (
+            <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{preview}</p>
           )}
-          <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            {timeAgo(item.published_at)}
-          </span>
+          {/* CTA */}
+          <div className="mt-2 flex items-center gap-1 text-[10px] text-primary font-medium">
+            <MessageSquare className="h-2.5 w-2.5" />
+            <span>Lihat & Komentar</span>
+          </div>
         </div>
+        {/* Thumbnail side — only if image exists */}
+        {item.image_url && (
+          <div className="shrink-0 w-24 relative overflow-hidden bg-muted">
+            <img
+              src={item.image_url}
+              alt={item.title}
+              className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+            />
+            {item.is_pinned && (
+              <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-semibold text-primary-foreground">
+                <Pin className="h-2 w-2" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-        <h3 className="mb-2 font-semibold text-foreground leading-snug text-sm">{item.title}</h3>
-        <p className="text-[12px] text-muted-foreground leading-relaxed">{preview}</p>
-
-        <div className="mt-3 flex items-center gap-1 text-[11px] text-primary font-medium">
-          <MessageSquare className="h-3 w-3" />
-          <span>Lihat & Komentar</span>
+      {/* ── Desktop layout: vertical card ── */}
+      <div className="hidden sm:block">
+        {item.image_url && (
+          <div className="relative h-44 w-full overflow-hidden bg-muted">
+            <img
+              src={item.image_url}
+              alt={item.title}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+            {item.is_pinned && (
+              <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                <Pin className="h-2.5 w-2.5" />
+                Pinned
+              </div>
+            )}
+          </div>
+        )}
+        <div className="p-4">
+          <div className="mb-2.5 flex items-center gap-2 flex-wrap">
+            <div className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.bg ?? "bg-muted"} ${meta.color ?? "text-foreground"}`}>
+              {meta.pulse && (
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${meta.dot} opacity-75`} />
+                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                </span>
+              )}
+              <Icon className="h-3 w-3" />
+              {meta.label}
+            </div>
+            {!item.image_url && item.is_pinned && (
+              <div className="flex items-center gap-1 text-[10px] text-primary font-medium">
+                <Pin className="h-2.5 w-2.5" />
+                Pinned
+              </div>
+            )}
+            <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Clock className="h-3 w-3" />
+              {timeAgo(item.published_at)}
+            </span>
+          </div>
+          <h3 className="mb-2 font-semibold text-foreground leading-snug text-sm">{item.title}</h3>
+          <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-3">{preview}</p>
+          <div className="mt-3 flex items-center gap-1 text-[11px] text-primary font-medium">
+            <MessageSquare className="h-3 w-3" />
+            <span>Lihat & Komentar</span>
+          </div>
         </div>
       </div>
     </button>
@@ -165,18 +220,34 @@ function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
 
 function SkeletonCard() {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 space-y-3 animate-pulse">
-      <div className="flex items-center gap-2">
-        <div className="h-5 w-24 rounded-full bg-muted" />
-        <div className="ml-auto h-4 w-16 rounded bg-muted" />
+    <>
+      {/* Mobile skeleton */}
+      <div className="sm:hidden flex gap-0 rounded-xl border border-border bg-card overflow-hidden animate-pulse">
+        <div className="flex-1 p-3 space-y-2">
+          <div className="flex gap-1.5">
+            <div className="h-4 w-16 rounded-full bg-muted" />
+            <div className="ml-auto h-3 w-12 rounded bg-muted" />
+          </div>
+          <div className="h-3.5 w-full rounded bg-muted" />
+          <div className="h-3.5 w-4/5 rounded bg-muted" />
+          <div className="h-3 w-20 rounded bg-muted" />
+        </div>
+        <div className="w-24 bg-muted shrink-0" />
       </div>
-      <div className="h-4 w-3/4 rounded bg-muted" />
-      <div className="space-y-1.5">
-        <div className="h-3 w-full rounded bg-muted" />
-        <div className="h-3 w-5/6 rounded bg-muted" />
-        <div className="h-3 w-4/6 rounded bg-muted" />
+      {/* Desktop skeleton */}
+      <div className="hidden sm:block rounded-2xl border border-border bg-card p-4 space-y-3 animate-pulse">
+        <div className="flex items-center gap-2">
+          <div className="h-5 w-24 rounded-full bg-muted" />
+          <div className="ml-auto h-4 w-16 rounded bg-muted" />
+        </div>
+        <div className="h-4 w-3/4 rounded bg-muted" />
+        <div className="space-y-1.5">
+          <div className="h-3 w-full rounded bg-muted" />
+          <div className="h-3 w-5/6 rounded bg-muted" />
+          <div className="h-3 w-4/6 rounded bg-muted" />
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -214,29 +285,29 @@ const NewsPage = () => {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b border-border px-5 md:px-8 py-4 md:py-5">
+      <div className="shrink-0 border-b border-border px-4 md:px-8 py-3 md:py-5">
         <div className="md:max-w-5xl md:mx-auto flex items-center gap-3">
-          <div className="flex h-9 w-9 md:h-10 md:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600">
+          <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600">
             <Newspaper className="h-4 w-4 md:h-5 md:w-5 text-white" />
           </div>
           <div className="flex-1">
-            <h1 className="font-display text-lg md:text-xl font-bold text-foreground">Berita Masisir</h1>
-            <p className="text-xs md:text-sm text-muted-foreground">Update terkini untuk Masisir di Mesir</p>
+            <h1 className="font-display text-base md:text-xl font-bold text-foreground">Berita Masisir</h1>
+            <p className="text-[11px] md:text-sm text-muted-foreground">Update terkini untuk Masisir di Mesir</p>
           </div>
           <button
             onClick={() => fetchNews(true)}
             disabled={refreshing}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs md:text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Category filter pills */}
-      <div className="shrink-0 overflow-x-auto px-5 md:px-8 py-3 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
-        <div className="md:max-w-5xl md:mx-auto flex gap-2 w-max md:w-full">
+      {/* Category filter — compact scrollable pills */}
+      <div className="shrink-0 overflow-x-auto px-4 md:px-8 py-2.5 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
+        <div className="md:max-w-5xl md:mx-auto flex gap-1.5 w-max md:w-full">
           {CATEGORIES.map(cat => {
             const Icon = cat.icon;
             const isActive = activeCategory === cat.id;
@@ -245,7 +316,7 @@ const NewsPage = () => {
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all duration-150 ${
                   isActive
                     ? `${cat.activeBg} ${cat.activeText} shadow-sm`
                     : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
@@ -257,10 +328,10 @@ const NewsPage = () => {
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
                   </span>
                 )}
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-3 w-3" />
                 {cat.label}
                 {!loading && count > 0 && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-background text-muted-foreground"}`}>
+                  <span className={`rounded-full px-1 py-0.5 text-[9px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-background text-muted-foreground"}`}>
                     {count}
                   </span>
                 )}
@@ -270,11 +341,11 @@ const NewsPage = () => {
         </div>
       </div>
 
-      {/* News grid */}
-      <div className="flex-1 overflow-y-auto px-5 md:px-8 pb-6 md:pb-8">
+      {/* News list/grid */}
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-6 md:pb-8">
         <div className="md:max-w-5xl md:mx-auto">
           {loading ? (
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
+            <div className="grid gap-2 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 pt-3">
               {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           ) : news.length === 0 ? (
@@ -290,7 +361,8 @@ const NewsPage = () => {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
+            /* Mobile: compact list | Desktop: grid cards */
+            <div className="grid gap-2 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 pt-3">
               {news.map(item => (
                 <NewsCard key={item.id} item={item} onClick={() => setSelected(item)} />
               ))}
