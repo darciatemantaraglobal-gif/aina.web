@@ -23,7 +23,7 @@ const PRO_FEATURES = [
 ];
 
 const CONTRIBUTOR_FEATURES = [
-  { icon: MessageSquare, text: "10 chat dengan AINA per hari" },
+  { icon: MessageSquare, text: "Unlimited chat dengan AINA (khusus masa awal)" },
   { icon: BookOpen, text: "Tulis & publikasikan artikel Knowledge Base" },
   { icon: Star, text: "Badge Contributor eksklusif di profil" },
   { icon: Users, text: "Naik level ke Senior Contributor" },
