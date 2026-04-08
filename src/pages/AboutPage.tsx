@@ -394,73 +394,69 @@ const AboutPage = () => {
       {/* ══════════ PWA INSTALL ══════════════════════════════════ */}
       <section className="px-4 py-12 md:py-16">
         <div className="mx-auto max-w-3xl">
-          <div className="mb-8 text-center">
-            <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
+          {/* Header */}
+          <div className="mb-10 text-center">
+            <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
               <Smartphone className="h-5 w-5 text-primary" />
             </div>
             <h2 className="font-display text-2xl font-bold text-foreground md:text-3xl">
               Pasang AINA di Ponselmu
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground max-w-sm mx-auto">
               Akses AINA langsung dari layar utama — tanpa perlu buka browser.
             </p>
+            <div className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary/8 border border-primary/15 px-3 py-1.5">
+              <span className="text-[11px] font-mono font-semibold text-primary">ainalabs.pro</span>
+            </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2">
             {/* Android */}
-            <div className="rounded-2xl border border-border/50 bg-card/40 p-5 backdrop-blur-sm">
-              <div className="mb-4 flex items-center gap-2.5">
-                <img src="/android.png" alt="Android" className="h-7 w-7 object-contain" style={{ filter: "invert(1) brightness(2)" }} />
-                <span className="font-display text-sm font-bold text-foreground">Android (Chrome)</span>
+            <div className="rounded-2xl border border-border/40 bg-card/30 overflow-hidden backdrop-blur-sm">
+              <div className="flex items-center gap-3 border-b border-border/30 bg-card/50 px-5 py-3.5">
+                <img src="/android.png" alt="Android" className="h-5 w-5 object-contain" style={{ filter: "invert(1) brightness(2)" }} />
+                <span className="font-display text-sm font-bold text-foreground">Android</span>
+                <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Chrome</span>
               </div>
-              <ol className="space-y-2.5 text-sm text-muted-foreground">
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">1</span>
-                  Buka <strong className="text-foreground">aina-masisir.com</strong> di Chrome
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">2</span>
-                  Ketuk ikon <strong className="text-foreground">⋮ (tiga titik)</strong> di pojok kanan atas
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">3</span>
-                  Pilih <strong className="text-foreground">"Tambahkan ke layar beranda"</strong> atau <strong className="text-foreground">"Install app"</strong>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">4</span>
-                  Ketuk <strong className="text-foreground">Pasang</strong> — selesai!
-                </li>
+              <ol className="p-5 space-y-3">
+                {[
+                  <>Buka <code className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-mono text-primary">ainalabs.pro</code> di Chrome</>,
+                  <>Ketuk <strong className="text-foreground">⋮</strong> di pojok kanan atas</>,
+                  <>Pilih <strong className="text-foreground">"Tambahkan ke layar beranda"</strong></>,
+                  <>Ketuk <strong className="text-foreground">Pasang</strong> — selesai!</>,
+                ].map((step, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">{i + 1}</span>
+                    <span>{step}</span>
+                  </li>
+                ))}
               </ol>
             </div>
 
             {/* iOS */}
-            <div className="rounded-2xl border border-border/50 bg-card/40 p-5 backdrop-blur-sm">
-              <div className="mb-4 flex items-center gap-2.5">
-                <img src="/apple-.png" alt="Apple" className="h-7 w-7 object-contain" style={{ filter: "invert(1) brightness(2)" }} />
-                <span className="font-display text-sm font-bold text-foreground">iPhone / iPad (Safari)</span>
+            <div className="rounded-2xl border border-border/40 bg-card/30 overflow-hidden backdrop-blur-sm">
+              <div className="flex items-center gap-3 border-b border-border/30 bg-card/50 px-5 py-3.5">
+                <img src="/apple-.png" alt="Apple" className="h-5 w-5 object-contain" style={{ filter: "invert(1) brightness(2)" }} />
+                <span className="font-display text-sm font-bold text-foreground">iPhone / iPad</span>
+                <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Safari</span>
               </div>
-              <ol className="space-y-2.5 text-sm text-muted-foreground">
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">1</span>
-                  Buka <strong className="text-foreground">aina-masisir.com</strong> di Safari
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">2</span>
-                  Ketuk ikon <Share2 className="inline h-3.5 w-3.5 text-foreground" /> <strong className="text-foreground">Bagikan</strong> di toolbar bawah
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">3</span>
-                  Pilih <strong className="text-foreground">"Tambahkan ke Layar Utama"</strong>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">4</span>
-                  Ketuk <strong className="text-foreground">Tambahkan</strong> di pojok kanan atas
-                </li>
+              <ol className="p-5 space-y-3">
+                {[
+                  <>Buka <code className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-mono text-primary">ainalabs.pro</code> di Safari</>,
+                  <><Share2 className="inline h-3.5 w-3.5 text-foreground mr-0.5" /> Ketuk ikon <strong className="text-foreground">Bagikan</strong> di toolbar</>,
+                  <>Pilih <strong className="text-foreground">"Tambahkan ke Layar Utama"</strong></>,
+                  <>Ketuk <strong className="text-foreground">Tambahkan</strong> di kanan atas</>,
+                ].map((step, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">{i + 1}</span>
+                    <span>{step}</span>
+                  </li>
+                ))}
               </ol>
             </div>
           </div>
 
-          <p className="mt-5 text-center text-xs text-muted-foreground/60">
+          <p className="mt-6 text-center text-xs text-muted-foreground/50">
             Setelah dipasang, AINA berjalan seperti aplikasi biasa — full screen, tanpa address bar.
           </p>
         </div>
