@@ -3178,6 +3178,76 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 }
 
 /* ─── Markdown components for chat viewer — mirrors real ChatArea styling ── */
+// ── ARABIC_BLOCK renderer (mirrored from ChatArea) ──────────────────────────
+function parseArabicBlockMonitor(raw: string) {
+  const get = (label: string) => {
+    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Reading \\(Latin\\):|Meaning:)[^\\n]*)*)`, "i");
+    const m = raw.match(re);
+    if (!m) return "";
+    return m[1].replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+  };
+  return { arabic: get("Arabic Text"), reading: get("Reading \\(Latin\\)"), meaning: get("Meaning") };
+}
+
+function ArabicBlockCardMonitor({ arabic, reading, meaning }: { arabic: string; reading: string; meaning: string }) {
+  return (
+    <div className="my-3 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
+      <div className="px-4 pt-3 pb-2.5 border-b border-primary/10">
+        <p dir="rtl" className="text-left leading-loose text-foreground tracking-wide" style={{ fontFamily: "'Amiri', serif", fontSize: "20px", lineHeight: "2.0" }}>
+          {arabic}
+        </p>
+      </div>
+      <div className="px-4 py-2.5 space-y-1.5" dir="ltr">
+        {reading && <p className="text-sm flex items-start gap-1.5 text-left"><span className="mt-px shrink-0">🔊</span><span dir="ltr" className="break-words text-sky-400 italic">{reading}</span></p>}
+        {meaning && <p className="text-sm flex items-start gap-1.5 text-left"><span className="mt-px shrink-0 text-primary/70">✦</span><span dir="ltr" className="break-words text-white italic">{meaning}</span></p>}
+      </div>
+    </div>
+  );
+}
+
+const MONITOR_ARABIC_RE = /\[ARABIC_BLOCK\]([\s\S]*?)\[\/ARABIC_BLOCK\]/g;
+
+function renderMonitorContent(content: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  MONITOR_ARABIC_RE.lastIndex = 0;
+  while ((match = MONITOR_ARABIC_RE.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const prose = content.slice(lastIndex, match.index).trim();
+      if (prose) {
+        parts.push(
+          <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
+            {prose}
+          </ReactMarkdown>
+        );
+      }
+    }
+    const data = parseArabicBlockMonitor(match[1]);
+    if (data.arabic || data.meaning) {
+      parts.push(<ArabicBlockCardMonitor key={key++} {...data} />);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  const tail = content.slice(lastIndex).trim();
+  if (tail) {
+    parts.push(
+      <ReactMarkdown key={key++} remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
+        {tail}
+      </ReactMarkdown>
+    );
+  }
+  if (parts.length === 0) {
+    return (
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
+        {content}
+      </ReactMarkdown>
+    );
+  }
+  return <>{parts}</>;
+}
+
 const MONITOR_MD = {
   br: () => <br />,
   a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a>,
@@ -3572,9 +3642,7 @@ function ChatMonitorTab() {
                           /* AI response — exact copy from ChatArea + Fix It button */
                           <div className="min-w-0 flex-1 min-h-0 group">
                             <div className="py-1.5 text-[15px] leading-[1.7]">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MONITOR_MD}>
-                                {m.content}
-                              </ReactMarkdown>
+                              {renderMonitorContent(m.content)}
                             </div>
                             <div className="mt-1.5 flex items-center gap-3">
                               <p className="text-[10px] text-muted-foreground/40">
