@@ -1,94 +1,80 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Newspaper, Zap, FileText, Utensils, Globe, Bus, GraduationCap,
-  Clock, ExternalLink, RefreshCw, ChevronRight, Pin
+  Clock, RefreshCw, Pin, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
-
-interface NewsItem {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  image_url?: string;
-  source_url?: string;
-  source_name?: string;
-  is_pinned: boolean;
-  published_at: string;
-  created_at: string;
-}
+import { NewsModal, timeAgo } from "@/components/NewsModal";
+import type { NewsItem } from "@/components/NewsModal";
 
 const CATEGORIES = [
   {
     id: "all",
     label: "Semua",
     icon: Newspaper,
-    color: "text-foreground",
-    bg: "bg-muted",
     activeBg: "bg-foreground",
     activeText: "text-background",
-    dot: "bg-foreground",
   },
   {
     id: "breaking_news",
     label: "Breaking News",
     icon: Zap,
-    color: "text-red-500",
     bg: "bg-red-500/10 border border-red-500/20",
     activeBg: "bg-red-500",
     activeText: "text-white",
     dot: "bg-red-500",
+    color: "text-red-500",
     pulse: true,
   },
   {
     id: "administrasi",
     label: "Administrasi",
     icon: FileText,
-    color: "text-blue-500",
     bg: "bg-blue-500/10 border border-blue-500/20",
     activeBg: "bg-blue-500",
     activeText: "text-white",
     dot: "bg-blue-500",
+    color: "text-blue-500",
   },
   {
     id: "kuliner",
     label: "Kuliner",
     icon: Utensils,
-    color: "text-orange-500",
     bg: "bg-orange-500/10 border border-orange-500/20",
     activeBg: "bg-orange-500",
     activeText: "text-white",
     dot: "bg-orange-500",
+    color: "text-orange-500",
   },
   {
     id: "kehidupan_mesir",
     label: "Kehidupan Mesir",
     icon: Globe,
-    color: "text-green-500",
     bg: "bg-green-500/10 border border-green-500/20",
     activeBg: "bg-green-500",
     activeText: "text-white",
     dot: "bg-green-500",
+    color: "text-green-500",
   },
   {
     id: "transportasi",
     label: "Transportasi",
     icon: Bus,
-    color: "text-cyan-500",
     bg: "bg-cyan-500/10 border border-cyan-500/20",
     activeBg: "bg-cyan-500",
     activeText: "text-white",
     dot: "bg-cyan-500",
+    color: "text-cyan-500",
   },
   {
     id: "aigypt",
     label: "Berita AIGYPT",
     icon: GraduationCap,
-    color: "text-violet-500",
     bg: "bg-violet-500/10 border border-violet-500/20",
     activeBg: "bg-violet-500",
     activeText: "text-white",
     dot: "bg-violet-500",
+    color: "text-violet-500",
   },
 ];
 
@@ -96,27 +82,16 @@ function getCategoryMeta(categoryId: string) {
   return CATEGORIES.find(c => c.id === categoryId) ?? CATEGORIES[0];
 }
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-  if (mins < 1) return "Baru saja";
-  if (mins < 60) return `${mins} menit lalu`;
-  if (hours < 24) return `${hours} jam lalu`;
-  if (days < 7) return `${days} hari lalu`;
-  return new Date(dateStr).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function NewsCard({ item }: { item: NewsItem }) {
-  const [expanded, setExpanded] = useState(false);
+function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   const meta = getCategoryMeta(item.category);
   const Icon = meta.icon;
-  const isLong = item.content.length > 220;
-  const preview = isLong && !expanded ? item.content.slice(0, 220).trimEnd() + "…" : item.content;
+  const preview = item.content.length > 180 ? item.content.slice(0, 180).trimEnd() + "…" : item.content;
 
   return (
-    <div className={`group relative rounded-2xl border bg-card transition-all duration-200 hover:shadow-md overflow-hidden ${item.is_pinned ? "border-primary/30 ring-1 ring-primary/10" : "border-border"}`}>
+    <button
+      onClick={onClick}
+      className={`group w-full text-left relative rounded-2xl border bg-card transition-all duration-200 hover:shadow-md hover:scale-[1.01] active:scale-[0.99] overflow-hidden ${item.is_pinned ? "border-primary/30 ring-1 ring-primary/10" : "border-border"}`}
+    >
       {item.image_url && (
         <div className="relative h-44 w-full overflow-hidden bg-muted">
           <img
@@ -135,8 +110,8 @@ function NewsCard({ item }: { item: NewsItem }) {
       )}
 
       <div className="p-4">
-        <div className="mb-2.5 flex items-center justify-between gap-2">
-          <div className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.bg} ${meta.color}`}>
+        <div className="mb-2.5 flex items-center gap-2 flex-wrap">
+          <div className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.bg ?? "bg-muted"} ${meta.color ?? "text-foreground"}`}>
             {meta.pulse && (
               <span className="relative flex h-1.5 w-1.5">
                 <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${meta.dot} opacity-75`} />
@@ -159,32 +134,14 @@ function NewsCard({ item }: { item: NewsItem }) {
         </div>
 
         <h3 className="mb-2 font-semibold text-foreground leading-snug text-sm">{item.title}</h3>
+        <p className="text-[12px] text-muted-foreground leading-relaxed">{preview}</p>
 
-        <p className="text-[13px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{preview}</p>
-
-        {isLong && (
-          <button
-            onClick={() => setExpanded(v => !v)}
-            className="mt-2 flex items-center gap-1 text-xs text-primary font-medium hover:underline"
-          >
-            {expanded ? "Tampilkan lebih sedikit" : "Selengkapnya"}
-            <ChevronRight className={`h-3 w-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
-          </button>
-        )}
-
-        {item.source_url && (
-          <a
-            href={item.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ExternalLink className="h-3 w-3" />
-            {item.source_name || "Lihat sumber"}
-          </a>
-        )}
+        <div className="mt-3 flex items-center gap-1 text-[11px] text-primary font-medium">
+          <MessageSquare className="h-3 w-3" />
+          <span>Lihat & Komentar</span>
+        </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -207,19 +164,17 @@ function SkeletonCard() {
 
 const NewsPage = () => {
   const [activeCategory, setActiveCategory] = useState("all");
-  const [news, setNews] = useState<NewsItem[]>([]);
+  const [news, setNews]     = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selected, setSelected] = useState<NewsItem | null>(null);
 
   const fetchNews = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
     try {
       const params = activeCategory !== "all" ? `?category=${activeCategory}` : "";
-      const res = await fetch(`/api/news${params}`, {
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
+      const res = await fetch(`/api/news${params}`);
       if (!res.ok) throw new Error("Gagal memuat berita");
       const data = await res.json();
       setNews(data.news ?? []);
@@ -262,67 +217,72 @@ const NewsPage = () => {
       </div>
 
       {/* Category filter pills */}
-      <div className="flex gap-2 overflow-x-auto px-5 md:px-8 py-3 shrink-0 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
-        <div className="md:max-w-5xl md:mx-auto flex gap-2 w-full">
-        {CATEGORIES.map(cat => {
-          const Icon = cat.icon;
-          const isActive = activeCategory === cat.id;
-          const count = cat.id === "all" ? news.length : (counts[cat.id] ?? 0);
-          return (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
-                isActive
-                  ? `${cat.activeBg} ${cat.activeText} shadow-sm`
-                  : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
-              }`}
-            >
-              {cat.pulse && isActive && (
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
-                </span>
-              )}
-              <Icon className="h-3.5 w-3.5" />
-              {cat.label}
-              {!loading && count > 0 && (
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-background text-muted-foreground"}`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      <div className="shrink-0 overflow-x-auto px-5 md:px-8 py-3 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none]">
+        <div className="md:max-w-5xl md:mx-auto flex gap-2 w-max md:w-full">
+          {CATEGORIES.map(cat => {
+            const Icon = cat.icon;
+            const isActive = activeCategory === cat.id;
+            const count = cat.id === "all" ? news.length : (counts[cat.id] ?? 0);
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                  isActive
+                    ? `${cat.activeBg} ${cat.activeText} shadow-sm`
+                    : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                }`}
+              >
+                {cat.pulse && isActive && (
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+                  </span>
+                )}
+                <Icon className="h-3.5 w-3.5" />
+                {cat.label}
+                {!loading && count > 0 && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isActive ? "bg-white/20 text-white" : "bg-background text-muted-foreground"}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* News grid */}
       <div className="flex-1 overflow-y-auto px-5 md:px-8 pb-6 md:pb-8">
         <div className="md:max-w-5xl md:mx-auto">
-        {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
-            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-          </div>
-        ) : news.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
-              <Newspaper className="h-7 w-7 text-muted-foreground" />
+          {loading ? (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
+              {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
-            <p className="font-semibold text-foreground">Belum ada berita</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {activeCategory === "all"
-                ? "Belum ada berita yang dipublikasikan"
-                : `Belum ada berita kategori "${getCategoryMeta(activeCategory).label}"`}
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
-            {news.map(item => <NewsCard key={item.id} item={item} />)}
-          </div>
-        )}
+          ) : news.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+                <Newspaper className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <p className="font-semibold text-foreground">Belum ada berita</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {activeCategory === "all"
+                  ? "Belum ada berita yang dipublikasikan"
+                  : `Belum ada berita kategori "${getCategoryMeta(activeCategory).label}"`}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 pt-4">
+              {news.map(item => (
+                <NewsCard key={item.id} item={item} onClick={() => setSelected(item)} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Modal */}
+      {selected && <NewsModal item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 };

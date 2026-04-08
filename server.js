@@ -9648,6 +9648,72 @@ app.get("/api/news", async (req, res) => {
   }
 });
 
+/* GET /api/news/:id/comments — public, list comments for a news item */
+app.get("/api/news/:id/comments", async (req, res) => {
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+  const { data, error } = await supabase
+    .from("masisir_news_comments")
+    .select("id,user_id,user_name,content,created_at")
+    .eq("news_id", req.params.id)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  if (error) {
+    if (error.code === "42P01") return res.json({ comments: [] });
+    return res.status(500).json({ error: "Gagal memuat komentar" });
+  }
+  res.json({ comments: data ?? [] });
+});
+
+/* POST /api/news/:id/comments — authenticated user posts a comment */
+app.post("/api/news/:id/comments", writeLimiter, async (req, res) => {
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login terlebih dahulu untuk berkomentar" });
+  const token = authHeader.slice(7);
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Sesi tidak valid, silakan login ulang" });
+
+  const content = req.body.content?.trim();
+  if (!content || content.length < 1) return res.status(400).json({ error: "Komentar tidak boleh kosong" });
+  if (content.length > 1000) return res.status(400).json({ error: "Komentar terlalu panjang (maks 1000 karakter)" });
+
+  // Fetch display name from profiles
+  const { data: profile } = await supabase.from("profiles").select("full_name").eq("user_id", user.id).single();
+  const user_name = profile?.full_name?.trim() || user.email?.split("@")[0] || "Anonim";
+
+  const { data, error } = await supabase
+    .from("masisir_news_comments")
+    .insert({ news_id: req.params.id, user_id: user.id, user_name, content })
+    .select("id,user_id,user_name,content,created_at")
+    .single();
+  if (error) return res.status(500).json({ error: "Gagal menyimpan komentar" });
+  res.status(201).json({ comment: data });
+});
+
+/* DELETE /api/news/:id/comments/:cid — admin or own comment */
+app.delete("/api/news/:id/comments/:cid", async (req, res) => {
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const token = authHeader.slice(7);
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const isAdmin = await verifyAdminUser(authHeader);
+  const { data: comment } = await supabase.from("masisir_news_comments").select("user_id").eq("id", req.params.cid).single();
+  if (!comment) return res.status(404).json({ error: "Komentar tidak ditemukan" });
+  if (!isAdmin && comment.user_id !== user.id) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const { error } = await supabase.from("masisir_news_comments").delete().eq("id", req.params.cid);
+  if (error) return res.status(500).json({ error: "Gagal menghapus komentar" });
+  res.json({ ok: true });
+});
+
 /* GET /api/_seed-news — ONE-TIME seed endpoint, remove after use */
 app.get("/api/_seed-news", async (req, res) => {
   if (req.query.token !== "aina_seed_2026") return res.status(403).json({ error: "forbidden" });
@@ -12064,6 +12130,16 @@ async function runColumnMigrations() {
     // Drop the masisir_news category check constraint — server-side validation handles this already.
     // The old constraint used stale category values and blocked valid inserts.
     "ALTER TABLE public.masisir_news DROP CONSTRAINT IF EXISTS masisir_news_category_check;",
+    // News comments
+    `CREATE TABLE IF NOT EXISTS public.masisir_news_comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      news_id UUID NOT NULL REFERENCES public.masisir_news(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      user_name TEXT NOT NULL DEFAULT 'Anonim',
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    "CREATE INDEX IF NOT EXISTS idx_news_comments_news_id ON public.masisir_news_comments(news_id);",
     // ── AI Performance intel tables ──────────────────────────────────────────
     `CREATE TABLE IF NOT EXISTS public.intel_retrieval_stats (
       id BIGSERIAL PRIMARY KEY,
