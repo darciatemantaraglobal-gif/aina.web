@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Newspaper, Clock, ExternalLink, Pin, X, MessageSquare, Send,
-  RefreshCw, LogIn, Trash2, ZoomIn,
+  RefreshCw, LogIn, Trash2, ZoomIn, Share2, Copy, Check,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
@@ -70,7 +70,42 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
   const [session, setSession]           = useState<any>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [imgExpanded, setImgExpanded]   = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied]             = useState(false);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  const shareUrl  = item.source_url || window.location.href;
+  const shareText = `${item.title}\n\n`;
+
+  async function handleShare() {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: item.title, text: shareText, url: shareUrl });
+      } catch { /* user cancelled */ }
+    } else {
+      setShowShareMenu(v => !v);
+    }
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => { setCopied(false); setShowShareMenu(false); }, 1800);
+    } catch { /* ignore */ }
+  }
+
+  function shareWhatsApp() {
+    const msg = encodeURIComponent(`${shareText}${shareUrl}`);
+    window.open(`https://wa.me/?text=${msg}`, "_blank");
+    setShowShareMenu(false);
+  }
+
+  function shareTwitter() {
+    const msg = encodeURIComponent(`${item.title} ${shareUrl}`);
+    window.open(`https://twitter.com/intent/tweet?text=${msg}`, "_blank");
+    setShowShareMenu(false);
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -88,10 +123,25 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
   }, [item.id]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showShareMenu) setShowShareMenu(false);
+        else onClose();
+      }
+    };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, showShareMenu]);
+
+  useEffect(() => {
+    if (!showShareMenu) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-share-menu]")) setShowShareMenu(false);
+    };
+    setTimeout(() => document.addEventListener("mousedown", handler), 0);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showShareMenu]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -189,6 +239,53 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
               <p className="text-[11px] text-muted-foreground mt-0.5">Sumber: {item.source_name}</p>
             )}
           </div>
+          {/* Share button + popup */}
+          <div className="relative shrink-0" data-share-menu>
+            <button
+              onClick={handleShare}
+              title="Bagikan berita"
+              className="rounded-full p-1.5 hover:bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Share2 className="h-4 w-4" />
+            </button>
+
+            {/* Share menu dropdown (shown when Web Share API unavailable) */}
+            {showShareMenu && (
+              <div className="absolute right-0 top-9 z-20 w-48 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+                <div className="px-3 py-2 border-b border-border/40">
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Bagikan via</p>
+                </div>
+                {/* WhatsApp */}
+                <button
+                  onClick={shareWhatsApp}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#25D366]/15 text-[#25D366] text-base font-bold shrink-0">W</span>
+                  WhatsApp
+                </button>
+                {/* Twitter / X */}
+                <button
+                  onClick={shareTwitter}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground/10 text-foreground text-sm font-bold shrink-0">𝕏</span>
+                  X / Twitter
+                </button>
+                {/* Copy link */}
+                <button
+                  onClick={copyLink}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-muted transition-colors border-t border-border/30"
+                >
+                  {copied
+                    ? <Check className="h-4 w-4 text-green-500 shrink-0" />
+                    : <Copy className="h-4 w-4 text-muted-foreground shrink-0" />
+                  }
+                  {copied ? "Link tersalin!" : "Salin link"}
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={onClose}
             className="shrink-0 rounded-full p-1.5 hover:bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors"
