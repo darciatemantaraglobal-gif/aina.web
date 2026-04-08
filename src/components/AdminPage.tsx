@@ -5,6 +5,7 @@ const MD_LINK = { a: ({ href, children }: any) => <a href={href} target="_blank"
 import { supabase } from "@/integrations/supabase/client";
 import NewsImageCropper from "@/components/NewsImageCropper";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -335,6 +336,37 @@ function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
   const [usageLoading, setUsageLoading] = useState(true);
   const [chartMode, setChartMode] = useState<"queries" | "dau">("queries");
 
+  const [subscriptionVisible, setSubscriptionVisible] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [configSaving, setConfigSaving] = useState(false);
+
+  useEffect(() => {
+    adminFetch("/api/admin/app-config")
+      .then((d: Record<string, string>) => {
+        if (d.subscription_visible !== undefined) {
+          setSubscriptionVisible(d.subscription_visible === "true");
+        }
+      })
+      .catch(() => {})
+      .finally(() => setConfigLoading(false));
+  }, []);
+
+  const handleSubscriptionToggle = async (checked: boolean) => {
+    setConfigSaving(true);
+    try {
+      await adminFetch("/api/admin/app-config", {
+        method: "PATCH",
+        body: JSON.stringify({ subscription_visible: String(checked) }),
+      });
+      setSubscriptionVisible(checked);
+      toast.success(checked ? "Tombol berlangganan diaktifkan" : "Tombol berlangganan disembunyikan");
+    } catch {
+      toast.error("Gagal menyimpan pengaturan");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
   useEffect(() => {
     adminFetch("/api/admin/usage-stats")
       .then(d => setUsage(d))
@@ -485,6 +517,34 @@ function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
               <span className="text-muted-foreground">{r.desc}</span>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* App Settings */}
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <h3 className="mb-1 font-medium text-foreground">Pengaturan Aplikasi</h3>
+        <p className="mb-4 text-xs text-muted-foreground">Toggle fitur yang tampil ke pengguna tanpa perlu coding.</p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-secondary/30 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Tombol Berlangganan (Pro)</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {subscriptionVisible
+                  ? "Tombol berlangganan ditampilkan di halaman Pricing."
+                  : "Tombol berlangganan disembunyikan dari halaman Pricing."}
+              </p>
+            </div>
+            {configLoading ? (
+              <div className="h-6 w-11 animate-pulse rounded-full bg-muted" />
+            ) : (
+              <Switch
+                checked={subscriptionVisible}
+                onCheckedChange={handleSubscriptionToggle}
+                disabled={configSaving}
+                aria-label="Toggle tombol berlangganan"
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

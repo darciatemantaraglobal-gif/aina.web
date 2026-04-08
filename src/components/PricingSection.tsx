@@ -109,7 +109,7 @@ const PricingSection = () => {
         </div>
 
         {/* Cards */}
-        <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-stretch">
+        <div className={`grid gap-4 sm:gap-6 lg:items-stretch ${config?.subscription_visible ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
 
           {/* Free */}
           <div className={`flex flex-col rounded-2xl border border-border/60 bg-card/40 p-5 backdrop-blur-xl transition-all duration-700 delay-150 sm:p-8 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
@@ -143,8 +143,8 @@ const PricingSection = () => {
             </Link>
           </div>
 
-          {/* Pro — Coming Soon */}
-          <div className={`relative flex flex-col rounded-2xl border border-primary/50 bg-card/40 p-5 backdrop-blur-xl transition-all duration-700 delay-300 sm:p-8 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
+          {/* Pro — shown only when subscription_visible = true */}
+          {config?.subscription_visible && <div className={`relative flex flex-col rounded-2xl border border-primary/50 bg-card/40 p-5 backdrop-blur-xl transition-all duration-700 delay-300 sm:p-8 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
             <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/12 via-transparent to-purple-glow/8" />
 
 
@@ -185,7 +185,7 @@ const PricingSection = () => {
               <Lock className="h-3.5 w-3.5" />
               Segera Hadir — Notifikasi Saya
             </button>
-          </div>
+          </div>}
 
           {/* Contributor */}
           <div className={`relative flex flex-col rounded-2xl border border-amber-500/50 bg-card/40 p-5 backdrop-blur-xl transition-all duration-700 sm:p-8 ${visible ? "opacity-100 translate-y-0 delay-500" : "opacity-0 translate-y-6"}`}>

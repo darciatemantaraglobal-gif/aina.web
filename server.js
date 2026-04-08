@@ -2654,6 +2654,28 @@ Balas HANYA dengan JSON.`,
   }
 }
 
+/* ── Exchange Rate (public, cached 5 min) ────────────── */
+let _erCache = null;
+let _erCacheAt = 0;
+const ER_TTL_MS = 5 * 60 * 1000;
+
+app.get("/api/exchange-rate", async (_req, res) => {
+  const now = Date.now();
+  if (_erCache && now - _erCacheAt < ER_TTL_MS) {
+    return res.json({ ..._erCache, cached: true });
+  }
+  try {
+    const rates = await fetchExchangeRates();
+    if (rates) {
+      _erCache = rates;
+      _erCacheAt = now;
+      return res.json({ ...rates, cached: false });
+    }
+  } catch { /* fall through */ }
+  if (_erCache) return res.json({ ..._erCache, cached: true });
+  return res.json({ egpToIdr: 245, egpToUsd: 0.02, usdToIdr: 15600, usdToEgp: 50, date: null, cached: false });
+});
+
 /* ── Health check ────────────────────────────────────── */
 app.get("/api/ping", (_req, res) => res.json({ status: "ok" }));
 
@@ -11503,10 +11525,19 @@ if (PAYMENT_ENABLED) {
   };
 
   /* -- Payment config (exposes client key & status safely) */
-  app.get("/api/payment/config", (_req, res) => {
+  app.get("/api/payment/config", async (_req, res) => {
+    const supabase = getAdminClient();
+    let subscriptionVisible = true;
+    if (supabase) {
+      try {
+        const { data } = await supabase.from("app_config").select("value").eq("key", "subscription_visible").single();
+        if (data) subscriptionVisible = data.value === "true";
+      } catch { /* table may not exist yet — default true */ }
+    }
     res.json({
-      enabled: true,
-      client_key: process.env.MIDTRANS_CLIENT_KEY,
+      enabled: subscriptionVisible,
+      subscription_visible: subscriptionVisible,
+      client_key: subscriptionVisible ? process.env.MIDTRANS_CLIENT_KEY : null,
       is_production: process.env.MIDTRANS_IS_PRODUCTION === "true",
     });
   });
@@ -11659,9 +11690,17 @@ if (PAYMENT_ENABLED) {
 
 } else {
   /* -- Stub routes when payment is disabled --------------- */
-  app.get("/api/payment/config", (_req, res) =>
-    res.json({ enabled: false, client_key: null, is_production: false })
-  );
+  app.get("/api/payment/config", async (_req, res) => {
+    const supabase = getAdminClient();
+    let subscriptionVisible = false;
+    if (supabase) {
+      try {
+        const { data } = await supabase.from("app_config").select("value").eq("key", "subscription_visible").single();
+        if (data) subscriptionVisible = data.value === "true";
+      } catch { /* table may not exist yet */ }
+    }
+    res.json({ enabled: false, client_key: null, is_production: false, subscription_visible: subscriptionVisible });
+  });
   app.post("/api/payment/create-order", (_req, res) =>
     res.status(503).json({ error: "Fitur pembayaran belum aktif. Segera hadir!" })
   );
@@ -11673,6 +11712,36 @@ if (PAYMENT_ENABLED) {
     res.json({ subscription: null, is_active: false })
   );
 }
+
+/* ── App Config (admin-only, controls toggles like subscription_visible) */
+app.get("/api/admin/app-config", async (req, res) => {
+  const admin = await verifyAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Server error" });
+  const { data, error } = await supabase.from("app_config").select("key, value, updated_at");
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  const config = {};
+  for (const row of (data ?? [])) config[row.key] = row.value;
+  res.json(config);
+});
+
+app.patch("/api/admin/app-config", writeLimiter, async (req, res) => {
+  const admin = await verifyAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Server error" });
+  const updates = req.body;
+  if (!updates || typeof updates !== "object") return res.status(400).json({ error: "Body must be an object of key/value pairs" });
+  const upserts = Object.entries(updates).map(([key, value]) => ({
+    key,
+    value: String(value),
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase.from("app_config").upsert(upserts, { onConflict: "key" });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ ok: true });
+});
 
 /* ── Evaluation System — master admin only ───────────── */
 
@@ -12152,6 +12221,7 @@ async function checkRequiredTables() {
     "library_items",
     "flashcard_sets",
     "system_settings",
+    "app_config",
   ];
 
   const missing = [];
@@ -12416,6 +12486,14 @@ async function runColumnMigrations() {
       value TEXT NOT NULL DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );`,
+    // App config table — admin-controlled toggles (e.g. subscription_visible)
+    `CREATE TABLE IF NOT EXISTS public.app_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    // Seed default values for app_config (only if not yet set)
+    `INSERT INTO public.app_config (key, value) VALUES ('subscription_visible', 'false') ON CONFLICT (key) DO NOTHING;`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

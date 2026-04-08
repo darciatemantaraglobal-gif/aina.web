@@ -32,10 +32,10 @@ const HeroChat = () => {
   useEffect(() => {
     const fetchRate = async () => {
       try {
-        const res = await fetch("https://open.er-api.com/v6/latest/EGP");
+        const res = await fetch("/api/exchange-rate");
         if (!res.ok) throw new Error("fetch failed");
         const data = await res.json();
-        const rate = data?.rates?.IDR;
+        const rate = data?.egpToIdr;
         if (rate && typeof rate === "number") {
           const rounded = Math.round(rate);
           setEgpToIdr(rounded);

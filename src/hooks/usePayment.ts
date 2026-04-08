@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 interface PaymentConfig {
   enabled: boolean;
+  subscription_visible: boolean;
   client_key: string | null;
   is_production: boolean;
 }
