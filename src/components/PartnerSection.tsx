@@ -89,9 +89,9 @@ export default function PartnerSection() {
 
                 {/* Name + subtitle */}
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-white/60 group-hover:text-white/90 transition-colors duration-300">{p.name}</p>
+                  <p className="font-display text-[11px] font-bold leading-tight text-white/60 group-hover:text-white/90 transition-colors duration-300 md:text-sm">{p.name}</p>
                   {p.subtitle && (
-                    <p className="mt-0.5 text-[11px] text-white/25 group-hover:text-white/45 transition-colors duration-300">{p.subtitle}</p>
+                    <p className="mt-0.5 text-[10px] text-white/25 group-hover:text-white/45 transition-colors duration-300 md:text-xs">{p.subtitle}</p>
                   )}
                 </div>
               </div>
