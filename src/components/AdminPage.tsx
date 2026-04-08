@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 const MD_LINK = { a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a> };
 import { supabase } from "@/integrations/supabase/client";
+import NewsImageCropper from "@/components/NewsImageCropper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -5774,6 +5775,7 @@ function NewsManagementTab() {
   const [imgUploading, setImgUploading] = useState(false);
   const [aiPolishing, setAiPolishing] = useState(false);
   const [contentTab, setContentTab] = useState<"edit" | "preview">("edit");
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const newsImgInputRef = useRef<HTMLInputElement>(null);
@@ -6019,7 +6021,7 @@ function NewsManagementTab() {
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) uploadNewsImage(f); e.target.value = ""; }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) setCropFile(f); e.target.value = ""; }}
               />
               {form.image_url ? (
                 <div className="relative rounded-xl overflow-hidden border border-border">
@@ -6164,6 +6166,18 @@ function NewsManagementTab() {
             );
           })}
         </div>
+      )}
+
+      {/* Image Crop Modal */}
+      {cropFile && (
+        <NewsImageCropper
+          file={cropFile}
+          onDone={croppedFile => {
+            setCropFile(null);
+            uploadNewsImage(croppedFile);
+          }}
+          onCancel={() => setCropFile(null)}
+        />
       )}
     </div>
   );
