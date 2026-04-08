@@ -1526,11 +1526,12 @@ function shouldFetchExternal(intentPrimary, kbStrength, query) {
   const q = (query ?? "").trim();
   if (q.length < 8 || WIKI_SKIP_PATTERNS.test(q) || STANDALONE_CMD_PATTERNS.test(q)) return false;
   if (intentPrimary === "casual") return false;
-  if (intentPrimary === "arabic_writing" || intentPrimary === "arabic_analysis") return false; // Pure language/writing task — no external needed
-  if (intentPrimary === "fiqh") return false; // Dorar.net handles Islamic references — Wikipedia/DDG not reliable for fiqh
+  if (intentPrimary === "arabic_writing" || intentPrimary === "arabic_analysis") return false;
+  if (intentPrimary === "fiqh") return false;
+  // Masisir-internal orgs are never on Wikipedia or DuckDuckGo — skip to avoid garbage results
+  if (isMasisirInternalOrg(q)) return false;
   if (kbStrength === "strong") return false;
   // KB absent or weak → always try Wikipedia/DDG as last-resort fallback
-  // (only reached when Perplexity is unavailable or fails)
   return true;
 }
 
@@ -2082,9 +2083,29 @@ function isDynamicRoleQuery(q) {
  * search engines — their leadership data lives exclusively in the AINA Knowledge Base.
  * When this returns true AND KB has a strong hit, skip Perplexity and trust the KB.
  */
+/**
+ * Returns true if the query is about a Masisir-internal student/diaspora organisation
+ * OR any leadership/jabatan within such an organisation.
+ *
+ * Rule: these entities are NEVER indexed by public search engines (Wikipedia, DuckDuckGo,
+ * Perplexity). Searching externally will return either nothing or misleading results
+ * (e.g. PPMI Indonesia instead of PPMI Mesir). All external fetches must be skipped.
+ * Use KB exclusively — if KB is absent, fall back to model knowledge + honest caveat.
+ */
 function isMasisirInternalOrg(q) {
   const text = (q ?? "").toLowerCase();
-  return /\b(ppmi|ppi\s*mesir|kekeluargaan|imman|iwama|ikamapta|ioms|forkom|dppm|senat\s*masisir|bem\s*masisir|komunitas\s*masisir|perhimpunan\s*pelajar|persatuan\s*pelajar)\b/.test(text);
+
+  // Core Masisir internal orgs — never indexed by public search engines
+  const orgPattern = /\b(ppmi(\s+mesir)?|ppi\s*mesir|kekeluargaan(\s+\w+)?|forkom(\s+\w+)?|dppm|senat\s*masisir|bem\s*masisir|imman|iwama|ikamapta|ioms|komunitas\s+masisir|lembaga\s+masisir|alumni\s+masisir|persatuan\s+pelajar(\s+indonesia)?\s+(mesir|kairo)|perhimpunan\s+pelajar(\s+indonesia)?\s+(mesir|kairo)|mahasiswa\s+indonesia\s+(di\s+)?(mesir|kairo|azhar))\b/i;
+
+  // Jabatan/role phrases combined with a Masisir-internal org name
+  // e.g. "presiden PPMI Mesir", "ketua kekeluargaan jawa", "sekjen forkom masisir"
+  const MASISIR_ORG_WORDS = "(ppmi|kekeluargaan|forkom|masisir|dppm|bem|senat|imman|iwama|ikamapta|ioms)";
+  const JABATAN_WORDS = "(presiden|ketua|wakil ketua|sekretaris|sekjen|bendahara|koordinator|pimpinan|pemimpin|pengurus|kabinet|kabid|kepala divisi|kepala bidang)";
+  const jabatanThenOrg = new RegExp(`\\b${JABATAN_WORDS}\\b.{0,60}\\b${MASISIR_ORG_WORDS}\\b`, "i");
+  const orgThenJabatan = new RegExp(`\\b${MASISIR_ORG_WORDS}\\b.{0,60}\\b${JABATAN_WORDS}\\b`, "i");
+
+  return orgPattern.test(text) || jabatanThenOrg.test(text) || orgThenJabatan.test(text);
 }
 
 /**
