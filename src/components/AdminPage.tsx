@@ -5953,7 +5953,8 @@ function NewsManagementTab() {
 
       {/* Form dialog */}
       <Dialog open={showForm} onOpenChange={open => { if (!open && !cropFile) setShowForm(false); }}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto relative">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <div className="relative">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit Berita" : "Tambah Berita Baru"}</DialogTitle>
           </DialogHeader>
@@ -6106,7 +6107,7 @@ function NewsManagementTab() {
             </div>
           </div>
 
-          {/* Crop overlay — rendered inside DialogContent so Radix pointer events work */}
+          {/* Crop overlay — inside relative wrapper so absolute inset-0 works */}
           {cropFile && (
             <NewsImageCropper
               file={cropFile}
@@ -6114,6 +6115,7 @@ function NewsManagementTab() {
               onCancel={() => setCropFile(null)}
             />
           )}
+          </div>
         </DialogContent>
       </Dialog>
 
