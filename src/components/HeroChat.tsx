@@ -182,15 +182,15 @@ const HeroChat = () => {
     <section className="relative flex h-full">
 
       {/* Background */}
-      <div className="pointer-events-none absolute inset-0">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* Mobile wallpaper */}
         <div
-          className="absolute inset-0 bg-cover bg-center md:hidden"
+          className="wallpaper-float absolute inset-0 bg-cover bg-center md:hidden"
           style={{ backgroundImage: "url('/wallpaper-mobile.png')" }}
         />
         {/* Desktop wallpaper */}
         <div
-          className="absolute inset-0 hidden bg-cover bg-center md:block"
+          className="wallpaper-float absolute inset-0 hidden bg-cover bg-center md:block"
           style={{ backgroundImage: "url('/wallpaper-desktop.png')" }}
         />
       </div>

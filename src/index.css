@@ -449,3 +449,14 @@
 .currency-val-short  { font-size: clamp(0.75rem, 1.7vh, 0.95rem); }
 .currency-val-medium { font-size: clamp(0.65rem, 1.4vh, 0.8rem); }
 .currency-val-long   { font-size: clamp(0.55rem, 1.2vh, 0.68rem); }
+
+/* ── Wallpaper float animation ──────────────────────────────────────────── */
+@keyframes wallpaperFloat {
+  0%   { transform: scale(1.08) translateY(0px); }
+  50%  { transform: scale(1.08) translateY(-22px); }
+  100% { transform: scale(1.08) translateY(0px); }
+}
+.wallpaper-float {
+  animation: wallpaperFloat 8s ease-in-out infinite;
+  will-change: transform;
+}
