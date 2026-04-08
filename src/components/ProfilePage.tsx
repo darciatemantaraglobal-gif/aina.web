@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut, GraduationCap, MapPin, Brain, Trash2, Bookmark, UserCircle } from "lucide-react";
+import { Award, Shield, FileText, Calendar, Pencil, Check, X, AlertCircle, Camera, Loader2, ZoomIn, ZoomOut, GraduationCap, MapPin, Brain, Trash2, Bookmark, UserCircle, Eye } from "lucide-react";
 import { toast } from "sonner";
 import SavedAnswersPage from "./SavedAnswersPage";
 
@@ -79,6 +79,13 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   const [deletingMemoryId, setDeletingMemoryId] = useState<string | null>(null);
   const [clearingMemories, setClearingMemories] = useState(false);
 
+  const [leaderboardDisplay, setLeaderboardDisplay] = useState<"full_name" | "alias" | "code">("full_name");
+  const [leaderboardAlias, setLeaderboardAlias] = useState("");
+  const [editingLeaderboard, setEditingLeaderboard] = useState(false);
+  const [editLeaderboardDisplay, setEditLeaderboardDisplay] = useState<"full_name" | "alias" | "code">("full_name");
+  const [editLeaderboardAlias, setEditLeaderboardAlias] = useState("");
+  const [savingLeaderboard, setSavingLeaderboard] = useState(false);
+
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,6 +139,9 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
             fetch("/api/me", { headers: { Authorization: `Bearer ${s.access_token}` } }),
             fetch("/api/memories", { headers: { Authorization: `Bearer ${s.access_token}` } }),
           ]);
+          const lbRes = await fetch("/api/profile/leaderboard-display", {
+            headers: { Authorization: `Bearer ${s.access_token}` },
+          });
           if (badgeRes.ok) {
             const fetchedBadges = await badgeRes.json();
             setBadges(fetchedBadges);
@@ -151,6 +161,11 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
             setIsMasterAdmin(me.isMasterAdmin ?? false);
           }
           if (memoriesRes.ok) setMemories(await memoriesRes.json());
+          if (lbRes.ok) {
+            const lb = await lbRes.json();
+            setLeaderboardDisplay(lb.leaderboard_display ?? "full_name");
+            setLeaderboardAlias(lb.alias ?? "");
+          }
         }
       } catch {
         // Non-critical, ignore error
@@ -211,6 +226,40 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
   };
 
   const cancelEditStudy = () => setEditingStudy(false);
+
+  const startEditLeaderboard = () => {
+    setEditLeaderboardDisplay(leaderboardDisplay);
+    setEditLeaderboardAlias(leaderboardAlias);
+    setEditingLeaderboard(true);
+  };
+
+  const cancelEditLeaderboard = () => setEditingLeaderboard(false);
+
+  const saveLeaderboardDisplay = async () => {
+    if (editLeaderboardDisplay === "alias" && !editLeaderboardAlias.trim()) {
+      toast.error("Masukkan alias terlebih dahulu");
+      return;
+    }
+    setSavingLeaderboard(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch("/api/profile/leaderboard-display", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ leaderboard_display: editLeaderboardDisplay, alias: editLeaderboardAlias }),
+      });
+      if (!res.ok) { const d = await res.json(); toast.error(d.error || "Gagal menyimpan"); return; }
+      setLeaderboardDisplay(editLeaderboardDisplay);
+      setLeaderboardAlias(editLeaderboardAlias);
+      setEditingLeaderboard(false);
+      toast.success("Preferensi leaderboard diperbarui");
+    } catch {
+      toast.error("Gagal menyimpan preferensi");
+    } finally {
+      setSavingLeaderboard(false);
+    }
+  };
 
   const saveStudyProfile = async () => {
     setSavingStudy(true);
@@ -685,6 +734,104 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
                       </span>
                     </div>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Leaderboard Display Card */}
+          <Card className="border-border bg-card overflow-hidden">
+            <CardContent className="p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Tampilan di Leaderboard</h3>
+                </div>
+                {!editingLeaderboard ? (
+                  <button
+                    onClick={startEditLeaderboard}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Button size="icon" variant="ghost" onClick={saveLeaderboardDisplay} disabled={savingLeaderboard} className="h-7 w-7 text-green-500 hover:bg-green-500/10">
+                      {savingLeaderboard ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-green-500 border-t-transparent" /> : <Check className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={cancelEditLeaderboard} disabled={savingLeaderboard} className="h-7 w-7 text-destructive hover:bg-destructive/10">
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {editingLeaderboard ? (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-muted-foreground/80">Pilih bagaimana namamu ditampilkan di leaderboard dan artikel.</p>
+                  <div className="space-y-2">
+                    {([
+                      { value: "full_name", label: "Nama asli", desc: profile?.full_name || "Nama lengkapmu" },
+                      { value: "alias", label: "Alias / Nama panggilan", desc: "Nama lain yang kamu tentukan sendiri" },
+                      { value: "code", label: "Kode anonim", desc: `KONT-${(profile?.user_id ?? "????").replace(/-/g,"").slice(0,4).toUpperCase()}` },
+                    ] as const).map(opt => (
+                      <label
+                        key={opt.value}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+                          editLeaderboardDisplay === opt.value
+                            ? "border-primary/40 bg-primary/8"
+                            : "border-border bg-secondary/40 hover:border-primary/20"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="leaderboard_display"
+                          value={opt.value}
+                          checked={editLeaderboardDisplay === opt.value}
+                          onChange={() => setEditLeaderboardDisplay(opt.value)}
+                          className="accent-primary"
+                        />
+                        <div>
+                          <p className="text-xs font-medium text-foreground">{opt.label}</p>
+                          <p className="text-[11px] text-muted-foreground">{opt.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  {editLeaderboardDisplay === "alias" && (
+                    <Input
+                      placeholder="Masukkan alias (maks. 30 karakter)"
+                      value={editLeaderboardAlias}
+                      onChange={e => setEditLeaderboardAlias(e.target.value)}
+                      maxLength={30}
+                      className="h-8 bg-secondary text-xs"
+                      autoFocus
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between rounded-xl bg-secondary/60 px-3 py-2.5">
+                    <span className="text-xs text-muted-foreground">Mode tampilan</span>
+                    <span className="text-xs font-medium text-foreground">
+                      {leaderboardDisplay === "full_name" ? "Nama asli" : leaderboardDisplay === "alias" ? "Alias" : "Kode anonim"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-secondary/60 px-3 py-2.5">
+                    <span className="text-xs text-muted-foreground">Tampil sebagai</span>
+                    <span className="text-xs font-semibold text-primary">
+                      {leaderboardDisplay === "full_name"
+                        ? (profile?.full_name || "—")
+                        : leaderboardDisplay === "alias"
+                        ? (leaderboardAlias || <span className="italic text-muted-foreground/60">Belum diisi</span>)
+                        : `KONT-${(profile?.user_id ?? "????").replace(/-/g,"").slice(0,4).toUpperCase()}`
+                      }
+                    </span>
+                  </div>
+                  <p className="pt-1 text-[10px] text-muted-foreground/60">
+                    Pengaturan ini berlaku di leaderboard dan pada semua artikel yang kamu tulis.
+                  </p>
                 </div>
               )}
             </CardContent>

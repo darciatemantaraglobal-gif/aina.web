@@ -473,6 +473,43 @@ async function fixNewsTableConstraint() {
 }
 fixNewsTableConstraint();
 
+/* ── Leaderboard display columns init ───────────────────────────────────────
+ * Adds leaderboard_display and alias columns to profiles if they don't exist.
+ */
+async function initLeaderboardDisplayCols() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+
+  const sqls = [
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS leaderboard_display TEXT NOT NULL DEFAULT 'full_name' CHECK (leaderboard_display IN ('full_name','alias','code'))`,
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS alias TEXT`,
+  ];
+
+  for (const sql of sqls) {
+    let done = false;
+    try {
+      const { error } = await supabase.rpc("exec_sql", { sql });
+      if (!error) { done = true; }
+    } catch { /* ignore */ }
+
+    if (!done && SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const r = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/pg-meta/v1/query`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({ query: sql }),
+        });
+        if (r.ok) done = true;
+      } catch { /* ignore */ }
+    }
+  }
+  console.log("[Leaderboard] ✓ display preference columns ready");
+}
+initLeaderboardDisplayCols();
+
 /* ── Self-Improvement: query_log + missing_topics (Supabase) ────────────────
  * All logging now uses Supabase so it works in both dev (Replit) and prod
  * (Railway). Tables must exist in Supabase — run the SQL below once:
@@ -5265,6 +5302,42 @@ app.patch("/api/profile/custom-instructions", writeLimiter, async (req, res) => 
   res.json({ success: true });
 });
 
+/* ── Leaderboard display preference ─────────────────── */
+app.get("/api/profile/leaderboard-display", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+  const { data: { user }, error } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+  const { data } = await supabase.from("profiles").select("leaderboard_display, alias").eq("user_id", user.id).single();
+  res.json({ leaderboard_display: data?.leaderboard_display ?? "full_name", alias: data?.alias ?? "" });
+});
+
+app.patch("/api/profile/leaderboard-display", writeLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server config error" });
+  const { data: { user }, error } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { leaderboard_display, alias } = req.body;
+  const VALID = ["full_name", "alias", "code"];
+  if (!VALID.includes(leaderboard_display)) return res.status(400).json({ error: "Pilihan tidak valid" });
+  if (leaderboard_display === "alias") {
+    if (!alias?.trim()) return res.status(400).json({ error: "Alias tidak boleh kosong" });
+    if (alias.trim().length > 30) return res.status(400).json({ error: "Alias maksimal 30 karakter" });
+  }
+
+  const updates = { leaderboard_display, updated_at: new Date().toISOString() };
+  if (leaderboard_display === "alias") updates.alias = alias.trim();
+
+  const { error: dbErr } = await supabase.from("profiles").update(updates).eq("user_id", user.id);
+  if (dbErr) return res.status(500).json({ error: "Gagal menyimpan preferensi" });
+  res.json({ success: true });
+});
+
 /* ── Upload Avatar ───────────────────────────────────── */
 const ALLOWED_IMAGE_TYPES = new Map([
   ["image/jpeg", "jpg"],
@@ -8819,10 +8892,10 @@ app.get("/api/articles/:id", async (req, res) => {
       .single();
     if (error || !data) return res.status(404).json({ error: "Artikel tidak ditemukan" });
 
-    const { data: author } = await supabase.from("profiles").select("full_name").eq("user_id", data.author_id).single();
+    const { data: author } = await supabase.from("profiles").select("user_id, full_name, leaderboard_display, alias").eq("user_id", data.author_id).single();
     const { data: myVote } = await supabase.from("article_votes").select("id").eq("user_id", user.id).eq("article_id", id).maybeSingle();
 
-    res.json({ ...data, author_name: author?.full_name ?? null, user_voted: !!myVote });
+    res.json({ ...data, author_name: author ? resolveDisplayName(author) : null, user_voted: !!myVote });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -8891,6 +8964,22 @@ app.post("/api/articles/:id/vote", writeLimiter, async (req, res) => {
 });
 
 /* ── Leaderboard ─────────────────────────────────────────── */
+/* ── Resolve display name based on profile preference ───────────────────────
+ * Returns the name to show publicly on leaderboard/articles.
+ * - 'full_name' → nama asli (default)
+ * - 'alias'     → alias yang dipilih user, fallback ke full_name
+ * - 'code'      → KONT-XXXX berdasarkan user_id (deterministic)
+ */
+function resolveDisplayName(profile) {
+  const pref = profile?.leaderboard_display ?? "full_name";
+  if (pref === "alias" && profile?.alias?.trim()) return profile.alias.trim();
+  if (pref === "code") {
+    const code = (profile?.user_id ?? "????").replace(/-/g, "").slice(0, 4).toUpperCase();
+    return `KONT-${code}`;
+  }
+  return profile?.full_name ?? null;
+}
+
 app.get("/api/leaderboard", async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -8900,7 +8989,7 @@ app.get("/api/leaderboard", async (req, res) => {
   const [{ data: topProfiles }, { data: topArticles }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("user_id, full_name, avatar_url, contribution_count")
+      .select("user_id, full_name, avatar_url, contribution_count, leaderboard_display, alias")
       .order("contribution_count", { ascending: false })
       .gt("contribution_count", 0)
       .neq("hidden_from_leaderboard", true)
@@ -8939,14 +9028,17 @@ app.get("/api/leaderboard", async (req, res) => {
   const authorIds = [...new Set((topArticles ?? []).map(a => a.author_id).filter(Boolean))];
   let authorMap = {};
   if (authorIds.length > 0) {
-    const { data: authors } = await supabase.from("profiles").select("user_id, full_name").in("user_id", authorIds);
-    (authors ?? []).forEach(a => { authorMap[a.user_id] = a.full_name; });
+    const { data: authors } = await supabase
+      .from("profiles")
+      .select("user_id, full_name, leaderboard_display, alias")
+      .in("user_id", authorIds);
+    (authors ?? []).forEach(a => { authorMap[a.user_id] = resolveDisplayName(a); });
   }
 
   res.json({
     contributors: (topProfiles ?? []).map(p => ({
       user_id: p.user_id,
-      full_name: p.full_name,
+      full_name: resolveDisplayName(p),
       avatar_url: p.avatar_url,
       contribution_count: p.contribution_count ?? 0,
       role: roleMap[p.user_id] ?? "user",
@@ -8996,9 +9088,9 @@ app.get("/api/articles/search", async (req, res) => {
     (async () => {
       const ids = [...new Set(articles.map(a => a.author_id).filter(Boolean))];
       if (!ids.length) return {};
-      const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", ids);
+      const { data } = await supabase.from("profiles").select("user_id, full_name, leaderboard_display, alias").in("user_id", ids);
       const m = {};
-      (data ?? []).forEach(a => { m[a.user_id] = a.full_name; });
+      (data ?? []).forEach(a => { m[a.user_id] = resolveDisplayName(a); });
       return m;
     })(),
     (async () => {
