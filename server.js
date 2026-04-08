@@ -9450,29 +9450,32 @@ const NEWS_CATEGORIES = new Set([
 
 /* GET /api/news — public, paginated, filterable by category */
 app.get("/api/news", async (req, res) => {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (!supabaseUrl || !anonKey) return res.status(503).json({ error: "Service unavailable" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
 
   const category = req.query.category;
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
-  const cols = "id,title,content,category,image_url,source_url,source_name,is_pinned,published_at,created_at";
-  let url = `${supabaseUrl}/rest/v1/masisir_news?select=${cols}&is_active=eq.true&order=is_pinned.desc,published_at.desc&limit=${limit}`;
-  if (category && NEWS_CATEGORIES.has(category)) url += `&category=eq.${category}`;
-
   try {
-    const r = await fetch(url, {
-      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` }
-    });
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      if (err.code === "PGRST205" || err.message?.includes("schema cache")) {
+    let query = supabase
+      .from("masisir_news")
+      .select("id,title,content,category,image_url,source_url,source_name,is_pinned,published_at,created_at")
+      .eq("is_active", true)
+      .order("is_pinned", { ascending: false })
+      .order("published_at", { ascending: false })
+      .limit(limit);
+
+    if (category && NEWS_CATEGORIES.has(category)) {
+      query = query.eq("category", category);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      if (error.code === "42P01" || error.message?.includes("does not exist")) {
         return res.json({ news: [], _hint: "table_not_created" });
       }
       return res.status(500).json({ error: "Gagal memuat berita" });
     }
-    const data = await r.json();
     res.json({ news: Array.isArray(data) ? data : [] });
   } catch (e) {
     res.status(500).json({ error: "Gagal memuat berita" });
@@ -9496,6 +9499,24 @@ app.get("/api/_seed-news", async (req, res) => {
   const { data, error } = await supabase.from("masisir_news").insert(items).select("id, title");
   if (error) return res.status(500).json({ error: error.message });
   res.json({ inserted: data.length, items: data.map(d => d.title) });
+});
+
+/* GET /api/admin/news — list all news including inactive (admin only) */
+app.get("/api/admin/news", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+
+  const supabase = getAdminClient();
+  const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+  const { data, error } = await supabase
+    .from("masisir_news")
+    .select("id,title,content,category,image_url,source_url,source_name,is_pinned,is_active,published_at,created_at")
+    .order("is_pinned", { ascending: false })
+    .order("published_at", { ascending: false })
+    .limit(limit);
+
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ news: data ?? [] });
 });
 
 /* POST /api/admin/news — create news item (admin only) */

@@ -5596,7 +5596,7 @@ function NewsManagementTab() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<NewsItem | null>(null);
-  const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false });
+  const [form, setForm] = useState({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true });
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -5604,9 +5604,11 @@ function NewsManagementTab() {
   const fetchNews = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/news?limit=100", { credentials: "include" });
-      const data = await res.json();
-      setNews(data.news ?? []);
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? "";
+      const res = await fetch("/api/admin/news", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await res.json();
+      setNews(d.news ?? []);
     } catch { /* ignore */ } finally { setLoading(false); }
   }, []);
 
@@ -5619,13 +5621,13 @@ function NewsManagementTab() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false });
+    setForm({ title: "", content: "", category: "kehidupan_mesir", image_url: "", source_url: "", source_name: "", is_pinned: false, is_active: true });
     setShowForm(true);
   }
 
   function openEdit(item: NewsItem) {
     setEditing(item);
-    setForm({ title: item.title, content: item.content, category: item.category, image_url: item.image_url ?? "", source_url: item.source_url ?? "", source_name: item.source_name ?? "", is_pinned: item.is_pinned });
+    setForm({ title: item.title, content: item.content, category: item.category, image_url: item.image_url ?? "", source_url: item.source_url ?? "", source_name: item.source_name ?? "", is_pinned: item.is_pinned, is_active: item.is_active });
     setShowForm(true);
   }
 
@@ -5677,12 +5679,18 @@ function NewsManagementTab() {
     fetchNews();
   }
 
+  async function toggleActive(item: NewsItem) {
+    const token = await getToken();
+    await fetch(`/api/admin/news/${item.id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ is_active: !item.is_active }) });
+    fetchNews();
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-bold text-foreground">Berita Masisir</h2>
-          <p className="text-xs text-muted-foreground">{news.length} berita aktif</p>
+          <p className="text-xs text-muted-foreground">{news.filter(n => n.is_active).length} aktif · {news.filter(n => !n.is_active).length} nonaktif</p>
         </div>
         <div className="flex items-center gap-2">
           {selected.size > 0 && (
@@ -5744,10 +5752,16 @@ function NewsManagementTab() {
                 <Input placeholder="mis: KBRI Kairo" value={form.source_name} onChange={e => setForm(f => ({ ...f, source_name: e.target.value }))} />
               </div>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.is_pinned} onChange={e => setForm(f => ({ ...f, is_pinned: e.target.checked }))} className="rounded" />
-              <span className="text-sm">Pinned (tampil di atas)</span>
-            </label>
+            <div className="flex items-center gap-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.is_pinned} onChange={e => setForm(f => ({ ...f, is_pinned: e.target.checked }))} className="rounded" />
+                <span className="text-sm">Pinned (tampil di atas)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))} className="rounded" />
+                <span className="text-sm">Aktif (tampil ke publik)</span>
+              </label>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Batal</Button>
               <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Menyimpan..." : (editing ? "Simpan Perubahan" : "Tambah")}</Button>
@@ -5773,7 +5787,7 @@ function NewsManagementTab() {
             const Icon = cat?.icon ?? Newspaper;
             const isSel = selected.has(item.id);
             return (
-              <div key={item.id} className={`flex items-start gap-3 rounded-xl border p-3 transition-colors ${isSel ? "border-primary/40 bg-primary/5" : item.is_pinned ? "border-primary/20 bg-primary/5" : "border-border bg-card"}`}>
+              <div key={item.id} className={`flex items-start gap-3 rounded-xl border p-3 transition-colors ${isSel ? "border-primary/40 bg-primary/5" : !item.is_active ? "border-border/40 bg-muted/20 opacity-60" : item.is_pinned ? "border-primary/20 bg-primary/5" : "border-border bg-card"}`}>
                 <input type="checkbox" checked={isSel} onChange={() => toggleSelect(item.id)} className="mt-1 shrink-0 rounded cursor-pointer accent-primary" />
                 <div className={`mt-0.5 shrink-0 ${cat?.color ?? "text-muted-foreground"}`}>
                   <Icon className="h-4 w-4" />
@@ -5782,6 +5796,7 @@ function NewsManagementTab() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold text-foreground truncate">{item.title}</span>
                     {item.is_pinned && <Pin className="h-3 w-3 text-primary shrink-0" />}
+                    {!item.is_active && <span className="text-[10px] font-medium rounded-full px-1.5 py-0.5 bg-muted text-muted-foreground">Nonaktif</span>}
                     <span className="text-[10px] text-muted-foreground">{getCatLabel(item.category)}</span>
                   </div>
                   <p className="mt-0.5 text-[12px] text-muted-foreground line-clamp-2">{item.content}</p>
@@ -5789,6 +5804,9 @@ function NewsManagementTab() {
                 <div className="flex shrink-0 items-center gap-1">
                   <button onClick={() => togglePin(item)} title={item.is_pinned ? "Unpin" : "Pin"} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                     <Pin className={`h-3.5 w-3.5 ${item.is_pinned ? "text-primary fill-primary" : ""}`} />
+                  </button>
+                  <button onClick={() => toggleActive(item)} title={item.is_active ? "Nonaktifkan" : "Aktifkan"} className={`rounded-lg p-1.5 transition-colors ${item.is_active ? "hover:bg-muted text-muted-foreground hover:text-foreground" : "text-primary hover:bg-primary/10"}`}>
+                    {item.is_active ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   </button>
                   <button onClick={() => openEdit(item)} className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                     <Pencil className="h-3.5 w-3.5" />
