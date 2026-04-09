@@ -20,7 +20,7 @@ import {
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
   Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags, Heading,
-  Loader2, BarChart2,
+  Loader2, BarChart2, CalendarDays,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -2317,6 +2317,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [editArticle, setEditArticle] = useState<Article | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [reformatLoading, setReformatLoading] = useState(false);
@@ -2375,7 +2376,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setSelected(new Set()); }, [categoryFilter]);
+  useEffect(() => { setSelected(new Set()); }, [categoryFilter, dateFilter]);
 
   const handleReformatAll = async () => {
     if (!confirm(`Yakin ingin reformat semua artikel yang sudah disetujui? AI akan merapikan struktur tulisan tanpa mengubah isi. Proses ini butuh waktu beberapa menit.`)) return;
@@ -2748,7 +2749,25 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.content.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCategory = categoryFilter === "all" || a.category === categoryFilter;
-    return matchSearch && matchCategory;
+    let matchDate = true;
+    if (dateFilter !== "all" && a.created_at) {
+      const created = new Date(a.created_at);
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (dateFilter === "today") {
+        matchDate = created >= startOfToday;
+      } else if (dateFilter === "yesterday") {
+        const startOfYesterday = new Date(startOfToday); startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+        matchDate = created >= startOfYesterday && created < startOfToday;
+      } else if (dateFilter === "week") {
+        const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+        matchDate = created >= weekAgo;
+      } else if (dateFilter === "month") {
+        const monthAgo = new Date(now); monthAgo.setDate(monthAgo.getDate() - 30);
+        matchDate = created >= monthAgo;
+      }
+    }
+    return matchSearch && matchCategory && matchDate;
   });
 
   const filteredIds = filtered.map(a => a.id);
@@ -3021,6 +3040,19 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
             {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={dateFilter} onValueChange={setDateFilter}>
+          <SelectTrigger className={`w-auto min-w-[120px] rounded-xl border-border bg-card text-sm ${dateFilter !== "all" ? "border-primary/50 text-primary" : ""}`}>
+            <CalendarDays className="h-3.5 w-3.5 mr-1.5 text-muted-foreground shrink-0" />
+            <SelectValue placeholder="Semua Waktu" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Waktu</SelectItem>
+            <SelectItem value="today">Hari Ini</SelectItem>
+            <SelectItem value="yesterday">Kemarin</SelectItem>
+            <SelectItem value="week">7 Hari Terakhir</SelectItem>
+            <SelectItem value="month">30 Hari Terakhir</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {!loading && filtered.length > 0 && (
@@ -3148,7 +3180,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         <div className="flex flex-col items-center py-12 text-center">
           <BookOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">
-            {searchQuery || categoryFilter !== "all"
+            {searchQuery || categoryFilter !== "all" || dateFilter !== "all"
               ? "Tidak ada artikel yang cocok dengan filter."
               : `Tidak ada artikel ${filter === "pending" ? "menunggu review" : filter === "approved" ? "yang disetujui" : "yang ditolak"}.`}
           </p>
