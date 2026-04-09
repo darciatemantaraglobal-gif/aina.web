@@ -374,6 +374,31 @@ function isMajorityArabic(node: any): boolean {
   return isArabicText(extractMdText(node));
 }
 
+// Extract plain text from an mdast AST node (for rowspan computation)
+function extractMdastText(node: any): string {
+  if (!node) return "";
+  if (node.type === "text") return node.value ?? "";
+  if (node.children) return (node.children as any[]).map(extractMdastText).join("");
+  return "";
+}
+
+// Render mdast inline nodes as React (handles bold, italic, text)
+function renderMdastInline(node: any, key: number): React.ReactNode {
+  if (!node) return null;
+  if (node.type === "text") return node.value;
+  const kids = () =>
+    (node.children ?? []).map((c: any, i: number) => (
+      <span key={i}>{renderMdastInline(c, i)}</span>
+    ));
+  if (node.type === "strong")
+    return <strong key={key} className="font-bold text-foreground">{kids()}</strong>;
+  if (node.type === "emphasis")
+    return <em key={key} className="italic">{kids()}</em>;
+  if (node.type === "inlineCode")
+    return <code key={key} className="font-mono bg-muted/60 px-1 rounded">{node.value}</code>;
+  return <span key={key}>{kids()}</span>;
+}
+
 const MD_COMPONENTS = {
   br: () => <br />,
   p: ({ children }: any) => {
@@ -608,28 +633,87 @@ const MD_COMPONENTS = {
       </a>
     );
   },
-  table: ({ children }: any) => (
-    <div className="mb-4 overflow-x-auto rounded-xl border border-border">
-      <table className="min-w-full text-sm">{children}</table>
-    </div>
-  ),
-  thead: ({ children }: any) => <thead className="bg-muted/50">{children}</thead>,
-  tbody: ({ children }: any) => <tbody className="divide-y divide-border">{children}</tbody>,
-  tr: ({ children }: any) => <tr className="hover:bg-muted/20 transition-colors">{children}</tr>,
-  th: ({ children }: any) => {
-    const ar = containsArabic(children);
-    return <th dir={ar ? "rtl" : undefined} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{children}</th>;
-  },
-  td: ({ children }: any) => {
-    const ar = containsArabic(children);
+  table: ({ node }: any) => {
+    const allRows: any[] = node?.children ?? [];
+    if (!allRows.length) return null;
+
+    const headerRow = allRows[0];
+    const bodyRows = allRows.slice(1);
+
+    // Extract plain text for each body cell (used for rowspan comparison)
+    const cellTexts: string[][] = bodyRows.map((row: any) =>
+      (row.children ?? []).map((cell: any) => extractMdastText(cell).trim())
+    );
+
+    const numCols = Math.max(
+      ...[headerRow, ...bodyRows].map((r: any) => r.children?.length ?? 0)
+    );
+
+    // Compute rowSpans: merge consecutive identical non-empty cells per column
+    const rowSpans: number[][] = cellTexts.map(() => new Array(numCols).fill(1));
+    const skip: boolean[][] = cellTexts.map(() => new Array(numCols).fill(false));
+
+    for (let col = 0; col < numCols; col++) {
+      let i = 0;
+      while (i < cellTexts.length) {
+        const val = cellTexts[i]?.[col] ?? "";
+        if (!val) { i++; continue; }
+        let j = i + 1;
+        while (j < cellTexts.length && (cellTexts[j]?.[col] ?? "") === val) j++;
+        rowSpans[i][col] = j - i;
+        for (let k = i + 1; k < j; k++) skip[k][col] = true;
+        i = j;
+      }
+    }
+
+    const renderCell = (cell: any) =>
+      (cell?.children ?? []).map((c: any, i: number) => renderMdastInline(c, i));
+
     return (
-      <td
-        dir={ar ? "rtl" : undefined}
-        className={`px-4 py-2.5 text-foreground/90${ar ? " text-right text-emerald-300/90" : ""}`}
-        style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
-      >
-        {children}
-      </td>
+      <div className="mb-4 overflow-x-auto rounded-xl border border-border">
+        <table className="min-w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              {(headerRow.children ?? []).map((cell: any, ci: number) => {
+                const text = extractMdastText(cell);
+                const ar = /[\u0600-\u06FF]/.test(text);
+                return (
+                  <th key={ci} dir={ar ? "rtl" : undefined}
+                    className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    {renderCell(cell)}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {bodyRows.map((row: any, ri: number) => (
+              <tr key={ri} className="hover:bg-muted/20 transition-colors">
+                {(row.children ?? []).map((cell: any, ci: number) => {
+                  if (skip[ri]?.[ci]) return null;
+                  const text = extractMdastText(cell);
+                  const ar = /[\u0600-\u06FF]/.test(text);
+                  const span = rowSpans[ri]?.[ci] ?? 1;
+                  return (
+                    <td key={ci}
+                      rowSpan={span > 1 ? span : undefined}
+                      dir={ar ? "rtl" : undefined}
+                      className={[
+                        "px-4 py-2.5 text-foreground/90",
+                        ar ? "text-right text-emerald-300/90" : "",
+                        span > 1 ? "align-middle bg-muted/10" : "",
+                      ].join(" ").trim()}
+                      style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
+                    >
+                      {renderCell(cell)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
   },
 };
