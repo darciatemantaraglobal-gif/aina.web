@@ -1827,14 +1827,29 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                         <span className="truncate max-w-[220px]">{msg.fileName}</span>
                       </div>
                     )}
-                    {msg.content && (
-                      <div
-                        className="rounded-3xl bg-secondary px-5 py-3.5 text-[15px] text-foreground whitespace-pre-wrap break-words"
-                        dir="auto"
-                      >
-                        {msg.content}
-                      </div>
-                    )}
+                    {msg.content && (() => {
+                      const kitabMatch = msg.content.match(/^\[Kitab:\s*"([^"]+)"\]\s*/);
+                      const kitabName = kitabMatch ? kitabMatch[1] : null;
+                      const displayContent = kitabName ? msg.content.slice(kitabMatch![0].length) : msg.content;
+                      return (
+                        <div className="space-y-1">
+                          {kitabName && (
+                            <div className="flex justify-end">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 border border-primary/25 px-2.5 py-0.5 text-[10px] font-medium text-primary/80">
+                                <BookOpen className="h-2.5 w-2.5 shrink-0" />
+                                {kitabName}
+                              </span>
+                            </div>
+                          )}
+                          <div
+                            className="rounded-3xl bg-secondary px-5 py-3.5 text-[15px] text-foreground whitespace-pre-wrap break-words"
+                            dir="auto"
+                          >
+                            {displayContent}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div className="min-w-0 flex-1 min-h-0">

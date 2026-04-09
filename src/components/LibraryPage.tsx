@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   BookOpen, Search, ExternalLink, FileText, Globe, X,
   BookMarked, GraduationCap, Sparkles, Loader2, RefreshCw,
-  ChevronRight, MessageSquare, Filter,
+  ChevronRight, MessageSquare, Filter, Send,
 } from "lucide-react";
 
 interface LibraryItem {
@@ -240,9 +240,14 @@ function DetailModal({
 
   const driveUrl = convertDriveUrl(item.drive_url);
 
+  const [kitabQuestion, setKitabQuestion] = useState("");
+
   const handleAskAINA = () => {
+    const q = kitabQuestion.trim();
+    if (!q || !onAskAINA) return;
     onClose();
-    onAskAINA?.(`Tolong jelaskan isi dari dokumen "${item.title}"${item.faculty ? ` untuk fakultas ${item.faculty}` : ""}${item.year_level ? `, ${item.year_level}` : ""}. Dokumen ini adalah ${cat.label.toLowerCase()}.`);
+    onAskAINA(`[Kitab: "${item.title}"] ${q}`);
+    setKitabQuestion("");
   };
 
   return (
@@ -354,14 +359,31 @@ function DetailModal({
                 <ExternalLink className="h-4 w-4" />
                 Buka Dokumen
               </a>
+
               {onAskAINA && (
-                <button
-                  onClick={handleAskAINA}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/[0.10] bg-white/[0.04] py-2.5 text-sm font-medium text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  Tanya AINA tentang ini
-                </button>
+                <div className="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                    <p className="text-[11px] font-semibold text-white/50">Tanya AINA tentang kitab ini</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={kitabQuestion}
+                      onChange={e => setKitabQuestion(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && handleAskAINA()}
+                      placeholder={`Contoh: Apa isi bab pertama ${item.title}?`}
+                      className="flex-1 min-w-0 rounded-xl bg-white/[0.06] border border-white/[0.08] px-3 py-2 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/[0.08] transition-colors"
+                    />
+                    <button
+                      onClick={handleAskAINA}
+                      disabled={!kitabQuestion.trim()}
+                      className="shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                      <Send className="h-3.5 w-3.5 text-white" />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

@@ -1577,27 +1577,42 @@ async function resolveArticles(kbQuery, intentPrimary) {
 }
 
 /* ── Fetch relevant muqarrar/kitab chunks via pgvector ── */
-async function fetchRelevantMuqarrar(userQuestion, intentPrimary) {
+async function fetchRelevantMuqarrar(userQuestion, intentPrimary, kitabFilter = null) {
   const MUQARRAR_INTENTS = new Set(["fiqh", "factual", "question", "general"]);
-  if (!MUQARRAR_INTENTS.has(intentPrimary)) return [];
+  // If a kitab filter is explicitly set (Library mode), always run regardless of intent
+  if (!kitabFilter && !MUQARRAR_INTENTS.has(intentPrimary)) return [];
   const supabase = getAdminClient();
   if (!supabase || !process.env.OPENAI_API_KEY) return [];
   try {
+    // When kitab filter is active, use a lower threshold and higher count to maximize recall
+    const threshold = kitabFilter ? 0.2 : 0.35;
+    const count = kitabFilter ? 10 : 5;
     const queryEmbedding = await generateEmbedding(userQuestion);
     const { data, error } = await supabase.rpc("match_muqarrar_chunks", {
       query_embedding: queryEmbedding,
-      match_threshold: 0.35,
-      match_count: 5,
+      match_threshold: threshold,
+      match_count: count,
     });
     if (error) {
       console.warn(`[Muqarrar] RPC error: ${error.message}`);
       return [];
     }
-    const results = (data || []).filter(c => c.similarity > 0.35);
+    let results = (data || []).filter(c => c.similarity > threshold);
+    // Apply kitab filter — prefer exact or partial name match (case-insensitive)
+    if (kitabFilter) {
+      const kf = kitabFilter.toLowerCase();
+      const filtered = results.filter(c => {
+        const cn = (c.kitab_name || "").toLowerCase();
+        return cn.includes(kf) || kf.includes(cn);
+      });
+      // Fall back to unfiltered results if no kitab-specific chunks found
+      results = filtered.length > 0 ? filtered : results;
+      console.log(`[Muqarrar] Kitab filter="${kitabFilter}" → ${filtered.length} kitab-specific chunks (total pool: ${results.length})`);
+    }
     if (results.length > 0) {
       console.log(`[Muqarrar] ✓ ${results.length} chunks ditemukan (top similarity=${results[0]?.similarity?.toFixed(3)}) — "${userQuestion.slice(0, 60)}"`);
     }
-    return results;
+    return results.slice(0, 5);
   } catch (e) {
     console.warn(`[Muqarrar] fetch failed: ${e.message}`);
     return [];
@@ -4206,6 +4221,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Typo] normalized: "${lastUserMessage.slice(0, 50)}" → "${retrievalQuery.slice(0, 50)}"`);
   }
 
+  // Detect Library kitab-filter prefix: [Kitab: "NamaKitab"] question
+  const kitabFilterMatch = lastUserMessage.match(/^\[Kitab:\s*"([^"]+)"\]\s*/);
+  const kitabFilter = kitabFilterMatch ? kitabFilterMatch[1] : null;
+  if (kitabFilter) console.log(`[Muqarrar] Kitab filter aktif: "${kitabFilter}"`);
+
   // Context detection + query expansion (synchronous — before any async calls)
   const masisirCtx = detectMasisirContext(retrievalQuery);
   const { kbQuery, strategy: retrievalStrategy, changed: queryExpanded } = expandQuery(retrievalQuery, masisirCtx);
@@ -4382,7 +4402,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
-    fetchRelevantMuqarrar(retrievalQuery, intent.primary),
+    fetchRelevantMuqarrar(retrievalQuery, intent.primary, kitabFilter),
   ]);
 
   // Assess KB coverage strength before deciding whether to use external sources
