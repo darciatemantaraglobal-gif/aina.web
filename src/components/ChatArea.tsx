@@ -1827,7 +1827,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     )}
                     {msg.content && (
                       <div
-                        className="rounded-3xl bg-secondary px-5 py-3.5 text-base text-foreground whitespace-pre-wrap break-words"
+                        className="rounded-3xl bg-secondary px-5 py-3.5 text-[15px] text-foreground whitespace-pre-wrap break-words"
                         dir="auto"
                       >
                         {msg.content}
