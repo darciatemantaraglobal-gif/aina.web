@@ -698,10 +698,17 @@ const MD_COMPONENTS = {
       }
     }
 
+    // Detect column roles by header text for special styling
+    const headerTexts = headerRows.flatMap((row: any) =>
+      getCells(row).map((cell: any) => hastText(cell).toLowerCase().trim())
+    );
+    const isDateCol = (ci: number) => /tanggal|date|hari/.test(headerTexts[ci] ?? "");
+    const isTimeCol = (ci: number) => /waktu|time|jam/.test(headerTexts[ci] ?? "");
+
     return (
-      <div className="mb-4 overflow-x-auto rounded-xl border border-border">
-        <table className="min-w-full text-sm">
-          <thead className="bg-muted/50">
+      <div className="mb-5 overflow-x-auto rounded-2xl border border-white/8 shadow-lg shadow-black/30 bg-gradient-to-b from-zinc-900/80 to-zinc-950/90">
+        <table className="min-w-full text-sm border-collapse">
+          <thead>
             {headerRows.map((row: any, ri: number) => (
               <tr key={ri}>
                 {getCells(row).map((cell: any, ci: number) => {
@@ -709,7 +716,7 @@ const MD_COMPONENTS = {
                   const ar = /[\u0600-\u06FF]/.test(text);
                   return (
                     <th key={ci} dir={ar ? "rtl" : undefined}
-                      className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                      className="px-4 py-3 text-left text-[10px] font-bold text-white/40 uppercase tracking-[0.12em] whitespace-nowrap border-b border-white/8 bg-white/3 first:rounded-tl-2xl last:rounded-tr-2xl">
                       {renderCellContent(cell)}
                     </th>
                   );
@@ -717,26 +724,44 @@ const MD_COMPONENTS = {
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody>
             {bodyRows.map((row: any, ri: number) => (
-              <tr key={ri} className="hover:bg-muted/20 transition-colors">
+              <tr key={ri} className={`group transition-colors ${ri % 2 === 0 ? "bg-transparent" : "bg-white/[0.02]"} hover:bg-primary/5`}>
                 {getCells(row).map((cell: any, ci: number) => {
                   if (skip[ri]?.[ci]) return null;
                   const text = hastText(cell);
                   const ar = /[\u0600-\u06FF]/.test(text);
                   const span = rowSpans[ri]?.[ci] ?? 1;
+                  const isDate = isDateCol(ci);
+                  const isTime = isTimeCol(ci);
+                  const isSpanning = span > 1;
+
                   return (
                     <td key={ci}
-                      rowSpan={span > 1 ? span : undefined}
+                      rowSpan={isSpanning ? span : undefined}
                       dir={ar ? "rtl" : undefined}
                       className={[
-                        "px-4 py-2.5 text-foreground/90",
-                        ar ? "text-right text-emerald-300/90" : "",
-                        span > 1 ? "align-middle bg-muted/10" : "",
+                        "px-4 py-3 border-b border-white/5",
+                        "last-of-type:border-b-0",
+                        ar ? "text-right" : "",
+                        isSpanning ? "align-middle" : "align-middle",
                       ].filter(Boolean).join(" ")}
                       style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
                     >
-                      {renderCellContent(cell)}
+                      {isDate ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/20 text-primary text-xs font-semibold whitespace-nowrap">
+                          <span className="w-1 h-1 rounded-full bg-primary/70 shrink-0" />
+                          {renderCellContent(cell)}
+                        </span>
+                      ) : isTime ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-300 text-xs font-mono font-medium whitespace-nowrap">
+                          {renderCellContent(cell)}
+                        </span>
+                      ) : (
+                        <span className={ar ? "text-emerald-300/90" : "text-foreground/85 font-medium"}>
+                          {renderCellContent(cell)}
+                        </span>
+                      )}
                     </td>
                   );
                 })}
