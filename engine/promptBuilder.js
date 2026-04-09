@@ -136,6 +136,25 @@ export function buildKnowledgeContext(articles) {
 }
 
 /**
+ * Build muqarrar (kitab/PDF) context block for the system prompt.
+ * Setiap fakta WAJIB disertai sitasi halaman.
+ * @param {Array} chunks - Results from fetchRelevantMuqarrar()
+ * @returns {string}
+ */
+export function buildMuqarrarContext(chunks) {
+  if (!chunks || chunks.length === 0) return "";
+  const chunksText = chunks.map(c => {
+    const label = `[${c.kitab_name}${c.author ? ` — ${c.author}` : ""}, Hal. ${c.page_number}${c.chapter ? `, ${c.chapter}` : ""}]`;
+    return `${label}\n${c.content}`;
+  }).join("\n\n---\n\n");
+  const rule =
+    `⚠️ ATURAN WAJIB MUQARRAR: Setiap fakta dari kutipan kitab di bawah WAJIB disertai sitasi "(Hal. X — NamaKitab)". ` +
+    `Jika ada teks Arab, kutip teks aslinya sebagai blockquote (>) lalu terjemahkan dan jelaskan. ` +
+    `DILARANG menjelaskan tanpa menyebut sumber halamannya.`;
+  return `\n\n---\n${rule}\n\n## Muqarrar / Kitab (Teks Sumber Primer)\n\n${chunksText}\n---`;
+}
+
+/**
  * Build the pinned/breaking updates context block.
  * Pinned updates are admin-verified (trust: 100) — highest priority of all sources.
  *
@@ -488,6 +507,7 @@ export function buildSystemPrompt({
   sourceMeta,
   personalizationContext,
   knowledgeContext,
+  muqarrarContext = "",
   exchangeContext,
   dorarContext,
   perplexityContext,
@@ -960,7 +980,7 @@ JANGAN sebutkan sumber secara eksplisit dalam body jawaban ("Menurut Wikipedia..
 *Catatan: Untuk obrolan santai, aturan format di atas lebih longgar — ekspresi natural dan reaksi ceria tetap boleh.*
 
 ---
-${intentHint}${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
+${intentHint}${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${muqarrarContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
 ${sourceMeta ? `
 **Footer sumber — WAJIB di akhir setiap jawaban substantif:**
 Setelah selesai menjawab (bukan untuk sapaan, obrolan 1 kalimat, atau tanya balik), tambahkan baris ini PERSIS:

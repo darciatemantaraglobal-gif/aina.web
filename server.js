@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
 import {
-  buildKnowledgeContext, buildPinnedContext, buildPersonalizationContext,
+  buildKnowledgeContext, buildMuqarrarContext, buildPinnedContext, buildPersonalizationContext,
   buildMemoryContext, buildExchangeContext, buildWikiContext,
   buildDDGContext, buildPerplexityContext, buildDorarContext,
   buildSystemPrompt,
@@ -1574,6 +1574,34 @@ async function resolveArticles(kbQuery, intentPrimary) {
     }
   }
   return fetchRelevantArticles(kbQuery, intentPrimary);
+}
+
+/* ── Fetch relevant muqarrar/kitab chunks via pgvector ── */
+async function fetchRelevantMuqarrar(userQuestion, intentPrimary) {
+  const MUQARRAR_INTENTS = new Set(["fiqh", "factual", "question", "general"]);
+  if (!MUQARRAR_INTENTS.has(intentPrimary)) return [];
+  const supabase = getAdminClient();
+  if (!supabase || !process.env.OPENAI_API_KEY) return [];
+  try {
+    const queryEmbedding = await generateEmbedding(userQuestion);
+    const { data, error } = await supabase.rpc("match_muqarrar_chunks", {
+      query_embedding: queryEmbedding,
+      match_threshold: 0.35,
+      match_count: 5,
+    });
+    if (error) {
+      console.warn(`[Muqarrar] RPC error: ${error.message}`);
+      return [];
+    }
+    const results = (data || []).filter(c => c.similarity > 0.35);
+    if (results.length > 0) {
+      console.log(`[Muqarrar] ✓ ${results.length} chunks ditemukan (top similarity=${results[0]?.similarity?.toFixed(3)}) — "${userQuestion.slice(0, 60)}"`);
+    }
+    return results;
+  } catch (e) {
+    console.warn(`[Muqarrar] fetch failed: ${e.message}`);
+    return [];
+  }
 }
 
 // ── Analytics service — lazy init ─────────────────────────────────────────────
@@ -4349,11 +4377,12 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Wave 1 — fast internal fetches (always run in parallel with early Perplexity)
   // kbQuery = expanded/enriched query for better KB hit-rate; retrievalQuery used for everything else
   _chatDebugStep = "wave1-fetches";
-  const [articles, pinnedUpdates, exchangeRates, dorarResult] = await Promise.all([
+  const [articles, pinnedUpdates, exchangeRates, dorarResult, muqarrarChunks] = await Promise.all([
     resolveArticles(kbQuery, intent.primary),
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
+    fetchRelevantMuqarrar(retrievalQuery, intent.primary),
   ]);
 
   // Assess KB coverage strength before deciding whether to use external sources
@@ -4479,6 +4508,10 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Each builder is a pure function: input data → context string.
   // Internal logging (Wikipedia, DDG, Perplexity, Dorar, Exchange) is in each builder.
   const knowledgeContext       = buildKnowledgeContext(articles);
+  const muqarrarContext        = buildMuqarrarContext(muqarrarChunks);
+  if (muqarrarChunks.length > 0) {
+    console.log(`[Muqarrar] injected ${muqarrarChunks.length} chunks — Hal.${muqarrarChunks[0]?.page_number} ${muqarrarChunks[0]?.kitab_name}`);
+  }
   const pinnedContext          = buildPinnedContext(pinnedUpdates);
   const personalizationContext = buildPersonalizationContext(userProfile);
   const memoryContext          = buildMemoryContext(userMemories);
@@ -4541,6 +4574,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     memoryContext,
     personalizationContext,
     knowledgeContext,
+    muqarrarContext,
     exchangeContext,
     dorarContext,
     perplexityContext,
