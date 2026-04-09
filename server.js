@@ -536,6 +536,18 @@ async function initThreadsBestReplyCol() {
 }
 initThreadsBestReplyCol();
 
+/* ── News: share_caption column ─────────────────────────────────────────────*/
+async function initNewsShareCaptionCol() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const sql = `ALTER TABLE public.masisir_news ADD COLUMN IF NOT EXISTS share_caption TEXT;`;
+  try {
+    const { error } = await supabase.rpc("exec_sql", { sql });
+    if (!error) { console.log("[News] ✓ share_caption column ready"); return; }
+  } catch { /* fall through */ }
+}
+initNewsShareCaptionCol();
+
 /* ── Self-Improvement: query_log + missing_topics (Supabase) ────────────────
  * All logging now uses Supabase so it works in both dev (Replit) and prod
  * (Railway). Tables must exist in Supabase — run the SQL below once:
@@ -10086,6 +10098,132 @@ app.delete("/api/news/:id/comments/:cid", async (req, res) => {
   if (error) return res.status(500).json({ error: "Gagal menghapus komentar" });
   res.json({ ok: true });
 });
+
+/* POST /api/news/:id/share-caption — generate (and cache) an AI share caption */
+app.post("/api/news/:id/share-caption", async (req, res) => {
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { id } = req.params;
+  // Check if caption already cached
+  const { data: row } = await supabase
+    .from("masisir_news")
+    .select("title,content,share_caption")
+    .eq("id", id)
+    .single();
+  if (!row) return res.status(404).json({ error: "Berita tidak ditemukan" });
+  const forceRegen = req.query.force === "true";
+  if (row.share_caption && !forceRegen) return res.json({ caption: row.share_caption });
+
+  // Generate with AI
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: "AI not configured" });
+
+  const snippet = row.content?.slice(0, 1200) ?? "";
+  const prompt = `Kamu adalah copywriter media sosial yang ahli bikin caption viral.
+
+Berita: "${row.title}"
+Isi singkat: "${snippet}"
+
+Tugas: Buat caption share WhatsApp dalam BAHASA INDONESIA, 2–3 kalimat saja. 
+- Bikin orang PENASARAN dan ingin baca lebih lanjut
+- Gunakan hook yang menarik di kalimat pertama
+- Jangan spoiler semua isi berita
+- Boleh pakai 1–2 emoji yang relevan
+- JANGAN tulis "Berita:" atau judul ulang, langsung caption-nya saja
+- Maksimal 200 karakter`;
+
+  try {
+    const result = await callOpenRouter(apiKey, {
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      max_tokens: 120,
+      label: "ShareCaption",
+      timeoutMs: 15_000,
+    });
+    const caption = result?.choices?.[0]?.message?.content?.trim();
+    if (!caption) return res.status(500).json({ error: "AI tidak menghasilkan caption" });
+
+    // Cache in DB
+    await supabase.from("masisir_news").update({ share_caption: caption }).eq("id", id);
+    res.json({ caption });
+  } catch (e) {
+    res.status(500).json({ error: "Gagal generate caption" });
+  }
+});
+
+/* GET /share/news/:id — OG meta-tag page for WhatsApp/Telegram link previews */
+app.get("/share/news/:id", async (req, res) => {
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const appUrl = process.env.APP_URL || "https://ainalabs.pro";
+
+  const { data: item } = await supabase
+    .from("masisir_news")
+    .select("id,title,content,image_url,share_caption,published_at")
+    .eq("id", id)
+    .single();
+
+  if (!item) {
+    return res.redirect(appUrl);
+  }
+
+  const title = item.title ?? "Berita Masisir";
+  const desc  = item.share_caption || item.content?.slice(0, 160).replace(/\n/g, " ") || "Berita terbaru untuk mahasiswa Indonesia di Mesir.";
+  const image = item.image_url || `${appUrl}/og-image.png`;
+  const redirectUrl = `${appUrl}/?berita=${id}`;
+
+  // Detect social media / bot crawlers
+  const ua = req.headers["user-agent"] || "";
+  const isBot = /WhatsApp|facebookexternalhit|Twitterbot|Slackbot|TelegramBot|LinkedInBot|Googlebot|bingbot|Discordbot|Applebot|PinterestBot|DuckDuckBot|rogerbot/i.test(ua);
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escHtml(title)} — AINA</title>
+
+  <!-- Open Graph (WhatsApp, Facebook, Telegram) -->
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="AINA — Berita Masisir" />
+  <meta property="og:title" content="${escHtml(title)}" />
+  <meta property="og:description" content="${escHtml(desc)}" />
+  <meta property="og:image" content="${escHtml(image)}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:url" content="${escHtml(req.protocol + "://" + req.get("host") + req.originalUrl)}" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escHtml(title)}" />
+  <meta name="twitter:description" content="${escHtml(desc)}" />
+  <meta name="twitter:image" content="${escHtml(image)}" />
+
+  ${!isBot ? `<meta http-equiv="refresh" content="0; url=${escHtml(redirectUrl)}" />` : ""}
+</head>
+<body style="font-family:sans-serif;background:#0f0f0f;color:#f0f0f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+  <div style="max-width:480px;padding:24px;text-align:center;">
+    ${item.image_url ? `<img src="${escHtml(item.image_url)}" alt="" style="width:100%;border-radius:12px;margin-bottom:16px;" />` : ""}
+    <h1 style="font-size:18px;margin-bottom:8px;">${escHtml(title)}</h1>
+    <p style="font-size:14px;color:#aaa;margin-bottom:20px;">${escHtml(desc)}</p>
+    <a href="${escHtml(redirectUrl)}" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Baca di AINA →</a>
+  </div>
+</body>
+</html>`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(html);
+});
+
+function escHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 /* GET /api/_seed-news — ONE-TIME seed endpoint, remove after use */
 app.get("/api/_seed-news", async (req, res) => {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Newspaper, Clock, ExternalLink, Pin, X, MessageSquare, Send,
-  RefreshCw, LogIn, Trash2, ZoomIn, Share2, Copy, Check,
+  RefreshCw, LogIn, Trash2, ZoomIn, Share2, Copy, Check, Loader2, Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
@@ -70,41 +70,63 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
   const [session, setSession]           = useState<any>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [imgExpanded, setImgExpanded]   = useState(false);
-  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showSharePreview, setShowSharePreview] = useState(false);
+  const [shareCaption, setShareCaption] = useState<string | null>(null);
+  const [captionLoading, setCaptionLoading] = useState(false);
   const [copied, setCopied]             = useState(false);
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
-  const shareUrl  = item.source_url || window.location.href;
-  const shareText = `${item.title}\n\n`;
+  const sharePageUrl = `${window.location.origin}/share/news/${item.id}`;
+
+  async function fetchCaption(force = false) {
+    if (shareCaption && !force) return;
+    setCaptionLoading(true);
+    try {
+      const url = force ? `/api/news/${item.id}/share-caption?force=true` : `/api/news/${item.id}/share-caption`;
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json();
+      if (data.caption) setShareCaption(data.caption);
+    } catch { /* silent */ } finally {
+      setCaptionLoading(false);
+    }
+  }
 
   async function handleShare() {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: item.title, text: shareText, url: shareUrl });
-      } catch { /* user cancelled */ }
-    } else {
-      setShowShareMenu(v => !v);
-    }
+    setShowSharePreview(true);
+    fetchCaption();
   }
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(sharePageUrl);
       setCopied(true);
-      setTimeout(() => { setCopied(false); setShowShareMenu(false); }, 1800);
+      setTimeout(() => setCopied(false), 2000);
     } catch { /* ignore */ }
   }
 
   function shareWhatsApp() {
-    const msg = encodeURIComponent(`${shareText}${shareUrl}`);
+    const caption = shareCaption ? `${shareCaption}\n\n` : `${item.title}\n\n`;
+    const msg = encodeURIComponent(`${caption}${sharePageUrl}`);
     window.open(`https://wa.me/?text=${msg}`, "_blank");
-    setShowShareMenu(false);
+  }
+
+  function shareTelegram() {
+    const caption = shareCaption ? shareCaption : item.title;
+    const msg = encodeURIComponent(`${caption}\n\n${sharePageUrl}`);
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(sharePageUrl)}&text=${encodeURIComponent(caption)}`, "_blank");
   }
 
   function shareTwitter() {
-    const msg = encodeURIComponent(`${item.title} ${shareUrl}`);
+    const text = shareCaption ? shareCaption.slice(0, 240) : item.title;
+    const msg = encodeURIComponent(`${text} ${sharePageUrl}`);
     window.open(`https://twitter.com/intent/tweet?text=${msg}`, "_blank");
-    setShowShareMenu(false);
+  }
+
+  async function shareNative() {
+    const caption = shareCaption ? shareCaption : item.title;
+    try {
+      await navigator.share({ title: item.title, text: `${caption}\n\n`, url: sharePageUrl });
+    } catch { /* user cancelled */ }
   }
 
   useEffect(() => {
@@ -125,23 +147,13 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (showShareMenu) setShowShareMenu(false);
+        if (showSharePreview) setShowSharePreview(false);
         else onClose();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [onClose, showShareMenu]);
-
-  useEffect(() => {
-    if (!showShareMenu) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-share-menu]")) setShowShareMenu(false);
-    };
-    setTimeout(() => document.addEventListener("mousedown", handler), 0);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showShareMenu]);
+  }, [onClose, showSharePreview]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -239,52 +251,14 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
               <p className="text-[11px] text-muted-foreground mt-0.5">Sumber: {item.source_name}</p>
             )}
           </div>
-          {/* Share button + popup */}
-          <div className="relative shrink-0" data-share-menu>
-            <button
-              onClick={handleShare}
-              title="Bagikan berita"
-              className="rounded-full p-1.5 hover:bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Share2 className="h-4 w-4" />
-            </button>
-
-            {/* Share menu dropdown (shown when Web Share API unavailable) */}
-            {showShareMenu && (
-              <div className="absolute right-0 top-9 z-20 w-48 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-                <div className="px-3 py-2 border-b border-border/40">
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Bagikan via</p>
-                </div>
-                {/* WhatsApp */}
-                <button
-                  onClick={shareWhatsApp}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#25D366]/15 text-[#25D366] text-base font-bold shrink-0">W</span>
-                  WhatsApp
-                </button>
-                {/* Twitter / X */}
-                <button
-                  onClick={shareTwitter}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-muted transition-colors"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground/10 text-foreground text-sm font-bold shrink-0">𝕏</span>
-                  X / Twitter
-                </button>
-                {/* Copy link */}
-                <button
-                  onClick={copyLink}
-                  className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-muted transition-colors border-t border-border/30"
-                >
-                  {copied
-                    ? <Check className="h-4 w-4 text-green-500 shrink-0" />
-                    : <Copy className="h-4 w-4 text-muted-foreground shrink-0" />
-                  }
-                  {copied ? "Link tersalin!" : "Salin link"}
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Share button */}
+          <button
+            onClick={handleShare}
+            title="Bagikan berita"
+            className="shrink-0 rounded-full p-1.5 hover:bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
 
           <button
             onClick={onClose}
@@ -421,6 +395,128 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
           </div>
         </div>
       </div>
+
+      {/* ── Share Preview Sheet ─────────────────────────────────── */}
+      {showSharePreview && (
+        <div
+          className="absolute inset-0 z-30 flex items-end justify-center rounded-t-2xl sm:rounded-2xl overflow-hidden"
+          onClick={e => { if (e.target === e.currentTarget) setShowSharePreview(false); }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSharePreview(false)} />
+          <div className="relative z-10 w-full rounded-t-2xl sm:rounded-2xl bg-card border-t sm:border border-border shadow-2xl animate-in slide-in-from-bottom-8 duration-300">
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="h-1 w-10 rounded-full bg-border/70" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-3 pb-3 border-b border-border/40">
+              <div className="flex items-center gap-2">
+                <Share2 className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">Bagikan Berita</span>
+              </div>
+              <button
+                onClick={() => setShowSharePreview(false)}
+                className="rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {/* Preview Card */}
+              <div className="rounded-xl border border-border overflow-hidden bg-background/50">
+                {item.image_url && (
+                  <img
+                    src={item.image_url}
+                    alt={item.title}
+                    className="w-full h-36 object-cover"
+                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                )}
+                <div className="px-3 py-2.5">
+                  <p className="text-[10px] font-semibold text-primary uppercase tracking-wide mb-1">ainalabs.pro</p>
+                  <p className="text-xs font-bold text-foreground line-clamp-2 leading-snug">{item.title}</p>
+                  {/* AI Caption */}
+                  <div className="mt-2 min-h-[36px] flex items-start gap-2">
+                    {captionLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 text-primary" />
+                        <span>AINA sedang menulis caption menarik...</span>
+                      </div>
+                    ) : shareCaption ? (
+                      <p className="text-xs text-muted-foreground leading-relaxed">{shareCaption}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/60 italic">Caption tidak tersedia</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Regenerate caption */}
+              {shareCaption && !captionLoading && (
+                <button
+                  onClick={() => fetchCaption(true)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Buat caption lain
+                </button>
+              )}
+
+              {/* Share buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* WhatsApp */}
+                <button
+                  onClick={shareWhatsApp}
+                  className="flex items-center gap-2.5 rounded-xl border border-[#25D366]/25 bg-[#25D366]/8 px-3.5 py-3 text-sm font-medium text-[#25D366] hover:bg-[#25D366]/15 transition-colors"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#25D366]/20 text-base font-bold">W</span>
+                  WhatsApp
+                </button>
+                {/* Telegram */}
+                <button
+                  onClick={shareTelegram}
+                  className="flex items-center gap-2.5 rounded-xl border border-[#2AABEE]/25 bg-[#2AABEE]/8 px-3.5 py-3 text-sm font-medium text-[#2AABEE] hover:bg-[#2AABEE]/15 transition-colors"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2AABEE]/20 text-base font-bold">✈</span>
+                  Telegram
+                </button>
+                {/* X / Twitter */}
+                <button
+                  onClick={shareTwitter}
+                  className="flex items-center gap-2.5 rounded-xl border border-border bg-secondary/50 px-3.5 py-3 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-sm font-bold">𝕏</span>
+                  X / Twitter
+                </button>
+                {/* Copy link */}
+                <button
+                  onClick={copyLink}
+                  className="flex items-center gap-2.5 rounded-xl border border-border bg-secondary/50 px-3.5 py-3 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
+                >
+                  {copied
+                    ? <Check className="h-5 w-5 shrink-0 text-green-500" />
+                    : <Copy className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  }
+                  {copied ? "Tersalin!" : "Salin link"}
+                </button>
+              </div>
+
+              {/* Native share (mobile) */}
+              {typeof navigator !== "undefined" && "share" in navigator && (
+                <button
+                  onClick={shareNative}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/25 bg-primary/8 py-2.5 text-sm font-medium text-primary hover:bg-primary/15 transition-colors"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Bagikan via aplikasi lain
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
