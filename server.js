@@ -153,7 +153,7 @@ app.use(cors({
 // Avatar/image uploads are smaller — 20mb is sufficient
 app.use((req, res, next) => {
   const xlRoutes   = ["/api/admin/library/upload-file"];
-  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image", "/api/whisper", "/api/chat", "/api/flashcards/generate"];
+  const largeRoutes = ["/api/upload-avatar", "/api/threads/upload-image", "/api/admin/upload-image", "/api/contributor/upload-image", "/api/whisper", "/api/chat", "/api/flashcards/generate"];
   const limit = xlRoutes.includes(req.path) ? "70mb" : largeRoutes.includes(req.path) ? "20mb" : "64kb";
   express.json({ limit })(req, res, next);
 });
@@ -5893,6 +5893,55 @@ app.post("/api/admin/upload-image", uploadLimiter, (req, res, next) => {
 });
 
 /* ── Upload URL for chat (any authenticated user) ────── */
+// Contributor image upload — any authenticated user (contributor, admin)
+app.post("/api/contributor/upload-image", uploadLimiter, (req, res, next) => {
+  adminImageUpload.single("file")(req, res, err => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  if (!req.file) return res.status(400).json({ error: "File tidak ditemukan" });
+
+  const supabase = getAdminClient();
+
+  let compressedBuffer;
+  let finalMime = "image/jpeg";
+  try {
+    compressedBuffer = await sharp(req.file.buffer)
+      .resize({ width: 1000, withoutEnlargement: true })
+      .jpeg({ quality: 78, progressive: true, mozjpeg: true })
+      .toBuffer();
+    if (compressedBuffer.length > 150 * 1024) {
+      compressedBuffer = await sharp(req.file.buffer)
+        .resize({ width: 800, withoutEnlargement: true })
+        .jpeg({ quality: 62, progressive: true, mozjpeg: true })
+        .toBuffer();
+    }
+    console.log(`[contributor/upload-image] compressed: ${Math.round(req.file.size / 1024)}KB → ${Math.round(compressedBuffer.length / 1024)}KB`);
+  } catch (sharpErr) {
+    console.warn("[contributor/upload-image] Sharp failed, using original:", sharpErr.message);
+    compressedBuffer = req.file.buffer;
+    finalMime = req.file.mimetype;
+  }
+
+  const storagePath = `contributor/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+
+  const { error } = await supabase.storage
+    .from("announcements")
+    .upload(storagePath, compressedBuffer, { contentType: finalMime, upsert: false });
+
+  if (error) {
+    console.error("[contributor/upload-image] storage error:", error.message);
+    return res.status(500).json({ error: "Gagal menyimpan gambar: " + error.message });
+  }
+
+  const { data: { publicUrl } } = supabase.storage.from("announcements").getPublicUrl(storagePath);
+  return res.json({ publicUrl, size_kb: Math.round(compressedBuffer.length / 1024) });
+});
+
 app.post("/api/chat/upload-url", uploadLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Login diperlukan" });
@@ -11515,6 +11564,7 @@ ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS portfolio_link 
 ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS review_notes TEXT;
 ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;
 ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS article_image_url TEXT;
 
 -- Announcement tables
 CREATE TABLE IF NOT EXISTS public.system_announcements (
@@ -12369,6 +12419,7 @@ async function runColumnMigrations() {
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS review_notes TEXT;",
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_by UUID;",
     "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;",
+    "ALTER TABLE public.contributor_requests ADD COLUMN IF NOT EXISTS article_image_url TEXT;",
     "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS image_url TEXT;",
     "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS show_once_per_user BOOLEAN NOT NULL DEFAULT false;",
     "ALTER TABLE public.system_announcements ADD COLUMN IF NOT EXISTS trigger_type TEXT NOT NULL DEFAULT 'on_dashboard_open';",

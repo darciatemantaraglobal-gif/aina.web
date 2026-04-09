@@ -36,7 +36,7 @@ interface Profile {
 interface ContributorRequest {
   id: string; user_id: string; full_name: string; education: string;
   enrollment_year: number; expertise: string; status: string; created_at: string;
-  reason?: string; article_content?: string; article_file_url?: string;
+  reason?: string; article_content?: string; article_file_url?: string; article_image_url?: string;
   portfolio_link?: string; review_notes?: string; reviewed_by?: string; reviewed_at?: string;
 }
 interface Article {
@@ -1091,7 +1091,7 @@ function RequestsTab() {
                 )}
 
                 {/* Article */}
-                {(req.article_content || req.article_file_url) && (
+                {(req.article_content || req.article_file_url || req.article_image_url) && (
                   <div className="rounded-xl border border-border bg-secondary/40">
                     <button
                       type="button"
@@ -1102,7 +1102,7 @@ function RequestsTab() {
                       <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                     </button>
                     {isExpanded && (
-                      <div className="border-t border-border px-3 py-2.5">
+                      <div className="border-t border-border px-3 py-2.5 space-y-2.5">
                         {req.article_content ? (
                           <p className="whitespace-pre-wrap text-sm text-foreground/90 leading-relaxed">{req.article_content}</p>
                         ) : req.article_file_url ? (
@@ -1111,6 +1111,16 @@ function RequestsTab() {
                             <ExternalLink className="h-3.5 w-3.5" /> Buka file artikel
                           </a>
                         ) : null}
+                        {req.article_image_url && (
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Foto / Ilustrasi dari Kontributor</p>
+                            <img
+                              src={req.article_image_url}
+                              alt="Foto artikel kontributor"
+                              className="max-h-48 w-auto rounded-lg border border-border object-cover"
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

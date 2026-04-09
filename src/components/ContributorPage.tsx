@@ -166,6 +166,9 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [regPortfolio, setRegPortfolio] = useState("");
   const [regArticleUploading, setRegArticleUploading] = useState(false);
   const regArticleInputRef = useRef<HTMLInputElement>(null);
+  const [regImageUrl, setRegImageUrl] = useState("");
+  const [regImageUploading, setRegImageUploading] = useState(false);
+  const regImageInputRef = useRef<HTMLInputElement>(null);
 
   // Manual article write dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -303,6 +306,49 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
     }
   };
 
+  const uploadContributorImage = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Hanya file gambar yang didukung (JPG, PNG, WebP)"); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error("Ukuran gambar maksimal 5 MB"); return; }
+    setRegImageUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Login diperlukan"); return; }
+      // Client-side compress before uploading
+      const compressed = await new Promise<Blob>((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const MAX = 1200;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(b => b ? resolve(b) : reject(new Error("Gagal kompres")), "image/jpeg", 0.82);
+        };
+        img.onerror = reject;
+        img.src = url;
+      });
+      const formData = new FormData();
+      formData.append("file", compressed, "image.jpg");
+      const res = await fetch("/api/contributor/upload-image", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: formData,
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); toast.error(j.error || "Gagal upload gambar"); return; }
+      const { publicUrl, size_kb } = await res.json();
+      setRegImageUrl(publicUrl);
+      toast.success(`Gambar berhasil diupload (${size_kb} KB)`);
+    } catch {
+      toast.error("Upload gambar gagal. Coba lagi.");
+    } finally {
+      setRegImageUploading(false);
+    }
+  };
+
   const submitRequest = async () => {
     if (!regName.trim() || !regEdu.trim() || !regYear.trim() || !regExpertise.trim()) {
       toast.error("Nama, pendidikan, tahun masuk, dan keahlian harus diisi");
@@ -336,6 +382,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         reason: regReason.trim().slice(0, 1000),
         article_content: regArticleMode === "text" ? regArticleText.trim().slice(0, 10000) : null,
         article_file_url: regArticleMode === "file" ? regArticleFileUrl : null,
+        article_image_url: regImageUrl || null,
         portfolio_link: regPortfolio.trim() || null,
       };
       let { error } = await supabase.from("contributor_requests").insert(payload);
@@ -827,6 +874,52 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     )}
                   </div>
 
+                  {/* Foto / Ilustrasi Artikel */}
+                  <div className="rounded-xl border border-border bg-secondary/50 p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-medium text-foreground">Foto / Ilustrasi Artikel <span className="text-muted-foreground font-normal">(opsional)</span></p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed">
+                          Upload foto, poster, atau ilustrasi yang relevan dengan artikel sampelmu — misalnya foto lokasi, screenshot prosedur, atau infografis.
+                          Gambar ini akan ditampilkan AINA saat menjawab pertanyaan yang berkaitan dengan artikelmu, sehingga jawaban lebih informatif dan mudah dipahami.
+                        </p>
+                      </div>
+                    </div>
+                    <input
+                      ref={regImageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadContributorImage(f); e.target.value = ""; }}
+                    />
+                    {regImageUrl ? (
+                      <div className="space-y-1.5">
+                        <img src={regImageUrl} alt="Preview gambar artikel" className="max-h-40 w-auto rounded-lg border border-border object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setRegImageUrl("")}
+                          className="flex items-center gap-1 text-[11px] text-destructive/70 hover:text-destructive transition-colors"
+                        >
+                          <X className="h-3 w-3" /> Hapus gambar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => regImageInputRef.current?.click()}
+                        disabled={regImageUploading}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card px-4 py-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors disabled:opacity-50"
+                      >
+                        {regImageUploading ? (
+                          <><span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Mengupload gambar...</>
+                        ) : (
+                          <><Upload className="h-4 w-4" /> Klik untuk pilih foto / ilustrasi</>
+                        )}
+                      </button>
+                    )}
+                    <p className="text-[10px] text-muted-foreground/60">Maks. 5 MB. Format: JPG, PNG, WebP.</p>
+                  </div>
+
                   <Input
                     placeholder="Link portofolio / tulisan lain (opsional)"
                     value={regPortfolio}
@@ -834,7 +927,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     className="bg-secondary"
                   />
 
-                  <Button data-tour="contributor-submit" variant="hero" onClick={submitRequest} disabled={submitting || regArticleUploading} className="gap-1.5">
+                  <Button data-tour="contributor-submit" variant="hero" onClick={submitRequest} disabled={submitting || regArticleUploading || regImageUploading} className="gap-1.5">
                     {submitting ? (
                       <>
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
