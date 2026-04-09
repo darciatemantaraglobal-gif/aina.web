@@ -1020,6 +1020,15 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       <Upload className="h-4 w-4" />
                       Upload PDF / Dokumen
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                      onClick={() => { setUrlDialogOpen(true); setImportUrl(""); }}
+                    >
+                      <Link2 className="h-4 w-4" />
+                      Import dari URL
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1337,19 +1346,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             )}
 
             {/* ── Artikelku ─────────────────────────────────── */}
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-semibold text-foreground">Artikelku</h2>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setUrlDialogOpen(true); setImportUrl(""); }}>
-                  <Link2 className="h-4 w-4" />
-                  Import URL
-                </Button>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Tulis Artikel
-                </Button>
-              </div>
-            </div>
+            <h2 className="font-display text-lg font-semibold text-foreground">Artikelku</h2>
 
             {/* URL import dialog */}
             <Dialog open={urlDialogOpen} onOpenChange={(open) => { setUrlDialogOpen(open); if (!open) setImportUrl(""); }}>
