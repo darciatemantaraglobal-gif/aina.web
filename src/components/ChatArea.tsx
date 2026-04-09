@@ -347,8 +347,8 @@ function loadStoredFeedback(): Record<string, "up" | "down"> {
   try { return JSON.parse(localStorage.getItem(FEEDBACK_STORE_KEY) ?? "{}"); } catch { return {}; }
 }
 
-const DAILY_LIMIT = 20;
-const DAILY_NUDGE_AT = 15; // Show contributor nudge at this count (75% of limit)
+const DAILY_LIMIT = 5;
+const DAILY_NUDGE_AT = 4; // Show contributor nudge at this count (80% of limit)
 const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
 // Context used by MD_COMPONENTS to tell <li> whether it's inside <ol> or <ul>.
@@ -660,6 +660,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [limitReached, setLimitReached] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [dailyCount, setDailyCount] = useState<number | null>(null);
+  const [subscriptionVisible, setSubscriptionVisible] = useState(false);
   const [isPaidUser, setIsPaidUser] = useState(false);
   const [userProfile, setUserProfile] = useState<Record<string, any> | null>(null);
   const [reportingMsgId, setReportingMsgId] = useState<string | null>(null);
@@ -895,6 +896,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           .gte("created_at", todayStart.toISOString());
         setDailyCount(count ?? 0);
         if ((count ?? 0) >= DAILY_LIMIT) setLimitReached(true);
+
+        // Fetch subscription visibility (controls Upgrade Pro button in limit modal)
+        try {
+          const cfg = await fetch("/api/payment/config").then(r => r.json());
+          setSubscriptionVisible(cfg.subscription_visible === true);
+        } catch {
+          // silently ignore — subscription button stays hidden
+        }
       }
     };
     fetchDailyUsage();
@@ -2134,6 +2143,25 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 <p>✦ Info administrasi, tips kuliah, atau pengalaman praktis</p>
                 <p>✦ Direview admin sebelum disetujui — kualitas dijaga</p>
               </div>
+
+              {/* Upgrade Pro — only shown when subscription is live */}
+              {subscriptionVisible && (
+                <button
+                  onClick={() => { setLimitReached(false); navigate("/pricing"); }}
+                  className="group mt-3 w-full rounded-2xl border border-border bg-secondary/40 p-3 text-left transition-all hover:border-border/80 hover:bg-secondary/70"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+                      <Zap className="h-4 w-4 text-amber-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground">Upgrade ke AINA Pro</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Chat tanpa batas dengan berlangganan</p>
+                    </div>
+                    <span className="shrink-0 text-xs text-muted-foreground group-hover:text-foreground">Lihat harga →</span>
+                  </div>
+                </button>
+              )}
 
               <p className="mt-3 text-center text-xs text-muted-foreground/60">
                 Batas direset setiap 00.00 waktu Kairo (UTC+2)
