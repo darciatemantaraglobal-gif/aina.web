@@ -27,8 +27,9 @@ import { createKnowledgeMonitorRouter }   from "./server/routes/knowledgeMonitor
 import { createKnowledgeAnalyticsRouter } from "./server/routes/knowledgeAnalytics.js";
 import { createKnowledgeInsightsRouter }  from "./server/routes/knowledgeInsights.js";
 import { createAnalyticsService }         from "./server/services/analyticsService.js";
-import { createHybridRetrievalService }  from "./server/services/hybridRetrievalService.js";
-import { createSmartRetrievalService }   from "./server/services/smartRetrievalService.js";
+import { createHybridRetrievalService }    from "./server/services/hybridRetrievalService.js";
+import { createSmartRetrievalService }     from "./server/services/smartRetrievalService.js";
+import { createMuqarrarRetrievalService }  from "./server/services/muqarrarRetrievalService.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
 import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
@@ -1576,68 +1577,21 @@ async function resolveArticles(kbQuery, intentPrimary) {
   return fetchRelevantArticles(kbQuery, intentPrimary);
 }
 
-/* ── Fetch relevant muqarrar/kitab chunks via pgvector ── */
-async function fetchRelevantMuqarrar(userQuestion, intentPrimary, kitabFilter = null, kitabId = null) {
-  const MUQARRAR_INTENTS = new Set(["fiqh", "factual", "question", "general"]);
-  const hasFilter = kitabFilter || kitabId;
-  // If a kitab filter is explicitly set (Library mode), always run regardless of intent
-  if (!hasFilter && !MUQARRAR_INTENTS.has(intentPrimary)) return [];
-  const supabase = getAdminClient();
-  if (!supabase || !process.env.OPENAI_API_KEY) return [];
-  try {
-    // When kitab filter is active, use lower threshold + higher count to maximize recall
-    const threshold = hasFilter ? 0.2 : 0.35;
-    const count     = hasFilter ? 10  : 5;
-    const queryEmbedding = await generateEmbedding(userQuestion);
-    const { data, error } = await supabase.rpc("match_muqarrar_chunks", {
-      query_embedding: queryEmbedding,
-      match_threshold: threshold,
-      match_count:     count,
-    });
-    if (error) {
-      console.warn(`[Muqarrar] RPC error: ${error.message}`);
-      return [];
-    }
-    let results = (data || []).filter(c => c.similarity > threshold);
-
-    // Priority 1: exact kitab_id match (scraper items with aina:// drive_url)
-    if (kitabId) {
-      const byId = results.filter(c => c.kitab_id === kitabId);
-      if (byId.length > 0) {
-        console.log(`[Muqarrar] KitabID exact match "${kitabId}" → ${byId.length} chunks`);
-        return byId.slice(0, 5);
-      }
-      console.log(`[Muqarrar] KitabID "${kitabId}" tidak ditemukan di pool, fallback ke name filter`);
-    }
-
-    // Priority 2: fuzzy name match (manual/title-based filter)
-    if (kitabFilter) {
-      const kf = kitabFilter.toLowerCase();
-      const byName = results.filter(c => {
-        const cn = (c.kitab_name || "").toLowerCase();
-        return cn.includes(kf) || kf.includes(cn);
-      });
-      // Fall back to unfiltered pool only if no name match found
-      results = byName.length > 0 ? byName : results;
-      console.log(`[Muqarrar] Kitab name filter="${kitabFilter}" → ${byName.length} kitab-specific chunks (pool: ${results.length})`);
-    }
-
-    if (results.length > 0) {
-      console.log(`[Muqarrar] ✓ ${results.length} chunks ditemukan (top sim=${results[0]?.similarity?.toFixed(3)}) — "${userQuestion.slice(0, 60)}"`);
-    }
-    return results.slice(0, 5);
-  } catch (e) {
-    console.warn(`[Muqarrar] fetch failed: ${e.message}`);
-    return [];
-  }
-}
-
 // ── Analytics service — lazy init ─────────────────────────────────────────────
 // Created on first use so getAdminClient() is guaranteed to be ready.
 let _analyticsSvc = null;
 function getAnalyticsSvc() {
   if (!_analyticsSvc) _analyticsSvc = createAnalyticsService({ getAdminClient });
   return _analyticsSvc;
+}
+
+// ── Muqarrar AI — isolated retrieval service (lazy singleton) ─────────────────
+// IMPORTANT: This service is ADDITIVE and must NEVER be triggered automatically
+// for normal chat queries. Activation is explicit-only — see chat handler below.
+let _muqarrarSvc = null;
+function getMuqarrarSvc() {
+  if (!_muqarrarSvc) _muqarrarSvc = createMuqarrarRetrievalService({ getAdminClient, generateEmbedding });
+  return _muqarrarSvc;
 }
 
 /**
@@ -4177,7 +4131,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   try {
 
-  const { messages, userProfile, attachedFile } = req.body;
+  const { messages, userProfile, attachedFile, mode } = req.body;
+  const isMuqarrarMode = mode === "muqarrar"; // Explicit Muqarrar AI mode flag
   if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: "messages array required" });
   if (messages.length > 50) return res.status(400).json({ error: "Terlalu banyak pesan dalam satu permintaan" });
 
@@ -4234,16 +4189,18 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Typo] normalized: "${lastUserMessage.slice(0, 50)}" → "${retrievalQuery.slice(0, 50)}"`);
   }
 
-  // Detect Library kitab-filter prefix (two formats):
-  //   Scraper items: [KitabID:"uuid" Kitab:"Title"] question  → exact kitab_id filter
-  //   Manual items:  [Kitab: "Title"] question                → fuzzy name filter
-  const kitabIdFormatMatch = lastUserMessage.match(/^\[KitabID:"([^"]+)"\s+Kitab:"([^"]+)"\]\s*/);
-  const kitabNameFormatMatch = !kitabIdFormatMatch && lastUserMessage.match(/^\[Kitab:\s*"([^"]+)"\]\s*/);
-  const kitabId     = kitabIdFormatMatch   ? kitabIdFormatMatch[1]   : null;
-  const kitabFilter = kitabIdFormatMatch   ? kitabIdFormatMatch[2]
-                    : kitabNameFormatMatch  ? kitabNameFormatMatch[1] : null;
-  if (kitabId)     console.log(`[Muqarrar] KitabID filter aktif: "${kitabId}"`);
-  else if (kitabFilter) console.log(`[Muqarrar] Kitab name filter aktif: "${kitabFilter}"`);
+  // ── Muqarrar AI mode detection (EXPLICIT-ONLY — never auto-activated) ────────
+  // Activation sources:
+  //   a) request body has mode: "muqarrar"  (e.g. from a dedicated Muqarrar UI screen)
+  //   b) message has [KitabID:"..."] or [Kitab:"..."] prefix (Library "Tanya AINA" button)
+  // The legacy retrieval path (knowledge_base / hybrid) is NEVER replaced by muqarrar.
+  // Muqarrar context is injected INTO the same prompt alongside KB context when activated.
+  const { kitabId, kitabFilter, cleanQuestion: _muqarrarQ } =
+    getMuqarrarSvc().parseKitabPrefix(lastUserMessage);
+  const muqarrarActive = isMuqarrarMode || !!(kitabId || kitabFilter);
+  if (muqarrarActive) {
+    console.log(`[Muqarrar] Activated — mode="${mode ?? "prefix"}" kitabId="${kitabId}" kitabFilter="${kitabFilter}"`);
+  }
 
   // Context detection + query expansion (synchronous — before any async calls)
   const masisirCtx = detectMasisirContext(retrievalQuery);
@@ -4421,7 +4378,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
-    fetchRelevantMuqarrar(retrievalQuery, intent.primary, kitabFilter, kitabId),
+    // Muqarrar AI — EXPLICIT-ONLY: only runs when muqarrarActive is true.
+    // NEVER auto-routes normal chat queries to the Muqarrar path.
+    muqarrarActive
+      ? getMuqarrarSvc().retrieve(retrievalQuery, { kitabId, kitabFilter })
+      : Promise.resolve([]),
   ]);
 
   // Assess KB coverage strength before deciding whether to use external sources

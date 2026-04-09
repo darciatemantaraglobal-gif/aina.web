@@ -1,0 +1,140 @@
+You are a senior full-stack engineer working on my AINA web app.
+
+IMPORTANT ARCHITECTURE DECISION:
+
+I want TWO knowledge paths:
+
+1. LEGACY PATH
+   Used for all normal AINA features:
+
+* knowledge_base
+* article scraping results
+* pasted articles
+* additional sources
+* normal KB draft flow
+  This legacy system must remain unchanged.
+
+2. MUQARRAR AI PATH
+   Used ONLY for the special feature "Muqarrar AI"
+   This feature is for large PDF documents (200+ pages), especially kitab/muqorror material, where answers must include source page numbers.
+
+========================================
+GOAL
+====
+
+Add a dedicated Muqarrar AI retrieval system without breaking the existing AINA chat and retrieval flow.
+
+========================================
+DO NOT TOUCH
+============
+
+Do not replace or break:
+
+* existing chat flow
+* existing knowledge_base retrieval
+* existing hybrid/legacy logic for normal features
+
+Only add a SEPARATE retrieval path for Muqarrar AI.
+
+========================================
+NEW DATA SOURCE
+===============
+
+Use dedicated Supabase tables:
+
+muqarrar_documents
+muqarrar_chunks
+
+Each chunk contains:
+
+* document_id
+* page_number
+* section_title
+* content
+* embedding
+
+========================================
+NEW SERVICE
+===========
+
+Create:
+server/services/muqarrarRetrievalService.js
+
+This service should:
+
+1. embed the user query
+2. search relevant chunks from muqarrar_chunks
+3. return the top relevant chunks
+4. preserve:
+
+   * document title
+   * page_number
+   * section_title if available
+
+========================================
+ROUTING RULE
+============
+
+The new retrieval path must be used ONLY when the user is inside the Muqarrar AI feature / entry point.
+
+Do NOT auto-route all chat queries to Muqarrar AI.
+
+Examples:
+
+* If request comes from Muqarrar AI screen, route to muqarrarRetrievalService
+* Otherwise keep using the old system
+
+This separation is very important.
+
+========================================
+RESPONSE FORMAT
+===============
+
+When Muqarrar AI is used, generate answers that:
+
+* answer the user clearly
+* cite source page numbers
+
+Example output style:
+
+"Penjelasan ringkas ...
+
+Sumber:
+
+* Halaman 54, Muqarrar Fiqh
+* Halaman 55, Muqarrar Fiqh"
+
+If section title exists, include it when helpful.
+
+========================================
+FALLBACK
+========
+
+If Muqarrar AI finds no relevant chunk:
+
+* return a graceful message
+* optionally suggest rephrasing the question
+* do not break the normal system
+
+========================================
+UI / API INTEGRATION
+====================
+
+Add a dedicated API or flag for Muqarrar AI mode, for example:
+
+* mode: "muqarrar"
+
+This mode should explicitly trigger the Muqarrar retrieval path.
+
+========================================
+DELIVERABLE
+===========
+
+Deliver:
+
+* clean code
+* isolated Muqarrar AI retrieval path
+* no regression to existing AINA functionality
+* ready for large PDF scholarly usage
+
+This is an additive feature only.
