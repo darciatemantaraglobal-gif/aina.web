@@ -2239,24 +2239,35 @@ function ArticleFormDialog({
               onChange={e => { const f = e.target.files?.[0]; if (f) uploadKbImage(f); e.target.value = ""; }}
             />
             {imageUrl ? (
-              <div className="relative rounded-xl overflow-hidden border border-border">
-                <img src={imageUrl} alt="Preview poster" className="w-full max-h-44 object-contain bg-black/10" />
-                <div className="absolute top-2 right-2 flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => kbImgInputRef.current?.click()}
-                    disabled={imgUploading}
-                    className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-black/80 transition-colors"
-                  >
-                    {imgUploading ? "Mengupload..." : "Ganti"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setImageUrl("")}
-                    className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-600/80 transition-colors"
-                  >
-                    Hapus
-                  </button>
+              <div className="space-y-1.5">
+                {(() => {
+                  const pathAfterBucket = imageUrl.trim().split("/public/")[1] ?? "";
+                  const isIncomplete = imageUrl.trim().endsWith("/") || !pathAfterBucket || !pathAfterBucket.includes(".");
+                  return isIncomplete ? (
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+                      ⚠️ URL gambar terlihat tidak lengkap (tidak ada nama file). Hapus dan upload ulang gambarnya agar poster bisa ditampilkan AINA.
+                    </div>
+                  ) : null;
+                })()}
+                <div className="relative rounded-xl overflow-hidden border border-border">
+                  <img src={imageUrl} alt="Preview poster" className="w-full max-h-44 object-contain bg-black/10" onError={e => { (e.target as HTMLImageElement).style.opacity = "0.3"; }} />
+                  <div className="absolute top-2 right-2 flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => kbImgInputRef.current?.click()}
+                      disabled={imgUploading}
+                      className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-black/80 transition-colors"
+                    >
+                      {imgUploading ? "Mengupload..." : "Ganti"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl("")}
+                      className="rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-600/80 transition-colors"
+                    >
+                      Hapus
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (

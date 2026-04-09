@@ -1397,7 +1397,8 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     .select(selectCols)
     .eq("status", "approved")
     .or(orFilter)
-    .limit(12);   // fetch more candidates for client-side ranking
+    .order("last_updated", { ascending: false })
+    .limit(50);   // fetch generous pool for client-side ranking (large KB needs more candidates)
 
   if (!matched || matched.length === 0) {
     // Log this query as a missing topic so admins can identify coverage gaps
@@ -5163,7 +5164,18 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   const kbImages = maxPosterCount > 0
     ? (articles || [])
-        .filter(a => a.image_url && typeof a.image_url === "string" && a.image_url.trim())
+        .filter(a => {
+          const u = a.image_url;
+          if (!u || typeof u !== "string") return false;
+          const trimmed = u.trim();
+          if (!trimmed) return false;
+          // Skip incomplete URLs — must end with a file extension or at minimum not end in "/"
+          if (trimmed.endsWith("/")) return false;
+          // Must look like a real URL with an actual path beyond just the bucket root
+          const pathAfterBucket = trimmed.split("/public/")[1] ?? "";
+          if (!pathAfterBucket || !pathAfterBucket.includes(".")) return false;
+          return true;
+        })
         .map(a => a.image_url.trim())
         .filter((url, i, arr) => arr.indexOf(url) === i) // dedupe
         .slice(0, maxPosterCount)
