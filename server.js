@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
 import { createHash } from "crypto";
@@ -5852,12 +5853,35 @@ app.post("/api/admin/upload-image", uploadLimiter, (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: "File tidak ditemukan" });
 
   const supabase = getAdminClient();
-  const ext = req.file.mimetype.split("/")[1].replace("jpeg", "jpg");
-  const storagePath = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+  // Server-side compression via Sharp: max 1000px wide, JPEG ≤150KB, strip EXIF
+  let compressedBuffer;
+  let finalMime = "image/jpeg";
+  try {
+    compressedBuffer = await sharp(req.file.buffer)
+      .resize({ width: 1000, withoutEnlargement: true })
+      .jpeg({ quality: 78, progressive: true, mozjpeg: true })
+      .toBuffer();
+
+    // If still > 150KB, lower quality further
+    if (compressedBuffer.length > 150 * 1024) {
+      compressedBuffer = await sharp(req.file.buffer)
+        .resize({ width: 800, withoutEnlargement: true })
+        .jpeg({ quality: 62, progressive: true, mozjpeg: true })
+        .toBuffer();
+    }
+    console.log(`[upload-image] compressed: ${Math.round(req.file.size / 1024)}KB → ${Math.round(compressedBuffer.length / 1024)}KB`);
+  } catch (sharpErr) {
+    console.warn("[upload-image] Sharp failed, using original:", sharpErr.message);
+    compressedBuffer = req.file.buffer;
+    finalMime = req.file.mimetype;
+  }
+
+  const storagePath = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
 
   const { error } = await supabase.storage
     .from("announcements")
-    .upload(storagePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+    .upload(storagePath, compressedBuffer, { contentType: finalMime, upsert: false });
 
   if (error) {
     console.error("[admin/upload-image] storage error:", error.message);
@@ -5865,7 +5889,7 @@ app.post("/api/admin/upload-image", uploadLimiter, (req, res, next) => {
   }
 
   const { data: { publicUrl } } = supabase.storage.from("announcements").getPublicUrl(storagePath);
-  return res.json({ publicUrl });
+  return res.json({ publicUrl, size_kb: Math.round(compressedBuffer.length / 1024) });
 });
 
 /* ── Upload URL for chat (any authenticated user) ────── */

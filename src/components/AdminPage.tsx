@@ -1970,7 +1970,7 @@ function ArticleFormDialog({
       const json = await res.json();
       if (!res.ok) { toast.error(json.error ?? "Gagal upload gambar"); return; }
       setImageUrl(json.publicUrl);
-      toast.success(`Poster diupload (${Math.round(compressed.size / 1024)} KB)`);
+      toast.success(`Poster diupload (${json.size_kb ?? Math.round(compressed.size / 1024)} KB setelah kompresi)`);
     } catch { toast.error("Upload gagal. Coba lagi."); }
     finally { setImgUploading(false); }
   };
@@ -5249,12 +5249,38 @@ function AnnouncementsTab() {
     setShowForm(true);
   };
 
+  const compressAnnouncementImage = (file: File): Promise<File> => new Promise(resolve => {
+    const img = new window.Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let { width, height } = img;
+      const MAX_W = 900;
+      if (width > MAX_W) { height = Math.round(height * MAX_W / width); width = MAX_W; }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      const tryBlob = (q: number) => {
+        canvas.toBlob(blob => {
+          if (!blob) { resolve(file); return; }
+          if (blob.size <= 150 * 1024 || q <= 0.3) {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+          } else { tryBlob(Math.max(0.3, q - 0.12)); }
+        }, "image/jpeg", q);
+      };
+      tryBlob(0.80);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+    img.src = objectUrl;
+  });
+
   const uploadImage = async (file: File) => {
     setImgUploading(true);
     try {
+      const compressed = await compressAnnouncementImage(file);
       const auth = await getAuthHeader();
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", compressed);
       const res = await fetch("/api/admin/upload-image", {
         method: "POST",
         headers: { Authorization: auth },
@@ -5263,7 +5289,7 @@ function AnnouncementsTab() {
       const json = await res.json();
       if (!res.ok) { toast.error(json.error ?? "Gagal upload gambar"); return; }
       setImgUrl(json.publicUrl);
-      toast.success("Gambar berhasil diupload");
+      toast.success(`Gambar diupload (${json.size_kb ?? Math.round(compressed.size / 1024)} KB)`);
     } catch {
       toast.error("Upload gagal. Coba lagi.");
     } finally {
