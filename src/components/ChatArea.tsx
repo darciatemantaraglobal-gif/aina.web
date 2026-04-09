@@ -706,70 +706,71 @@ const MD_COMPONENTS = {
     const isTimeCol = (ci: number) => /waktu|time|jam/.test(headerTexts[ci] ?? "");
 
     return (
-      <div className="mb-5 overflow-x-auto rounded-2xl border border-white/8 shadow-lg shadow-black/30 bg-gradient-to-b from-zinc-900/80 to-zinc-950/90">
-        <table className="min-w-full text-sm border-collapse">
-          <thead>
-            {headerRows.map((row: any, ri: number) => (
-              <tr key={ri}>
-                {getCells(row).map((cell: any, ci: number) => {
-                  const text = hastText(cell);
-                  const ar = /[\u0600-\u06FF]/.test(text);
-                  return (
-                    <th key={ci} dir={ar ? "rtl" : undefined}
-                      className="px-4 py-3 text-left text-[10px] font-bold text-white/40 uppercase tracking-[0.12em] whitespace-nowrap border-b border-white/8 border-r border-r-white/[0.07] last:border-r-0 bg-white/3 first:rounded-tl-2xl last:rounded-tr-2xl">
-                      {renderCellContent(cell)}
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {bodyRows.map((row: any, ri: number) => (
-              <tr key={ri} className={`group transition-colors ${ri % 2 === 0 ? "bg-transparent" : "bg-white/[0.02]"} hover:bg-primary/5`}>
-                {getCells(row).map((cell: any, ci: number) => {
-                  const isTime = isTimeCol(ci);
-                  // Time columns never merge — skip only applies to non-time cols
-                  if (skip[ri]?.[ci] && !isTime) return null;
-                  const text = hastText(cell);
-                  const ar = /[\u0600-\u06FF]/.test(text);
-                  const span = rowSpans[ri]?.[ci] ?? 1;
-                  const isDate = isDateCol(ci);
-                  // Time columns always span 1; date/other columns can span
-                  const isSpanning = span > 1 && !isTime;
+      <div className="mb-5 -mx-1 sm:mx-0">
+        {/* Scroll container — edge-to-edge on mobile, rounded on sm+ */}
+        <div className="overflow-x-auto overscroll-x-contain rounded-xl sm:rounded-2xl border border-white/[0.08] shadow-lg shadow-black/30 bg-gradient-to-b from-zinc-900/80 to-zinc-950/90">
+          <table className="min-w-max w-full text-[12px] sm:text-sm border-collapse">
+            <thead>
+              {headerRows.map((row: any, ri: number) => (
+                <tr key={ri}>
+                  {getCells(row).map((cell: any, ci: number) => {
+                    const text = hastText(cell);
+                    const ar = /[\u0600-\u06FF]/.test(text);
+                    return (
+                      <th key={ci} dir={ar ? "rtl" : undefined}
+                        className="px-3 py-2.5 sm:px-4 sm:py-3 text-left text-[9px] sm:text-[10px] font-bold text-white/40 uppercase tracking-[0.10em] sm:tracking-[0.12em] whitespace-nowrap border-b border-white/[0.08] border-r border-r-white/[0.07] last:border-r-0 bg-white/[0.03]">
+                        {renderCellContent(cell)}
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {bodyRows.map((row: any, ri: number) => (
+                <tr key={ri} className={`group transition-colors ${ri % 2 === 0 ? "bg-transparent" : "bg-white/[0.02]"} hover:bg-primary/5`}>
+                  {getCells(row).map((cell: any, ci: number) => {
+                    const isTime = isTimeCol(ci);
+                    if (skip[ri]?.[ci] && !isTime) return null;
+                    const text = hastText(cell);
+                    const ar = /[\u0600-\u06FF]/.test(text);
+                    const span = rowSpans[ri]?.[ci] ?? 1;
+                    const isDate = isDateCol(ci);
+                    const isSpanning = span > 1 && !isTime;
 
-                  return (
-                    <td key={ci}
-                      rowSpan={isSpanning ? span : undefined}
-                      dir={ar ? "rtl" : undefined}
-                      className={[
-                        "px-4 py-3 border-b border-white/5 align-middle",
-                        "border-r border-white/[0.07] last:border-r-0",
-                        ar ? "text-right" : "",
-                      ].filter(Boolean).join(" ")}
-                      style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
-                    >
-                      {isDate ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/20 text-primary text-xs font-semibold whitespace-nowrap">
-                          <span className="w-1 h-1 rounded-full bg-primary/70 shrink-0" />
-                          {renderCellContent(cell)}
-                        </span>
-                      ) : isTime ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-300 text-xs font-mono font-medium whitespace-nowrap">
-                          {renderCellContent(cell)}
-                        </span>
-                      ) : (
-                        <span className={ar ? "text-emerald-300/90" : "text-foreground/85 font-medium"}>
-                          {renderCellContent(cell)}
-                        </span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    return (
+                      <td key={ci}
+                        rowSpan={isSpanning ? span : undefined}
+                        dir={ar ? "rtl" : undefined}
+                        className={[
+                          "px-3 py-2 sm:px-4 sm:py-3 border-b border-white/5 align-middle",
+                          "border-r border-white/[0.07] last:border-r-0",
+                          ar ? "text-right" : "",
+                        ].filter(Boolean).join(" ")}
+                        style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
+                      >
+                        {isDate ? (
+                          <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg bg-primary/15 border border-primary/20 text-primary text-[10px] sm:text-xs font-semibold whitespace-nowrap">
+                            <span className="w-1 h-1 rounded-full bg-primary/70 shrink-0 hidden sm:block" />
+                            {renderCellContent(cell)}
+                          </span>
+                        ) : isTime ? (
+                          <span className="inline-flex items-center px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-300 text-[10px] sm:text-xs font-mono font-medium whitespace-nowrap">
+                            {renderCellContent(cell)}
+                          </span>
+                        ) : (
+                          <span className={ar ? "text-emerald-300/90" : "text-foreground/85 font-medium"}>
+                            {renderCellContent(cell)}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   },
