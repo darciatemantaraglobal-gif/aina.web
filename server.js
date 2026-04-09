@@ -166,8 +166,8 @@ const rl = (windowMs, max, msg) => rateLimit({
   message: { error: msg },
 });
 
-// Global: 200 req/min per IP (baseline DoS protection for all routes)
-app.use(rl(60_000, 200, "Terlalu banyak permintaan, coba lagi sebentar."));
+// Global: 400 req/min per IP (baseline DoS protection; 400 allows shared-dorm IPs with many concurrent users)
+app.use(rl(60_000, 400, "Terlalu banyak permintaan, coba lagi sebentar."));
 
 // Strict: auth-sensitive & expensive endpoints
 const strictLimiter   = rl(60_000,  10, "Terlalu banyak percobaan, tunggu 1 menit.");
@@ -1474,7 +1474,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   return top;
 }
 
-const DAILY_FREE_LIMIT = 5;
+const DAILY_FREE_LIMIT = 40;
 
 // ── Hybrid retrieval — lazy init (only when USE_HYBRID_RETRIEVAL=true) ────────
 // fetchRelevantArticles is fully defined above — safe to reference here.
@@ -4958,10 +4958,20 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const FOLLOW_TAG = "[SARAN_LANJUT]";
   const TAIL_HOLD = FOLLOW_TAG.length + 2; // chars to hold back
 
+  // Cancel OpenRouter stream immediately when client disconnects — avoids orphaned
+  // connections that keep consuming API tokens and server resources after user leaves.
+  let _clientGone = false;
+  req.on("close", () => {
+    if (_clientGone) return;
+    _clientGone = true;
+    try { sseReader.cancel(); } catch { /* already closed */ }
+    console.log(`[Stream] client disconnected — stream cancelled`);
+  });
+
   function flushTailBuf(upTo) {
     if (upTo > 0 && !followUpStarted) {
       const safe = tailBuf.slice(0, upTo);
-      if (safe) res.write(`data: ${JSON.stringify({ type: "chunk", content: safe })}\n\n`);
+      if (safe && !_clientGone) res.write(`data: ${JSON.stringify({ type: "chunk", content: safe })}\n\n`);
       tailBuf = tailBuf.slice(upTo);
     }
   }
@@ -4969,7 +4979,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   try {
     outer: while (true) {
       const { done, value } = await sseReader.read();
-      if (done) break;
+      if (done || _clientGone) break;
       sseBuffer += textDecoder.decode(value, { stream: true });
       const lines = sseBuffer.split("\n");
       sseBuffer = lines.pop() ?? "";
