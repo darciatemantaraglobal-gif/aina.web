@@ -659,6 +659,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
+  const [streamingImagesExpanded, setStreamingImagesExpanded] = useState(false);
   const [dailyCount, setDailyCount] = useState<number | null>(null);
   const [subscriptionVisible, setSubscriptionVisible] = useState(false);
   const [isPaidUser, setIsPaidUser] = useState(false);
@@ -788,8 +790,9 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     // While real SSE streaming is active, skip — the stream reader updates displayed directly
     if (streamingMsg.isStreaming) return;
     if (streamingMsg.displayed.length >= streamingMsg.full.length) {
+      const committedId = streamingMsg.id;
       setMessages(prev => [...prev, {
-        id: streamingMsg.id,
+        id: committedId,
         role: "assistant",
         content: streamingMsg.full,
         timestamp: new Date(),
@@ -800,6 +803,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         suggestions:    streamingMsg.suggestions,
         kbImages:       streamingMsg.kbImages,
       }]);
+      // Preserve expanded state across streaming → committed message transition
+      if (streamingImagesExpanded && streamingMsg.kbImages?.length) {
+        setExpandedImages(prev => new Set([...prev, committedId]));
+      }
       setStreamingMsg(null);
       return;
     }
@@ -1295,6 +1302,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       // ── Real SSE streaming ────────────────────────────────────────────────
       const msgId = (Date.now() + 1).toString();
       setIsLoading(false);
+      setStreamingImagesExpanded(false);
       setStreamingMsg({ id: msgId, full: "", displayed: "", sources: [], isStreaming: true });
 
       const sseReader = res.body!.getReader();
@@ -1692,19 +1700,31 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       {renderWithArabicBlocks(msg.content)}
                     </div>
 
-                    {/* KB poster images */}
+                    {/* KB poster images — offer before showing */}
                     {msg.kbImages && msg.kbImages.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {msg.kbImages.map((url, i) => (
-                          <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-border/50 hover:border-primary/40 transition-colors">
-                            <img
-                              src={url}
-                              alt={`Poster ${i + 1}`}
-                              className="max-h-56 max-w-full object-contain bg-black/10"
-                              onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
-                            />
-                          </a>
-                        ))}
+                      <div className="mt-3">
+                        {!expandedImages.has(msg.id) ? (
+                          <button
+                            onClick={() => setExpandedImages(prev => new Set([...prev, msg.id]))}
+                            className="flex items-center gap-2 rounded-xl border border-border/50 bg-secondary/40 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-secondary/70 hover:text-foreground"
+                          >
+                            <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                            Lihat foto artikel ({msg.kbImages.length})
+                          </button>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {msg.kbImages.map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-border/50 hover:border-primary/40 transition-colors">
+                                <img
+                                  src={url}
+                                  alt={`Foto artikel ${i + 1}`}
+                                  className="max-h-56 max-w-full object-contain bg-black/10"
+                                  onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1959,19 +1979,31 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       <span className="inline-block h-[1em] w-[2px] rounded-full bg-primary animate-streaming-cursor align-middle ml-0.5" />
                     )}
                   </div>
-                  {/* KB poster images — shown after streaming completes */}
+                  {/* KB poster images — offer before showing, after streaming completes */}
                   {!streamingMsg.isStreaming && streamingMsg.kbImages && streamingMsg.kbImages.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {streamingMsg.kbImages.map((url, i) => (
-                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-border/50 hover:border-primary/40 transition-colors">
-                          <img
-                            src={url}
-                            alt={`Poster ${i + 1}`}
-                            className="max-h-56 max-w-full object-contain bg-black/10"
-                            onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
-                          />
-                        </a>
-                      ))}
+                    <div className="mt-3">
+                      {!streamingImagesExpanded ? (
+                        <button
+                          onClick={() => setStreamingImagesExpanded(true)}
+                          className="flex items-center gap-2 rounded-xl border border-border/50 bg-secondary/40 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-secondary/70 hover:text-foreground"
+                        >
+                          <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                          Lihat foto artikel ({streamingMsg.kbImages.length})
+                        </button>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {streamingMsg.kbImages.map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border border-border/50 hover:border-primary/40 transition-colors">
+                              <img
+                                src={url}
+                                alt={`Foto artikel ${i + 1}`}
+                                className="max-h-56 max-w-full object-contain bg-black/10"
+                                onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Stop button — visible while stream is active */}
