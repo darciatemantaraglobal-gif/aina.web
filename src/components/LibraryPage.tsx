@@ -210,10 +210,11 @@ function DetailModal({
   const [aiDesc, setAiDesc] = useState<string | null>(item.ai_description ?? null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const fetchedRef = useRef(false);
+  const loadingRef = useRef(false);
 
   const loadAIDesc = useCallback(async (force = false) => {
-    if (aiLoading) return;
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setAiLoading(true);
     setAiError(null);
     try {
@@ -222,19 +223,20 @@ function DetailModal({
         : `/api/library/${item.id}/ai-description`;
       const data = await apiFetch(url, { method: "POST" });
       if (data.description) setAiDesc(data.description);
-    } catch (e: any) {
+    } catch {
       setAiError("Gagal generate sinopsis. Coba lagi.");
     } finally {
+      loadingRef.current = false;
       setAiLoading(false);
     }
-  }, [item.id, aiLoading]);
+  }, [item.id]);
 
   useEffect(() => {
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
+    // Only auto-fetch if no cached description exists
+    if (!item.ai_description) {
       loadAIDesc(false);
     }
-  }, [loadAIDesc]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const driveUrl = convertDriveUrl(item.drive_url);
 

@@ -7305,7 +7305,7 @@ function LibraryManagementTab() {
               <label className="mb-1.5 block text-xs font-medium text-foreground">
                 Foto Cover <span className="text-muted-foreground font-normal">(opsional — tampil di Library card)</span>
               </label>
-              <input ref={coverFileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
+              <input ref={coverFileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleCoverChange} />
               {form.cover_url ? (
                 <div className="relative rounded-xl overflow-hidden border border-border bg-card" style={{ aspectRatio: "2/1" }}>
                   <img

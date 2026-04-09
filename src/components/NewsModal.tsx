@@ -112,7 +112,6 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
 
   function shareTelegram() {
     const caption = shareCaption ? shareCaption : item.title;
-    const msg = encodeURIComponent(`${caption}\n\n${sharePageUrl}`);
     window.open(`https://t.me/share/url?url=${encodeURIComponent(sharePageUrl)}&text=${encodeURIComponent(caption)}`, "_blank");
   }
 

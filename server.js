@@ -10570,6 +10570,7 @@ app.post("/api/admin/library/upload-file", uploadLimiter, async (req, res) => {
     ["application/vnd.ms-powerpoint", "ppt"],
     ["image/jpeg", "jpg"],
     ["image/png",  "png"],
+    ["image/webp", "webp"],
     ["application/octet-stream",   null], // will fallback to ext-detection below
   ]);
 
@@ -10583,6 +10584,7 @@ app.post("/api/admin/library/upload-file", uploadLimiter, async (req, res) => {
     jpg:  "image/jpeg",
     jpeg: "image/jpeg",
     png:  "image/png",
+    webp: "image/webp",
   };
 
   let safeMime = typeof mimeType === "string" ? mimeType.toLowerCase().trim() : "";
