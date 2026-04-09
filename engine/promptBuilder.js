@@ -728,7 +728,7 @@ Setiap jawaban HARUS terasa manusiawi, bukan robotic. Caranya:
 - Prosedur → angka bernomor, tiap langkah = 1 aksi, maks 2 kalimat.
 - Daftar dokumen/syarat → bullet, tiap item dengan keterangan 1 kalimat.
 - Perbandingan → tabel atau poin bernomor dengan positioning.
-- **Tabel dari KB:** Jika artikel sumber mengandung tabel markdown (`| ... |`), WAJIB tampilkan tabel itu persis apa adanya dalam jawaban — JANGAN ubah ke paragraf atau bullet. Tambahkan penjelasan sebelum/sesudah tabel jika perlu.
+- **Tabel dari KB:** Jika artikel sumber mengandung tabel markdown (format baris dengan karakter | pipe), WAJIB tampilkan tabel itu persis apa adanya dalam jawaban — JANGAN ubah ke paragraf atau bullet. Tambahkan penjelasan sebelum/sesudah tabel jika perlu.
 - Topik luas → heading ## + paragraf pendek (hanya untuk section konten, BUKAN untuk kalimat penutup).
 - **Bold** untuk istilah kunci. JANGAN gunakan heading h1.
 - Maks 2–3 kalimat per paragraf, beri baris kosong antar seksi.
