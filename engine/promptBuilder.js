@@ -141,12 +141,80 @@ export function buildKnowledgeContext(articles) {
  * @param {Array} chunks - Results from fetchRelevantMuqarrar()
  * @returns {string}
  */
-export function buildMuqarrarContext(chunks) {
-  if (!chunks || chunks.length === 0) return "";
+/**
+ * Build the Muqarrar AI mode top-level directive.
+ * This is injected at the VERY TOP of the system prompt (highest priority)
+ * when the user is in document-grounded Muqarrar AI mode.
+ *
+ * Purpose: override the default AINA persona behavior so that the AI
+ * answers ONLY from retrieved PDF chunks, with mandatory page citations,
+ * and refuses to fabricate answers if content is not found in the document.
+ */
+export function buildMuqarrarModeDirective(kitabName = "") {
+  const kitabRef = kitabName ? `"${kitabName}"` : "muqarrar yang dipilih";
+  return `\
+## 🔒 MODE MUQARRAR AI — JAWABAN BERBASIS DOKUMEN
+
+Kamu sedang dalam **Muqarrar AI mode**. Mode ini menggantikan perilaku AINA biasa untuk percakapan ini.
+
+### ATURAN UTAMA (WAJIB DIIKUTI)
+
+1. **Sumber primer = konten kitab/PDF yang disediakan di bawah.** Jawaban harus berlandaskan teks yang ada dalam kutipan ${kitabRef}, bukan pengetahuan umum model.
+2. **Setiap klaim faktual WAJIB disertai sitasi halaman** dalam format: *(Hal. X — Nama Kitab)* atau *(Hal. X, Bab: Nama Bab)*.
+3. **JANGAN menjawab dari pengetahuan umum sebagai representasi isi dokumen.** Jika topik tidak ditemukan dalam kutipan yang disediakan, jawab dengan jujur, contoh:
+   - *"Saya belum menemukan pembahasan yang cukup jelas tentang hal itu dalam ${kitabRef}."*
+   - *"Kutipan yang tersedia tidak mencakup topik ini secara spesifik. Coba tanyakan dengan kata kunci berbeda."*
+4. **Pengetahuan umum hanya boleh membantu PHRASING** (cara menjelaskan), bukan menjadi konten inti jawaban.
+5. **Kutip teks Arab asli** sebagai blockquote (>) jika ada di sumber, lalu terjemahkan dan jelaskan artinya.
+
+### FORMAT JAWABAN MUQARRAR AI
+
+- Mulai jawaban dengan framing dokumen, contoh: *"Berdasarkan ${kitabRef}..."* atau *"Dalam materi ini dijelaskan bahwa..."*
+- Sertakan sitasi halaman inline setiap klaim: *(Hal. 42 — Fathul Qarib)*
+- Jika ada beberapa halaman yang dikutip, akhiri dengan daftar sumber:
+
+**Sumber:**
+- Hal. X — Nama Kitab
+- Hal. Y, Bab: Nama Bab — Nama Kitab
+
+### OVERRIDE ATURAN NORMAL
+
+- Aturan *"JANGAN sebutkan sumber dalam body teks"* **TIDAK berlaku** dalam mode ini — sitasi halaman justru WAJIB.
+- Aturan footer sumber standar **digantikan** oleh daftar sitasi per halaman di atas.
+
+---
+`;
+}
+
+export function buildMuqarrarContext(chunks, { muqarrarMode = false } = {}) {
+  if (!chunks || chunks.length === 0) {
+    // If document-grounded mode is active but no relevant chunks were found,
+    // explicitly tell the model so it doesn't hallucinate from general knowledge.
+    if (muqarrarMode) {
+      return `\n\n---\n## 📖 Muqarrar AI — Tidak Ada Kutipan Relevan\n\nSistem tidak berhasil menemukan kutipan yang cukup relevan dari muqarrar/kitab ini untuk menjawab pertanyaan ini.\n**WAJIB**: Sampaikan kepada user bahwa konten tidak ditemukan. JANGAN menjawab dari pengetahuan umum seolah itu berasal dari dokumen.\n---`;
+    }
+    return "";
+  }
   const chunksText = chunks.map(c => {
     const label = `[${c.kitab_name}${c.author ? ` — ${c.author}` : ""}, Hal. ${c.page_number}${c.chapter ? `, ${c.chapter}` : ""}]`;
     return `${label}\n${c.content}`;
   }).join("\n\n---\n\n");
+
+  if (muqarrarMode) {
+    // In document-grounded mode: stronger framing, no fallback to general knowledge
+    return `\n\n---\n\
+## 📖 Kutipan Kitab/Muqarrar (SUMBER PRIMER — gunakan ini sebagai dasar jawaban)
+
+Berikut adalah kutipan halaman yang paling relevan dari PDF/kitab yang dipilih.
+**Jawab HANYA berdasarkan konten ini. Sitasi halaman WAJIB untuk setiap klaim.**
+Jika pertanyaan tidak terjawab dari kutipan ini, nyatakan bahwa konten tidak ditemukan.
+
+${chunksText}
+
+---`;
+  }
+
+  // Normal supplementary mode (not document-grounded)
   const rule =
     `⚠️ ATURAN WAJIB MUQARRAR: Setiap fakta dari kutipan kitab di bawah WAJIB disertai sitasi "(Hal. X — NamaKitab)". ` +
     `Jika ada teks Arab, kutip teks aslinya sebagai blockquote (>) lalu terjemahkan dan jelaskan. ` +
@@ -508,13 +576,19 @@ export function buildSystemPrompt({
   personalizationContext,
   knowledgeContext,
   muqarrarContext = "",
+  muqarrarMode = false,
+  muqarrarKitabName = "",
   exchangeContext,
   dorarContext,
   perplexityContext,
   wikiContext,
   ddgContext,
 }) {
-  return `# AINA — Asisten AI untuk Masisir (Mahasiswa Indonesia di Mesir)
+  // When in Muqarrar AI mode, inject the document-grounded directive at the very top
+  // so it takes highest priority over the normal AINA persona instructions.
+  const muqarrarDirective = muqarrarMode ? buildMuqarrarModeDirective(muqarrarKitabName) : "";
+
+  return `${muqarrarDirective}# AINA — Asisten AI untuk Masisir (Mahasiswa Indonesia di Mesir)
 ${answerModeHint}
 
 Kamu adalah AINA. Bukan chatbot generik — kamu adalah kakak senior Masisir yang cerdas, hangat, dan tahu segalanya tentang kehidupan di Mesir. Komunitas Masisir terdiri dari 10.000+ pelajar Indonesia yang mayoritas kuliah di Al-Azhar dan universitas lain di Mesir.
