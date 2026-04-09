@@ -8750,6 +8750,7 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
     title, content, category, article_type,
     keywords: rawKeywords, contact_number: rawContact,
     summary: rawSummary, important_notes: rawNotes,
+    image_url: rawImageUrl,
   } = req.body;
 
   if (!title?.trim() || !content?.trim() || !category)
@@ -8767,10 +8768,11 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   if (!validCategories.includes(category)) return res.status(400).json({ error: "Kategori tidak valid" });
   const validTypes = ["narrative", "step_by_step"];
   const safeType    = validTypes.includes(article_type) ? article_type : "narrative";
-  const safeKeywords = typeof rawKeywords    === "string" ? rawKeywords.trim().slice(0, 500)  : "";
-  const safeContact  = typeof rawContact     === "string" && rawContact.trim() ? rawContact.trim().slice(0, 50)   : null;
-  const safeSummary  = typeof rawSummary     === "string" ? rawSummary.trim().slice(0, 600)   : null;
-  const safeNotes    = typeof rawNotes       === "string" ? rawNotes.trim().slice(0, 1000)    : null;
+  const safeKeywords  = typeof rawKeywords === "string" ? rawKeywords.trim().slice(0, 500) : "";
+  const safeContact   = typeof rawContact  === "string" && rawContact.trim() ? rawContact.trim().slice(0, 50) : null;
+  const safeSummary   = typeof rawSummary  === "string" ? rawSummary.trim().slice(0, 600) : null;
+  const safeNotes     = typeof rawNotes    === "string" ? rawNotes.trim().slice(0, 1000) : null;
+  const safeImageUrl  = typeof rawImageUrl === "string" && rawImageUrl.startsWith("https://") ? rawImageUrl.trim() : null;
 
   const payload = {
     author_id:   user.id,
@@ -8784,6 +8786,7 @@ app.post("/api/articles", writeLimiter, async (req, res) => {
   if (safeContact)  payload.contact_number  = safeContact;
   if (safeSummary)  payload.summary         = safeSummary;
   if (safeNotes)    payload.important_notes = safeNotes;
+  if (safeImageUrl) payload.image_url       = safeImageUrl;
 
   const { data, error } = await supabase.from("knowledge_base").insert(payload).select().single();
   if (error) {
