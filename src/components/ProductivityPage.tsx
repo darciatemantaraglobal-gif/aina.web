@@ -10,7 +10,7 @@ import {
   GraduationCap, Sparkles, Brain, Pencil, AlertTriangle, Loader2,
   Target, ClipboardList, BookOpen, RefreshCw, Bell, Mail, Send,
   CheckCheck, SkipForward, X, Save, StickyNote, ListTodo, ListChecks, Layers,
-  ShieldCheck, Timer,
+  ShieldCheck, Timer, Bot,
 } from "lucide-react";
 import FlashcardPage from "./FlashcardPage";
 
@@ -856,66 +856,124 @@ function IqomahCountdownCard() {
                    : isWarn     ? "text-orange-400"
                    :              "text-emerald-400";
 
-  return (
-    <div className={`rounded-2xl border px-4 py-3.5 space-y-3 ${colorRing} ${isCritical && !isExpired ? "relative overflow-hidden" : ""}`}>
-      {isCritical && !isExpired && (
-        <span className="absolute inset-0 rounded-2xl border-2 border-red-500/40 animate-ping pointer-events-none" />
-      )}
+  const circumference = 2 * Math.PI * 34;
+  const remainingFraction = Math.max(0, Math.min(1, 1 - progress / 100));
+  const strokeDashoffset = circumference * (1 - remainingFraction);
 
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className={`h-4 w-4 shrink-0 ${labelColor}`} />
-          <div>
-            <p className={`text-xs font-bold ${labelColor}`}>{label}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              Terbit: {fmtDate(dates.issue_date)} &nbsp;·&nbsp; Expired: {fmtDate(dates.expiry_date)}
-            </p>
+  const ainaMessage = isExpired
+    ? `Iqomah kamu sudah kadaluarsa ${Math.abs(daysLeft)} hari yang lalu! Ini darurat — urus ke imigrasi sekarang sebelum ada masalah hukum.`
+    : isCritical
+    ? `Tinggal ${daysLeft} hari lagi! Segera hubungi pihak universitas dan urus perpanjangan iqomah ke imigrasi, jangan ditunda ya.`
+    : isWarn
+    ? `Iqomah kamu mulai mendekati batas. Gue sarankan mulai siapkan dokumen perpanjangan dari sekarang supaya nggak panik nanti.`
+    : `Iqomah kamu masih aman kok, santai. Gue akan terus pantau dan ingatkan kamu jauh sebelum jatuh tempo — fokus belajar dulu! 📚`;
+
+  const ringColor = isExpired  ? "#ef4444"
+                  : isCritical ? "#f87171"
+                  : isWarn     ? "#fb923c"
+                  :              "#34d399";
+
+  const glowClass = isExpired  ? "shadow-red-500/20"
+                  : isCritical ? "shadow-red-500/20"
+                  : isWarn     ? "shadow-orange-500/20"
+                  :              "shadow-emerald-500/10";
+
+  return (
+    <div className={`rounded-2xl border overflow-hidden ${colorRing}`}>
+      {/* AINA speaking bubble */}
+      <div className="px-4 pt-3.5 pb-3 border-b border-white/[0.05] flex items-start gap-3">
+        <div className="relative shrink-0 mt-0.5">
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center ring-2 ${
+            isExpired || isCritical ? "bg-red-500/20 ring-red-500/30"
+            : isWarn ? "bg-orange-500/20 ring-orange-500/30"
+            : "bg-primary/20 ring-primary/30"
+          }`}>
+            <Bot className={`h-3.5 w-3.5 ${
+              isExpired || isCritical ? "text-red-400"
+              : isWarn ? "text-orange-400"
+              : "text-primary"
+            }`} />
           </div>
+          {(isCritical || isExpired) && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-background animate-pulse" />
+          )}
         </div>
-        <button onClick={openEdit} className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5">
+        <div className="flex-1 min-w-0">
+          <p className={`text-[10px] font-semibold mb-0.5 ${
+            isExpired || isCritical ? "text-red-400" : isWarn ? "text-orange-400" : "text-primary/80"
+          }`}>AINA · Asisten Iqomah</p>
+          <p className="text-[11.5px] text-foreground/85 leading-relaxed">{ainaMessage}</p>
+        </div>
+        <button
+          onClick={openEdit}
+          className="shrink-0 mt-0.5 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/[0.06] transition-colors"
+        >
           <Pencil className="h-3 w-3" />
         </button>
       </div>
 
-      <div className="flex items-end gap-4">
-        <div className="flex items-baseline gap-1">
-          <span className={`text-5xl font-black tabular-nums leading-none ${colorNum}`}>
-            {isExpired ? Math.abs(daysLeft) : daysLeft}
-          </span>
-          <span className="text-xs text-muted-foreground mb-1">
-            {isExpired ? "hari kadaluarsa" : "hari lagi"}
-          </span>
-        </div>
-        <div className="flex-1 space-y-1.5 pb-0.5">
-          <div className="flex justify-between text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1"><Timer className="h-3 w-3" />Sudah terpakai</span>
-            <span>{Math.round(progress)}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-secondary overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${colorBar}`}
-              style={{ width: `${progress}%` }}
+      {/* Countdown body */}
+      <div className="px-4 py-4 flex items-center gap-5">
+        {/* Ring countdown */}
+        <div className={`relative shrink-0 shadow-lg ${glowClass}`}>
+          <svg viewBox="0 0 80 80" className="w-[78px] h-[78px] -rotate-90">
+            <circle
+              cx="40" cy="40" r="34"
+              fill="none" strokeWidth="6"
+              stroke="rgba(255,255,255,0.07)"
             />
+            <circle
+              cx="40" cy="40" r="34"
+              fill="none" strokeWidth="6"
+              stroke={ringColor}
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              strokeLinecap="round"
+              style={{ transition: "stroke-dashoffset 0.8s ease" }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className={`text-[22px] font-black tabular-nums leading-none ${colorNum}`}>
+              {isExpired ? Math.abs(daysLeft) : daysLeft}
+            </span>
+            <span className="text-[8px] font-medium text-muted-foreground mt-0.5 tracking-wide uppercase">
+              {isExpired ? "terlambat" : "hari lagi"}
+            </span>
+          </div>
+        </div>
+
+        {/* Info section */}
+        <div className="flex-1 min-w-0 space-y-2.5">
+          <div>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <ShieldCheck className={`h-3.5 w-3.5 shrink-0 ${labelColor}`} />
+              <p className={`text-[12px] font-bold leading-tight ${labelColor}`}>{label}</p>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Berakhir <span className="font-medium text-foreground/70">{fmtDate(dates.expiry_date)}</span>
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] text-muted-foreground/70">
+              <span className="flex items-center gap-1">
+                <Timer className="h-2.5 w-2.5" />
+                Masa berlaku terpakai
+              </span>
+              <span className="font-medium text-muted-foreground">{Math.round(progress)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${colorBar}`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-[9.5px] text-muted-foreground/50">
+              Terbit {fmtDate(dates.issue_date)}
+            </p>
           </div>
         </div>
       </div>
-
-      {isCritical && !isExpired && (
-        <div className="flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-          <p className="text-[11px] text-red-300 leading-relaxed">
-            Segera urus perpanjangan iqomah ke imigrasi sebelum masa berlakunya habis.
-          </p>
-        </div>
-      )}
-      {isExpired && (
-        <div className="flex items-center gap-1.5 rounded-lg bg-red-600/10 border border-red-600/30 px-3 py-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-          <p className="text-[11px] text-red-400 leading-relaxed">
-            Iqomah sudah kadaluarsa {Math.abs(daysLeft)} hari yang lalu. Segera urus perpanjangan!
-          </p>
-        </div>
-      )}
     </div>
   );
 }
