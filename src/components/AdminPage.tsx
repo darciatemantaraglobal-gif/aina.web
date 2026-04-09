@@ -6903,12 +6903,13 @@ interface LibItem {
   id: string; title: string; description: string | null;
   category: string; faculty: string | null; year_level: string | null;
   drive_url: string; file_type: string; tags: string | null;
+  cover_url: string | null;
   is_published: boolean; created_at: string;
 }
 
 const emptyLib = (): Omit<LibItem, "id" | "created_at"> => ({
   title: "", description: "", category: "muqorror", faculty: "",
-  year_level: "", drive_url: "", file_type: "pdf", tags: "", is_published: true,
+  year_level: "", drive_url: "", file_type: "pdf", tags: "", cover_url: null, is_published: true,
 });
 
 interface MuqArticle {
@@ -6929,6 +6930,8 @@ function LibraryManagementTab() {
   const [fileUploading, setFileUploading] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const libFileRef = useRef<HTMLInputElement>(null);
+  const coverFileRef = useRef<HTMLInputElement>(null);
+  const [coverUploading, setCoverUploading] = useState(false);
 
   // Import ke KB wizard state
   const [showImport, setShowImport] = useState(false);
@@ -7035,10 +7038,34 @@ function LibraryManagementTab() {
     setForm({ title: item.title, description: item.description ?? "", category: item.category,
       faculty: item.faculty ?? "", year_level: item.year_level ?? "",
       drive_url: item.drive_url, file_type: item.file_type, tags: item.tags ?? "",
+      cover_url: item.cover_url ?? null,
       is_published: item.is_published });
     setUrlMode("drive");
     setUploadedFileName(null);
     setShowForm(true);
+  };
+
+  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("Ukuran foto cover maksimal 5MB"); return; }
+    if (!file.type.startsWith("image/")) { toast.error("File harus berupa gambar (JPG, PNG, dll)"); return; }
+    setCoverUploading(true);
+    try {
+      const reader = new FileReader();
+      const b64: string = await new Promise((res, rej) => {
+        reader.onload = () => res(reader.result as string);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      const result = await adminFetch("/api/admin/library/upload-file", {
+        method: "POST",
+        body: JSON.stringify({ fileBase64: b64, mimeType: file.type, fileName: file.name }),
+      }, 30000);
+      setForm(p => ({ ...p, cover_url: result.url }));
+      toast.success("Cover berhasil diupload");
+    } catch (e: any) { toast.error(e.message ?? "Gagal upload cover"); }
+    finally { setCoverUploading(false); if (coverFileRef.current) coverFileRef.current.value = ""; }
   };
 
   const save = async () => {
@@ -7123,6 +7150,16 @@ function LibraryManagementTab() {
           <div className="space-y-2">
             {filtered.map(item => (
               <div key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                {/* Cover thumbnail */}
+                <div className="shrink-0 h-12 w-9 rounded-lg overflow-hidden border border-border bg-muted">
+                  {item.cover_url ? (
+                    <img src={item.cover_url} alt="" className="h-full w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center">
+                      <Image className="h-3.5 w-3.5 text-muted-foreground/30" />
+                    </div>
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium text-foreground truncate">{item.title}</p>
@@ -7262,6 +7299,55 @@ function LibraryManagementTab() {
               <Input value={form.tags ?? ""} onChange={e => setForm(p => ({ ...p, tags: e.target.value }))} placeholder="fiqh, thaharah, semester 1" />
               <p className="mt-1 text-[11px] text-muted-foreground">Dipisah dengan koma, memudahkan pencarian</p>
             </div>
+
+            {/* Cover photo */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">
+                Foto Cover <span className="text-muted-foreground font-normal">(opsional — tampil di Library card)</span>
+              </label>
+              <input ref={coverFileRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
+              {form.cover_url ? (
+                <div className="relative rounded-xl overflow-hidden border border-border bg-card" style={{ aspectRatio: "2/1" }}>
+                  <img
+                    src={form.cover_url}
+                    alt="Cover preview"
+                    className="w-full h-full object-cover"
+                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                  <div className="absolute inset-0 flex items-end justify-between gap-2 p-2 bg-gradient-to-t from-black/60 to-transparent">
+                    <button
+                      type="button"
+                      onClick={() => coverFileRef.current?.click()}
+                      disabled={coverUploading}
+                      className="flex items-center gap-1.5 rounded-lg bg-white/20 backdrop-blur-sm border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-white/30 transition-colors"
+                    >
+                      <Image className="h-3 w-3" /> Ganti
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(p => ({ ...p, cover_url: null }))}
+                      className="flex items-center gap-1 rounded-lg bg-red-500/20 backdrop-blur-sm border border-red-500/30 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/30 transition-colors"
+                    >
+                      <X className="h-3 w-3" /> Hapus
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => coverFileRef.current?.click()}
+                  disabled={coverUploading}
+                  className="w-full flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-white/20 bg-white/[0.02] py-5 text-xs text-muted-foreground hover:border-white/30 hover:bg-white/[0.04] transition-colors disabled:opacity-50"
+                >
+                  {coverUploading
+                    ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" /> Mengupload...</>
+                    : <><Image className="h-5 w-5 text-foreground/30" /> Klik untuk upload foto cover <span className="text-foreground/30">JPG, PNG — maks 5MB</span></>
+                  }
+                </button>
+              )}
+              <p className="mt-1 text-[11px] text-muted-foreground">Foto ini menggantikan cover gradien otomatis di tampilan card Library.</p>
+            </div>
+
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setForm(p => ({ ...p, is_published: !p.is_published }))}

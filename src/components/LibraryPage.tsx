@@ -16,6 +16,7 @@ interface LibraryItem {
   drive_url: string;
   file_type: string;
   tags: string | null;
+  cover_url?: string | null;
   created_at: string;
   ai_description?: string | null;
 }
@@ -95,47 +96,55 @@ function BookCover({ item, size = "card" }: { item: LibraryItem; size?: "card" |
   const cat = CAT[item.category as CatKey] ?? CAT.umum;
   const Icon = cat.icon;
   const isModal = size === "modal";
+  const hasCover = !!item.cover_url;
+
+  const wrapClass = `relative overflow-hidden ${
+    isModal ? "rounded-2xl w-full aspect-[2/3]" : "w-full aspect-[2/3] rounded-t-2xl"
+  }`;
 
   return (
-    <div
-      className={`relative overflow-hidden bg-gradient-to-br ${cat.gradient} ${
-        isModal ? "rounded-2xl w-full aspect-[2/3]" : "w-full aspect-[2/3] rounded-t-2xl"
-      }`}
-    >
-      {/* Decorative radial glow */}
-      <div className={`absolute inset-0 ${cat.glow} blur-2xl scale-75`} />
+    <div className={`${wrapClass} bg-gradient-to-br ${cat.gradient}`}>
+      {/* Real photo when available */}
+      {hasCover && (
+        <img
+          src={item.cover_url!}
+          alt={item.title}
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
 
-      {/* Decorative rings */}
-      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full border-2 ${cat.ring} opacity-30`} />
-      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-20 w-20 rounded-full border ${cat.ring} opacity-20`} />
-
-      {/* Diagonal stripe pattern */}
-      <div
-        className="absolute inset-0 opacity-[0.04]"
-        style={{
-          backgroundImage: "repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 8px)",
-        }}
-      />
-
-      {/* Center icon */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className={`flex items-center justify-center rounded-2xl border ${cat.ring} bg-white/10 backdrop-blur-sm ${isModal ? "h-20 w-20" : "h-14 w-14"}`}>
-          <Icon className={`${isModal ? "h-10 w-10" : "h-7 w-7"} text-white/80`} />
-        </div>
-      </div>
+      {/* Gradient elements (shown when no cover, or as overlay accent) */}
+      {!hasCover && (
+        <>
+          <div className={`absolute inset-0 ${cat.glow} blur-2xl scale-75`} />
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-32 w-32 rounded-full border-2 ${cat.ring} opacity-30`} />
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-20 w-20 rounded-full border ${cat.ring} opacity-20`} />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{ backgroundImage: "repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 8px)" }}
+          />
+          {/* Center icon (gradient mode only) */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className={`flex items-center justify-center rounded-2xl border ${cat.ring} bg-white/10 backdrop-blur-sm ${isModal ? "h-20 w-20" : "h-14 w-14"}`}>
+              <Icon className={`${isModal ? "h-10 w-10" : "h-7 w-7"} text-white/80`} />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* File type badge (top-right) */}
-      <div className="absolute top-2.5 right-2.5 rounded-md bg-black/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white/70 backdrop-blur-sm">
+      <div className="absolute top-2.5 right-2.5 rounded-md bg-black/50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white/80 backdrop-blur-sm">
         {item.file_type}
       </div>
 
       {/* Category label (top-left) */}
-      <div className={`absolute top-2.5 left-2.5 rounded-md border ${cat.ring} bg-black/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${cat.accent} backdrop-blur-sm`}>
+      <div className={`absolute top-2.5 left-2.5 rounded-md border ${cat.ring} bg-black/40 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${cat.accent} backdrop-blur-sm`}>
         {cat.label}
       </div>
 
       {/* Title overlay at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pb-3 pt-8">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-3 pb-3 pt-10">
         <p className={`font-bold text-white leading-snug line-clamp-2 ${isModal ? "text-sm" : "text-[11px]"}`}>
           {item.title}
         </p>

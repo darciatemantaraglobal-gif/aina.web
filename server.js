@@ -548,14 +548,17 @@ async function initNewsShareCaptionCol() {
 }
 initNewsShareCaptionCol();
 
-/* ── Library: ai_description column ─────────────────────────────────────────*/
+/* ── Library: ai_description + cover_url columns ────────────────────────────*/
 async function initLibraryAIDescCol() {
   const supabase = getAdminClient();
   if (!supabase) return;
-  const sql = `ALTER TABLE public.library_items ADD COLUMN IF NOT EXISTS ai_description TEXT;`;
+  const sql = `
+    ALTER TABLE public.library_items ADD COLUMN IF NOT EXISTS ai_description TEXT;
+    ALTER TABLE public.library_items ADD COLUMN IF NOT EXISTS cover_url TEXT;
+  `;
   try {
     const { error } = await supabase.rpc("exec_sql", { sql });
-    if (!error) { console.log("[Library] ✓ ai_description column ready"); return; }
+    if (!error) { console.log("[Library] ✓ ai_description + cover_url columns ready"); return; }
   } catch { /* fall through */ }
 }
 initLibraryAIDescCol();
@@ -10532,7 +10535,7 @@ app.get("/api/library", writeLimiter, async (req, res) => {
 
   let query = supabase
     .from("library_items")
-    .select("id, title, description, category, faculty, year_level, drive_url, file_type, tags, created_at")
+    .select("id, title, description, category, faculty, year_level, drive_url, file_type, tags, cover_url, created_at")
     .eq("is_published", true)
     .order("category")
     .order("created_at", { ascending: false });
@@ -10666,7 +10669,7 @@ app.get("/api/admin/library", writeLimiter, async (req, res) => {
   const supabase = getAdminClient();
   const { data, error } = await supabase
     .from("library_items")
-    .select("id, title, description, category, faculty, year_level, drive_url, file_type, tags, is_published, created_at")
+    .select("id, title, description, category, faculty, year_level, drive_url, file_type, tags, cover_url, is_published, created_at")
     .order("created_at", { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
@@ -10678,7 +10681,7 @@ app.post("/api/admin/library", writeLimiter, async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Akses ditolak" });
 
-  const { title, description, category, faculty, year_level, drive_url, file_type, tags, is_published } = req.body;
+  const { title, description, category, faculty, year_level, drive_url, file_type, tags, is_published, cover_url } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: "Judul wajib diisi" });
   if (!drive_url?.trim()) return res.status(400).json({ error: "Link Google Drive wajib diisi" });
 
@@ -10692,6 +10695,7 @@ app.post("/api/admin/library", writeLimiter, async (req, res) => {
     drive_url: drive_url.trim(),
     file_type: file_type || "pdf",
     tags: tags?.trim() || null,
+    cover_url: cover_url?.trim() || null,
     is_published: is_published !== false,
     created_by: admin.id,
   }).select().single();
@@ -10706,7 +10710,7 @@ app.patch("/api/admin/library/:id", writeLimiter, async (req, res) => {
   if (!admin) return res.status(403).json({ error: "Akses ditolak" });
 
   const { id } = req.params;
-  const { title, description, category, faculty, year_level, drive_url, file_type, tags, is_published } = req.body;
+  const { title, description, category, faculty, year_level, drive_url, file_type, tags, is_published, cover_url } = req.body;
 
   const supabase = getAdminClient();
   const updates = { updated_at: new Date().toISOString() };
@@ -10718,6 +10722,7 @@ app.patch("/api/admin/library/:id", writeLimiter, async (req, res) => {
   if (drive_url !== undefined) updates.drive_url = drive_url.trim();
   if (file_type !== undefined) updates.file_type = file_type;
   if (tags !== undefined) updates.tags = tags?.trim() || null;
+  if (cover_url !== undefined) updates.cover_url = cover_url?.trim() || null;
   if (is_published !== undefined) updates.is_published = is_published;
 
   const { data, error } = await supabase.from("library_items").update(updates).eq("id", id).select().single();
