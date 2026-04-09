@@ -86,9 +86,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 function convertDriveUrl(url: string): string {
+  if (!url || url.startsWith("aina://")) return "";
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (!match) return url;
   return `https://drive.google.com/file/d/${match[1]}/view`;
+}
+
+/** Extract kitab_id from scraper drive_url "aina://muqarrar/{kitab_id}" */
+function extractMuqarrarKitabId(url: string): string | null {
+  const m = url?.match(/^aina:\/\/muqarrar\/(.+)$/);
+  return m ? m[1] : null;
 }
 
 /* ── BookCover: the Netflix-style poster ─────────────────────────────────── */
@@ -239,6 +246,7 @@ function DetailModal({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const driveUrl = convertDriveUrl(item.drive_url);
+  const muqarrarKitabId = extractMuqarrarKitabId(item.drive_url);
 
   const [kitabQuestion, setKitabQuestion] = useState("");
 
@@ -246,7 +254,11 @@ function DetailModal({
     const q = kitabQuestion.trim();
     if (!q || !onAskAINA) return;
     onClose();
-    onAskAINA(`[Kitab: "${item.title}"] ${q}`);
+    // If item came from scraper (aina://muqarrar/{id}), include kitab_id for exact DB filtering
+    const prefix = muqarrarKitabId
+      ? `[KitabID:"${muqarrarKitabId}" Kitab:"${item.title}"]`
+      : `[Kitab: "${item.title}"]`;
+    onAskAINA(`${prefix} ${q}`);
     setKitabQuestion("");
   };
 
@@ -350,15 +362,22 @@ function DetailModal({
 
             {/* CTA buttons */}
             <div className="flex flex-col gap-2">
-              <a
-                href={driveUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-900/40 hover:opacity-90 transition-opacity"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Buka Dokumen
-              </a>
+              {driveUrl ? (
+                <a
+                  href={driveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-900/40 hover:opacity-90 transition-opacity"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Buka Dokumen
+                </a>
+              ) : (
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-violet-500/20 bg-violet-500/[0.07] py-3 text-sm text-violet-300/70">
+                  <BookMarked className="h-4 w-4" />
+                  <span>Kitab ini tersedia via AINA Chat</span>
+                </div>
+              )}
 
               {onAskAINA && (
                 <div className="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-3 space-y-2">

@@ -1828,9 +1828,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                       </div>
                     )}
                     {msg.content && (() => {
-                      const kitabMatch = msg.content.match(/^\[Kitab:\s*"([^"]+)"\]\s*/);
-                      const kitabName = kitabMatch ? kitabMatch[1] : null;
-                      const displayContent = kitabName ? msg.content.slice(kitabMatch![0].length) : msg.content;
+                      // Handle two formats:
+                      //   Scraper: [KitabID:"uuid" Kitab:"Title"] question
+                      //   Manual:  [Kitab: "Title"] question
+                      const kitabIdFmt = msg.content.match(/^\[KitabID:"[^"]+"\s+Kitab:"([^"]+)"\]\s*/);
+                      const kitabFmt   = !kitabIdFmt && msg.content.match(/^\[Kitab:\s*"([^"]+)"\]\s*/);
+                      const kitabName  = kitabIdFmt ? kitabIdFmt[1] : (kitabFmt ? kitabFmt[1] : null);
+                      const prefixMatch = kitabIdFmt || kitabFmt;
+                      const displayContent = kitabName ? msg.content.slice(prefixMatch![0].length) : msg.content;
                       return (
                         <div className="space-y-1">
                           {kitabName && (

@@ -1577,40 +1577,53 @@ async function resolveArticles(kbQuery, intentPrimary) {
 }
 
 /* ── Fetch relevant muqarrar/kitab chunks via pgvector ── */
-async function fetchRelevantMuqarrar(userQuestion, intentPrimary, kitabFilter = null) {
+async function fetchRelevantMuqarrar(userQuestion, intentPrimary, kitabFilter = null, kitabId = null) {
   const MUQARRAR_INTENTS = new Set(["fiqh", "factual", "question", "general"]);
+  const hasFilter = kitabFilter || kitabId;
   // If a kitab filter is explicitly set (Library mode), always run regardless of intent
-  if (!kitabFilter && !MUQARRAR_INTENTS.has(intentPrimary)) return [];
+  if (!hasFilter && !MUQARRAR_INTENTS.has(intentPrimary)) return [];
   const supabase = getAdminClient();
   if (!supabase || !process.env.OPENAI_API_KEY) return [];
   try {
-    // When kitab filter is active, use a lower threshold and higher count to maximize recall
-    const threshold = kitabFilter ? 0.2 : 0.35;
-    const count = kitabFilter ? 10 : 5;
+    // When kitab filter is active, use lower threshold + higher count to maximize recall
+    const threshold = hasFilter ? 0.2 : 0.35;
+    const count     = hasFilter ? 10  : 5;
     const queryEmbedding = await generateEmbedding(userQuestion);
     const { data, error } = await supabase.rpc("match_muqarrar_chunks", {
       query_embedding: queryEmbedding,
       match_threshold: threshold,
-      match_count: count,
+      match_count:     count,
     });
     if (error) {
       console.warn(`[Muqarrar] RPC error: ${error.message}`);
       return [];
     }
     let results = (data || []).filter(c => c.similarity > threshold);
-    // Apply kitab filter — prefer exact or partial name match (case-insensitive)
+
+    // Priority 1: exact kitab_id match (scraper items with aina:// drive_url)
+    if (kitabId) {
+      const byId = results.filter(c => c.kitab_id === kitabId);
+      if (byId.length > 0) {
+        console.log(`[Muqarrar] KitabID exact match "${kitabId}" → ${byId.length} chunks`);
+        return byId.slice(0, 5);
+      }
+      console.log(`[Muqarrar] KitabID "${kitabId}" tidak ditemukan di pool, fallback ke name filter`);
+    }
+
+    // Priority 2: fuzzy name match (manual/title-based filter)
     if (kitabFilter) {
       const kf = kitabFilter.toLowerCase();
-      const filtered = results.filter(c => {
+      const byName = results.filter(c => {
         const cn = (c.kitab_name || "").toLowerCase();
         return cn.includes(kf) || kf.includes(cn);
       });
-      // Fall back to unfiltered results if no kitab-specific chunks found
-      results = filtered.length > 0 ? filtered : results;
-      console.log(`[Muqarrar] Kitab filter="${kitabFilter}" → ${filtered.length} kitab-specific chunks (total pool: ${results.length})`);
+      // Fall back to unfiltered pool only if no name match found
+      results = byName.length > 0 ? byName : results;
+      console.log(`[Muqarrar] Kitab name filter="${kitabFilter}" → ${byName.length} kitab-specific chunks (pool: ${results.length})`);
     }
+
     if (results.length > 0) {
-      console.log(`[Muqarrar] ✓ ${results.length} chunks ditemukan (top similarity=${results[0]?.similarity?.toFixed(3)}) — "${userQuestion.slice(0, 60)}"`);
+      console.log(`[Muqarrar] ✓ ${results.length} chunks ditemukan (top sim=${results[0]?.similarity?.toFixed(3)}) — "${userQuestion.slice(0, 60)}"`);
     }
     return results.slice(0, 5);
   } catch (e) {
@@ -4221,10 +4234,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Typo] normalized: "${lastUserMessage.slice(0, 50)}" → "${retrievalQuery.slice(0, 50)}"`);
   }
 
-  // Detect Library kitab-filter prefix: [Kitab: "NamaKitab"] question
-  const kitabFilterMatch = lastUserMessage.match(/^\[Kitab:\s*"([^"]+)"\]\s*/);
-  const kitabFilter = kitabFilterMatch ? kitabFilterMatch[1] : null;
-  if (kitabFilter) console.log(`[Muqarrar] Kitab filter aktif: "${kitabFilter}"`);
+  // Detect Library kitab-filter prefix (two formats):
+  //   Scraper items: [KitabID:"uuid" Kitab:"Title"] question  → exact kitab_id filter
+  //   Manual items:  [Kitab: "Title"] question                → fuzzy name filter
+  const kitabIdFormatMatch = lastUserMessage.match(/^\[KitabID:"([^"]+)"\s+Kitab:"([^"]+)"\]\s*/);
+  const kitabNameFormatMatch = !kitabIdFormatMatch && lastUserMessage.match(/^\[Kitab:\s*"([^"]+)"\]\s*/);
+  const kitabId     = kitabIdFormatMatch   ? kitabIdFormatMatch[1]   : null;
+  const kitabFilter = kitabIdFormatMatch   ? kitabIdFormatMatch[2]
+                    : kitabNameFormatMatch  ? kitabNameFormatMatch[1] : null;
+  if (kitabId)     console.log(`[Muqarrar] KitabID filter aktif: "${kitabId}"`);
+  else if (kitabFilter) console.log(`[Muqarrar] Kitab name filter aktif: "${kitabFilter}"`);
 
   // Context detection + query expansion (synchronous — before any async calls)
   const masisirCtx = detectMasisirContext(retrievalQuery);
@@ -4402,7 +4421,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
     intent.primary === "fiqh" ? fetchDorarHadith(retrievalQuery) : Promise.resolve(null),
-    fetchRelevantMuqarrar(retrievalQuery, intent.primary, kitabFilter),
+    fetchRelevantMuqarrar(retrievalQuery, intent.primary, kitabFilter, kitabId),
   ]);
 
   // Assess KB coverage strength before deciding whether to use external sources
