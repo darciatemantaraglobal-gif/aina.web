@@ -5167,8 +5167,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   } else if (kbStrength === "strong") {
     // Strong KB but intent is not visually oriented → single poster at most
     maxPosterCount = 1;
+  } else if (kbStrength === "weak" && (articles._topScore ?? 0) >= 5) {
+    // Decent single-article match (score 5-6) — admin uploaded image intentionally, show it
+    maxPosterCount = 1;
   } else {
-    // Weak / absent KB — a poster would be misleading or irrelevant
+    // Absent KB or very low relevance — poster would be misleading
     maxPosterCount = 0;
   }
 
