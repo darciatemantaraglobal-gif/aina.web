@@ -1474,7 +1474,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   return top;
 }
 
-const DAILY_FREE_LIMIT = 40;
+const DAILY_FREE_LIMIT = 20;
 
 // ── Hybrid retrieval — lazy init (only when USE_HYBRID_RETRIEVAL=true) ────────
 // fetchRelevantArticles is fully defined above — safe to reference here.

@@ -347,7 +347,8 @@ function loadStoredFeedback(): Record<string, "up" | "down"> {
   try { return JSON.parse(localStorage.getItem(FEEDBACK_STORE_KEY) ?? "{}"); } catch { return {}; }
 }
 
-const DAILY_LIMIT = 5;
+const DAILY_LIMIT = 20;
+const DAILY_NUDGE_AT = 15; // Show contributor nudge at this count (75% of limit)
 const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
 // Context used by MD_COMPONENTS to tell <li> whether it's inside <ol> or <ul>.
@@ -657,6 +658,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [dailyCount, setDailyCount] = useState<number | null>(null);
   const [isPaidUser, setIsPaidUser] = useState(false);
   const [userProfile, setUserProfile] = useState<Record<string, any> | null>(null);
@@ -2011,11 +2013,40 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               </div>
             )}
 
+            {/* Soft nudge — shown at 75% usage, dismissible */}
+            {!isPaidUser && !limitReached && !nudgeDismissed && dailyCount !== null && dailyCount >= DAILY_NUDGE_AT && (
+              <div className="flex items-start gap-3 rounded-2xl border border-violet-500/25 bg-violet-500/5 px-4 py-3">
+                <Crown className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-foreground/80">
+                    Kamu hampir mencapai batas harian ({dailyCount}/{DAILY_LIMIT}).{" "}
+                    <button
+                      onClick={() => { setNudgeDismissed(false); onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor"); }}
+                      className="font-semibold text-violet-400 hover:text-violet-300 underline-offset-2 hover:underline"
+                    >
+                      Jadi Kontributor
+                    </button>{" "}
+                    untuk chat tanpa batas — cukup kirim 1 artikel.
+                  </p>
+                </div>
+                <button onClick={() => setNudgeDismissed(true)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
             {limitReached && (
               <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
                 <Zap className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                 <p className="text-sm text-amber-300/90">
-                  Batas 3 chat gratis hari ini sudah habis. Upgrade atau jadi Kontributor untuk chat tanpa batas.
+                  Batas {DAILY_LIMIT} chat gratis hari ini sudah habis.{" "}
+                  <button
+                    onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
+                    className="font-semibold underline underline-offset-2 hover:text-amber-200"
+                  >
+                    Jadi Kontributor
+                  </button>{" "}
+                  untuk chat tanpa batas.
                 </p>
               </div>
             )}
@@ -2044,19 +2075,17 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div className="relative w-full max-w-md rounded-3xl border border-border bg-card shadow-2xl overflow-hidden">
-            {/* Purple glow top bar */}
             <div className="h-1 w-full bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500" />
-
             <div className="p-6">
               {/* Header */}
-              <div className="mb-5 flex items-start justify-between">
+              <div className="mb-4 flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 shadow-lg shadow-purple-900/40">
-                    <Zap className="h-5 w-5 text-white" />
+                    <BookOpen className="h-5 w-5 text-white" />
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">Batas Harian Tercapai</p>
-                    <p className="text-xs text-muted-foreground">3/3 chat gratis hari ini</p>
+                    <p className="text-xs text-muted-foreground">{DAILY_LIMIT}/{DAILY_LIMIT} chat gratis hari ini</p>
                   </div>
                 </div>
                 <button
@@ -2067,60 +2096,47 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 </button>
               </div>
 
-              <p className="mb-5 text-sm text-muted-foreground leading-relaxed">
-                Kamu sudah menggunakan <span className="font-semibold text-foreground">3 chat gratis</span> hari ini. Pilih salah satu cara berikut untuk terus menggunakan AINA tanpa batas:
-              </p>
-
-              {/* Progress indicator */}
-              <div className="mb-5 flex gap-1.5">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-1.5 flex-1 rounded-full bg-amber-500" />
+              {/* Progress bar — full */}
+              <div className="mb-4 flex gap-1">
+                {Array.from({ length: DAILY_LIMIT > 10 ? 10 : DAILY_LIMIT }).map((_, i) => (
+                  <div key={i} className="h-1 flex-1 rounded-full bg-amber-500" />
                 ))}
               </div>
 
-              {/* CTA Options */}
-              <div className="space-y-3">
-                {/* Upgrade option */}
-                <button
-                  onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
-                  className="group w-full rounded-2xl border border-purple-500/30 bg-gradient-to-br from-violet-600/10 to-purple-700/10 p-4 text-left transition-all hover:border-purple-500/60 hover:from-violet-600/20 hover:to-purple-700/20"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-700">
-                      <Crown className="h-4 w-4 text-white" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground">Upgrade ke AINA Pro</p>
-                      <p className="text-xs text-muted-foreground">Chat tanpa batas + fitur eksklusif</p>
-                    </div>
-                    <span className="shrink-0 text-xs font-semibold text-purple-400 group-hover:text-purple-300">
-                      Lihat Paket →
-                    </span>
-                  </div>
-                </button>
+              <p className="mb-5 text-sm text-muted-foreground leading-relaxed">
+                Kamu sudah pakai <span className="font-semibold text-foreground">{DAILY_LIMIT} chat gratis</span> hari ini.
+                Cara terbaik untuk lanjut? <span className="font-semibold text-foreground">Jadi Kontributor AINA</span> — gratis selamanya.
+              </p>
 
-                {/* Contributor option */}
-                <button
-                  onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
-                  className="group w-full rounded-2xl border border-border bg-secondary/50 p-4 text-left transition-all hover:border-border/80 hover:bg-secondary"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted">
-                      <BookOpen className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground">Jadi Kontributor</p>
-                      <p className="text-xs text-muted-foreground">Tulis artikel dan dapatkan akses penuh gratis</p>
-                    </div>
-                    <span className="shrink-0 text-xs font-semibold text-muted-foreground group-hover:text-foreground">
-                      Daftar →
-                    </span>
+              {/* Contributor CTA — primary */}
+              <button
+                onClick={() => { setLimitReached(false); onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor"); }}
+                className="group w-full rounded-2xl border border-purple-500/40 bg-gradient-to-br from-violet-600/15 to-purple-700/15 p-4 text-left transition-all hover:border-purple-500/70 hover:from-violet-600/25 hover:to-purple-700/25"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-purple-700">
+                    <Crown className="h-4 w-4 text-white" />
                   </div>
-                </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground">Jadi Kontributor AINA</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Kirim 1 artikel bermanfaat → chat tanpa batas selamanya</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-semibold text-purple-400 group-hover:text-purple-300">
+                    Daftar →
+                  </span>
+                </div>
+              </button>
+
+              {/* What contribution means */}
+              <div className="mt-3 rounded-xl bg-secondary/60 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground/80">Apa itu kontribusi nyata?</p>
+                <p>✦ Artikel tentang kehidupan Masisir yang belum ada di KB</p>
+                <p>✦ Info administrasi, tips kuliah, atau pengalaman praktis</p>
+                <p>✦ Direview admin sebelum disetujui — kualitas dijaga</p>
               </div>
 
-              <p className="mt-4 text-center text-xs text-muted-foreground/60">
-                Batas direset setiap pukul 00.00 waktu Kairo (UTC+2)
+              <p className="mt-3 text-center text-xs text-muted-foreground/60">
+                Batas direset setiap 00.00 waktu Kairo (UTC+2)
               </p>
             </div>
           </div>
@@ -2134,8 +2150,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
             onClick={() => onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor")}
             className="mx-auto flex max-w-3xl xl:max-w-4xl cursor-pointer items-center justify-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400 transition-colors hover:border-amber-500/40"
           >
-            <Zap className="h-4 w-4 shrink-0" />
-            <span>Batas harian tercapai — <span className="font-semibold underline-offset-2 hover:underline">Upgrade atau jadi Kontributor</span></span>
+            <Crown className="h-4 w-4 shrink-0 text-violet-400" />
+            <span>Batas harian tercapai — <span className="font-semibold text-violet-400 underline-offset-2 hover:underline">Jadi Kontributor untuk chat tanpa batas</span></span>
           </div>
         ) : (
           <form onSubmit={handleFormSubmit} className="mx-auto max-w-3xl xl:max-w-4xl">
@@ -2242,7 +2258,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                     dailyCount >= DAILY_LIMIT
                       ? "bg-red-500/10 text-red-400"
-                      : dailyCount >= DAILY_LIMIT - 1
+                      : dailyCount >= DAILY_NUDGE_AT
                       ? "bg-amber-500/10 text-amber-400"
                       : "bg-muted text-muted-foreground hover:bg-secondary hover:text-foreground"
                   }`}
