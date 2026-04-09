@@ -548,6 +548,18 @@ async function initNewsShareCaptionCol() {
 }
 initNewsShareCaptionCol();
 
+/* ── Library: ai_description column ─────────────────────────────────────────*/
+async function initLibraryAIDescCol() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const sql = `ALTER TABLE public.library_items ADD COLUMN IF NOT EXISTS ai_description TEXT;`;
+  try {
+    const { error } = await supabase.rpc("exec_sql", { sql });
+    if (!error) { console.log("[Library] ✓ ai_description column ready"); return; }
+  } catch { /* fall through */ }
+}
+initLibraryAIDescCol();
+
 /* ── Self-Improvement: query_log + missing_topics (Supabase) ────────────────
  * All logging now uses Supabase so it works in both dev (Replit) and prod
  * (Railway). Tables must exist in Supabase — run the SQL below once:
@@ -10722,6 +10734,65 @@ app.delete("/api/admin/library/:id", writeLimiter, async (req, res) => {
   const { error } = await supabase.from("library_items").delete().eq("id", req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+/* POST /api/library/:id/ai-description — authenticated, generate/return AI synopsis */
+app.post("/api/library/:id/ai-description", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  const { id } = req.params;
+  const forceRegen = req.query.force === "true";
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server error" });
+
+  const { data: item, error: fetchErr } = await supabase
+    .from("library_items")
+    .select("id, title, description, category, faculty, year_level, tags, ai_description")
+    .eq("id", id)
+    .eq("is_published", true)
+    .single();
+
+  if (fetchErr || !item) return res.status(404).json({ error: "Dokumen tidak ditemukan" });
+  if (item.ai_description && !forceRegen) return res.json({ description: item.ai_description });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: "AI tidak dikonfigurasi" });
+
+  const CAT_LABEL = { muqorror: "Muqorror (buku ajar kuliah)", panduan: "Panduan/Prosedur Masisir", referensi: "Referensi Akademik", umum: "Umum" };
+  const meta = [
+    `Judul dokumen: ${item.title}`,
+    `Jenis: ${CAT_LABEL[item.category] ?? item.category}`,
+    item.faculty    ? `Fakultas: ${item.faculty}`       : null,
+    item.year_level ? `Tahun studi: ${item.year_level}` : null,
+    item.tags       ? `Topik/tag: ${item.tags}`         : null,
+    item.description ? `Keterangan admin: ${item.description}` : null,
+  ].filter(Boolean).join("\n");
+
+  const prompt = `Kamu adalah asisten akademik AINA untuk mahasiswa Indonesia di Al-Azhar Mesir (Masisir).
+
+Berdasarkan metadata dokumen berikut, tulis sinopsis yang informatif dan membantu dalam Bahasa Indonesia (3-4 kalimat). Jelaskan: isi dokumen ini, siapa yang membutuhkannya, dan kenapa penting dibaca. Jangan awali dengan "Dokumen ini" atau "Kitab ini" — langsung ke intinya. Bahasa engaging tapi akademik.
+
+${meta}`;
+
+  try {
+    const data = await callOpenRouter(apiKey, {
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 300,
+      timeoutMs: 20_000,
+      label: "LibraryAIDesc",
+    });
+
+    const description = data?.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!description) return res.status(500).json({ error: "AI tidak menghasilkan deskripsi" });
+
+    await supabase.from("library_items").update({ ai_description: description }).eq("id", id);
+    res.json({ description });
+  } catch (err) {
+    console.error("[LibraryAIDesc] error:", err.message);
+    res.status(500).json({ error: "Gagal generate deskripsi" });
+  }
 });
 
 /* POST /api/admin/library/analyze-text

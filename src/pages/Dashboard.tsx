@@ -736,7 +736,7 @@ const Dashboard = () => {
               {activeTab === "library" && (
                 <TabErrorBoundary tabName="Library">
                   <Suspense fallback={<TabLoader />}>
-                    <LibraryPage />
+                    <LibraryPage onAskAINA={(message) => { setPendingMessage(message); setActiveTab("chat"); }} />
                   </Suspense>
                 </TabErrorBoundary>
               )}
