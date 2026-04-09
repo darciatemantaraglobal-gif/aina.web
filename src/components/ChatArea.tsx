@@ -634,22 +634,54 @@ const MD_COMPONENTS = {
     );
   },
   table: ({ node }: any) => {
-    const allRows: any[] = node?.children ?? [];
-    if (!allRows.length) return null;
+    // node is a hast element: <table> → children: [thead?, tbody?]
+    const kids: any[] = node?.children ?? [];
+    const theadNode = kids.find((c: any) => c.tagName === "thead");
+    const tbodyNode = kids.find((c: any) => c.tagName === "tbody");
 
-    const headerRow = allRows[0];
-    const bodyRows = allRows.slice(1);
+    const getTrChildren = (parent: any) =>
+      (parent?.children ?? []).filter((c: any) => c.tagName === "tr");
+    const getCells = (row: any) =>
+      (row?.children ?? []).filter((c: any) => c.tagName === "th" || c.tagName === "td");
 
-    // Extract plain text for each body cell (used for rowspan comparison)
+    const headerRows = getTrChildren(theadNode);
+    const bodyRows = getTrChildren(tbodyNode);
+
+    // Extract plain text from a hast node tree
+    function hastText(n: any): string {
+      if (!n) return "";
+      if (n.type === "text") return n.value ?? "";
+      if (n.children) return (n.children as any[]).map(hastText).join("");
+      return "";
+    }
+
+    // Render a hast node tree to React (bold, italic, text, etc.)
+    function renderHast(n: any, key: number): React.ReactNode {
+      if (!n) return null;
+      if (n.type === "text") return n.value;
+      if (n.type === "element") {
+        const ch = (n.children ?? []).map((c: any, i: number) => renderHast(c, i));
+        if (n.tagName === "strong" || n.tagName === "b")
+          return <strong key={key} className="font-bold text-foreground">{ch}</strong>;
+        if (n.tagName === "em" || n.tagName === "i")
+          return <em key={key} className="italic">{ch}</em>;
+        if (n.tagName === "code")
+          return <code key={key} className="font-mono bg-muted/60 px-1 rounded text-xs">{ch}</code>;
+        if (n.tagName === "a")
+          return <a key={key} href={n.properties?.href} className="text-primary underline underline-offset-2">{ch}</a>;
+        return <span key={key}>{ch}</span>;
+      }
+      return null;
+    }
+
+    const renderCellContent = (cell: any) =>
+      (cell?.children ?? []).map((c: any, i: number) => renderHast(c, i));
+
+    // Compute rowSpans from body cell texts
     const cellTexts: string[][] = bodyRows.map((row: any) =>
-      (row.children ?? []).map((cell: any) => extractMdastText(cell).trim())
+      getCells(row).map((cell: any) => hastText(cell).trim())
     );
-
-    const numCols = Math.max(
-      ...[headerRow, ...bodyRows].map((r: any) => r.children?.length ?? 0)
-    );
-
-    // Compute rowSpans: merge consecutive identical non-empty cells per column
+    const numCols = Math.max(...bodyRows.map((r: any) => getCells(r).length), 0);
     const rowSpans: number[][] = cellTexts.map(() => new Array(numCols).fill(1));
     const skip: boolean[][] = cellTexts.map(() => new Array(numCols).fill(false));
 
@@ -666,32 +698,31 @@ const MD_COMPONENTS = {
       }
     }
 
-    const renderCell = (cell: any) =>
-      (cell?.children ?? []).map((c: any, i: number) => renderMdastInline(c, i));
-
     return (
       <div className="mb-4 overflow-x-auto rounded-xl border border-border">
         <table className="min-w-full text-sm">
           <thead className="bg-muted/50">
-            <tr>
-              {(headerRow.children ?? []).map((cell: any, ci: number) => {
-                const text = extractMdastText(cell);
-                const ar = /[\u0600-\u06FF]/.test(text);
-                return (
-                  <th key={ci} dir={ar ? "rtl" : undefined}
-                    className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                    {renderCell(cell)}
-                  </th>
-                );
-              })}
-            </tr>
+            {headerRows.map((row: any, ri: number) => (
+              <tr key={ri}>
+                {getCells(row).map((cell: any, ci: number) => {
+                  const text = hastText(cell);
+                  const ar = /[\u0600-\u06FF]/.test(text);
+                  return (
+                    <th key={ci} dir={ar ? "rtl" : undefined}
+                      className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                      {renderCellContent(cell)}
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
           </thead>
           <tbody className="divide-y divide-border">
             {bodyRows.map((row: any, ri: number) => (
               <tr key={ri} className="hover:bg-muted/20 transition-colors">
-                {(row.children ?? []).map((cell: any, ci: number) => {
+                {getCells(row).map((cell: any, ci: number) => {
                   if (skip[ri]?.[ci]) return null;
-                  const text = extractMdastText(cell);
+                  const text = hastText(cell);
                   const ar = /[\u0600-\u06FF]/.test(text);
                   const span = rowSpans[ri]?.[ci] ?? 1;
                   return (
@@ -702,10 +733,10 @@ const MD_COMPONENTS = {
                         "px-4 py-2.5 text-foreground/90",
                         ar ? "text-right text-emerald-300/90" : "",
                         span > 1 ? "align-middle bg-muted/10" : "",
-                      ].join(" ").trim()}
+                      ].filter(Boolean).join(" ")}
                       style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
                     >
-                      {renderCell(cell)}
+                      {renderCellContent(cell)}
                     </td>
                   );
                 })}
