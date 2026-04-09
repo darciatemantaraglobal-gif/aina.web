@@ -26,7 +26,7 @@ const Navbar = () => {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 w-full">
+    <header className="sticky top-0 z-50 w-full safe-top">
       {/* Main bar */}
       <nav className="relative bg-background/30 backdrop-blur-2xl">
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4 md:h-14 md:px-6">
