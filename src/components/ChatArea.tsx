@@ -716,7 +716,7 @@ const MD_COMPONENTS = {
                   const ar = /[\u0600-\u06FF]/.test(text);
                   return (
                     <th key={ci} dir={ar ? "rtl" : undefined}
-                      className="px-4 py-3 text-left text-[10px] font-bold text-white/40 uppercase tracking-[0.12em] whitespace-nowrap border-b border-white/8 bg-white/3 first:rounded-tl-2xl last:rounded-tr-2xl">
+                      className="px-4 py-3 text-left text-[10px] font-bold text-white/40 uppercase tracking-[0.12em] whitespace-nowrap border-b border-white/8 border-r border-r-white/[0.07] last:border-r-0 bg-white/3 first:rounded-tl-2xl last:rounded-tr-2xl">
                       {renderCellContent(cell)}
                     </th>
                   );
@@ -728,23 +728,24 @@ const MD_COMPONENTS = {
             {bodyRows.map((row: any, ri: number) => (
               <tr key={ri} className={`group transition-colors ${ri % 2 === 0 ? "bg-transparent" : "bg-white/[0.02]"} hover:bg-primary/5`}>
                 {getCells(row).map((cell: any, ci: number) => {
-                  if (skip[ri]?.[ci]) return null;
+                  const isTime = isTimeCol(ci);
+                  // Time columns never merge — skip only applies to non-time cols
+                  if (skip[ri]?.[ci] && !isTime) return null;
                   const text = hastText(cell);
                   const ar = /[\u0600-\u06FF]/.test(text);
                   const span = rowSpans[ri]?.[ci] ?? 1;
                   const isDate = isDateCol(ci);
-                  const isTime = isTimeCol(ci);
-                  const isSpanning = span > 1;
+                  // Time columns always span 1; date/other columns can span
+                  const isSpanning = span > 1 && !isTime;
 
                   return (
                     <td key={ci}
                       rowSpan={isSpanning ? span : undefined}
                       dir={ar ? "rtl" : undefined}
                       className={[
-                        "px-4 py-3 border-b border-white/5",
-                        "last-of-type:border-b-0",
+                        "px-4 py-3 border-b border-white/5 align-middle",
+                        "border-r border-white/[0.07] last:border-r-0",
                         ar ? "text-right" : "",
-                        isSpanning ? "align-middle" : "align-middle",
                       ].filter(Boolean).join(" ")}
                       style={ar ? { fontFamily: "'Amiri', serif", lineHeight: "2.0" } : undefined}
                     >
