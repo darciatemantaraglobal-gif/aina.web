@@ -681,7 +681,14 @@ const Dashboard = () => {
               {activeTab === "threads" && (
                 <TabErrorBoundary tabName="Threads">
                   <Suspense fallback={<TabLoader />}>
-                    <ThreadsPage userId={userId} isAdmin={isAdmin} />
+                    <ThreadsPage
+                      userId={userId}
+                      isAdmin={isAdmin}
+                      onAskAINA={(message) => {
+                        setPendingMessage(message);
+                        setActiveTab("chat");
+                      }}
+                    />
                   </Suspense>
                 </TabErrorBoundary>
               )}

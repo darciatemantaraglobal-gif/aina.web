@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   MessageSquare, Plus, Search, Send, Trash2, RefreshCw,
   BookMarked, CheckCircle, Clock, MessageCircle, ThumbsUp, X,
-  ImagePlus, Loader2, Smile,
+  ImagePlus, Loader2, Smile, Flame, Award, Bot, TrendingUp,
 } from "lucide-react";
 
 /* ─── Emoji Picker ───────────────────────────────────── */
@@ -102,6 +102,7 @@ interface Thread {
   vote_count: number;
   user_voted: boolean;
   promoted_to_kb: boolean;
+  best_reply_id?: string | null;
   created_at: string;
   updated_at: string;
   author_name: string | null;
@@ -448,7 +449,7 @@ function CreateThreadSheet({ open, onClose, onCreated }: {
 }
 
 /* ─── Thread Detail Sheet ────────────────────────────── */
-function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDeleted, onPromoted, onVoteChange }: {
+function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDeleted, onPromoted, onVoteChange, onAskAINA }: {
   threadId: string;
   currentUserId: string | undefined;
   isAdmin: boolean;
@@ -456,6 +457,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
   onDeleted: (id: string) => void;
   onPromoted: (id: string) => void;
   onVoteChange: (id: string, voted: boolean, voteCount: number) => void;
+  onAskAINA?: (message: string) => void;
 }) {
   const [thread, setThread] = useState<ThreadDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -470,6 +472,8 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
   const [localVoted, setLocalVoted] = useState(false);
   const [localVoteCount, setLocalVoteCount] = useState(0);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [bestReplyId, setBestReplyId] = useState<string | null>(null);
+  const [markingBest, setMarkingBest] = useState(false);
   const repliesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const replyFileInputRef = useRef<HTMLInputElement>(null);
@@ -479,6 +483,7 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
     try {
       const data = await threadsFetch(`/api/threads/${threadId}`);
       setThread(data);
+      setBestReplyId(data.best_reply_id ?? null);
     } catch (e: any) {
       toast.error(e.message);
       onClose();
@@ -495,6 +500,23 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
       setLocalVoteCount(thread.vote_count ?? 0);
     }
   }, [thread]);
+
+  const handleMarkBestReply = async (replyId: string) => {
+    if (markingBest) return;
+    setMarkingBest(true);
+    try {
+      const res = await threadsFetch(`/api/threads/${threadId}/best-reply`, {
+        method: "POST",
+        body: JSON.stringify({ reply_id: replyId }),
+      });
+      setBestReplyId(res.best_reply_id ?? null);
+      toast.success(res.best_reply_id ? "Ditandai sebagai jawaban terbaik!" : "Penanda jawaban terbaik dihapus");
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setMarkingBest(false);
+    }
+  };
 
   useEffect(() => {
     if (!loading) {
@@ -634,6 +656,11 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                         <CheckCircle className="h-3 w-3" />KB
                       </span>
                     )}
+                    {bestReplyId && (
+                      <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+                        <Award className="h-3 w-3" />Terjawab
+                      </span>
+                    )}
                   </div>
                   <h2 className="font-display text-sm font-bold leading-snug text-foreground line-clamp-2 sm:line-clamp-none sm:text-base">
                     {thread.title}
@@ -702,6 +729,19 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                     </button>
                   )}
 
+                  {onAskAINA && (
+                    <button
+                      onClick={() => {
+                        onAskAINA(`Bantu aku memahami pertanyaan ini dari forum: "${thread.title}"\n\n${thread.content}`);
+                        onClose();
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/5 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-violet-500/10 transition-colors"
+                    >
+                      <Bot className="h-3.5 w-3.5" />
+                      <span>Tanya AINA</span>
+                    </button>
+                  )}
+
                   {canDeleteThread && (
                     <button
                       onClick={handleDeleteThread}
@@ -729,42 +769,67 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
                     <p className="text-sm text-muted-foreground">Jadilah yang pertama membalas!</p>
                   </div>
                 ) : (
-                  thread.replies.map(reply => (
-                    <div key={reply.id} className="flex gap-3 group">
-                      <AvatarDisplay name={reply.author_name} avatarUrl={reply.author_avatar} size="sm" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <span className="text-xs font-semibold text-foreground">{reply.author_name ?? "Pengguna"}</span>
-                            <span className="ml-2 text-xs text-muted-foreground/60">{fmtTime(reply.created_at)}</span>
+                  thread.replies.map(reply => {
+                    const isBest = bestReplyId === reply.id;
+                    const isThreadAuthor = thread.user_id === currentUserId;
+                    return (
+                      <div key={reply.id} className={`flex gap-3 group rounded-2xl transition-colors ${isBest ? "bg-emerald-500/5 border border-emerald-500/20 p-3 -mx-1" : ""}`}>
+                        <AvatarDisplay name={reply.author_name} avatarUrl={reply.author_avatar} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold text-foreground">{reply.author_name ?? "Pengguna"}</span>
+                              <span className="text-xs text-muted-foreground/60">{fmtTime(reply.created_at)}</span>
+                              {isBest && (
+                                <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
+                                  <Award className="h-3 w-3" />Jawaban Terbaik
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isThreadAuthor && (
+                                <button
+                                  onClick={() => handleMarkBestReply(reply.id)}
+                                  disabled={markingBest}
+                                  title={isBest ? "Hapus penanda jawaban terbaik" : "Tandai sebagai jawaban terbaik"}
+                                  className={`rounded-lg p-1.5 transition-all disabled:opacity-50 ${
+                                    isBest
+                                      ? "text-emerald-400 hover:bg-emerald-500/10"
+                                      : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-emerald-500/10 hover:text-emerald-400"
+                                  }`}
+                                >
+                                  <Award className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              {(reply.user_id === currentUserId || isAdmin) && (
+                                <button
+                                  onClick={() => handleDeleteReply(reply.id)}
+                                  className="shrink-0 rounded-lg p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {(reply.user_id === currentUserId || isAdmin) && (
-                            <button
-                              onClick={() => handleDeleteReply(reply.id)}
-                              className="shrink-0 rounded-lg p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 sm:opacity-0"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
+                          {reply.content !== "📷" && (
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
+                              {reply.content}
+                            </p>
+                          )}
+                          {reply.image_url && (
+                            <div className="mt-2 overflow-hidden rounded-xl border border-border max-w-xs">
+                              <img
+                                src={reply.image_url}
+                                alt="foto balasan"
+                                className="w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity"
+                                onClick={() => setLightboxUrl(reply.image_url!)}
+                              />
+                            </div>
                           )}
                         </div>
-                        {reply.content !== "📷" && (
-                          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground leading-relaxed">
-                            {reply.content}
-                          </p>
-                        )}
-                        {reply.image_url && (
-                          <div className="mt-2 overflow-hidden rounded-xl border border-border max-w-xs">
-                            <img
-                              src={reply.image_url}
-                              alt="foto balasan"
-                              className="w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity"
-                              onClick={() => setLightboxUrl(reply.image_url!)}
-                            />
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
                 <div ref={repliesEndRef} />
               </div>
@@ -870,19 +935,23 @@ function ThreadDetailSheet({ threadId, currentUserId, isAdmin, onClose, onDelete
 interface ThreadsPageProps {
   userId?: string;
   isAdmin?: boolean;
+  onAskAINA?: (message: string) => void;
 }
 
-export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProps) {
+export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: ThreadsPageProps) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(1);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"terbaru" | "populer" | "belum_dijawab">("terbaru");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [votingId, setVotingId] = useState<string | null>(null);
+  const [trending, setTrending] = useState<Thread[]>([]);
+  const [trendingLoaded, setTrendingLoaded] = useState(false);
 
   const load = useCallback(async (pageNum = 1) => {
     if (pageNum === 1) setLoading(true);
@@ -890,6 +959,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
     try {
       const params = new URLSearchParams();
       if (categoryFilter !== "all") params.set("category", categoryFilter);
+      if (sortBy !== "terbaru") params.set("sort", sortBy);
       params.set("page", String(pageNum));
       const data = await threadsFetch(`/api/threads?${params}`);
       if (pageNum === 1) {
@@ -904,13 +974,24 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
       if (pageNum === 1) setLoading(false);
       else setLoadingMore(false);
     }
-  }, [categoryFilter]);
+  }, [categoryFilter, sortBy]);
 
-  // Reset to page 1 whenever category filter changes
+  const loadTrending = useCallback(async () => {
+    try {
+      const data = await threadsFetch("/api/threads/trending");
+      setTrending(data);
+    } catch { /* silent */ } finally {
+      setTrendingLoaded(true);
+    }
+  }, []);
+
+  // Reset to page 1 whenever category filter or sort changes
   useEffect(() => {
     setPage(1);
     load(1);
-  }, [categoryFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [categoryFilter, sortBy]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { loadTrending(); }, [loadTrending]);
 
   const handleLoadMore = () => {
     const nextPage = page + 1;
@@ -1022,12 +1103,68 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
               </button>
             ))}
           </div>
+
+          {/* Sort pills */}
+          <div className="mt-2 flex items-center gap-1.5">
+            {(["terbaru", "populer", "belum_dijawab"] as const).map(s => {
+              const labels = { terbaru: "Terbaru", populer: "Terpopuler", belum_dijawab: "Belum Dijawab" };
+              const icons = { terbaru: <Clock className="h-3 w-3" />, populer: <Flame className="h-3 w-3" />, belum_dijawab: <MessageCircle className="h-3 w-3" /> };
+              return (
+                <button
+                  key={s}
+                  onClick={() => setSortBy(s)}
+                  className={`flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    sortBy === s
+                      ? "bg-primary/15 text-primary border border-primary/30"
+                      : "bg-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {icons[s]}{labels[s]}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Thread List */}
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-3 md:py-6">
         <div className="md:max-w-5xl md:mx-auto">
+
+        {/* Trending section — only when no active search/filter and sort is default */}
+        {!search && categoryFilter === "all" && sortBy === "terbaru" && trendingLoaded && trending.length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center gap-2 mb-2.5">
+              <TrendingUp className="h-4 w-4 text-orange-400" />
+              <span className="text-xs font-bold uppercase tracking-wide text-orange-400">Trending Minggu Ini</span>
+            </div>
+            <div className="space-y-1.5">
+              {trending.map((t, i) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedThreadId(t.id)}
+                  className="flex w-full items-center gap-3 rounded-xl border border-orange-500/15 bg-orange-500/5 px-3.5 py-2.5 text-left hover:bg-orange-500/10 transition-colors"
+                >
+                  <span className="shrink-0 text-sm font-bold text-orange-400/70 w-4 text-center">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground line-clamp-1">{t.title}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-muted-foreground/60">{t.author_name ?? "Pengguna"}</span>
+                      <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/50">
+                        <ThumbsUp className="h-2.5 w-2.5" />{t.vote_count}
+                      </span>
+                      <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/50">
+                        <MessageCircle className="h-2.5 w-2.5" />{t.reply_count}
+                      </span>
+                    </div>
+                  </div>
+                  <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400/60" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="space-y-2">
             {[...Array(5)].map((_, i) => (
@@ -1083,6 +1220,11 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
                     {thread.promoted_to_kb && (
                       <span className="flex items-center gap-0.5 rounded-full bg-green-500/15 px-2 py-0.5 text-[11px] font-medium text-green-400">
                         <CheckCircle className="h-2.5 w-2.5" /> KB
+                      </span>
+                    )}
+                    {thread.best_reply_id && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                        <Award className="h-2.5 w-2.5" /> Terjawab
                       </span>
                     )}
                     {thread.image_url && (
@@ -1162,6 +1304,7 @@ export default function ThreadsPage({ userId, isAdmin = false }: ThreadsPageProp
           onDeleted={handleDeleted}
           onPromoted={handlePromoted}
           onVoteChange={handleVoteChange}
+          onAskAINA={onAskAINA}
         />
       )}
     </div>

@@ -511,6 +511,31 @@ async function initLeaderboardDisplayCols() {
 }
 initLeaderboardDisplayCols();
 
+/* ── Threads: best_reply_id column ─────────────────────────────────────────*/
+async function initThreadsBestReplyCol() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  const sql = `ALTER TABLE public.threads ADD COLUMN IF NOT EXISTS best_reply_id UUID REFERENCES public.thread_replies(id) ON DELETE SET NULL;`;
+  try {
+    const { error } = await supabase.rpc("exec_sql", { sql });
+    if (!error) { console.log("[Threads] ✓ best_reply_id column ready"); return; }
+  } catch { /* fall through */ }
+  // fallback: pg-meta
+  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL_LOCAL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  if (SUPABASE_URL_LOCAL && SERVICE_ROLE_KEY) {
+    try {
+      const r = await fetch(`${SUPABASE_URL_LOCAL.replace(/\/$/, "")}/pg-meta/v1/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ query: sql }),
+      });
+      if (r.ok) { console.log("[Threads] ✓ best_reply_id column ready (pg-meta)"); }
+    } catch { /* ignore */ }
+  }
+}
+initThreadsBestReplyCol();
+
 /* ── Self-Improvement: query_log + missing_topics (Supabase) ────────────────
  * All logging now uses Supabase so it works in both dev (Replit) and prod
  * (Railway). Tables must exist in Supabase — run the SQL below once:
@@ -8804,17 +8829,23 @@ app.get("/api/threads", async (req, res) => {
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { category } = req.query;
+  const { category, sort } = req.query;
   const pageNum = Math.max(1, parseInt(req.query.page) || 1);
   const limit = 30;
   const offset = (pageNum - 1) * limit;
 
-  let query = supabase
-    .from("threads")
-    .select("*")
-    .order("updated_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+  let query = supabase.from("threads").select("*").range(offset, offset + limit - 1);
   if (category) query = query.eq("category", category);
+
+  // Sort modes
+  if (sort === "populer") {
+    query = query.order("vote_count", { ascending: false }).order("reply_count", { ascending: false });
+  } else if (sort === "belum_dijawab") {
+    query = query.eq("reply_count", 0).order("created_at", { ascending: true });
+  } else {
+    // default: terbaru
+    query = query.order("updated_at", { ascending: false });
+  }
 
   const { data: threads, error } = await query;
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
@@ -8835,6 +8866,43 @@ app.get("/api/threads", async (req, res) => {
     .select("thread_id")
     .eq("user_id", user.id)
     .in("thread_id", threadIds);
+  const userVotedSet = new Set((userVoteRows ?? []).map(v => v.thread_id));
+
+  res.json(threads.map(t => ({
+    ...t,
+    author_name: profileMap[t.user_id]?.full_name ?? null,
+    author_avatar: profileMap[t.user_id]?.avatar_url ?? null,
+    user_voted: userVotedSet.has(t.id),
+  })));
+});
+
+/* ── Trending threads (last 7 days, top by votes + replies) ─────────────── */
+app.get("/api/threads/trending", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: threads, error } = await supabase
+    .from("threads")
+    .select("*")
+    .gte("updated_at", since)
+    .order("vote_count", { ascending: false })
+    .order("reply_count", { ascending: false })
+    .limit(5);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  if (!threads || threads.length === 0) return res.json([]);
+
+  const authorIds = [...new Set(threads.map(t => t.user_id))];
+  const { data: profiles } = await supabase
+    .from("profiles").select("user_id, full_name, avatar_url").in("user_id", authorIds);
+  const profileMap = {};
+  (profiles ?? []).forEach(p => { profileMap[p.user_id] = p; });
+
+  const threadIds = threads.map(t => t.id);
+  const { data: userVoteRows } = await supabase
+    .from("thread_votes").select("thread_id").eq("user_id", user.id).in("thread_id", threadIds);
   const userVotedSet = new Set((userVoteRows ?? []).map(v => v.thread_id));
 
   res.json(threads.map(t => ({
@@ -8937,7 +9005,7 @@ app.post("/api/threads/:id/replies", writeLimiter, async (req, res) => {
 
   const supabase = getAdminClient();
   const { id } = req.params;
-  const { data: thread } = await supabase.from("threads").select("id").eq("id", id).single();
+  const { data: thread } = await supabase.from("threads").select("id, user_id, title").eq("id", id).single();
   if (!thread) return res.status(404).json({ error: "Thread not found" });
 
   const replyInsert = { thread_id: id, user_id: user.id, content: content.trim(), image_url: (image_url && typeof image_url === "string") ? image_url : undefined };
@@ -8946,7 +9014,54 @@ app.post("/api/threads/:id/replies", writeLimiter, async (req, res) => {
     .insert(replyInsert)
     .select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  // Send notification to thread author (fire-and-forget, skip if replier is author)
+  if (thread.user_id !== user.id) {
+    const { data: replierProfile } = await supabase.from("profiles").select("full_name").eq("user_id", user.id).maybeSingle();
+    const replierName = replierProfile?.full_name ?? "Seseorang";
+    supabase.from("notifications").insert({
+      user_id: thread.user_id,
+      title: "Balasan baru di thread-mu",
+      message: `${replierName} membalas thread "${thread.title?.slice(0, 60)}${thread.title?.length > 60 ? "..." : ""}"`,
+      type: "info",
+    }).then(() => {}).catch(() => {});
+  }
+
   res.json(data);
+});
+
+/* ── Mark best reply ─────────────────────────────────────── */
+app.post("/api/threads/:id/best-reply", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  const { id } = req.params;
+  const { reply_id } = req.body;
+
+  const { data: thread } = await supabase.from("threads").select("user_id, best_reply_id").eq("id", id).single();
+  if (!thread) return res.status(404).json({ error: "Thread not found" });
+  if (thread.user_id !== user.id) return res.status(403).json({ error: "Hanya pemilik thread yang bisa menandai jawaban terbaik" });
+
+  // Toggle: if same reply_id passed again, unset it
+  const newBestReplyId = (reply_id && thread.best_reply_id !== reply_id) ? reply_id : null;
+  const { error } = await supabase.from("threads").update({ best_reply_id: newBestReplyId }).eq("id", id);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  // Notify the reply author if setting (not unsetting)
+  if (newBestReplyId) {
+    const { data: reply } = await supabase.from("thread_replies").select("user_id").eq("id", newBestReplyId).maybeSingle();
+    if (reply && reply.user_id !== user.id) {
+      supabase.from("notifications").insert({
+        user_id: reply.user_id,
+        title: "Jawabanmu ditandai terbaik! 🏆",
+        message: `Jawaban kamu di thread "${thread.title?.slice(0, 60)}${thread.title?.length > 60 ? "..." : ""}" ditandai sebagai Jawaban Terbaik.`,
+        type: "success",
+      }).then(() => {}).catch(() => {});
+    }
+  }
+
+  res.json({ success: true, best_reply_id: newBestReplyId });
 });
 
 app.delete("/api/threads/:id/replies/:replyId", writeLimiter, async (req, res) => {
