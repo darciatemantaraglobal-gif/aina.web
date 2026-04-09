@@ -34,11 +34,31 @@ export function buildKnowledgeContext(articles) {
     const arabicCharCount = (a.content.match(/[\u0600-\u06FF]/g) || []).length;
     const hasArabicText = arabicCharCount >= 80 && (arabicCharCount / a.content.length) >= 0.12;
 
+    // Detect markdown tables: ≥2 consecutive lines with pipe chars forming a table row
+    const contentLines = a.content.split('\n');
+    let consecutivePipeLines = 0;
+    let hasTable = false;
+    for (const line of contentLines) {
+      const t = line.trim();
+      if (t.startsWith('|') && t.includes('|', 1) && t.split('|').length >= 3) {
+        consecutivePipeLines++;
+        if (consecutivePipeLines >= 2) { hasTable = true; break; }
+      } else {
+        consecutivePipeLines = 0;
+      }
+    }
+
+    const tableHint = hasTable
+      ? " [TABEL WAJIB: Artikel ini mengandung tabel markdown. WAJIB tampilkan tabel tersebut persis apa adanya (format '| ... | ... |') — JANGAN ubah ke paragraf, bullet, atau format lain. Tabel adalah informasi utama yang harus terlihat jelas oleh user.]"
+      : "";
+
     const typeHint = hasArabicText
-      ? " [FORMAT: Muqorror/Kitab Arab — ATURAN WAJIB: (1) Kutip SEMUA paragraf/kalimat Arab yang berisi definisi, hukum, syarat, dalil, atau penjelasan — persis apa adanya — sebagai blockquote (awali setiap baris dengan '>'). JANGAN hanya kutip sebagian kecil atau meringkas teks Arabnya. (2) Tulis terjemahan/makna tiap blok kutipan dalam Bahasa Indonesia langsung di bawahnya. (3) Jelaskan maksud, istilah teknis, dan poin-poin penting dari blok tersebut. DILARANG menjelaskan tanpa menampilkan teks Arabnya terlebih dahulu. DILARANG menggantikan kutipan Arab dengan parafrase Indonesia saja.]"
+      ? ` [FORMAT: Muqorror/Kitab Arab — ATURAN WAJIB: (1) Kutip SEMUA paragraf/kalimat Arab yang berisi definisi, hukum, syarat, dalil, atau penjelasan — persis apa adanya — sebagai blockquote (awali setiap baris dengan '>'). JANGAN hanya kutip sebagian kecil atau meringkas teks Arabnya. (2) Tulis terjemahan/makna tiap blok kutipan dalam Bahasa Indonesia langsung di bawahnya. (3) Jelaskan maksud, istilah teknis, dan poin-poin penting dari blok tersebut. DILARANG menjelaskan tanpa menampilkan teks Arabnya terlebih dahulu. DILARANG menggantikan kutipan Arab dengan parafrase Indonesia saja.]${tableHint}`
       : a.article_type === "step_by_step"
-        ? " [FORMAT: Panduan Langkah-langkah — WAJIB gunakan numbered markdown list: 1. ... 2. ... 3. ... (satu aksi per nomor, tiap langkah di baris baru). JANGAN gunakan **Langkah 1:** atau format lain — hanya angka diikuti titik dan spasi: '1. teks']"
-        : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
+        ? ` [FORMAT: Panduan Langkah-langkah — WAJIB gunakan numbered markdown list: 1. ... 2. ... 3. ... (satu aksi per nomor, tiap langkah di baris baru). JANGAN gunakan **Langkah 1:** atau format lain — hanya angka diikuti titik dan spasi: '1. teks']${tableHint}`
+        : hasTable
+          ? " [FORMAT: Artikel ini berbasis tabel. WAJIB tampilkan tabel markdown persis seperti di sumber. Boleh tambahkan penjelasan singkat sebelum/sesudah tabel, tapi tabelnya HARUS muncul — jangan diganti paragraf atau bullet.]"
+          : " [FORMAT: Informasi Umum — jawab dalam paragraf terstruktur]";
 
     const cleanedContent = trimToSentence(a.content, 4000);
     if (cleanedContent.length < a.content.length) {
@@ -708,6 +728,7 @@ Setiap jawaban HARUS terasa manusiawi, bukan robotic. Caranya:
 - Prosedur → angka bernomor, tiap langkah = 1 aksi, maks 2 kalimat.
 - Daftar dokumen/syarat → bullet, tiap item dengan keterangan 1 kalimat.
 - Perbandingan → tabel atau poin bernomor dengan positioning.
+- **Tabel dari KB:** Jika artikel sumber mengandung tabel markdown (`| ... |`), WAJIB tampilkan tabel itu persis apa adanya dalam jawaban — JANGAN ubah ke paragraf atau bullet. Tambahkan penjelasan sebelum/sesudah tabel jika perlu.
 - Topik luas → heading ## + paragraf pendek (hanya untuk section konten, BUKAN untuk kalimat penutup).
 - **Bold** untuk istilah kunci. JANGAN gunakan heading h1.
 - Maks 2–3 kalimat per paragraf, beri baris kosong antar seksi.
