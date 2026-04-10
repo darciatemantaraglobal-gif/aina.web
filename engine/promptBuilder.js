@@ -526,7 +526,7 @@ export function buildDorarContext(dorarResult) {
   }).join("\n\n");
 
   console.log(`[Dorar] injected ${dorarResult.hadiths.length} hadith(s) for "${dorarResult.searchTerm}"`);
-  return `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية)\n\n**FORMAT WAJIB — IKUTI PERSIS TIGA BARIS INI, TANPA PENGECUALIAN:**\n\nBARIS 1 — Teks Arab SAJA dalam blockquote (mulai dengan >, HANYA teks Arab, TANPA terjemahan, TANPA "Artinya:"):\n> [teks Arab asli persis dari data di bawah]\n\nBARIS 2 — Cara baca (transliterasi latin) di LUAR blockquote:\n*(cara baca: [transliterasi latin hadits ini])*\n\nBARIS 3 — Terjemahan di LUAR blockquote:\n*Artinya: "[terjemahan Indonesia yang akurat dan natural]"*\n\nBARIS 4 — Atribusi di LUAR blockquote:\n*(HR. [rawi/nama perawi], [sumber kitab], [hukum: shahih/hasan/dll])*\n\n⚠️ LARANGAN KERAS:\n- DILARANG menaruh terjemahan/Artinya/cara baca di dalam blockquote (baris yang dimulai >)\n- DILARANG menggabungkan Arab + terjemahan dalam satu baris atau satu kotak\n- Baris 1 blockquote HANYA boleh berisi teks Arab asli\n\nSetelah format 4 baris di atas, jelaskan relevansi atau hukumnya dalam 1-3 kalimat.\n\n${hadithBlocks}\n---`;
+  return `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية)\n\n**FORMAT WAJIB — IKUTI PERSIS TIGA BARIS INI, TANPA PENGECUALIAN:**\n\nBARIS 1 — Teks Arab SAJA dalam blockquote (mulai dengan >, HANYA teks Arab, TANPA terjemahan, TANPA "Artinya:"):\n> [teks Arab asli persis dari data di bawah]\n\nBARIS 2 — Terjemahan di LUAR blockquote:\n*Artinya: "[terjemahan Indonesia yang akurat dan natural]"*\n\nBARIS 3 — Atribusi di LUAR blockquote:\n*(HR. [rawi/nama perawi], [sumber kitab], [hukum: shahih/hasan/dll])*\n\n⚠️ LARANGAN KERAS:\n- DILARANG menaruh terjemahan/Artinya di dalam blockquote (baris yang dimulai >)\n- DILARANG menggabungkan Arab + terjemahan dalam satu baris atau satu kotak\n- DILARANG menambahkan transliterasi/cara baca latin — ini menyebabkan error repetisi\n- Baris 1 blockquote HANYA boleh berisi teks Arab asli\n\nSetelah format 3 baris di atas, jelaskan relevansi atau hukumnya dalam 1-3 kalimat.\n\n${hadithBlocks}\n---`;
 }
 
 /* ── Main system prompt assembler ─────────────────────────────────────────── */
@@ -568,14 +568,13 @@ function buildSchemaHint(intentPrimary) {
   if (intentPrimary === "fiqh") {
     return `\n\n**Struktur jawaban — pertanyaan fiqh/agama:**\n` +
       `1. Sebutkan hukumnya terlebih dahulu (halal/haram/makruh/mubah/sunnah/wajib) dalam 1 kalimat tegas.\n` +
-      `2. Cantumkan dalil dengan FORMAT WAJIB tiga baris berurutan:\n` +
-      `   Baris 1: Teks Arab dalam blockquote (diawali '>')\n` +
-      `   Baris 2: *(cara baca: transliterasi latin di sini)*\n` +
-      `   Baris 3: *Artinya: terjemahan Indonesia di sini*\n` +
+      `2. Cantumkan dalil dengan FORMAT WAJIB dua baris berurutan:\n` +
+      `   Baris 1: Teks Arab dalam blockquote (diawali '>') — HANYA teks Arab, tidak ada yang lain\n` +
+      `   Baris 2: *Artinya: terjemahan Indonesia di sini*\n` +
       `   Contoh:\n` +
       `   > وَأَقِيمُوا الصَّلَاةَ وَآتُوا الزَّكَاةَ\n` +
-      `   *(cara baca: wa aqiimu ash-shalaata wa aatuz-zakaata)*\n` +
       `   *Artinya: Dan laksanakanlah salat serta tunaikanlah zakat.*\n` +
+      `   ⚠️ DILARANG menambahkan transliterasi/cara baca latin — langsung ke terjemahan saja.\n` +
       `3. Penjelasan singkat konteks/syarat yang relevan.\n` +
       `4. Contoh praktis jika membantu (opsional).\n` +
       `Jika ada perbedaan pendapat ulama, sebutkan secara singkat dan tunjukkan mana yang lebih rajih (kuat).`;
@@ -925,7 +924,6 @@ Gunakan format PERSIS ini, harakat lengkap, setiap giliran dipisah tanda "---":
 
 [ARABIC_BLOCK]
 Arabic Text: [teks Arab, harakat lengkap]
-Reading (Latin): [transliterasi — ā ī ū, sy=ش, kh=خ, gh=غ, dh=ض, th=ث]
 Meaning: [terjemahan Indonesia natural]
 [/ARABIC_BLOCK]
 
@@ -934,7 +932,7 @@ Meaning: [terjemahan Indonesia natural]
 **Aturan wajib simulasi percakapan:**
 - Heading h4 (####) untuk nama peran WAJIB ada di setiap giliran sebelum ARABIC_BLOCK.
 - Gunakan ARABIC_BLOCK — bukan blockquote (>) — untuk setiap giliran dialog.
-- Transliterasi & terjemahan WAJIB ada di setiap giliran, tidak boleh dilewati.
+- Terjemahan WAJIB ada di setiap giliran. JANGAN tambahkan transliterasi latin.
 - Setiap giliran dipisah tanda "---".
 - Jika ada catatan tips penggunaan frasa (opsional), tulis di bawah ARABIC_BLOCK sebelum "---", bukan di dalam blok.
 
@@ -964,9 +962,10 @@ Gunakan format ini PERSIS — termasuk tag pembuka dan penutup:
 
 [ARABIC_BLOCK]
 Arabic Text: [teks Arab dengan harakat jika ada]
-Reading (Latin): [transliterasi — gunakan: sy=ش, kh=خ, gh=غ, th=ث, dh=ض, ā/ī/ū untuk mad]
 Meaning: [arti dalam Bahasa Indonesia — natural, bukan kata per kata]
 [/ARABIC_BLOCK]
+
+⚠️ DILARANG menambahkan "Reading (Latin)" atau transliterasi latin apapun — langsung Arab → terjemahan.
 
 **Aturan ARABIC_BLOCK:**
 - JANGAN campurkan teks Arab di dalam bullet, paragraf, atau teks biasa — selalu isolasi ke dalam blok ini.
@@ -1069,11 +1068,11 @@ Encode spasi sebagai tanda +. Sertakan "Cairo Egypt" di akhir query. Jika ada be
 - JANGAN Arab di depan tanpa konteks Indonesia.
 - JANGAN tampilkan teks Arab tanpa terjemahan — kecuali dalil/hadits yang punya format baku sendiri.
 
-**Format dalil/hadits — WAJIB empat baris:**
+**Format dalil/hadits — WAJIB tiga baris:**
 Baris 1 (blockquote): > [Teks Arab SAJA — DILARANG ada terjemahan di dalam blockquote]
-Baris 2: *(cara baca: transliterasi latin)*
-Baris 3: *Artinya: terjemahan Indonesia*
-Baris 4: *(HR. perawi, sumber, hukum)*
+Baris 2: *Artinya: terjemahan Indonesia*
+Baris 3: *(HR. perawi, sumber, hukum)*
+⚠️ DILARANG menambahkan transliterasi/cara baca latin — ini menyebabkan error output berulang.
 
 ---
 
