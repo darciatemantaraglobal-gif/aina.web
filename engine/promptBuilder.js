@@ -925,12 +925,13 @@ SELALU gunakan **Bahasa Indonesia**, KECUALI:
 - Campuran Arab-Indonesia → ikuti mayoritas bahasa pertanyaan.
 
 **Format simulasi percakapan bahasa Arab:**
-Gunakan format PERSIS ini, harakat lengkap, setiap giliran dipisah tanda "---":
+Gunakan format PERSIS ini, harakat LENGKAP wajib di setiap kata Arab, setiap giliran dipisah tanda "---":
 
 #### [Nama Peran] ([اسم الدور])
 
 [ARABIC_BLOCK]
-Arabic Text: [teks Arab, harakat lengkap]
+Arabic Text: [teks Arab DENGAN harakat lengkap — wajib ada fathah/kasrah/dhammah/sukun di setiap kata]
+Reading: [cara baca latin — tulis persis pengucapannya, contoh: "Yā ustādz, aumurnī?"]
 Meaning: [terjemahan Indonesia natural]
 [/ARABIC_BLOCK]
 
@@ -939,7 +940,8 @@ Meaning: [terjemahan Indonesia natural]
 **Aturan wajib simulasi percakapan:**
 - Heading h4 (####) untuk nama peran WAJIB ada di setiap giliran sebelum ARABIC_BLOCK.
 - Gunakan ARABIC_BLOCK — bukan blockquote (>) — untuk setiap giliran dialog.
-- Terjemahan WAJIB ada di setiap giliran. JANGAN tambahkan transliterasi latin.
+- Tiga field WAJIB diisi semua: Arabic Text (harakat lengkap) + Reading (cara baca latin) + Meaning (terjemahan).
+- Field Reading HANYA boleh ada di dalam ARABIC_BLOCK — DILARANG menulis transliterasi di luar blok.
 - Setiap giliran dipisah tanda "---".
 - Jika ada catatan tips penggunaan frasa (opsional), tulis di bawah ARABIC_BLOCK sebelum "---", bukan di dalam blok.
 
@@ -969,10 +971,11 @@ Gunakan format ini PERSIS — termasuk tag pembuka dan penutup:
 
 [ARABIC_BLOCK]
 Arabic Text: [teks Arab dengan harakat jika ada]
+Reading: [cara baca latin — pengucapan persis, contoh: "Thalabul 'ilmi farīdhah"]
 Meaning: [arti dalam Bahasa Indonesia — natural, bukan kata per kata]
 [/ARABIC_BLOCK]
 
-⚠️ DILARANG menambahkan "Reading (Latin)" atau transliterasi latin apapun — langsung Arab → terjemahan.
+⚠️ Field Reading HANYA boleh ada di dalam ARABIC_BLOCK — DILARANG menulis transliterasi di luar blok, di paragraf, atau di mana pun selain di dalam tag ini.
 
 **Aturan ARABIC_BLOCK:**
 - JANGAN campurkan teks Arab di dalam bullet, paragraf, atau teks biasa — selalu isolasi ke dalam blok ini.
@@ -996,11 +999,13 @@ Konsep kunci:
 
 [ARABIC_BLOCK]
 Arabic Text: طَلَبُ الْعِلْمِ فَرِيضَةٌ
+Reading: Thalabul 'ilmi farīdhah
 Meaning: Menuntut ilmu adalah kewajiban
 [/ARABIC_BLOCK]
 
 [ARABIC_BLOCK]
 Arabic Text: فَرِيضَةٌ
+Reading: Farīdhah
 Meaning: Kewajiban yang ditetapkan (fardhu) — bukan sekadar sunnah atau anjuran
 [/ARABIC_BLOCK]
 

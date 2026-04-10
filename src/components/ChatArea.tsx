@@ -318,28 +318,31 @@ function cleanMarkdown(text: string): string {
 
 interface ArabicBlockData {
   arabic: string;
+  reading: string;
   meaning: string;
 }
 
 function parseArabicBlock(raw: string): ArabicBlockData {
   const get = (label: string) => {
     // Stop at any known field label to avoid bleeding into next field
-    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Meaning:)[^\\n]*)*)`, "i");
+    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Reading|Meaning:)[^\\n]*)*)`, "i");
     const m = raw.match(re);
     if (!m) return "";
     return m[1].replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   };
   return {
     arabic:  get("Arabic Text"),
+    reading: get("Reading"),
     meaning: get("Meaning"),
   };
 }
 
-function ArabicBlockCard({ arabic, meaning }: ArabicBlockData) {
+function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
+  const hasBottom = reading || meaning;
   return (
     <div className="my-3 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
       {/* Arabic text — RTL */}
-      <div className={`px-4 pt-3 ${meaning ? "pb-2.5 border-b border-primary/10" : "pb-3"}`}>
+      <div className={`px-4 pt-3 ${hasBottom ? "pb-2.5 border-b border-primary/10" : "pb-3"}`}>
         <p
           dir="rtl"
           className="text-right leading-loose text-foreground tracking-wide"
@@ -348,9 +351,17 @@ function ArabicBlockCard({ arabic, meaning }: ArabicBlockData) {
           {arabic}
         </p>
       </div>
-      {/* Meaning only — LTR */}
+      {/* Reading (cara baca) — blue italic */}
+      {reading && (
+        <div className="px-4 pt-2.5 pb-1" dir="ltr">
+          <p className="text-sm italic text-blue-400/90 text-left leading-snug">
+            {reading}
+          </p>
+        </div>
+      )}
+      {/* Meaning — LTR */}
       {meaning && (
-        <div className="px-4 py-2.5" dir="ltr">
+        <div className={`px-4 ${reading ? "pt-1 pb-2.5" : "py-2.5"}`} dir="ltr">
           <p className="text-sm flex items-start gap-1.5 text-left">
             <span className="mt-px shrink-0 text-primary/70">✦</span>
             <span className="break-words text-white/85 italic">{meaning}</span>
