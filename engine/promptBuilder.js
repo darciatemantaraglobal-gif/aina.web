@@ -568,20 +568,15 @@ function buildSchemaHint(intentPrimary) {
   if (intentPrimary === "fiqh") {
     return `\n\n**Struktur jawaban — pertanyaan fiqh/agama:**\n` +
       `1. Sebutkan hukumnya terlebih dahulu (halal/haram/makruh/mubah/sunnah/wajib) dalam 1 kalimat tegas.\n` +
-      `2. Cantumkan dalil (ayat/hadits) menggunakan FORMAT ARABIC_BLOCK — WAJIB, bukan blockquote biasa:\n` +
+      `2. Tampilkan TEPAT SATU dalil paling kuat menggunakan ARABIC_BLOCK — HANYA SATU BLOK, tidak lebih:\n` +
       `\n` +
       `[ARABIC_BLOCK]\n` +
       `Arabic Text: [teks Arab asli dengan harakat]\n` +
-      `Meaning: [terjemahan Indonesia yang natural] — (QS. NamaSurah: ayat) atau (HR. Perawi)\n` +
+      `Meaning: [terjemahan Indonesia natural] (QS. NamaSurah: ayat) atau (HR. Perawi)\n` +
       `[/ARABIC_BLOCK]\n` +
       `\n` +
-      `   Contoh:\n` +
-      `[ARABIC_BLOCK]\n` +
-      `Arabic Text: وَأَقِيمُوا الصَّلَاةَ وَآتُوا الزَّكَاةَ\n` +
-      `Meaning: Dan laksanakanlah salat serta tunaikanlah zakat. (QS. Al-Baqarah: 43)\n` +
-      `[/ARABIC_BLOCK]\n` +
-      `\n` +
-      `   ⚠️ DILARANG menambahkan transliterasi/cara baca latin. DILARANG pakai blockquote (>) untuk dalil.\n` +
+      `   Jika ada dalil pendukung lain → sebutkan referensinya saja di teks (misal: "lihat juga QS. Al-Maidah: 3"), JANGAN buat ARABIC_BLOCK tambahan.\n` +
+      `   ⚠️ DILARANG lebih dari 1 ARABIC_BLOCK per jawaban fiqh. DILARANG pakai blockquote (>) untuk dalil.\n` +
       `3. Penjelasan singkat konteks/syarat yang relevan.\n` +
       `4. Contoh praktis jika membantu (opsional).\n` +
       `Jika ada perbedaan pendapat ulama, sebutkan secara singkat dan tunjukkan mana yang lebih rajih (kuat).`;
