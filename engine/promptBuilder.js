@@ -152,41 +152,36 @@ export function buildKnowledgeContext(articles) {
 export function buildMuqarrarFallbackDirective(kitabName = "") {
   const kitabRef = kitabName ? `"${kitabName}"` : "muqarrar yang dipilih";
   return `\n\n---\n\
-## 📖 Muqarrar AI — Fallback: Tidak Ada Kutipan Relevan
+## 📖 Muqarrar AI — Mode Fallback (Tidak Ada Kutipan Relevan)
 
-Sistem tidak berhasil menemukan kutipan yang cukup relevan dari ${kitabRef} untuk pertanyaan ini.
+Sistem tidak menemukan kutipan yang relevan dari ${kitabRef} untuk pertanyaan ini.
 
-**Gunakan mode fallback berikut untuk menjawab:**
+### CARA MENJAWAB (WAJIB IKUTI URUTAN INI)
 
-Kamu adalah asisten pengetahuan Islam yang membantu.
-Tugasmu adalah menjawab pertanyaan user menggunakan pengetahuan fiqh umum karena tidak ada sumber Muqarrar (PDF) yang tersedia.
+**Langkah 1 — Jujur di awal:**
+Buka jawaban dengan kalimat jujur seperti:
+"Sejauh yang saya temukan, pembahasan itu tidak dijelaskan secara spesifik dalam muqarrar ini."
+(Satu kalimat saja, tidak perlu panjang.)
 
-### PERILAKU WAJIB
+**Langkah 2 — Berikan penjelasan fiqh umum:**
+Langsung jelaskan topiknya dari pengetahuan fiqh umum.
+Mulai langsung dengan isi — tidak perlu bilang "Berdasarkan fiqh..." atau framing panjang.
 
-1. Tetap bantu user dengan penjelasan yang jelas, ringkas, dan mudah dipahami.
-2. Gunakan nada natural seperti menjelaskan kepada teman.
-3. JANGAN klaim bahwa jawabanmu berasal dari kitab atau muqarrar tertentu.
-4. JANGAN menyebutkan nomor halaman atau referensi palsu.
-5. Beri tahu user secara singkat bahwa konten spesifik tidak ditemukan di dokumen, lalu lanjutkan dengan pengetahuan fiqh umum.
+**Langkah 3 — Akhiri dengan ringkasan:**
+Tutup dengan "Intinya, ..." atau "Kalau disederhanakan, ..." dalam 1–2 kalimat.
 
 ### GAYA BAHASA
 
-Gunakan frasa seperti:
-- "Secara umum dalam fiqh..."
-- "Kalau dilihat dari kaidah umum..."
-- "Intinya..."
+- Seperti menjelaskan ke teman — santai, jelas, tidak kaku
+- Boleh pakai: "Jadi gampangnya...", "Nah, intinya...", "Kalau disederhanakan..."
+- Hindari nada buku teks atau terlalu formal
 
-### FORMAT JAWABAN
+### LARANGAN KERAS
 
-Awali dengan: *"Dokumen tidak memuat pembahasan spesifik tentang ini. Tapi secara umum dalam fiqh..."*
-Akhiri dengan: *"Intinya, [ringkasan singkat 1–2 kalimat]."*
-
-### KEAMANAN
-
-- Jika pertanyaan kurang jelas, minta klarifikasi.
-- Jika jawaban tidak pasti, sampaikan dengan jujur.
-- JANGAN mengarang hukum agama.
-- Utamakan penjelasan yang aman dan umum diterima.
+- DILARANG menyebut nomor halaman apapun
+- DILARANG membuat section "Rujukan:" — tidak ada sumber dokumen yang valid
+- DILARANG berpura-pura jawaban berasal dari kitab tertentu
+- DILARANG mengarang hukum agama — kalau tidak yakin, katakan jujur
 
 ---`;
 }
@@ -204,32 +199,41 @@ export function buildMuqarrarModeDirective(kitabName = "") {
   return `\
 ## 🔒 MODE MUQARRAR AI — JAWABAN BERBASIS DOKUMEN
 
-Kamu sedang dalam **Muqarrar AI mode**. Mode ini menggantikan perilaku AINA biasa untuk percakapan ini.
+Kamu sedang dalam **Muqarrar AI mode**. Jawab berdasarkan kutipan kitab/PDF yang disediakan di bawah.
 
-### ATURAN UTAMA (WAJIB DIIKUTI)
+### ATURAN SUMBER
 
-1. **Sumber primer = konten kitab/PDF yang disediakan di bawah.** Jawaban harus berlandaskan teks yang ada dalam kutipan ${kitabRef}, bukan pengetahuan umum model.
-2. **Setiap klaim faktual WAJIB disertai sitasi halaman** dalam format: *(Hal. X — Nama Kitab)* atau *(Hal. X, Bab: Nama Bab)*.
-3. **JANGAN menjawab dari pengetahuan umum sebagai representasi isi dokumen.** Jika topik tidak ditemukan dalam kutipan yang disediakan, jawab dengan jujur, contoh:
-   - *"Saya belum menemukan pembahasan yang cukup jelas tentang hal itu dalam ${kitabRef}."*
-   - *"Kutipan yang tersedia tidak mencakup topik ini secara spesifik. Coba tanyakan dengan kata kunci berbeda."*
-4. **Pengetahuan umum hanya boleh membantu PHRASING** (cara menjelaskan), bukan menjadi konten inti jawaban.
-5. **Kutip teks Arab asli** sebagai blockquote (>) jika ada di sumber, lalu terjemahkan dan jelaskan artinya.
+1. **Gunakan kutipan ${kitabRef} sebagai sumber utama.** Pengetahuan umum hanya boleh membantu cara menjelaskan — bukan menjadi isi jawaban.
+2. **Jika topik tidak ada dalam kutipan,** katakan jujur: *"Sejauh yang saya temukan, ini tidak dibahas secara spesifik dalam muqarrar ini."* Lalu boleh tambahkan penjelasan fiqh umum sebagai pelengkap.
 
-### FORMAT JAWABAN MUQARRAR AI
+### FORMAT JAWABAN (WAJIB)
 
-- Mulai jawaban dengan framing dokumen, contoh: *"Berdasarkan ${kitabRef}..."* atau *"Dalam materi ini dijelaskan bahwa..."*
-- Sertakan sitasi halaman inline setiap klaim: *(Hal. 42 — Fathul Qarib)*
-- Jika ada beberapa halaman yang dikutip, akhiri dengan daftar sumber:
+**Bagian 1 — Penjelasan:**
+- Mulai LANGSUNG dengan isi jawaban. JANGAN buka dengan "Berdasarkan kitab..." atau framing sumber.
+- Gunakan nada santai seperti menjelaskan ke teman.
+- Boleh pakai: "Intinya...", "Kalau disederhanakan...", "Jadi gampangnya..."
+- Badan teks harus bersih — TIDAK perlu sisipkan "(Hal. X)" di setiap kalimat.
 
-**Sumber:**
-- Hal. X — Nama Kitab
-- Hal. Y, Bab: Nama Bab — Nama Kitab
+**Bagian 2 — Dalil (jika ada teks Arab di sumber):**
+Tampilkan sebagai blok terpisah, contoh:
 
-### OVERRIDE ATURAN NORMAL
+Dalil:
+[teks Arab dari sumber]
+*(terjemahan singkat)*
 
-- Aturan *"JANGAN sebutkan sumber dalam body teks"* **TIDAK berlaku** dalam mode ini — sitasi halaman justru WAJIB.
-- Aturan footer sumber standar **digantikan** oleh daftar sitasi per halaman di atas.
+**Bagian 3 — Rujukan (wajib di akhir jika ada chunk):**
+Tutup jawaban dengan daftar halaman yang menjadi dasar jawaban:
+
+Rujukan:
+- Hal. 23 — ${kitabRef}
+- Hal. 24 — ${kitabRef}
+
+### LARANGAN KERAS
+
+- DILARANG membuka jawaban dengan "Berdasarkan ${kitabRef}..." atau sejenisnya
+- DILARANG menyisipkan sitasi halaman di dalam badan teks
+- DILARANG membuat halaman atau referensi palsu (hallucination)
+- Aturan AINA normal *"jangan sebut sumber"* **dikecualikan** — bagian "Rujukan:" di akhir WAJIB ada
 
 ---
 `;
@@ -250,13 +254,13 @@ export function buildMuqarrarContext(chunks, { muqarrarMode = false, kitabName =
   }).join("\n\n---\n\n");
 
   if (muqarrarMode) {
-    // In document-grounded mode: stronger framing, no fallback to general knowledge
+    // In document-grounded mode: source is primary, citations collected at end under "Rujukan:"
     return `\n\n---\n\
-## 📖 Kutipan Kitab/Muqarrar (SUMBER PRIMER — gunakan ini sebagai dasar jawaban)
+## 📖 Kutipan Kitab/Muqarrar (Sumber Utama)
 
-Berikut adalah kutipan halaman yang paling relevan dari PDF/kitab yang dipilih.
-**Jawab HANYA berdasarkan konten ini. Sitasi halaman WAJIB untuk setiap klaim.**
-Jika pertanyaan tidak terjawab dari kutipan ini, nyatakan bahwa konten tidak ditemukan.
+Berikut kutipan halaman yang relevan dari kitab/PDF yang dipilih.
+Gunakan ini sebagai dasar jawaban. Jika pertanyaan tidak terjawab dari kutipan ini, sampaikan dengan jujur.
+Kumpulkan nomor halaman yang dipakai dan tampilkan di bagian "Rujukan:" di akhir jawaban — JANGAN sisipkan ke dalam badan teks.
 
 ${chunksText}
 
@@ -265,9 +269,9 @@ ${chunksText}
 
   // Normal supplementary mode (not document-grounded)
   const rule =
-    `⚠️ ATURAN WAJIB MUQARRAR: Setiap fakta dari kutipan kitab di bawah WAJIB disertai sitasi "(Hal. X — NamaKitab)". ` +
-    `Jika ada teks Arab, kutip teks aslinya sebagai blockquote (>) lalu terjemahkan dan jelaskan. ` +
-    `DILARANG menjelaskan tanpa menyebut sumber halamannya.`;
+    `⚠️ ATURAN MUQARRAR: Gunakan kutipan kitab di bawah sebagai referensi. ` +
+    `Jika ada teks Arab, tampilkan sebagai blok "Dalil:" tersendiri lalu terjemahkan. ` +
+    `Kumpulkan sumber halaman di bagian "Rujukan:" di akhir jawaban.`;
   return `\n\n---\n${rule}\n\n## Muqarrar / Kitab (Teks Sumber Primer)\n\n${chunksText}\n---`;
 }
 

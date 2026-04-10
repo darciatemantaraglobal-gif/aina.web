@@ -1,0 +1,150 @@
+Good progress. The Muqarrar AI architecture and separation from the legacy system are correct.
+
+Now we are entering refinement phase. I want to improve behavior, UX, and safety — NOT restructure the system.
+
+========================================
+GOAL
+====
+
+Make Muqarrar AI:
+
+* more natural (less robotic)
+* more user-friendly
+* still grounded and trustworthy
+
+========================================
+
+1. RESPONSE STYLE IMPROVEMENT
+   ========================================
+
+Currently, answers tend to start with phrases like:
+"Berdasarkan kitab..." or "Dalam muqarrar ini..."
+
+We want to change this.
+
+NEW RULE:
+
+* Do NOT mention the kitab at the beginning of the answer
+* Start directly with the explanation (natural tone)
+* Mention the source ONLY in the "Rujukan" section at the end
+
+Example change:
+
+OLD:
+"Berdasarkan Fathul Qarib..."
+
+NEW:
+"Najis mutawassithah adalah..."
+
+Then at the end:
+Rujukan:
+
+* Hal. 23 — Fathul Qarib
+
+========================================
+2. HUMAN TONE (VERY IMPORTANT)
+==============================
+
+Adjust tone to feel like:
+
+* explaining to a friend
+* simple, clear, not stiff
+
+Use phrases like:
+
+* "Intinya..."
+* "Kalau disederhanakan..."
+* "Jadi gampangnya..."
+
+Avoid:
+
+* overly formal or textbook-like tone
+* repetitive structured phrasing
+
+========================================
+3. FALLBACK BEHAVIOR (LAYER 2)
+==============================
+
+Current logic is good, but refine output:
+
+When Muqarrar has no relevant chunks:
+
+1. Start with honesty:
+   "Sejauh yang saya temukan, pembahasan itu tidak dijelaskan secara spesifik dalam muqarrar ini."
+
+2. THEN give general fiqh explanation
+
+3. Make sure:
+
+* DO NOT pretend it comes from the kitab
+* DO NOT include page references
+
+========================================
+4. CITATION FORMAT CLEANUP
+==========================
+
+Keep citations ONLY at the end under "Rujukan"
+
+Format:
+Rujukan:
+
+* Hal. 23 — Fathul Qarib
+* Hal. 24 — Fathul Qarib
+
+Do NOT force citation inside every sentence.
+Keep body clean and readable.
+
+========================================
+5. DALIL FORMAT (IMPORTANT)
+===========================
+
+If Arabic dalil is present:
+
+Wrap it clearly as a separate block.
+
+Example:
+
+Dalil:
+[Arabic text here]
+
+Do not mix Arabic text inline with explanation.
+
+========================================
+6. SAFETY RULE
+==============
+
+Ensure:
+
+* No hallucinated kitab references
+* No fake page numbers
+* Clear separation:
+
+  * Muqarrar-based answer
+  * General knowledge fallback
+
+========================================
+7. DO NOT BREAK ANYTHING
+========================
+
+* Do NOT change routing logic
+* Do NOT change retrieval logic
+* Do NOT modify database structure
+
+This is ONLY about:
+
+* response formatting
+* tone
+* output clarity
+
+========================================
+DELIVERABLE
+===========
+
+Show:
+
+1. Updated prompt/context strategy
+2. Example answer (Muqarrar found)
+3. Example answer (fallback)
+4. Any files modified
+
+Keep changes minimal but impactful.
