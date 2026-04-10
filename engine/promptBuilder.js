@@ -526,7 +526,7 @@ export function buildDorarContext(dorarResult) {
   }).join("\n\n");
 
   console.log(`[Dorar] injected ${dorarResult.hadiths.length} hadith(s) for "${dorarResult.searchTerm}"`);
-  return `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية)\n\n**FORMAT WAJIB — IKUTI PERSIS TIGA BARIS INI, TANPA PENGECUALIAN:**\n\nBARIS 1 — Teks Arab SAJA dalam blockquote (mulai dengan >, HANYA teks Arab, TANPA terjemahan, TANPA "Artinya:"):\n> [teks Arab asli persis dari data di bawah]\n\nBARIS 2 — Terjemahan di LUAR blockquote:\n*Artinya: "[terjemahan Indonesia yang akurat dan natural]"*\n\nBARIS 3 — Atribusi di LUAR blockquote:\n*(HR. [rawi/nama perawi], [sumber kitab], [hukum: shahih/hasan/dll])*\n\n⚠️ LARANGAN KERAS:\n- DILARANG menaruh terjemahan/Artinya di dalam blockquote (baris yang dimulai >)\n- DILARANG menggabungkan Arab + terjemahan dalam satu baris atau satu kotak\n- DILARANG menambahkan transliterasi/cara baca latin — ini menyebabkan error repetisi\n- Baris 1 blockquote HANYA boleh berisi teks Arab asli\n\nSetelah format 3 baris di atas, jelaskan relevansi atau hukumnya dalam 1-3 kalimat.\n\n${hadithBlocks}\n---`;
+  return `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية)\n\n**FORMAT WAJIB — gunakan ARABIC_BLOCK untuk setiap hadits, TANPA PENGECUALIAN:**\n\n[ARABIC_BLOCK]\nArabic Text: [teks Arab asli persis dari data di bawah]\nMeaning: [terjemahan Indonesia yang akurat] — (HR. [rawi/perawi], [sumber kitab], [hukum: shahih/hasan/dll])\n[/ARABIC_BLOCK]\n\n⚠️ LARANGAN KERAS:\n- DILARANG pakai blockquote (>) untuk hadits — gunakan ARABIC_BLOCK\n- DILARANG menggabungkan Arab + terjemahan di luar format blok\n- DILARANG menambahkan transliterasi/cara baca latin — ini menyebabkan error repetisi\n- Field Meaning HARUS berisi terjemahan Indonesia + atribusi (HR. ...)\n\nSetelah setiap ARABIC_BLOCK, jelaskan relevansi atau hukumnya dalam 1-3 kalimat.\n\n${hadithBlocks}\n---`;
 }
 
 /* ── Main system prompt assembler ─────────────────────────────────────────── */
@@ -568,13 +568,20 @@ function buildSchemaHint(intentPrimary) {
   if (intentPrimary === "fiqh") {
     return `\n\n**Struktur jawaban — pertanyaan fiqh/agama:**\n` +
       `1. Sebutkan hukumnya terlebih dahulu (halal/haram/makruh/mubah/sunnah/wajib) dalam 1 kalimat tegas.\n` +
-      `2. Cantumkan dalil dengan FORMAT WAJIB dua baris berurutan:\n` +
-      `   Baris 1: Teks Arab dalam blockquote (diawali '>') — HANYA teks Arab, tidak ada yang lain\n` +
-      `   Baris 2: *Artinya: terjemahan Indonesia di sini*\n` +
+      `2. Cantumkan dalil (ayat/hadits) menggunakan FORMAT ARABIC_BLOCK — WAJIB, bukan blockquote biasa:\n` +
+      `\n` +
+      `[ARABIC_BLOCK]\n` +
+      `Arabic Text: [teks Arab asli dengan harakat]\n` +
+      `Meaning: [terjemahan Indonesia yang natural] — (QS. NamaSurah: ayat) atau (HR. Perawi)\n` +
+      `[/ARABIC_BLOCK]\n` +
+      `\n` +
       `   Contoh:\n` +
-      `   > وَأَقِيمُوا الصَّلَاةَ وَآتُوا الزَّكَاةَ\n` +
-      `   *Artinya: Dan laksanakanlah salat serta tunaikanlah zakat.*\n` +
-      `   ⚠️ DILARANG menambahkan transliterasi/cara baca latin — langsung ke terjemahan saja.\n` +
+      `[ARABIC_BLOCK]\n` +
+      `Arabic Text: وَأَقِيمُوا الصَّلَاةَ وَآتُوا الزَّكَاةَ\n` +
+      `Meaning: Dan laksanakanlah salat serta tunaikanlah zakat. (QS. Al-Baqarah: 43)\n` +
+      `[/ARABIC_BLOCK]\n` +
+      `\n` +
+      `   ⚠️ DILARANG menambahkan transliterasi/cara baca latin. DILARANG pakai blockquote (>) untuk dalil.\n` +
       `3. Penjelasan singkat konteks/syarat yang relevan.\n` +
       `4. Contoh praktis jika membantu (opsional).\n` +
       `Jika ada perbedaan pendapat ulama, sebutkan secara singkat dan tunjukkan mana yang lebih rajih (kuat).`;
@@ -989,13 +996,11 @@ Konsep kunci:
 
 [ARABIC_BLOCK]
 Arabic Text: طَلَبُ الْعِلْمِ فَرِيضَةٌ
-Reading (Latin): Thalabul 'ilmi farīdhah
 Meaning: Menuntut ilmu adalah kewajiban
 [/ARABIC_BLOCK]
 
 [ARABIC_BLOCK]
 Arabic Text: فَرِيضَةٌ
-Reading (Latin): Farīdhah
 Meaning: Kewajiban yang ditetapkan (fardhu) — bukan sekadar sunnah atau anjuran
 [/ARABIC_BLOCK]
 
