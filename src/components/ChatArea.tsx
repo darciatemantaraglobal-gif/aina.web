@@ -362,6 +362,76 @@ function isMajorityArabic(node: any): boolean {
   return isArabicText(extractMdText(node));
 }
 
+// ── Inline Arabic wrapper ─────────────────────────────────────────────────────
+// Matches contiguous Arabic character sequences (incl. harakat + spaces between words)
+const AR_RUN_RE = /([\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF][\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF\s]*[\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF]|[\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF]+)/g;
+
+/**
+ * Split a plain string into alternating Latin and Arabic segments.
+ * Arabic segments are wrapped in a styled <span dir="rtl">.
+ */
+function wrapArabicRuns(text: string, baseKey = 0): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = baseKey;
+  AR_RUN_RE.lastIndex = 0;
+  while ((m = AR_RUN_RE.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    const ar = m[0].trim();
+    if (ar) {
+      nodes.push(
+        <span
+          key={k++}
+          dir="rtl"
+          style={{ fontFamily: "'Amiri', serif", fontSize: "1.1em", lineHeight: "1.9", display: "inline-block", verticalAlign: "middle" }}
+        >
+          {ar}
+        </span>
+      );
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+/**
+ * Recursively walk React children and wrap Arabic text runs in styled spans.
+ * Only processes string children — React element children are cloned with
+ * processed children. Handles arrays, single elements, and plain strings.
+ */
+function wrapChildrenArabic(children: React.ReactNode, depth = 0): React.ReactNode {
+  if (depth > 5) return children; // guard against deep recursion
+  if (typeof children === "string") {
+    if (!/[\u0600-\u06FF]/.test(children)) return children;
+    const nodes = wrapArabicRuns(children);
+    return nodes.length === 1 ? nodes[0] : <>{nodes}</>;
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, i) => {
+      if (typeof child === "string" && /[\u0600-\u06FF]/.test(child)) {
+        const nodes = wrapArabicRuns(child, i * 100);
+        return nodes.length === 1 ? nodes[0] : <React.Fragment key={i}>{nodes}</React.Fragment>;
+      }
+      if (React.isValidElement(child)) {
+        const el = child as React.ReactElement<any>;
+        if (/[\u0600-\u06FF]/.test(extractMdText(el.props?.children))) {
+          return React.cloneElement(el, { key: i, children: wrapChildrenArabic(el.props.children, depth + 1) } as any);
+        }
+      }
+      return child;
+    });
+  }
+  if (React.isValidElement(children)) {
+    const el = children as React.ReactElement<any>;
+    if (/[\u0600-\u06FF]/.test(extractMdText(el.props?.children))) {
+      return React.cloneElement(el, { children: wrapChildrenArabic(el.props.children, depth + 1) } as any);
+    }
+  }
+  return children;
+}
+
 // Extract plain text from an mdast AST node (for rowspan computation)
 function extractMdastText(node: any): string {
   if (!node) return "";
@@ -399,19 +469,34 @@ const MD_COMPONENTS = {
         </p>
       );
     }
-    const isArabic = containsArabic(children);
-    return isArabic ? (
-      <p dir="auto" className="mb-5 last:mb-0 break-words text-foreground/90"
-        style={{ lineHeight: "2.0", fontFamily: "'Amiri', serif" }}>
-        {children}
+    const hasArabic = /[\u0600-\u06FF]/.test(text);
+    if (!hasArabic) {
+      return <p className="mb-5 last:mb-0 break-words leading-[1.75] text-foreground/90">{children}</p>;
+    }
+    // Majority Arabic (standalone ayat/dalil) → full RTL paragraph
+    if (isArabicText(text)) {
+      return (
+        <p dir="rtl" className="mb-5 last:mb-0 break-words text-foreground/90 text-right"
+          style={{ lineHeight: "2.2", fontFamily: "'Amiri', serif", fontSize: "1.05em" }}>
+          {children}
+        </p>
+      );
+    }
+    // Mixed paragraph — keep LTR, wrap Arabic runs inline
+    return (
+      <p className="mb-5 last:mb-0 break-words leading-[1.75] text-foreground/90">
+        {wrapChildrenArabic(children)}
       </p>
-    ) : (
-      <p className="mb-5 last:mb-0 break-words leading-[1.75] text-foreground/90">{children}</p>
     );
   },
-  strong: ({ children }: any) => (
-    <strong className="font-bold text-foreground">{children}</strong>
-  ),
+  strong: ({ children }: any) => {
+    const hasArabic = /[\u0600-\u06FF]/.test(extractMdText(children));
+    return (
+      <strong className="font-bold text-foreground">
+        {hasArabic ? wrapChildrenArabic(children) : children}
+      </strong>
+    );
+  },
   em: ({ children }: any) => {
     const text = [children].flat().map((c: any) => (typeof c === "string" ? c : "")).join("");
     if (/^\(cara baca:/i.test(text)) {
@@ -438,14 +523,18 @@ const MD_COMPONENTS = {
   li: ({ children }: any) => {
     const listType = useContext(ListTypeContext);
     const isOrdered = listType === "ol";
-    const majorityArabic = isMajorityArabic(children);
+    const liText = extractMdText(children);
+    const majorityArabic = isArabicText(liText);
+    const hasInlineArabic = !majorityArabic && /[\u0600-\u06FF]/.test(liText);
 
     if (isOrdered) {
       return (
         <li className="leading-[1.75] break-words pl-1">
           {majorityArabic
             ? <span dir="rtl" className="block text-right" style={{ lineHeight: "2.0" }}>{children}</span>
-            : children}
+            : hasInlineArabic
+              ? wrapChildrenArabic(children)
+              : children}
         </li>
       );
     }
@@ -463,7 +552,9 @@ const MD_COMPONENTS = {
     return (
       <li className="flex gap-3 items-start leading-[1.75]">
         <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
-        <span className="flex-1 min-w-0 break-words">{children}</span>
+        <span className="flex-1 min-w-0 break-words">
+          {hasInlineArabic ? wrapChildrenArabic(children) : children}
+        </span>
       </li>
     );
   },
