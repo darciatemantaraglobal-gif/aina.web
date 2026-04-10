@@ -4,7 +4,6 @@ import DashboardSidebar from "@/components/DashboardSidebar";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import PwaSplash from "@/components/PwaSplash";
 import ChatArea from "@/components/ChatArea";
-import FeedbackButton from "@/components/FeedbackButton";
 import WelcomeModal from "@/components/WelcomeModal";
 import BreakingUpdatesBanner from "@/components/BreakingUpdatesBanner";
 import SetupProfileModal from "@/components/SetupProfileModal";
@@ -753,7 +752,6 @@ const Dashboard = () => {
         />
       )}
       <SystemRestartBanner isAdmin={isAdmin} />
-      <FeedbackButton />
       {!showSetup && <AnnouncementPopup />}
       {showTour && activeTourSteps.length > 0 && (
         <GuidedTour

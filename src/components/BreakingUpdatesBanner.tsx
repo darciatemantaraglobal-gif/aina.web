@@ -30,7 +30,6 @@ const BreakingUpdatesBanner = () => {
   const [updates, setUpdates] = useState<Update[]>([]);
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
-  const [expanded, setExpanded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -44,11 +43,10 @@ const BreakingUpdatesBanner = () => {
       const all: Update[] = await res.json();
 
       const dismissed = getDismissed();
-      const visible = all.filter(u => !dismissed.includes(u.id));
-      setUpdates(visible);
+      const undismissed = all.filter(u => !dismissed.includes(u.id));
+      setUpdates(undismissed);
       setIndex(0);
-      setVisible(visible.length > 0);
-      setExpanded(false);
+      setVisible(undismissed.length > 0);
     } catch {
     }
   }, []);
@@ -65,7 +63,6 @@ const BreakingUpdatesBanner = () => {
     setUpdates(next);
     setIndex(prev => Math.min(prev, Math.max(next.length - 1, 0)));
     if (next.length === 0) setVisible(false);
-    setExpanded(false);
   };
 
   const dismissAll = () => {
@@ -79,76 +76,75 @@ const BreakingUpdatesBanner = () => {
   const current = updates[index];
 
   return (
-    <div className="shrink-0 animate-in slide-in-from-top-2 duration-300">
-      <div className="mx-0 border-b border-red-500/20 bg-red-500/8 px-4 py-2.5">
-        <div className="flex items-start gap-2.5">
-          <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/20">
-              <Zap className="h-3 w-3 text-red-400" />
-            </span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-red-400">
-              Update
-            </span>
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+      <div
+        className="pointer-events-auto w-full max-w-sm animate-in fade-in zoom-in-95 duration-300"
+      >
+        <div className="overflow-hidden rounded-2xl border border-red-500/30 bg-card shadow-2xl shadow-red-500/10">
+          {/* Red accent bar */}
+          <div className="h-1 w-full bg-gradient-to-r from-red-600 via-red-500 to-orange-500" />
 
-          <div className="flex-1 min-w-0">
-            <button
-              onClick={() => setExpanded(e => !e)}
-              className="w-full text-left"
-            >
-              <p className="text-sm font-semibold text-foreground leading-snug">
+          <div className="p-4">
+            {/* Header */}
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500/15">
+                  <Zap className="h-3.5 w-3.5 text-red-400" />
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-red-400">
+                  Breaking Update
+                </span>
+                {updates.length > 1 && (
+                  <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-400 tabular-nums">
+                    {index + 1}/{updates.length}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => dismiss(current.id)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                title="Tutup"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold leading-snug text-foreground">
                 {current.topic}
               </p>
-              {!expanded && (
-                <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
-                  {current.content}
-                </p>
-              )}
-              {expanded && (
-                <p className="mt-1 text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
-                  {current.content}
-                </p>
-              )}
-            </button>
-          </div>
+              <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {current.content}
+              </p>
+            </div>
 
-          <div className="flex shrink-0 items-center gap-1">
+            {/* Navigation / dismiss */}
             {updates.length > 1 && (
-              <>
+              <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-3">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setIndex(i => Math.max(i - 1, 0))}
+                    disabled={index === 0}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setIndex(i => Math.min(i + 1, updates.length - 1))}
+                    disabled={index === updates.length - 1}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
                 <button
-                  onClick={() => { setIndex(i => Math.max(i - 1, 0)); setExpanded(false); }}
-                  disabled={index === 0}
-                  className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                  onClick={dismissAll}
+                  className="rounded-lg px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
-                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Tutup semua
                 </button>
-                <span className="text-[10px] text-muted-foreground tabular-nums">
-                  {index + 1}/{updates.length}
-                </span>
-                <button
-                  onClick={() => { setIndex(i => Math.min(i + 1, updates.length - 1)); setExpanded(false); }}
-                  disabled={index === updates.length - 1}
-                  className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
-            <button
-              onClick={() => dismiss(current.id)}
-              className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              title="Tutup update ini"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-            {updates.length > 1 && (
-              <button
-                onClick={dismissAll}
-                className="hidden sm:flex h-6 items-center rounded-lg px-2 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                title="Tutup semua"
-              >
-                Tutup semua
-              </button>
+              </div>
             )}
           </div>
         </div>
