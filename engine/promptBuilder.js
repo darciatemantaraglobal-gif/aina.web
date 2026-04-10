@@ -142,13 +142,62 @@ export function buildKnowledgeContext(articles) {
  * @returns {string}
  */
 /**
+ * Build the Muqarrar AI FALLBACK directive.
+ * Injected when muqarrar mode is active but NO relevant PDF chunks were found.
+ *
+ * Instead of refusing to answer, AINA answers from general fiqh knowledge
+ * honestly — without fabricating page numbers or pretending the info came from
+ * a specific kitab.
+ */
+export function buildMuqarrarFallbackDirective(kitabName = "") {
+  const kitabRef = kitabName ? `"${kitabName}"` : "muqarrar yang dipilih";
+  return `\n\n---\n\
+## 📖 Muqarrar AI — Fallback: Tidak Ada Kutipan Relevan
+
+Sistem tidak berhasil menemukan kutipan yang cukup relevan dari ${kitabRef} untuk pertanyaan ini.
+
+**Gunakan mode fallback berikut untuk menjawab:**
+
+Kamu adalah asisten pengetahuan Islam yang membantu.
+Tugasmu adalah menjawab pertanyaan user menggunakan pengetahuan fiqh umum karena tidak ada sumber Muqarrar (PDF) yang tersedia.
+
+### PERILAKU WAJIB
+
+1. Tetap bantu user dengan penjelasan yang jelas, ringkas, dan mudah dipahami.
+2. Gunakan nada natural seperti menjelaskan kepada teman.
+3. JANGAN klaim bahwa jawabanmu berasal dari kitab atau muqarrar tertentu.
+4. JANGAN menyebutkan nomor halaman atau referensi palsu.
+5. Beri tahu user secara singkat bahwa konten spesifik tidak ditemukan di dokumen, lalu lanjutkan dengan pengetahuan fiqh umum.
+
+### GAYA BAHASA
+
+Gunakan frasa seperti:
+- "Secara umum dalam fiqh..."
+- "Kalau dilihat dari kaidah umum..."
+- "Intinya..."
+
+### FORMAT JAWABAN
+
+Awali dengan: *"Dokumen tidak memuat pembahasan spesifik tentang ini. Tapi secara umum dalam fiqh..."*
+Akhiri dengan: *"Intinya, [ringkasan singkat 1–2 kalimat]."*
+
+### KEAMANAN
+
+- Jika pertanyaan kurang jelas, minta klarifikasi.
+- Jika jawaban tidak pasti, sampaikan dengan jujur.
+- JANGAN mengarang hukum agama.
+- Utamakan penjelasan yang aman dan umum diterima.
+
+---`;
+}
+
+/**
  * Build the Muqarrar AI mode top-level directive.
  * This is injected at the VERY TOP of the system prompt (highest priority)
- * when the user is in document-grounded Muqarrar AI mode.
+ * when the user is in document-grounded Muqarrar AI mode AND chunks are found.
  *
  * Purpose: override the default AINA persona behavior so that the AI
- * answers ONLY from retrieved PDF chunks, with mandatory page citations,
- * and refuses to fabricate answers if content is not found in the document.
+ * answers ONLY from retrieved PDF chunks, with mandatory page citations.
  */
 export function buildMuqarrarModeDirective(kitabName = "") {
   const kitabRef = kitabName ? `"${kitabName}"` : "muqarrar yang dipilih";
@@ -186,12 +235,12 @@ Kamu sedang dalam **Muqarrar AI mode**. Mode ini menggantikan perilaku AINA bias
 `;
 }
 
-export function buildMuqarrarContext(chunks, { muqarrarMode = false } = {}) {
+export function buildMuqarrarContext(chunks, { muqarrarMode = false, kitabName = "" } = {}) {
   if (!chunks || chunks.length === 0) {
     // If document-grounded mode is active but no relevant chunks were found,
-    // explicitly tell the model so it doesn't hallucinate from general knowledge.
+    // switch to graceful general-fiqh fallback (not a hard refusal).
     if (muqarrarMode) {
-      return `\n\n---\n## 📖 Muqarrar AI — Tidak Ada Kutipan Relevan\n\nSistem tidak berhasil menemukan kutipan yang cukup relevan dari muqarrar/kitab ini untuk menjawab pertanyaan ini.\n**WAJIB**: Sampaikan kepada user bahwa konten tidak ditemukan. JANGAN menjawab dari pengetahuan umum seolah itu berasal dari dokumen.\n---`;
+      return buildMuqarrarFallbackDirective(kitabName);
     }
     return "";
   }

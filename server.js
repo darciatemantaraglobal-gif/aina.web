@@ -4508,7 +4508,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Each builder is a pure function: input data → context string.
   // Internal logging (Wikipedia, DDG, Perplexity, Dorar, Exchange) is in each builder.
   const knowledgeContext       = buildKnowledgeContext(articles);
-  const muqarrarContext        = buildMuqarrarContext(muqarrarChunks, { muqarrarMode: muqarrarActive });
+  const muqarrarContext        = buildMuqarrarContext(muqarrarChunks, { muqarrarMode: muqarrarActive, kitabName: kitabFilter || "" });
   if (muqarrarChunks.length > 0) {
     const mode_label = muqarrarActive ? "GROUNDED" : "supplementary";
     console.log(`[Muqarrar] injected ${muqarrarChunks.length} chunks [${mode_label}] — Hal.${muqarrarChunks[0]?.page_number} ${muqarrarChunks[0]?.kitab_name}`);
