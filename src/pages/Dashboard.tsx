@@ -642,8 +642,8 @@ const Dashboard = () => {
                 >
                   <Menu className="h-5 w-5" />
                 </button>
-                <div className="flex items-center gap-2">
-                  <img src="/aina-icon.png" alt="AINA" className="h-5 w-5 object-contain" />
+                <div className="flex items-center gap-1.5">
+                  <img src="/aina-icon.png" alt="AINA" className="h-4 w-4 object-contain" />
                   <span className="font-display text-base font-bold text-foreground">
                     {tabTitles[activeTab] ?? "AINA"}
                   </span>
