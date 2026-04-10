@@ -374,7 +374,8 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
 
 const ARABIC_BLOCK_RE = /\[ARABIC_BLOCK\]([\s\S]*?)\[\/ARABIC_BLOCK\]/g;
 
-function renderWithArabicBlocks(content: string, applyClean = true): React.ReactNode {
+function renderWithArabicBlocks(content: string | null | undefined, applyClean = true): React.ReactNode {
+  if (!content) return null;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -1860,11 +1861,12 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     if (!messages.length) return;
     const date = new Date().toLocaleDateString("id-ID", { year: "numeric", month: "long", day: "numeric" });
     const firstUser = messages.find(m => m.role === "user");
-    const title = firstUser ? firstUser.content.slice(0, 60).replace(/\n/g, " ") : "Chat";
+    const firstContent = firstUser?.content ?? "";
+    const title = firstContent ? firstContent.slice(0, 60).replace(/\n/g, " ") : "Chat";
     const lines: string[] = [
       "AINA — Ekspor Percakapan",
       `Tanggal : ${date}`,
-      `Topik   : ${title}${firstUser && firstUser.content.length > 60 ? "…" : ""}`,
+      `Topik   : ${title}${firstContent.length > 60 ? "…" : ""}`,
       "=".repeat(55),
       "",
     ];
@@ -2133,7 +2135,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     {/* Source badges + confidence badge + freshness warning */}
                     {(() => {
                       if (msg.intent === "casual") return null;
-                      const sources = msg.sources?.length ? msg.sources : extractSources(msg.content);
+                      const sources = msg.sources?.length ? msg.sources : extractSources(msg.content ?? "");
                       const confCfg = getConfidenceBadgeConfig(msg.sourceMetadata?.confidence);
                       const ConfIcon = confCfg?.icon;
                       return (sources.length > 0 || confCfg) ? (
