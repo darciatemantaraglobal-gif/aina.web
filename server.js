@@ -2352,7 +2352,7 @@ async function fetchPerplexityContext(query) {
       console.log(`[WebSearch/Perplexity] → calling model=${perplexityModel} query="${query.slice(0, 60)}..."`);
       const res = await fetch("https://api.perplexity.ai/chat/completions", {
         method: "POST",
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(5000),
         headers: {
           "Authorization": `Bearer ${perplexityKey}`,
           "Content-Type": "application/json",
@@ -2390,8 +2390,13 @@ async function fetchPerplexityContext(query) {
     }
   }
 
-  // ── Path B: OpenAI GPT-4o-mini via OpenRouter (reliable fallback when Perplexity fails) ──
-  if (!openrouterKey) return null;
+  // ── Path B disabled ────────────────────────────────────────────────────────
+  // Using OpenRouter for a web-search LLM call adds a full extra round-trip
+  // (8s timeout) before the main model call, doubling perceived latency.
+  // When Perplexity is unavailable, the main Gemini model answers from its
+  // own training knowledge — fast is better than a slow supplemental context.
+  return null;
+  // eslint-disable-next-line no-unreachable
   const systemMsgOpenAI = isFiqhCtx
     ? `Kamu adalah asisten yang paham fiqh Islam dan bahasa Arab. Berikan penjelasan hukum Islam yang singkat, akurat dalam 3–5 kalimat. Sebutkan dasar hukumnya jika memungkinkan. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`
     : `Kamu adalah asisten untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual yang jelas dalam 3–5 kalimat atau daftar singkat. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`;
@@ -4171,6 +4176,28 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
   if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
 
+  // ── Set SSE headers immediately after auth ─────────────────────────────────
+  // User sees the typing cursor RIGHT AWAY while preprocessing runs in background.
+  // All subsequent errors (moderation, rate-limit) are sent as SSE error events.
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  res.write(`: heartbeat\n\n`);
+
+  const _keepaliveInterval = setInterval(() => {
+    try { res.write(`: keepalive\n\n`); } catch { clearInterval(_keepaliveInterval); }
+  }, 5000);
+  res.once("finish", () => clearInterval(_keepaliveInterval));
+  res.once("close",  () => clearInterval(_keepaliveInterval));
+
+  // Helper: send an SSE error event and close the stream
+  const _sseError = (payload) => {
+    try { res.write(`data: ${JSON.stringify({ type: "error", ...payload })}\n\n`); } catch {}
+    res.end();
+  };
+
   // Extract last user message early — needed for intent + memory retrieval
   const rawLastContent = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
   const lastUserMessage = Array.isArray(rawLastContent)
@@ -4210,9 +4237,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   if (lastUserMessage.length > 5) {
     const modResult = await checkModeration(lastUserMessage);
     if (modResult.flagged) {
-      return res.status(451).json({
-        error: "Pesan mengandung konten yang tidak sesuai. Tolong ubah pertanyaanmu agar AINA bisa membantu.",
-      });
+      _sseError({ error: "Pesan mengandung konten yang tidak sesuai. Tolong ubah pertanyaanmu agar AINA bisa membantu." });
+      return;
     }
   }
 
@@ -4259,10 +4285,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`Rate limit check: user ${user.id} used ${count}/${DAILY_FREE_LIMIT} messages today`);
 
     if ((count ?? 0) >= DAILY_FREE_LIMIT) {
-      return res.status(429).json({
-        error: "Batas chat harian tercapai",
-        limitReached: true,
-      });
+      _sseError({ error: "Batas chat harian tercapai", limitReached: true });
+      return;
     }
   }
 
@@ -4309,11 +4333,6 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
     const pool = isSalam ? salamOptions : greetOptions;
     const greetReply = pool[Math.floor(Math.random() * pool.length)];
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
     const words = greetReply.split(" ");
     for (let i = 0; i < words.length; i++) {
       const chunk = (i === 0 ? "" : " ") + words[i];
@@ -4362,10 +4381,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Skip early-start for: local-Masisir, casual, arabic_writing, brainstorming, currency.
   const isLocalMasisir = masisirCtx.isLocal;
   const INTENTS_NO_PERPLEXITY = new Set(["casual", "arabic_writing", "arabic_analysis", "brainstorming"]);
+  // Only start early if Perplexity key is available — OpenRouter fallback is disabled (too slow).
   const earlyPerplexityStart = !isLocalMasisir
     && !INTENTS_NO_PERPLEXITY.has(intent.primary)
     && !isCurrencyQuery(retrievalQuery)
-    && (process.env.PERPLEXITY_API_KEY || process.env.OPENROUTER_API_KEY);
+    && !!process.env.PERPLEXITY_API_KEY;
   const earlyPerplexityPromise = earlyPerplexityStart
     ? fetchPerplexityContext(retrievalQuery)
     : Promise.resolve(null);
@@ -4935,26 +4955,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     return 4000;
   })();
 
-  // ── Set SSE headers before model calls ─────────────────────────────────────
-  // Must be set before any res.write() calls; once flushed, headers are committed.
-  _chatDebugStep = "sse-headers";
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-
-  // Send immediate heartbeat so Vercel (and any proxy) knows the stream is alive.
-  // Without this, Vercel may buffer the entire response until the function completes.
-  res.write(`: heartbeat\n\n`);
-
-  // Periodic keepalive to prevent gateway timeout on Vercel Hobby (auto-clears on finish)
-  const _keepaliveInterval = setInterval(() => {
-    try { res.write(`: keepalive\n\n`); } catch { clearInterval(_keepaliveInterval); }
-  }, 5000);
-  res.once("finish", () => clearInterval(_keepaliveInterval));
-  res.once("close",  () => clearInterval(_keepaliveInterval));
-
+  // SSE headers + keepalive already set up right after auth — stream is live.
   _chatDebugStep = "streaming";
 
   // Helper: attempt a single streaming fetch from OpenRouter

@@ -1704,6 +1704,13 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               doneEvent = evt;
               break outer;
             } else if (evt.type === "error") {
+              // Rate-limit error sent via SSE (headers already committed)
+              if (evt.limitReached) {
+                setLimitReached(true);
+                setDailyCount(DAILY_LIMIT);
+                setStreamingMsg(null);
+                return;
+              }
               // If we already have partial content, use it instead of erroring
               if (accumulated.trim().length > 40) {
                 doneEvent = { reply: accumulated, sources: [], partial: true };
@@ -1711,7 +1718,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               }
               // Otherwise surface a friendly fallback — still break cleanly
               doneEvent = {
-                reply: "Sepertinya ada gangguan jaringan sesaat. Coba kirim ulang pesanmu ya — biasanya langsung berhasil.",
+                reply: evt.error ?? "Sepertinya ada gangguan jaringan sesaat. Coba kirim ulang pesanmu ya — biasanya langsung berhasil.",
                 sources: [], model: "error-fallback", intent: "casual",
                 confidence: "low", source_used: "Model",
                 sourceMetadata: { confidence: "low", primary_source: "Model",
