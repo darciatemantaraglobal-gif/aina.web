@@ -9,19 +9,6 @@ function isStandalone() {
   );
 }
 
-const AINA_LETTERS = ["A", "I", "N", "A"];
-
-const PARTICLES = [
-  { angle: 0,   dist: 90,  size: 3,   delay: 0   },
-  { angle: 45,  dist: 100, size: 2,   delay: 60  },
-  { angle: 90,  dist: 88,  size: 3.5, delay: 30  },
-  { angle: 135, dist: 95,  size: 2,   delay: 90  },
-  { angle: 180, dist: 92,  size: 3,   delay: 15  },
-  { angle: 225, dist: 98,  size: 2.5, delay: 75  },
-  { angle: 270, dist: 86,  size: 3,   delay: 45  },
-  { angle: 315, dist: 100, size: 2,   delay: 105 },
-];
-
 export default function PwaSplash() {
   const [phase, setPhase] = useState<"hidden" | "entering" | "visible" | "fading">("hidden");
 
@@ -36,8 +23,8 @@ export default function PwaSplash() {
       setTimeout(() => setPhase("visible"), 60);
     });
 
-    const fadeTimer = setTimeout(() => setPhase("fading"), 2800);
-    const hideTimer = setTimeout(() => setPhase("hidden"), 3700);
+    const fadeTimer = setTimeout(() => setPhase("fading"), 2400);
+    const hideTimer = setTimeout(() => setPhase("hidden"), 3200);
 
     return () => {
       clearTimeout(fadeTimer);
@@ -53,289 +40,144 @@ export default function PwaSplash() {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden"
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
       style={{
-        background: "radial-gradient(ellipse at 50% 40%, #1a0435 0%, #0b0018 45%, #040008 100%)",
+        background: "linear-gradient(160deg, #0e0120 0%, #070010 50%, #030008 100%)",
         opacity:    fading ? 0 : 1,
-        transform:  fading ? "scale(1.06)" : "scale(1)",
-        filter:     fading ? "blur(6px)" : "blur(0px)",
-        transition: fading
-          ? "opacity 900ms cubic-bezier(0.4,0,1,1), transform 900ms ease-in, filter 900ms ease-in"
-          : "none",
+        transition: fading ? "opacity 800ms ease-in-out" : "none",
         pointerEvents: "none",
       }}
     >
 
-      {/* ── Background grid lines ── */}
-      <div style={{
-        position: "absolute", inset: 0, opacity: entering ? 0 : fading ? 0 : 0.06,
-        transition: "opacity 1200ms ease 300ms",
-        backgroundImage: `
-          linear-gradient(rgba(139,92,246,0.6) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(139,92,246,0.6) 1px, transparent 1px)
-        `,
-        backgroundSize: "48px 48px",
-        maskImage: "radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 75%)",
-      }} />
-
-      {/* ── Far ambient glow ── */}
+      {/* Ambient glow — single soft orb behind icon */}
       <div style={{
         position: "absolute",
-        width: 480, height: 480,
+        width: 300, height: 300,
         borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(109,40,217,0.18) 0%, transparent 70%)",
-        filter: "blur(60px)",
-        transform: entering ? "scale(0.2)" : fading ? "scale(2)" : "scale(1)",
+        background: "radial-gradient(circle, rgba(109,40,217,0.22) 0%, transparent 70%)",
+        filter: "blur(50px)",
+        transform: entering ? "scale(0.4)" : "scale(1)",
         opacity:   entering ? 0 : fading ? 0 : 1,
         transition: entering
-          ? "transform 1100ms cubic-bezier(0.16,1,0.3,1), opacity 700ms ease"
-          : fading
-          ? "transform 900ms ease-in, opacity 900ms ease-in"
-          : "none",
-        animation: visible ? "ambientPulse 4s ease-in-out infinite" : "none",
+          ? "transform 1400ms cubic-bezier(0.16,1,0.3,1), opacity 1000ms ease"
+          : "opacity 800ms ease",
+        animation: visible ? "glowBreath 4s ease-in-out infinite" : "none",
       }} />
 
-      {/* ── Orbital container ── */}
-      <div style={{ position: "relative", width: 220, height: 220, display: "flex", alignItems: "center", justifyContent: "center" }}>
-
-        {/* Ring 3 — outermost, slow counter-clockwise, dashed */}
-        <div style={{
-          position: "absolute",
-          width: 210, height: 210,
-          borderRadius: "50%",
-          border: "1px dashed rgba(139,92,246,0.25)",
-          transform: entering ? "scale(0) rotate(0deg)" : fading ? "scale(0.3) rotate(-90deg)" : "scale(1) rotate(0deg)",
-          opacity:   entering ? 0 : fading ? 0 : 1,
-          transition: entering
-            ? "transform 1000ms cubic-bezier(0.34,1.4,0.64,1) 100ms, opacity 600ms ease 100ms"
-            : fading
-            ? "transform 700ms ease-in, opacity 700ms ease-in"
-            : "none",
-          animation: visible ? "spinCCW 18s linear infinite" : "none",
-        }} />
-
-        {/* Ring 2 — mid, medium speed clockwise, solid thin */}
-        <div style={{
-          position: "absolute",
-          width: 170, height: 170,
-          borderRadius: "50%",
-          border: "1.5px solid transparent",
-          backgroundImage: "linear-gradient(#0b0018,#0b0018), conic-gradient(rgba(167,139,250,0.7) 0deg, rgba(109,40,217,0.1) 180deg, rgba(167,139,250,0.7) 360deg)",
-          backgroundOrigin: "border-box",
-          backgroundClip: "padding-box, border-box",
-          transform: entering ? "scale(0) rotate(0deg)" : fading ? "scale(0.4) rotate(90deg)" : "scale(1) rotate(0deg)",
-          opacity:   entering ? 0 : fading ? 0 : 1,
-          transition: entering
-            ? "transform 950ms cubic-bezier(0.34,1.4,0.64,1) 150ms, opacity 550ms ease 150ms"
-            : fading
-            ? "transform 700ms ease-in, opacity 700ms ease-in"
-            : "none",
-          animation: visible ? "spinCW 10s linear infinite" : "none",
-        }} />
-
-        {/* Ring 1 — inner, fast counter-clockwise, arc style */}
-        <div style={{
-          position: "absolute",
-          width: 138, height: 138,
-          borderRadius: "50%",
-          border: "2px solid transparent",
-          backgroundImage: "linear-gradient(#0b0018,#0b0018), conic-gradient(rgba(196,181,253,0.9) 0deg, rgba(196,181,253,0.1) 120deg, transparent 160deg, transparent 360deg)",
-          backgroundOrigin: "border-box",
-          backgroundClip: "padding-box, border-box",
-          transform: entering ? "scale(0) rotate(0deg)" : fading ? "scale(0.5) rotate(-180deg)" : "scale(1) rotate(0deg)",
-          opacity:   entering ? 0 : fading ? 0 : 1,
-          transition: entering
-            ? "transform 900ms cubic-bezier(0.34,1.56,0.64,1) 200ms, opacity 500ms ease 200ms"
-            : fading
-            ? "transform 700ms ease-in, opacity 700ms ease-in"
-            : "none",
-          animation: visible ? "spinCCW 5s linear infinite" : "none",
-        }} />
-
-        {/* Particle dots — burst outward */}
-        {PARTICLES.map(p => {
-          const rad = (p.angle * Math.PI) / 180;
-          const tx  = Math.cos(rad) * p.dist;
-          const ty  = Math.sin(rad) * p.dist;
-          return (
-            <div key={p.id} style={{
-              position: "absolute",
-              width: p.size, height: p.size,
-              borderRadius: "50%",
-              background: "rgba(196,181,253,0.9)",
-              boxShadow: `0 0 ${p.size * 2}px rgba(167,139,250,0.8)`,
-              transform: entering
-                ? "translate(0px, 0px) scale(0)"
-                : fading
-                ? `translate(${tx * 1.8}px, ${ty * 1.8}px) scale(0)`
-                : `translate(${tx}px, ${ty}px) scale(1)`,
-              opacity: entering ? 0 : fading ? 0 : 0.85,
-              transition: entering
-                ? `transform 700ms cubic-bezier(0.16,1,0.3,1) ${200 + p.delay}ms, opacity 400ms ease ${200 + p.delay}ms`
-                : fading
-                ? "transform 600ms ease-in, opacity 600ms ease-in"
-                : "none",
-            }} />
-          );
-        })}
-
-        {/* Center glow behind icon */}
-        <div style={{
-          position: "absolute",
-          width: 100, height: 100,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(167,139,250,0.4) 0%, rgba(109,40,217,0.15) 55%, transparent 80%)",
-          filter: "blur(12px)",
-          animation: visible ? "centerPulse 2.2s ease-in-out infinite" : "none",
-          transform: entering ? "scale(0)" : fading ? "scale(0)" : "scale(1)",
-          opacity:   entering ? 0 : fading ? 0 : 1,
-          transition: entering
-            ? "transform 600ms cubic-bezier(0.34,1.56,0.64,1) 250ms, opacity 400ms ease 250ms"
-            : "none",
-        }} />
-
-        {/* Icon */}
-        <div style={{
-          position: "relative",
-          width: 82, height: 82,
-          borderRadius: 20,
-          overflow: "hidden",
-          transform: entering
-            ? "scale(0.3) rotate(-15deg)"
-            : fading
-            ? "scale(0.6) rotate(10deg)"
-            : "scale(1) rotate(0deg)",
-          opacity:   entering ? 0 : fading ? 0 : 1,
-          transition: entering
-            ? "transform 700ms cubic-bezier(0.34,1.56,0.64,1) 260ms, opacity 450ms ease 260ms"
-            : fading
-            ? "transform 700ms ease-in, opacity 700ms ease-in"
-            : "none",
-          boxShadow: entering
-            ? "none"
-            : fading
-            ? "0 0 12px rgba(139,92,246,0.3)"
-            : "0 0 0 1px rgba(167,139,250,0.2), 0 0 28px rgba(139,92,246,0.6), 0 0 64px rgba(109,40,217,0.35)",
-          animation: visible ? "iconFloat 3s ease-in-out infinite" : "none",
-        }}>
-          <img
-            src="/aina-favicon-512.png"
-            alt="AINA"
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-          />
-          {/* Scan line sweeping across icon */}
-          <div style={{
-            position: "absolute", inset: 0,
-            background: "linear-gradient(180deg, transparent 0%, rgba(196,181,253,0.18) 48%, rgba(196,181,253,0.35) 50%, rgba(196,181,253,0.18) 52%, transparent 100%)",
-            animation: visible ? "scanLine 2.4s ease-in-out infinite 0.6s" : "none",
-            opacity: visible ? 1 : 0,
-          }} />
-          {/* Corner glint */}
-          <div style={{
-            position: "absolute", top: 0, left: 0,
-            width: 28, height: 28,
-            background: "linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%)",
-            borderRadius: "0 0 100% 0",
-          }} />
-        </div>
-      </div>
-
-      {/* ── Text block ── */}
-      <div style={{ marginTop: 30, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-
-        {/* "AINA" — letters staggered */}
-        <div style={{ display: "flex", gap: 3 }}>
-          {AINA_LETTERS.map((ch, i) => (
-            <span key={i} style={{
-              fontSize: 32,
-              fontWeight: 800,
-              letterSpacing: "0.22em",
-              color: "#fff",
-              display: "inline-block",
-              transform: entering
-                ? "translateY(20px)"
-                : fading
-                ? "translateY(-12px)"
-                : "translateY(0)",
-              opacity:   entering ? 0 : fading ? 0 : 1,
-              textShadow: "0 0 24px rgba(167,139,250,0.7), 0 0 60px rgba(109,40,217,0.4)",
-              transition: entering
-                ? `transform 600ms cubic-bezier(0.34,1.56,0.64,1) ${350 + i * 60}ms, opacity 400ms ease ${350 + i * 60}ms`
-                : fading
-                ? `transform 500ms ease-in ${i * 40}ms, opacity 500ms ease ${i * 40}ms`
-                : "none",
-            }}>
-              {ch}
-            </span>
-          ))}
-        </div>
-
-        {/* Subtitle with slide+fade */}
-        <div style={{
-          transform: entering ? "translateY(10px)" : fading ? "translateY(-8px)" : "translateY(0)",
-          opacity:   entering ? 0 : fading ? 0 : 1,
-          transition: entering
-            ? "transform 600ms cubic-bezier(0.34,1.56,0.64,1) 580ms, opacity 400ms ease 580ms"
-            : "transform 500ms ease-in, opacity 500ms ease",
-        }}>
-          <span style={{
-            fontSize: 11.5,
-            color: "rgba(196,181,253,0.55)",
-            letterSpacing: "0.14em",
-            fontWeight: 500,
-            textTransform: "uppercase",
-          }}>
-            Asisten Pintar Masisir
-          </span>
-        </div>
-      </div>
-
-      {/* ── Progress bar ── */}
+      {/* Single thin orbit ring */}
       <div style={{
-        marginTop: 36,
-        width: 140,
-        height: 2,
-        borderRadius: 2,
-        background: "rgba(139,92,246,0.15)",
-        overflow: "hidden",
-        opacity: entering ? 0 : fading ? 0 : 1,
-        transition: entering ? "opacity 300ms ease 700ms" : "opacity 400ms ease",
+        position: "absolute",
+        width: 156, height: 156,
+        borderRadius: "50%",
+        border: "1px solid rgba(167,139,250,0.18)",
+        transform: entering ? "scale(0.6)" : fading ? "scale(1.4)" : "scale(1)",
+        opacity:   entering ? 0 : fading ? 0 : 1,
+        transition: entering
+          ? "transform 1200ms cubic-bezier(0.16,1,0.3,1) 200ms, opacity 800ms ease 200ms"
+          : fading
+          ? "transform 800ms ease-in, opacity 800ms ease-in"
+          : "none",
+        animation: visible ? "spinSlow 20s linear infinite" : "none",
       }}>
+        {/* Single dot on ring */}
         <div style={{
-          height: "100%",
-          borderRadius: 2,
-          background: "linear-gradient(90deg, rgba(167,139,250,0.4), rgba(196,181,253,1), rgba(167,139,250,0.4))",
-          boxShadow: "0 0 8px rgba(167,139,250,0.8)",
-          animation: visible ? "progressFill 2.4s cubic-bezier(0.4,0,0.2,1) forwards 0.5s" : "none",
-          width: visible ? undefined : "0%",
+          position: "absolute",
+          top: -3, left: "50%",
+          transform: "translateX(-50%)",
+          width: 5, height: 5,
+          borderRadius: "50%",
+          background: "rgba(196,181,253,0.8)",
+          boxShadow: "0 0 8px rgba(167,139,250,0.9)",
         }} />
       </div>
+
+      {/* Icon */}
+      <div style={{
+        width: 88, height: 88,
+        borderRadius: 22,
+        overflow: "hidden",
+        transform: entering ? "scale(0.75) translateY(8px)" : fading ? "scale(0.95) translateY(-4px)" : "scale(1) translateY(0)",
+        opacity:   entering ? 0 : fading ? 0 : 1,
+        transition: entering
+          ? "transform 900ms cubic-bezier(0.34,1.4,0.64,1) 180ms, opacity 600ms ease 180ms"
+          : fading
+          ? "transform 800ms ease-in, opacity 800ms ease-in"
+          : "none",
+        boxShadow: entering || fading
+          ? "none"
+          : "0 0 0 1px rgba(167,139,250,0.15), 0 16px 40px rgba(0,0,0,0.6), 0 0 32px rgba(109,40,217,0.35)",
+        animation: visible ? "iconFloat 5s ease-in-out infinite" : "none",
+      }}>
+        <img
+          src="/aina-favicon-512.png"
+          alt="AINA"
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      </div>
+
+      {/* Text */}
+      <div style={{
+        marginTop: 26,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 6,
+        transform: entering ? "translateY(12px)" : fading ? "translateY(-8px)" : "translateY(0)",
+        opacity:   entering ? 0 : fading ? 0 : 1,
+        transition: entering
+          ? "transform 800ms cubic-bezier(0.34,1.2,0.64,1) 340ms, opacity 600ms ease 340ms"
+          : "transform 800ms ease-in, opacity 800ms ease-in",
+      }}>
+        <span style={{
+          fontSize: 26,
+          fontWeight: 700,
+          letterSpacing: "0.3em",
+          color: "#fff",
+          textShadow: "0 0 30px rgba(167,139,250,0.45)",
+        }}>
+          AINA
+        </span>
+        <span style={{
+          fontSize: 10.5,
+          color: "rgba(196,181,253,0.4)",
+          letterSpacing: "0.18em",
+          fontWeight: 400,
+          textTransform: "uppercase",
+          transform: entering ? "translateY(6px)" : "translateY(0)",
+          opacity:   entering ? 0 : fading ? 0 : 1,
+          transition: entering
+            ? "transform 800ms ease 480ms, opacity 600ms ease 480ms"
+            : "opacity 700ms ease",
+        }}>
+          Asisten Pintar Masisir
+        </span>
+      </div>
+
+      {/* Thin separator line */}
+      <div style={{
+        marginTop: 28,
+        width: entering ? "0px" : fading ? "0px" : "48px",
+        height: "1px",
+        background: "rgba(167,139,250,0.25)",
+        transition: entering
+          ? "width 900ms ease 500ms"
+          : fading
+          ? "width 600ms ease"
+          : "none",
+      }} />
 
       <style>{`
-        @keyframes spinCW  { from { transform: rotate(0deg);    } to { transform: rotate(360deg);  } }
-        @keyframes spinCCW { from { transform: rotate(0deg);    } to { transform: rotate(-360deg); } }
-
-        @keyframes ambientPulse {
-          0%, 100% { transform: scale(1);    opacity: 0.9; }
-          50%       { transform: scale(1.15); opacity: 0.6; }
+        @keyframes glowBreath {
+          0%, 100% { opacity: 0.85; transform: scale(1);    }
+          50%       { opacity: 0.55; transform: scale(1.12); }
         }
-        @keyframes centerPulse {
-          0%, 100% { transform: scale(1);    opacity: 0.85; }
-          50%       { transform: scale(1.3);  opacity: 0.55; }
+        @keyframes spinSlow {
+          from { transform: rotate(0deg);   }
+          to   { transform: rotate(360deg); }
         }
         @keyframes iconFloat {
           0%, 100% { transform: scale(1)    translateY(0px);  }
-          50%       { transform: scale(1.03) translateY(-4px); }
-        }
-        @keyframes scanLine {
-          0%   { transform: translateY(-110%); opacity: 0;   }
-          10%  { opacity: 1; }
-          90%  { opacity: 1; }
-          100% { transform: translateY(110%);  opacity: 0;   }
-        }
-        @keyframes progressFill {
-          from { width: 0%; }
-          to   { width: 100%; }
+          50%       { transform: scale(1.02) translateY(-3px); }
         }
       `}</style>
     </div>
