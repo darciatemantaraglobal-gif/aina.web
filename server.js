@@ -10212,21 +10212,35 @@ app.get("/share/news/:id", async (req, res) => {
 
   const { data: item } = await supabase
     .from("masisir_news")
-    .select("id,title,content,image_url,share_caption,published_at")
+    .select("id,title,content,image_url,share_caption,published_at,source_name,category")
     .eq("id", id)
     .single();
 
-  if (!item) {
-    return res.redirect(appUrl);
-  }
+  if (!item) return res.redirect(appUrl);
 
-  const title = item.title ?? "Berita Masisir";
-  const desc  = item.share_caption || item.content?.slice(0, 160).replace(/\n/g, " ") || "Berita terbaru untuk mahasiswa Indonesia di Mesir.";
-  const image = item.image_url || `${appUrl}/og-image.png`;
+  // Strip HTML tags from content for clean plain-text excerpt
+  const plainContent = (item.content || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const title       = item.title ?? "Berita Masisir";
+  const excerpt     = item.share_caption
+    || (plainContent.slice(0, 200) + (plainContent.length > 200 ? "…" : ""))
+    || "Berita terbaru untuk mahasiswa Indonesia di Mesir.";
+  const ogDesc      = item.share_caption
+    || (plainContent.slice(0, 155) + (plainContent.length > 155 ? "…" : ""))
+    || "Berita terbaru untuk mahasiswa Indonesia di Mesir.";
+  const image       = item.image_url || `${appUrl}/og-image.png`;
   const redirectUrl = `${appUrl}/?berita=${id}`;
+  const source      = item.source_name || "AINA Berita";
+  const pubDate     = item.published_at
+    ? new Date(item.published_at).toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" })
+    : "";
+  const pageUrl     = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
 
-  // Detect social media / bot crawlers
-  const ua = req.headers["user-agent"] || "";
+  // Detect social media / bot crawlers — they get OG-only, no redirect
+  const ua    = req.headers["user-agent"] || "";
   const isBot = /WhatsApp|facebookexternalhit|Twitterbot|Slackbot|TelegramBot|LinkedInBot|Googlebot|bingbot|Discordbot|Applebot|PinterestBot|DuckDuckBot|rogerbot/i.test(ua);
 
   const html = `<!DOCTYPE html>
@@ -10234,32 +10248,168 @@ app.get("/share/news/:id", async (req, res) => {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${escHtml(title)} — AINA</title>
+  <title>${escHtml(title)} — AINA Berita</title>
 
-  <!-- Open Graph (WhatsApp, Facebook, Telegram) -->
-  <meta property="og:type" content="article" />
-  <meta property="og:site_name" content="AINA — Berita Masisir" />
-  <meta property="og:title" content="${escHtml(title)}" />
-  <meta property="og:description" content="${escHtml(desc)}" />
-  <meta property="og:image" content="${escHtml(image)}" />
-  <meta property="og:image:width" content="1200" />
+  <!-- Open Graph — article-specific -->
+  <meta property="og:type"         content="article" />
+  <meta property="og:site_name"    content="AINA — Berita Masisir" />
+  <meta property="og:title"        content="${escHtml(title)}" />
+  <meta property="og:description"  content="${escHtml(ogDesc)}" />
+  <meta property="og:image"        content="${escHtml(image)}" />
+  <meta property="og:image:width"  content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:url" content="${escHtml(req.protocol + "://" + req.get("host") + req.originalUrl)}" />
+  <meta property="og:image:alt"    content="${escHtml(title)}" />
+  <meta property="og:url"          content="${escHtml(pageUrl)}" />
+  ${item.published_at ? `<meta property="article:published_time" content="${escHtml(item.published_at)}" />` : ""}
 
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escHtml(title)}" />
-  <meta name="twitter:description" content="${escHtml(desc)}" />
-  <meta name="twitter:image" content="${escHtml(image)}" />
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:title"       content="${escHtml(title)}" />
+  <meta name="twitter:description" content="${escHtml(ogDesc)}" />
+  <meta name="twitter:image"       content="${escHtml(image)}" />
 
+  <!-- Redirect non-bots immediately into the app -->
   ${!isBot ? `<meta http-equiv="refresh" content="0; url=${escHtml(redirectUrl)}" />` : ""}
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #07000f;
+      color: #f0f0f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 480px;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #13091f;
+      border: 1px solid rgba(139,92,246,0.18);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.08);
+    }
+    .hero {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: linear-gradient(135deg, #1a0a2e, #0d0018);
+      overflow: hidden;
+    }
+    .hero img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 40%, rgba(7,0,15,0.85) 100%);
+    }
+    .hero-badge {
+      position: absolute;
+      top: 12px; left: 12px;
+      background: rgba(124,58,237,0.85);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 20px;
+      backdrop-filter: blur(8px);
+    }
+    .body { padding: 20px; }
+    .meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: rgba(167,139,250,0.65);
+      margin-bottom: 10px;
+    }
+    .meta-dot { color: rgba(167,139,250,0.3); }
+    h1 {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.35;
+      color: #f5f0ff;
+      margin-bottom: 10px;
+    }
+    .excerpt {
+      font-size: 13px;
+      line-height: 1.6;
+      color: rgba(240,235,255,0.55);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .divider {
+      height: 1px;
+      background: rgba(139,92,246,0.12);
+      margin: 16px 0;
+    }
+    .cta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(167,139,250,0.7);
+    }
+    .brand-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #7c3aed;
+    }
+    .btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #7c3aed, #6d28d9);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 18px;
+      border-radius: 20px;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+  </style>
 </head>
-<body style="font-family:sans-serif;background:#0f0f0f;color:#f0f0f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
-  <div style="max-width:480px;padding:24px;text-align:center;">
-    ${item.image_url ? `<img src="${escHtml(item.image_url)}" alt="" style="width:100%;border-radius:12px;margin-bottom:16px;" />` : ""}
-    <h1 style="font-size:18px;margin-bottom:8px;">${escHtml(title)}</h1>
-    <p style="font-size:14px;color:#aaa;margin-bottom:20px;">${escHtml(desc)}</p>
-    <a href="${escHtml(redirectUrl)}" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Baca di AINA →</a>
+<body>
+  <div class="card">
+    <div class="hero">
+      ${item.image_url
+        ? `<img src="${escHtml(item.image_url)}" alt="${escHtml(title)}" onerror="this.style.display='none'" />`
+        : ""}
+      <div class="hero-overlay"></div>
+      ${item.category ? `<div class="hero-badge">${escHtml(item.category)}</div>` : ""}
+    </div>
+    <div class="body">
+      <div class="meta">
+        <span>${escHtml(source)}</span>
+        ${pubDate ? `<span class="meta-dot">·</span><span>${escHtml(pubDate)}</span>` : ""}
+      </div>
+      <h1>${escHtml(title)}</h1>
+      <p class="excerpt">${escHtml(excerpt)}</p>
+      <div class="divider"></div>
+      <div class="cta">
+        <div class="brand">
+          <div class="brand-dot"></div>
+          ainalabs.pro
+        </div>
+        <a href="${escHtml(redirectUrl)}" class="btn">Baca selengkapnya →</a>
+      </div>
+    </div>
   </div>
 </body>
 </html>`;
