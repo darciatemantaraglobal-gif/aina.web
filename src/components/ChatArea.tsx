@@ -171,57 +171,45 @@ function cleanMarkdown(text: string): string {
 
 interface ArabicBlockData {
   arabic: string;
-  reading: string;
   meaning: string;
 }
 
 function parseArabicBlock(raw: string): ArabicBlockData {
   const get = (label: string) => {
-    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Reading \\(Latin\\):|Meaning:)[^\\n]*)*)`, "i");
+    // Stop at any known field label to avoid bleeding into next field
+    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Meaning:)[^\\n]*)*)`, "i");
     const m = raw.match(re);
     if (!m) return "";
     return m[1].replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   };
   return {
-    arabic: get("Arabic Text"),
-    reading: get("Reading \\(Latin\\)"),
+    arabic:  get("Arabic Text"),
     meaning: get("Meaning"),
   };
 }
 
-function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
+function ArabicBlockCard({ arabic, meaning }: ArabicBlockData) {
   return (
     <div className="my-3 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden">
-      {/* Arabic text — right-aligned, RTL */}
-      <div className="px-4 pt-3 pb-2.5 border-b border-primary/10">
+      {/* Arabic text — RTL */}
+      <div className={`px-4 pt-3 ${meaning ? "pb-2.5 border-b border-primary/10" : "pb-3"}`}>
         <p
           dir="rtl"
-          className="text-left leading-loose text-foreground tracking-wide"
-          style={{
-            fontFamily: "'Amiri', serif",
-            fontSize: "20px",
-            lineHeight: "2.0",
-            marginTop: "-1px",
-          }}
+          className="text-right leading-loose text-foreground tracking-wide"
+          style={{ fontFamily: "'Amiri', serif", fontSize: "20px", lineHeight: "2.0" }}
         >
           {arabic}
         </p>
       </div>
-      {/* Reading + Meaning — inside the box, LTR left-aligned */}
-      <div className="px-4 py-2.5 space-y-1.5" dir="ltr">
-        {reading && (
-          <p className="text-sm flex items-start gap-1.5 text-left">
-            <span className="mt-px shrink-0">🔊</span>
-            <span dir="ltr" className="break-words text-sky-400 italic">{reading}</span>
-          </p>
-        )}
-        {meaning && (
+      {/* Meaning only — LTR */}
+      {meaning && (
+        <div className="px-4 py-2.5" dir="ltr">
           <p className="text-sm flex items-start gap-1.5 text-left">
             <span className="mt-px shrink-0 text-primary/70">✦</span>
-            <span dir="ltr" className="break-words text-white italic">{meaning}</span>
+            <span className="break-words text-white/85 italic">{meaning}</span>
           </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
