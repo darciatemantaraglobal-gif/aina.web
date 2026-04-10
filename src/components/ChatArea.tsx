@@ -76,6 +76,153 @@ function getRandomSubtitle(): string {
   return WELCOME_SUBTITLES[Math.floor(Math.random() * WELCOME_SUBTITLES.length)];
 }
 
+// ── Personalized suggestion chips ────────────────────────────────────────────
+// Returns 4 contextually relevant prompts based on time-of-day, day-of-week,
+// and month (academic calendar + seasonal events in Egypt).
+
+const SUGGESTION_POOL = {
+  // Morning-specific (05:00–10:59)
+  morning: [
+    "Ada jadwal kuliah yang perlu aku catat hari ini?",
+    "Tempat sarapan murah dekat kampus Al-Azhar?",
+    "Doa dan adab memulai hari bagi mahasiswa",
+    "Tips produktif belajar pagi hari di Mesir",
+    "Jadwal bis atau angkutan pagi dari Hay Asyir",
+  ],
+  // Night-specific (21:00–04:59)
+  night: [
+    "Rekomendasi tempat makan malam halal di Kairo",
+    "Warung atau restoran Indonesia yang buka malam?",
+    "Tips belajar malam agar tidak mengantuk",
+    "Doa sebelum tidur yang dianjurkan",
+    "Tempat yang aman untuk jalan malam di Kairo?",
+  ],
+  // Friday
+  friday: [
+    "Masjid terbaik untuk sholat Jumat di Kairo?",
+    "Waktu sholat Jumat di Kairo hari ini",
+    "Rekomendasi aktivitas setelah Jumat di Kairo",
+    "Apa saja sunnah hari Jumat yang perlu diketahui?",
+  ],
+  // Exam period: Dec–Jan & May–Jun (imtihan nihayah Al-Azhar)
+  exam: [
+    "Tips menghadapi imtihan nihayah di Al-Azhar",
+    "Strategi belajar efektif menjelang ujian",
+    "Bagaimana cara minta dispensasi jika sakit saat ujian?",
+    "Materi yang sering keluar di ujian Fiqh Syafi'i",
+    "Cara cek jadwal ujian di sistem Al-Azhar",
+    "Doa sebelum ujian yang dianjurkan ulama",
+  ],
+  // Registration period: Sep & Feb (awal semester)
+  registration: [
+    "Cara daftar ulang kuliah semester baru di Al-Azhar",
+    "Dokumen yang dibutuhkan untuk registrasi semester ini",
+    "Prosedur untuk mahasiswa baru yang baru tiba di Mesir",
+    "Cara update data mahasiswa di sistem Al-Azhar",
+    "Tips maba: apa yang harus dilakukan minggu pertama?",
+  ],
+  // Summer break: Jun–Aug
+  summer: [
+    "Cara beli tiket pesawat murah Kairo–Jakarta",
+    "Prosedur perpanjang iqama sebelum pulang ke Indonesia",
+    "Apa yang perlu diurus sebelum liburan panjang?",
+    "Apakah iqama bisa diperpanjang saat di Indonesia?",
+    "Rekomendasi oleh-oleh khas Mesir untuk dibawa pulang",
+  ],
+  // Ramadan (approx Feb 17 – Mar 18 for 2026; late Jan – late Feb for 2027)
+  ramadan: [
+    "Jadwal imsak dan buka puasa hari ini di Kairo",
+    "Rekomendasi tempat iftar Ramadan di Kairo",
+    "Masjid yang punya program tarawih bagus di Kairo?",
+    "Tips puasa Ramadan di Mesir untuk mahasiswa",
+    "Hukum dan adab i'tikaf di masjid menurut mazhab Syafi'i",
+  ],
+  // Academic mid-semester (Oct–Nov & Mar–Apr)
+  midsemester: [
+    "Cara lapor absensi jika tidak bisa masuk kuliah",
+    "Hak dan kewajiban mahasiswa Al-Azhar menurut peraturan",
+    "Rekomendasi buku referensi untuk kuliah Ushuluddin",
+    "Cara mengakses perpustakaan Al-Azhar secara online",
+  ],
+  // General (always available, used as filler)
+  general: [
+    "Bagaimana cara daftar kuliah di Al-Azhar?",
+    "Cara mengurus visa pelajar Mesir",
+    "Biaya hidup bulanan di Kairo untuk mahasiswa",
+    "Cara perpanjang iqama mahasiswa",
+    "Tips adaptasi kehidupan pertama kali di Mesir",
+    "Cara transfer uang dari Indonesia ke Mesir",
+    "Alamat KBRI Kairo dan layanan yang tersedia",
+    "Rekomendasi dokter yang bisa bahasa Indonesia di Kairo",
+    "Hukum fiqh tentang shalat jama' qasar saat bepergian",
+    "Cara mengurus surat keterangan mahasiswa aktif",
+    "Perbedaan sistem kuliah Al-Azhar vs kampus Indonesia",
+    "Tempat belanja kebutuhan sehari-hari yang terjangkau di Kairo",
+    "Cara daftar SIM card Mesir untuk mahasiswa baru",
+    "Komunitas dan organisasi Masisir yang aktif",
+    "Apa itu PPMI dan bagaimana cara bergabung?",
+  ],
+};
+
+function _shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function getPersonalizedSuggestions(): string[] {
+  const now  = new Date();
+  const hour  = now.getHours();
+  const month = now.getMonth() + 1; // 1–12
+  const day   = now.getDay();       // 0=Sun … 5=Fri … 6=Sat
+
+  // ── Detect context ──────────────────────────────────────────────────────
+  // Ramadan 2026: ~17 Feb – 17 Mar; 2027: ~7 Feb – 8 Mar
+  const year = now.getFullYear();
+  const isRamadan = (() => {
+    if (year === 2026) return (month === 2 && now.getDate() >= 17) || (month === 3 && now.getDate() <= 17);
+    if (year === 2027) return (month === 2 && now.getDate() >= 7)  || (month === 3 && now.getDate() <= 8);
+    return false;
+  })();
+
+  const isExamPeriod    = (month === 12) || (month === 1) || (month === 5) || (month === 6);
+  const isRegistration  = (month === 9) || (month === 2 && !isRamadan);
+  const isSummer        = month >= 6 && month <= 8;
+  const isMidSemester   = (month >= 10 && month <= 11) || (month >= 3 && month <= 4);
+  const isFriday        = day === 5;
+  const isMorning       = hour >= 5 && hour < 11;
+  const isNight         = hour >= 21 || hour < 5;
+
+  // ── Pick contextual pool (1 primary context → 2 chips from it) ─────────
+  let contextPool: string[] = [];
+  if (isRamadan)       contextPool = SUGGESTION_POOL.ramadan;
+  else if (isExamPeriod)    contextPool = SUGGESTION_POOL.exam;
+  else if (isSummer)        contextPool = SUGGESTION_POOL.summer;
+  else if (isRegistration)  contextPool = SUGGESTION_POOL.registration;
+  else if (isMidSemester)   contextPool = SUGGESTION_POOL.midsemester;
+
+  // Time-of-day sub-pool (for remaining slots)
+  let timePool: string[] = [];
+  if (isFriday)  timePool = SUGGESTION_POOL.friday;
+  else if (isMorning) timePool = SUGGESTION_POOL.morning;
+  else if (isNight)   timePool = SUGGESTION_POOL.night;
+
+  // ── Assemble 4 chips: 2 contextual + 1 time + 1 general ───────────────
+  const ctx     = _shuffled(contextPool).slice(0, 2);
+  const timeOne = _shuffled(timePool).slice(0, 1);
+  const general = _shuffled(SUGGESTION_POOL.general)
+    .filter(s => !ctx.includes(s) && !timeOne.includes(s))
+    .slice(0, 4);
+
+  const combined = [...ctx, ...timeOne, ...general].slice(0, 4);
+
+  // If contextual pools were empty, just return 4 from general
+  return combined.length >= 4 ? combined : _shuffled(SUGGESTION_POOL.general).slice(0, 4);
+}
+
 const AinaLogo = ({ className }: { className?: string }) => (
   <img src="/aina-icon.png" alt="AINA" className={className} />
 );
@@ -903,7 +1050,8 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [chatTitle, setChatTitle] = useState<string | null>(null);
   const [googleAvatar, setGoogleAvatar] = useState<string>("");
   const [welcomeSubtitle] = useState(() => getRandomSubtitle());
-  const [timeGreeting] = useState(() => getTimeGreeting());
+  const [timeGreeting]   = useState(() => getTimeGreeting());
+  const [suggestionChips] = useState(() => getPersonalizedSuggestions());
   const [loadingSeconds, setLoadingSeconds] = useState(0);
   const lastUserMsgRef = useRef<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1860,12 +2008,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               {welcomeSubtitle}
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-md">
-              {[
-                "Bagaimana cara daftar kuliah di Al-Azhar?",
-                "Cara mengurus visa pelajar Mesir",
-                "Biaya hidup bulanan di Kairo",
-                "Cara perpanjang iqama mahasiswa",
-              ].map((prompt) => (
+              {suggestionChips.map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => handleSend(prompt)}
