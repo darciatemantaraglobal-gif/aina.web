@@ -1,0 +1,45 @@
+1. Hybrid Search: Semantic + Keyword (Prioritas Tinggi)
+Saat ini pencarian KB kemungkinan pakai keyword matching biasa. Dengan pgvector (sudah tersedia di Supabase), AINA bisa:
+
+Embed setiap artikel KB jadi vektor saat artikel dibuat
+Saat user nanya, embed query-nya juga → cari artikel yang paling "mirip artinya" bukan cuma mirip kata-katanya
+Gabungkan skor vektor + skor keyword (hybrid) → hasil jauh lebih relevan
+Efek: AINA bisa jawab pertanyaan dengan kata-kata berbeda dari yang ada di KB
+2. Streaming Response
+Kalau response AI belum streaming (token dikirim satu-satu ke browser), user harus nunggu seluruh jawaban selesai baru muncul. Dengan streaming:
+
+Browser tampilkan teks sejak token pertama keluar
+Persepsi kecepatan naik drastis, meskipun total waktu sama
+OpenRouter + Gemini sudah mendukung SSE streaming
+3. Response Cache untuk Pertanyaan Umum
+Banyak user nanya hal yang sama (syarat masuk Al-Azhar, cara buat visa, dll). Cache di database/memory:
+
+Kalau pertanyaan mirip dengan yang pernah dijawab → langsung kembalikan cached answer
+Hemat token, response instan (~50ms vs 3–5 detik)
+Cache bisa di-invalidate kalau admin update artikel KB terkait
+4. Intent Classifier Ringan (Pre-routing)
+Sebelum query masuk ke Gemini besar, gunakan model kecil/rule-based untuk:
+
+Deteksi intent: kurs EGP, jadwal universitas, info tempat, dll
+Query sederhana langsung dijawab tanpa memanggil LLM sama sekali
+Hanya query kompleks yang masuk ke Gemini
+Potensi hemat 60–70% token usage
+5. Background Job Queue (BullMQ)
+Saat ini proses berat (embed artikel, generate summary, keyword extraction) berjalan inline. Dengan queue:
+
+Task berat dilempar ke background worker
+API response balik ke user dalam milidetik
+Worker proses antrian secara terkontrol, tidak overwhelming Supabase/OpenRouter
+Retry otomatis kalau gagal
+6. Personalized Context Window
+Manfaatkan data yang sudah ada (user memories, riwayat chat, profil) lebih agresif:
+
+Deteksi kota tempat tinggal user di Mesir → filter KB artikel yang relevan dengan kota itu
+Deteksi semester/tahun kuliah → prioritaskan info akademik yang relevan
+Efek: jawaban terasa lebih personal dan tepat sasaran
+7. Full PWA + Offline Cache
+Untuk pengguna di Mesir dengan koneksi internet tidak stabil:
+
+Service Worker cache halaman dan aset statis
+Bisa buka AINA tanpa internet (lihat riwayat chat)
+Install ke homescreen seperti app native
