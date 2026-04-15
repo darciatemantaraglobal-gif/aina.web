@@ -1288,10 +1288,50 @@ async function embedKBArticle(articleId, { rethrow = false } = {}) {
   }
 }
 
+/* ── KB search in-memory cache (5 min TTL, max 200 entries) ─────────────────
+ * Caches results of expensive KB lookups (keyword + vector) to avoid
+ * re-fetching identical queries within the same request burst.
+ * Cache key = "<intentType>|<normalized-question>"
+ * Auto-invalidated when an article is approved/updated via admin API.
+ */
+const _kbCache = new Map(); // key → { results, expiresAt }
+const KB_CACHE_TTL_MS   = 5 * 60 * 1000;  // 5 minutes
+const KB_CACHE_MAX_SIZE = 200;
+
+function _kbCacheKey(q, intent) {
+  return `${intent}|${q.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 120)}`;
+}
+function _kbCacheGet(q, intent) {
+  const k = _kbCacheKey(q, intent);
+  const entry = _kbCache.get(k);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { _kbCache.delete(k); return null; }
+  return entry.results;
+}
+function _kbCacheSet(q, intent, results) {
+  if (_kbCache.size >= KB_CACHE_MAX_SIZE) {
+    // Evict oldest entry (first inserted)
+    _kbCache.delete(_kbCache.keys().next().value);
+  }
+  _kbCache.set(_kbCacheKey(q, intent), { results, expiresAt: Date.now() + KB_CACHE_TTL_MS });
+}
+/** Call this whenever a KB article is approved/updated to invalidate the cache. */
+function invalidateKBCache() {
+  _kbCache.clear();
+  console.log("[KB Cache] cleared after article update");
+}
+
 /* ── Fetch relevant knowledge base articles ──────────── */
 async function fetchRelevantArticles(userQuestion, intentType) {
   const supabase = getAdminClient();
   if (!supabase) return [];
+
+  // ── Cache hit: skip DB entirely for repeated queries ──────────────────────
+  const cached = _kbCacheGet(userQuestion, intentType);
+  if (cached) {
+    console.log(`[KB Cache] HIT for "${userQuestion.slice(0, 60)}" (${cached.length} results)`);
+    return cached;
+  }
 
   const [hasTypeCol, hasKwCol, hasMapsUrlCol, hasSummaryCol, hasNotesCol, hasImgUrlCol] = await Promise.all([
     detectArticleTypeCol(supabase),
@@ -1369,6 +1409,46 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     "kuliah":     ["akademik","kampus","perkuliahan"],
     "rumah":      ["apartemen","sewa","kost"],
     "muadzin":    ["mu'adzin","azan"],
+    // ── Kesehatan / health ───────────────────────────────────────────────────────
+    "sakit":      ["klinik","dokter","rumah sakit","rs","kesehatan","berobat"],
+    "dokter":     ["klinik","rumah sakit","sakit","berobat","kesehatan"],
+    "klinik":     ["dokter","rumah sakit","kesehatan","berobat"],
+    "obat":       ["apotek","pharmacy","farmasi","klinik"],
+    "apotek":     ["obat","pharmacy","farmasi"],
+    // ── Transport ────────────────────────────────────────────────────────────────
+    "taksi":      ["uber","grab","careem","transport","kendaraan"],
+    "careem":     ["taksi","uber","grab","transport"],
+    "uber":       ["taksi","careem","grab","transport"],
+    "bandara":    ["airport","kairo","terminal","terbang","pesawat"],
+    "pesawat":    ["tiket","terbang","bandara","airport"],
+    "kereta":     ["metro","train","rail","stasiun"],
+    // ── Akademik ─────────────────────────────────────────────────────────────────
+    "imtihan":    ["ujian","exam","tes","nilai","kuliah"],
+    "ujian":      ["imtihan","exam","tes"],
+    "skripsi":    ["tesis","penelitian","tugas akhir"],
+    "tesis":      ["skripsi","penelitian","tugas akhir"],
+    "beasiswa":   ["scholarship","bantuan","dana","biaya"],
+    "semester":   ["kuliah","akademik","tahun ajaran"],
+    "wisuda":     ["graduation","lulus","selesai kuliah"],
+    // ── Keuangan / finance ───────────────────────────────────────────────────────
+    "bank":       ["atm","transfer","rekening","western union"],
+    "atm":        ["bank","transfer","rekening","uang"],
+    "western":    ["western union","transfer","kirim uang","remitansi"],
+    "remitansi":  ["western union","transfer","kirim uang","bank"],
+    "pound":      ["egp","le","riyal","mata uang"],
+    "egp":        ["pound","le","riyal","mata uang"],
+    // ── Komunitas / community ───────────────────────────────────────────────────
+    "kpm":        ["kelompok pengajian","komunitas","pengajian"],
+    "pengajian":  ["kpm","komunitas","majelis","belajar"],
+    "masjid":     ["sholat","mushola","ibadah","majelis"],
+    "komunitas":  ["kpm","ppmi","organisasi","perkumpulan"],
+    // ── Tempat tinggal ──────────────────────────────────────────────────────────
+    "kairo":      ["cairo","mesir","hay asyir","asyir","manshiyah"],
+    "hay":        ["hay asyir","asyir","wilayah","kawasan"],
+    "asyir":      ["hay asyir","hay","wilayah","kawasan"],
+    "manshiyah":  ["mansheya","tempat tinggal","kost","sewa"],
+    "kontrakan":  ["kost","sewa","apartemen","flat"],
+    "flat":       ["apartemen","kost","sewa","kontrakan"],
     // ── Jabatan / role aliases — so "presiden PPMI" also searches "ketua PPMI" ──
     "presiden":   ["ketua","pimpinan","pemimpin","koordinator"],
     "ketua":      ["presiden","pimpinan","pemimpin"],
@@ -1426,7 +1506,9 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 
   // If vector search found solid results, use them directly
   if (vectorResults.length > 0) {
-    return vectorResults.slice(0, 5).map(({ similarity: _, ...a }) => a);
+    const vecTop = vectorResults.slice(0, 5).map(({ similarity: _, ...a }) => a);
+    _kbCacheSet(userQuestion, intentType, vecTop);
+    return vecTop;
   }
 
   // ── Keyword (ILIKE) search — fallback when vector unavailable/empty ──────────
@@ -1524,6 +1606,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     console.log(`[KB] top article: "${top[0].title}" (score=${scored[0]._relevanceScore})`);
   }
 
+  _kbCacheSet(userQuestion, intentType, top);
   return top;
 }
 
@@ -7023,6 +7106,7 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
 
   // Fire-and-forget keyword generation, summary, important_notes, duplicate check, and embedding when article is approved
   if (status === "approved") {
+    invalidateKBCache();
     triggerKeywordGen(id);
     triggerSummaryGen(id);
     triggerImportantNotesGen(id);
@@ -7433,6 +7517,7 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
 
   // Fire-and-forget: keyword + summary + important_notes + duplicate check + embedding for all newly approved articles
   if (status === "approved") {
+    invalidateKBCache();
     for (const art of pendingArticles) {
       triggerKeywordGen(art.id);
       triggerSummaryGen(art.id);

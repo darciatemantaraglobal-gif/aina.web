@@ -8,6 +8,8 @@ An AI-powered assistant for Indonesian students in Egypt (Masisir), built with R
 - **Backend**: Express.js server (port 3001), proxied via Vite `/api` prefix
 - **Auth & Database**: Supabase (PostgreSQL with RLS, Auth, Storage)
 - **AI Engine**: OpenRouter (Gemini 2.5 Flash primary, Gemini 2.0 Flash fallback)
+- **Semantic Search**: OpenAI `text-embedding-3-large` for vector KB search (Supabase `match_knowledge_base` RPC)
+- **KB Retrieval**: Hybrid mode (`USE_HYBRID_RETRIEVAL=true`) — vector + keyword + news knowledge sources merged
 - **PWA**: `vite-plugin-pwa` + Workbox (service worker, offline caching, install prompt, mobile bottom nav)
 - **Additional DB**: Replit PostgreSQL used for `masisir_procedures` table
 
