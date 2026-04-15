@@ -1001,8 +1001,8 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
 
   const filtered = threads.filter(t =>
     !search ||
-    t.title.toLowerCase().includes(search.toLowerCase()) ||
-    t.content.toLowerCase().includes(search.toLowerCase()) ||
+    (t.title ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (t.content ?? "").toLowerCase().includes(search.toLowerCase()) ||
     (t.author_name ?? "").toLowerCase().includes(search.toLowerCase())
   );
 

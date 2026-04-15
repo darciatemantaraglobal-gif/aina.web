@@ -80,30 +80,8 @@ const NotificationBell = ({ collapsed = false }: NotificationBellProps) => {
       )
       .subscribe();
 
-    const pollInterval = setInterval(async () => {
-      const { data } = await supabase
-        .from("notifications")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (!data) return;
-      setNotifications(prev => {
-        const newOnes = data.filter((n: Notification) => !prev.some(p => p.id === n.id));
-        newOnes.forEach((n: Notification) => {
-          if (!n.read) {
-            toast[n.type === "success" ? "success" : n.type === "warning" ? "warning" : "info"](
-              n.title,
-              { description: n.message, duration: 6000 }
-            );
-          }
-        });
-        return data as Notification[];
-      });
-    }, 30_000);
-
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(pollInterval);
     };
   }, [userId]);
 

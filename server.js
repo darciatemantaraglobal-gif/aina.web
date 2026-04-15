@@ -2932,20 +2932,23 @@ app.get("/api/me", async (req, res) => {
   const supabase = getAdminClient();
   if (!supabase) return res.status(500).json({ error: "Server config error" });
 
-  const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-  const roleList = roles?.map(r => r.role) ?? ["user"];
-  const isAdmin = roleList.includes("admin");
-  const isMasterAdmin = isAdmin && isMasterAdminId(user.id);
+    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+    const roleList = roles?.map(r => r.role) ?? ["user"];
+    const isAdmin = roleList.includes("admin");
+    const isMasterAdmin = isAdmin && isMasterAdminId(user.id);
 
-  // Debug line removed — was leaking user email in every request log
-
-  const payload = { id: user.id, email: user.email, roles: roleList };
-  if (isMasterAdmin) payload.isMasterAdmin = true;
-  res.json(payload);
+    const payload = { id: user.id, email: user.email, roles: roleList };
+    if (isMasterAdmin) payload.isMasterAdmin = true;
+    res.json(payload);
+  } catch (e) {
+    console.error("[/api/me]", e?.message);
+    res.status(500).json({ error: "Terjadi kesalahan server" });
+  }
 });
 
 /* ── Whoami (UUID + email for the authenticated user) ─── */
@@ -2956,11 +2959,15 @@ app.get("/api/whoami", async (req, res) => {
   const supabase = getAdminClient();
   if (!supabase) return res.status(500).json({ error: "Server config error" });
 
-  const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: "Unauthorized" });
-
-  res.json({ uuid: user.id, email: user.email });
+  try {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: "Unauthorized" });
+    res.json({ uuid: user.id, email: user.email });
+  } catch (e) {
+    console.error("[/api/whoami]", e?.message);
+    res.status(500).json({ error: "Terjadi kesalahan server" });
+  }
 });
 
 /* ── Bootstrap: Claim Admin (only works if no admin exists yet) ── */

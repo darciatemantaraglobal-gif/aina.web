@@ -417,11 +417,17 @@ export default function LibraryPage({ onAskAINA }: Props) {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("semua");
   const [faculty, setFaculty] = useState("Semua");
   const [yearLevel, setYearLevel] = useState("Semua");
   const [selected, setSelected] = useState<LibraryItem | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -430,7 +436,7 @@ export default function LibraryPage({ onAskAINA }: Props) {
       if (activeCategory !== "semua") params.set("category", activeCategory);
       if (faculty !== "Semua") params.set("faculty", faculty);
       if (yearLevel !== "Semua") params.set("year_level", yearLevel);
-      if (search.trim()) params.set("q", search.trim());
+      if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
       const data = await apiFetch(`/api/library?${params}`);
       setItems(data);
     } catch {
@@ -438,7 +444,7 @@ export default function LibraryPage({ onAskAINA }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [activeCategory, faculty, yearLevel, search]);
+  }, [activeCategory, faculty, yearLevel, debouncedSearch]);
 
   useEffect(() => { load(); }, [load]);
 

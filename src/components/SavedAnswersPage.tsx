@@ -54,8 +54,9 @@ function SavedAnswerCard({ item, onDelete }: { item: SavedAnswer; onDelete: (id:
     day: "numeric", month: "short", year: "numeric",
   });
 
-  const preview = item.content.slice(0, 180).replace(/[#*`>\-]/g, "").trim();
-  const needsExpand = item.content.length > 180;
+  const safeContent = item.content ?? "";
+  const preview = safeContent.slice(0, 180).replace(/[#*`>\-]/g, "").trim();
+  const needsExpand = safeContent.length > 180;
 
   const handleDelete = async () => {
     if (!confirm("Hapus jawaban tersimpan ini?")) return;
@@ -94,7 +95,7 @@ function SavedAnswerCard({ item, onDelete }: { item: SavedAnswer; onDelete: (id:
             components={MD_LINK}
             className="prose prose-sm prose-invert max-w-none [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_p]:text-sm [&_li]:text-sm [&_code]:text-xs"
           >
-            {item.content}
+            {safeContent}
           </ReactMarkdown>
         ) : (
           <p>{preview}{needsExpand ? "…" : ""}</p>
@@ -154,7 +155,7 @@ export default function SavedAnswersPage() {
   };
 
   const filtered = items.filter(i =>
-    !search || i.content.toLowerCase().includes(search.toLowerCase())
+    !search || (i.content ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (

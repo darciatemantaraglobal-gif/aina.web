@@ -1478,7 +1478,7 @@ function TelegramScraperDialog({ open, onClose, onDone }: { open: boolean; onClo
                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2">{art.content.slice(0, 200)}…</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{(art.content ?? "").slice(0, 200)}…</p>
                   </div>
                 ))}
               </div>
@@ -1840,7 +1840,7 @@ function BulkImportDialog({ open, onClose, onDone }: { open: boolean; onClose: (
                       </button>
                     </div>
                     <div className="text-xs text-muted-foreground bg-secondary/60 rounded-lg p-2.5 max-h-[80px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                      {art.content.slice(0, 300)}{art.content.length > 300 ? "…" : ""}
+                      {(art.content ?? "").slice(0, 300)}{(art.content?.length ?? 0) > 300 ? "…" : ""}
                     </div>
                   </div>
                 ))}
@@ -5797,7 +5797,7 @@ function FeedbackSignalsTab() {
                   </div>
                 </div>
                 <p className="text-xs text-foreground/80 leading-relaxed line-clamp-3">
-                  {item.content.replace(/[#*`>\-]/g, "").trim()}
+                  {(item.content ?? "").replace(/[#*`>\-]/g, "").trim()}
                 </p>
                 {(item.sources ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1">
@@ -5828,7 +5828,7 @@ function FeedbackSignalsTab() {
 
             <div className="rounded-xl border border-border bg-secondary/30 p-3 max-h-32 overflow-y-auto">
               <p className="text-xs text-muted-foreground leading-relaxed line-clamp-5">
-                {promoteDialog.content.slice(0, 300).replace(/[#*`>\-]/g, "").trim()}…
+                {(promoteDialog.content ?? "").slice(0, 300).replace(/[#*`>\-]/g, "").trim()}…
               </p>
             </div>
 
@@ -7516,7 +7516,7 @@ function LibraryManagementTab() {
                               ))}
                             </div>
                             <div className="rounded-lg bg-muted/30 px-3 py-2 text-xs font-mono text-foreground/60 line-clamp-2" dir="rtl">
-                              {art.content.slice(0, 120)}...
+                              {(art.content ?? "").slice(0, 120)}...
                             </div>
                           </>
                         )}
