@@ -7822,6 +7822,29 @@ const AdminPage = () => {
     })();
   }, []);
 
+  const tabContent = useMemo(() => (
+    <>
+      {activeTab === "overview"        && <OverviewTab stats={stats} loading={statsLoading} />}
+      {activeTab === "users"           && isMasterAdmin && <UsersTab />}
+      {activeTab === "monitor"         && isMasterAdmin && <ChatMonitorTab />}
+      {activeTab === "requests"        && <RequestsTab />}
+      {activeTab === "knowledge"       && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
+      {activeTab === "updates"         && <PinnedUpdatesTab />}
+      {activeTab === "reports"         && <ReportsTab />}
+      {activeTab === "waitlist"        && isMasterAdmin && <WaitlistTab />}
+      {activeTab === "security"        && isMasterAdmin && <SecurityLogsTab />}
+      {activeTab === "performance"     && isMasterAdmin && <PerformanceTab />}
+      {activeTab === "announcements"   && isMasterAdmin && <AnnouncementsTab />}
+      {activeTab === "signals"         && isMasterAdmin && <FeedbackSignalsTab />}
+      {activeTab === "news"            && <NewsManagementTab />}
+      {activeTab === "procedures"      && isMasterAdmin && <ProcedureManagementTab />}
+      {activeTab === "coverage"        && isMasterAdmin && <CoverageTab />}
+      {activeTab === "insights"        && isMasterAdmin && <InsightsTab />}
+      {activeTab === "library"         && <LibraryManagementTab />}
+      {activeTab === "query-analytics" && isMasterAdmin && <QueryAnalyticsTab />}
+    </>
+  ), [activeTab, isMasterAdmin, stats, statsLoading]);
+
   if (loading) {
     return <div className="flex h-full items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>;
   }
@@ -7890,29 +7913,6 @@ const AdminPage = () => {
     .filter(g => !g.masterOnly || isMasterAdmin)
     .map(g => ({ ...g, items: g.items.filter(item => !item.masterOnly || isMasterAdmin) }))
     .filter(g => g.items.length > 0);
-
-  const tabContent = useMemo(() => (
-    <>
-      {activeTab === "overview"      && <OverviewTab stats={stats} loading={statsLoading} />}
-      {activeTab === "users"         && isMasterAdmin && <UsersTab />}
-      {activeTab === "monitor"       && isMasterAdmin && <ChatMonitorTab />}
-      {activeTab === "requests"      && <RequestsTab />}
-      {activeTab === "knowledge"     && <KnowledgeBaseTab isMasterAdmin={isMasterAdmin} />}
-      {activeTab === "updates"       && <PinnedUpdatesTab />}
-      {activeTab === "reports"       && <ReportsTab />}
-      {activeTab === "waitlist"      && isMasterAdmin && <WaitlistTab />}
-      {activeTab === "security"      && isMasterAdmin && <SecurityLogsTab />}
-      {activeTab === "performance"   && isMasterAdmin && <PerformanceTab />}
-      {activeTab === "announcements" && isMasterAdmin && <AnnouncementsTab />}
-      {activeTab === "signals"       && isMasterAdmin && <FeedbackSignalsTab />}
-      {activeTab === "news"          && <NewsManagementTab />}
-      {activeTab === "procedures"    && isMasterAdmin && <ProcedureManagementTab />}
-      {activeTab === "coverage"        && isMasterAdmin && <CoverageTab />}
-      {activeTab === "insights"        && isMasterAdmin && <InsightsTab />}
-      {activeTab === "library"         && <LibraryManagementTab />}
-      {activeTab === "query-analytics" && isMasterAdmin && <QueryAnalyticsTab />}
-    </>
-  ), [activeTab, isMasterAdmin, stats, statsLoading]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
