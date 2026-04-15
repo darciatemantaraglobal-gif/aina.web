@@ -20,7 +20,7 @@ import {
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
   Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags, Heading,
-  Loader2, BarChart2, CalendarDays,
+  Loader2, BarChart2, CalendarDays, Target, CheckCircle, XCircle,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -7783,8 +7783,179 @@ function QueryAnalyticsTab() {
   );
 }
 
+/* ─── MissionsTab ─────────────────────────────────────── */
+function MissionsTab() {
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
+  const [acting, setActing] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState<Record<string, string>>({});
+  const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch(`/api/admin/missions/submissions?status=${filter}&limit=50`);
+      setSubmissions(res.submissions || []);
+    } catch { toast.error("Gagal memuat submission"); }
+    finally { setLoading(false); }
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const approve = async (id: string) => {
+    setActing(id);
+    try {
+      const res = await adminFetch(`/api/admin/missions/submissions/${id}/approve`, { method: "PATCH" });
+      toast.success(`Disetujui! +${res.points_awarded} poin diberikan${res.is_top_three ? " (bonus Top-3!)" : ""}`);
+      load();
+    } catch (e: any) { toast.error(e.message || "Gagal approve"); }
+    finally { setActing(null); }
+  };
+
+  const reject = async (id: string) => {
+    const note = (rejectNote[id] || "").trim();
+    if (!note) { toast.error("Wajib isi catatan penolakan"); return; }
+    setActing(id);
+    try {
+      await adminFetch(`/api/admin/missions/submissions/${id}/reject`, { method: "PATCH", body: JSON.stringify({ rejection_note: note }) });
+      toast.success("Submission ditolak, kontributor dinotifikasi");
+      setShowRejectInput(null);
+      load();
+    } catch (e: any) { toast.error(e.message || "Gagal reject"); }
+    finally { setActing(null); }
+  };
+
+  const diffColor = (d: string) => d === "easy" ? "text-green-400 bg-green-500/10" : d === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
+  const diffLabel = (d: string) => d === "easy" ? "Mudah" : d === "hard" ? "Sulit" : "Sedang";
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="font-display text-lg font-bold text-foreground">Misi Harian Kontributor</h2>
+        <p className="text-sm text-muted-foreground">Review dan setujui submission misi dari kontributor.</p>
+      </div>
+
+      {/* Filter */}
+      <div className="flex gap-2">
+        {(["pending","approved","rejected"] as const).map(s => (
+          <button key={s} onClick={() => setFilter(s)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors ${filter === s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"}`}>
+            {s === "pending" ? "Menunggu" : s === "approved" ? "Disetujui" : "Ditolak"}
+          </button>
+        ))}
+        <button onClick={load} className="ml-auto rounded-lg bg-secondary px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <RefreshCw className="h-4 w-4" />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-col gap-3">{[1,2,3].map(i => <div key={i} className="h-32 animate-pulse rounded-2xl bg-secondary/50" />)}</div>
+      ) : submissions.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border p-10 text-center">
+          <p className="text-muted-foreground">Tidak ada submission {filter === "pending" ? "menunggu review" : filter}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {submissions.map((s: any) => {
+            const t = s.daily_missions?.mission_templates;
+            const profile = s.profiles;
+            const isExp = expanded === s.id;
+            return (
+              <div key={s.id} className="rounded-2xl border border-border bg-card overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                      <Target className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm text-foreground">{t?.title}</p>
+                        {t?.difficulty && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${diffColor(t.difficulty)}`}>{diffLabel(t.difficulty)}</span>}
+                        <span className="text-xs text-muted-foreground bg-secondary rounded-full px-2 py-0.5">+{t?.base_points} poin</span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Kontributor: <span className="text-foreground font-medium">{profile?.full_name || "Unknown"}</span>
+                        {" · "}{new Date(s.submitted_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                        {s.points_awarded && <span className="ml-2 text-green-400 font-medium">+{s.points_awarded} poin awarded</span>}
+                      </p>
+                    </div>
+                    <button onClick={() => setExpanded(isExp ? null : s.id)} className="text-xs text-primary hover:underline shrink-0">
+                      {isExp ? "Sembunyikan" : "Lihat Data"}
+                    </button>
+                  </div>
+
+                  {isExp && (
+                    <div className="mt-4 rounded-xl bg-secondary/50 p-3 space-y-2">
+                      {Object.entries(s.form_data || {}).map(([k, v]: [string, any]) => (
+                        <div key={k}>
+                          <p className="text-xs font-medium text-muted-foreground capitalize">{k.replace(/_/g, " ")}</p>
+                          <p className="mt-0.5 text-sm text-foreground whitespace-pre-wrap">{v}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {s.rejection_note && (
+                    <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                      <p className="text-xs text-red-400">Catatan penolakan: {s.rejection_note}</p>
+                    </div>
+                  )}
+                  {s.kb_article_id && (
+                    <p className="mt-2 text-xs text-green-400">✓ Artikel KB berhasil dibuat dari submission ini</p>
+                  )}
+
+                  {filter === "pending" && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        disabled={!!acting}
+                        onClick={() => approve(s.id)}
+                        className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {acting === s.id ? <span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                        Setujui & Simpan ke KB
+                      </button>
+                      <button
+                        disabled={!!acting}
+                        onClick={() => setShowRejectInput(showRejectInput === s.id ? null : s.id)}
+                        className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
+                      >
+                        <XCircle className="h-3.5 w-3.5 text-red-400" />
+                        Tolak
+                      </button>
+                    </div>
+                  )}
+
+                  {showRejectInput === s.id && (
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        value={rejectNote[s.id] || ""}
+                        onChange={e => setRejectNote(prev => ({ ...prev, [s.id]: e.target.value }))}
+                        placeholder="Alasan penolakan (wajib diisi)..."
+                        className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      <button
+                        disabled={!!acting}
+                        onClick={() => reject(s.id)}
+                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {acting === s.id ? "..." : "Kirim"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library" | "query-analytics";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library" | "query-analytics" | "missions";
 
 interface NavItem { id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }
 interface NavGroup { label: string; masterOnly?: boolean; items: NavItem[] }
@@ -7842,6 +8013,7 @@ const AdminPage = () => {
       {activeTab === "insights"        && isMasterAdmin && <InsightsTab />}
       {activeTab === "library"         && <LibraryManagementTab />}
       {activeTab === "query-analytics" && isMasterAdmin && <QueryAnalyticsTab />}
+      {activeTab === "missions"        && <MissionsTab />}
     </>
   ), [activeTab, isMasterAdmin, stats, statsLoading]);
 
@@ -7865,6 +8037,7 @@ const AdminPage = () => {
       label: "Konten",
       items: [
         { id: "knowledge",  label: "Knowledge Base",   icon: FileText,  badge: stats.pendingArticles || undefined },
+        { id: "missions",   label: "Misi Kontributor", icon: Target },
         { id: "library",    label: "Library",          icon: BookOpen },
         { id: "updates",    label: "Breaking Updates", icon: Zap },
         { id: "news",       label: "Berita",           icon: Newspaper },

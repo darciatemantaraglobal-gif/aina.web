@@ -13,7 +13,8 @@ import { toast } from "sonner";
 import {
   Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot,
   Upload, X, RefreshCw, Sparkles, Pencil, Check, ChevronDown, ChevronUp,
-  Link2, Loader2, Wand2,
+  Link2, Loader2, Wand2, Target, Trophy, Flame, Star, ChevronRight,
+  AlertCircle, Award, Zap, RotateCcw,
 } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa"];
@@ -170,6 +171,21 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [regImageUploading, setRegImageUploading] = useState(false);
   const regImageInputRef = useRef<HTMLInputElement>(null);
 
+  // Contributor tab
+  const [contributorTab, setContributorTab] = useState<"missions" | "articles">("missions");
+
+  // Mission state
+  const [missions, setMissions] = useState<any[]>([]);
+  const [missionDate, setMissionDate] = useState("");
+  const [nextReset, setNextReset] = useState<Date | null>(null);
+  const [missionPoints, setMissionPoints] = useState(0);
+  const [missionStreak, setMissionStreak] = useState(0);
+  const [missionLoading, setMissionLoading] = useState(true);
+  const [activeMission, setActiveMission] = useState<any | null>(null);
+  const [missionFormData, setMissionFormData] = useState<Record<string, string>>({});
+  const [missionSubmitting, setMissionSubmitting] = useState(false);
+  const [countdown, setCountdown] = useState("");
+
   // Manual article write dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [artTitle, setArtTitle] = useState("");
@@ -216,6 +232,50 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (isContributor) loadMissions();
+  }, [isContributor]);
+
+  const loadMissions = async () => {
+    setMissionLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch("/api/missions/today", { headers: { Authorization: `Bearer ${session.access_token}` } });
+      if (!res.ok) return;
+      const json = await res.json();
+      setMissions(json.missions || []);
+      setMissionDate(json.mission_date || "");
+      setNextReset(json.next_reset ? new Date(json.next_reset) : null);
+
+      const subRes = await fetch("/api/missions/my-submissions", { headers: { Authorization: `Bearer ${session.access_token}` } });
+      if (subRes.ok) {
+        const subJson = await subRes.json();
+        setMissionPoints(subJson.mission_points || 0);
+        setMissionStreak(subJson.mission_streak || 0);
+      }
+    } catch (e) {
+      console.error("loadMissions error:", e);
+    } finally {
+      setMissionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!nextReset) return;
+    const tick = () => {
+      const diff = nextReset.getTime() - Date.now();
+      if (diff <= 0) { setCountdown("00:00:00"); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [nextReset]);
 
   const loadData = async () => {
     try {
@@ -281,6 +341,32 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Gagal memuat ulang, coba lagi.");
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const submitMission = async (dailyMissionId: number) => {
+    setMissionSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`/api/missions/${dailyMissionId}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ form_data: missionFormData }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error || "Gagal submit misi");
+        return;
+      }
+      toast.success("Misi berhasil disubmit! Menunggu review admin.");
+      setActiveMission(null);
+      setMissionFormData({});
+      await loadMissions();
+    } catch {
+      toast.error("Gagal submit, coba lagi.");
+    } finally {
+      setMissionSubmitting(false);
     }
   };
 
@@ -995,6 +1081,169 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         {/* Contributor area */}
         {isContributor && (
           <>
+            {/* ── Tab Switcher ─────────────────────────────── */}
+            <div className="flex gap-1 rounded-xl bg-secondary/50 p-1">
+              <button
+                onClick={() => setContributorTab("missions")}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all ${contributorTab === "missions" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Target className="h-4 w-4" />
+                Misi Harian
+              </button>
+              <button
+                onClick={() => setContributorTab("articles")}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all ${contributorTab === "articles" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <FileText className="h-4 w-4" />
+                Artikel Saya
+              </button>
+            </div>
+
+            {/* ── MISI HARIAN TAB ───────────────────────────── */}
+            {contributorTab === "missions" && (
+              <div className="space-y-4">
+                {/* Stats bar */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl border border-border bg-card p-3 text-center">
+                    <div className="flex items-center justify-center gap-1 text-yellow-400 mb-1"><Trophy className="h-4 w-4" /><span className="text-xs font-medium">Poin Misi</span></div>
+                    <p className="font-display text-xl font-bold text-foreground">{missionPoints}</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-3 text-center">
+                    <div className="flex items-center justify-center gap-1 text-orange-400 mb-1"><Flame className="h-4 w-4" /><span className="text-xs font-medium">Streak</span></div>
+                    <p className="font-display text-xl font-bold text-foreground">{missionStreak} hari</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-3 text-center">
+                    <div className="flex items-center justify-center gap-1 text-blue-400 mb-1"><Clock className="h-4 w-4" /><span className="text-xs font-medium">Reset</span></div>
+                    <p className="font-mono text-sm font-bold text-foreground">{countdown || "--:--:--"}</p>
+                  </div>
+                </div>
+
+                {/* Mission cards */}
+                {missionLoading ? (
+                  <div className="flex flex-col gap-3">
+                    {[1,2,3].map(i => <div key={i} className="h-28 animate-pulse rounded-2xl bg-secondary/50" />)}
+                  </div>
+                ) : missions.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border p-8 text-center">
+                    <Target className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+                    <p className="font-medium text-foreground">Belum ada misi hari ini</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Coba refresh sebentar lagi.</p>
+                    <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={loadMissions}>
+                      <RotateCcw className="h-4 w-4" /> Refresh
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {missions.map((m: any) => {
+                      const t = m.template;
+                      const sub = m.submission;
+                      const isApproved = sub?.status === "approved";
+                      const isPending = sub?.status === "pending";
+                      const isRejected = sub?.status === "rejected";
+                      const diffColor = t.difficulty === "easy" ? "text-green-400 bg-green-500/10" : t.difficulty === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
+                      const diffLabel = t.difficulty === "easy" ? "Mudah" : t.difficulty === "hard" ? "Sulit" : "Sedang";
+                      return (
+                        <div key={m.id} className={`rounded-2xl border p-4 transition-all ${isApproved ? "border-green-500/30 bg-green-500/5" : isPending ? "border-yellow-500/30 bg-yellow-500/5" : isRejected ? "border-red-500/20 bg-red-500/5" : "border-border bg-card hover:border-primary/30"}`}>
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isApproved ? "bg-green-500/20" : isPending ? "bg-yellow-500/20" : "bg-primary/10"}`}>
+                              {isApproved ? <CheckCircle className="h-5 w-5 text-green-400" /> : isPending ? <Clock className="h-5 w-5 text-yellow-400" /> : isRejected ? <XCircle className="h-5 w-5 text-red-400" /> : <Target className="h-5 w-5 text-primary" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-semibold text-sm text-foreground">{t.title}</p>
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${diffColor}`}><Star className="h-3 w-3" />{diffLabel}</span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"><Zap className="h-3 w-3" />+{t.base_points}{t.difficulty !== "easy" ? "–"+(t.base_points+15) : "–"+(t.base_points+15)} poin</span>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+                              <div className="mt-2 flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground">{m.total_submissions} kontributor sudah submit</span>
+                                {isApproved && <span className="text-xs font-medium text-green-400">✓ Disetujui · +{sub.points_awarded} poin</span>}
+                                {isPending && <span className="text-xs font-medium text-yellow-400">⏳ Menunggu review admin</span>}
+                                {isRejected && <span className="text-xs font-medium text-red-400">✗ Perlu direvisi</span>}
+                              </div>
+                              {isRejected && sub.rejection_note && (
+                                <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                                  <p className="text-xs text-red-400 font-medium">Catatan admin: {sub.rejection_note}</p>
+                                </div>
+                              )}
+                            </div>
+                            {!isApproved && !isPending && (
+                              <Button size="sm" variant={isRejected ? "outline" : "hero"} className="shrink-0 gap-1.5" onClick={() => { setActiveMission(m); setMissionFormData(isRejected && sub?.form_data ? sub.form_data : {}); }}>
+                                {isRejected ? <><RotateCcw className="h-3.5 w-3.5" />Revisi</> : <><ChevronRight className="h-3.5 w-3.5" />Kerjakan</>}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-center text-xs text-muted-foreground">Misi reset setiap hari pukul 05.00 pagi waktu Cairo · Semua poin tercatat di leaderboard kontributor</p>
+              </div>
+            )}
+
+            {/* ── Mission Form Dialog ───────────────────────── */}
+            <Dialog open={!!activeMission} onOpenChange={(open) => { if (!open) { setActiveMission(null); setMissionFormData({}); } }}>
+              <DialogContent className="bg-card border-border sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="font-display flex items-center gap-2">
+                    <Target className="h-5 w-5 text-primary" />
+                    {activeMission?.template?.title}
+                  </DialogTitle>
+                </DialogHeader>
+                {activeMission && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl bg-secondary/50 p-3">
+                      <p className="text-sm text-muted-foreground">{activeMission.template.description}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-xs font-medium text-primary">+{activeMission.template.base_points}–{activeMission.template.base_points + 15} poin</span>
+                        <span className="text-xs text-muted-foreground">· Top 3 submit +15 poin bonus</span>
+                      </div>
+                    </div>
+                    {(activeMission.template.form_schema?.fields || []).map((field: any) => (
+                      <div key={field.name} className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground">
+                          {field.label}
+                          {field.required && <span className="text-red-400 ml-1">*</span>}
+                          {field.minLength && <span className="ml-1 text-xs text-muted-foreground">(min {field.minLength} karakter)</span>}
+                        </label>
+                        {field.type === "textarea" ? (
+                          <Textarea
+                            value={missionFormData[field.name] || ""}
+                            onChange={e => setMissionFormData(prev => ({ ...prev, [field.name]: e.target.value }))}
+                            placeholder={`Tulis ${field.label.toLowerCase()}...`}
+                            className="min-h-[120px] resize-none bg-background border-border text-sm"
+                          />
+                        ) : (
+                          <Input
+                            value={missionFormData[field.name] || ""}
+                            onChange={e => setMissionFormData(prev => ({ ...prev, [field.name]: e.target.value }))}
+                            placeholder={`${field.label}...`}
+                            className="bg-background border-border text-sm"
+                          />
+                        )}
+                        {field.minLength && missionFormData[field.name] && (
+                          <p className={`text-xs ${(missionFormData[field.name] || "").length >= field.minLength ? "text-green-400" : "text-muted-foreground"}`}>
+                            {(missionFormData[field.name] || "").length}/{field.minLength} karakter minimum
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                    <div className="flex gap-2 pt-2">
+                      <Button variant="outline" className="flex-1" onClick={() => { setActiveMission(null); setMissionFormData({}); }}>Batal</Button>
+                      <Button variant="hero" className="flex-1 gap-2" disabled={missionSubmitting} onClick={() => submitMission(activeMission.id)}>
+                        {missionSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" />Submitting...</> : <><Send className="h-4 w-4" />Submit Misi</>}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+
+            {/* ── ARTIKEL SAYA TAB ─────────────────────────── */}
+            {contributorTab === "articles" && (
+            <>
             {/* Welcome banner */}
             <div data-tour="contributor-write-area" className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5">
               <div className="flex items-start gap-3">
@@ -1648,6 +1897,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                   );
                 })}
               </div>
+            )}
+            </>
             )}
           </>
         )}

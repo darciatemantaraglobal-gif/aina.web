@@ -9487,6 +9487,763 @@ app.get("/api/articles/search", async (req, res) => {
   res.json({ articles: result, query: q });
 });
 
+/* ══════════════════════════════════════════════════════════
+   CONTRIBUTOR DAILY MISSIONS
+   ══════════════════════════════════════════════════════════ */
+
+function getCairoMissionDate() {
+  const now = new Date();
+  const cairoDate = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Cairo" }));
+  const cairoHour = cairoDate.getHours();
+  if (cairoHour < 5) cairoDate.setDate(cairoDate.getDate() - 1);
+  const y = cairoDate.getFullYear();
+  const m = String(cairoDate.getMonth() + 1).padStart(2, "0");
+  const d = String(cairoDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+const MISSION_TEMPLATES = [
+  // ── Tempat Tinggal ──
+  { category: "Tempat Tinggal", difficulty: "easy", base_points: 30, kb_category: "Tempat Tinggal",
+    title: "Dokumentasi Sakan/Flat Masisir",
+    description: "Catat informasi sakan atau flat yang kamu tinggali atau ketahui — lokasi, harga, fasilitas, dan tips untuk Masisir baru.",
+    form_schema: { fields: [
+      { name: "location", label: "Lokasi/Area (cth: Hay Asyir, Darrasah, Abbasiyah)", type: "text", required: true, minLength: 5 },
+      { name: "price_range", label: "Kisaran Harga per Bulan (EGP)", type: "text", required: true, minLength: 3 },
+      { name: "facilities", label: "Fasilitas (AC, WiFi, Dapur, Kamar Mandi Dalam, dll)", type: "text", required: true, minLength: 10 },
+      { name: "contact", label: "Kontak Pemilik/Agen (opsional)", type: "text", required: false },
+      { name: "content", label: "Deskripsi Lengkap & Tips untuk Pencari Sakan", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Tempat Tinggal", difficulty: "medium", base_points: 50, kb_category: "Tempat Tinggal",
+    title: "Panduan Mencari Sakan di Cairo",
+    description: "Tulis panduan lengkap cara mencari sakan/flat untuk Masisir baru — dari mana carinya, apa yang perlu diperhatikan, dan jebakan yang sering terjadi.",
+    form_schema: { fields: [
+      { name: "area_recommendations", label: "Rekomendasi Area/Kawasan untuk Masisir", type: "text", required: true, minLength: 20 },
+      { name: "price_range", label: "Kisaran Harga Wajar per Bulan (EGP)", type: "text", required: true, minLength: 5 },
+      { name: "tips_mencari", label: "Tips & Cara Terbaik Mencari Sakan", type: "text", required: true, minLength: 30 },
+      { name: "content", label: "Panduan Lengkap (termasuk hal yang harus dihindari)", type: "textarea", required: true, minLength: 200 },
+    ]}},
+  { category: "Tempat Tinggal", difficulty: "medium", base_points: 50, kb_category: "Tempat Tinggal",
+    title: "Tips Negosiasi Harga Sakan",
+    description: "Bagikan pengalaman dan strategi negosiasi harga sewa sakan/flat dengan pemilik atau agen di Mesir.",
+    form_schema: { fields: [
+      { name: "negotiation_tips", label: "Tips Negosiasi Harga yang Efektif", type: "text", required: true, minLength: 20 },
+      { name: "common_mistakes", label: "Kesalahan Umum Saat Negosiasi", type: "text", required: true, minLength: 20 },
+      { name: "content", label: "Panduan Negosiasi Lengkap (dengan contoh kalimat dalam bahasa Arab/Indonesia)", type: "textarea", required: true, minLength: 200 },
+    ]}},
+  // ── Akademik ──
+  { category: "Akademik", difficulty: "medium", base_points: 50, kb_category: "Akademik",
+    title: "Informasi Mata Kuliah / Mugharrar Azhar",
+    description: "Dokumentasikan informasi tentang buku wajib (mugharrar), materi, atau mata kuliah di Universitas Al-Azhar.",
+    form_schema: { fields: [
+      { name: "faculty", label: "Fakultas/Kulliyyah", type: "text", required: true, minLength: 3 },
+      { name: "subject", label: "Nama Mata Kuliah / Kitab (Mugharrar)", type: "text", required: true, minLength: 3 },
+      { name: "semester", label: "Semester/Tingkat", type: "text", required: true, minLength: 1 },
+      { name: "content", label: "Deskripsi Lengkap (isi materi, cara belajar, tips ujian)", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Akademik", difficulty: "hard", base_points: 80, kb_category: "Akademik",
+    title: "Panduan Lengkap Pendaftaran Azhar",
+    description: "Tulis panduan lengkap dan terbaru tentang proses pendaftaran di Universitas Al-Azhar untuk Masisir Indonesia.",
+    form_schema: { fields: [
+      { name: "registration_type", label: "Jenis Pendaftaran (baru/mutasi/daftar ulang)", type: "text", required: true, minLength: 3 },
+      { name: "documents_needed", label: "Dokumen yang Dibutuhkan", type: "textarea", required: true, minLength: 50 },
+      { name: "steps", label: "Langkah-langkah Pendaftaran (urut)", type: "textarea", required: true, minLength: 100 },
+      { name: "content", label: "Informasi Tambahan (tips, waktu terbaik, kontak yang perlu dihubungi)", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Akademik", difficulty: "medium", base_points: 50, kb_category: "Akademik",
+    title: "Tips & Strategi Lulus Ujian Azhar",
+    description: "Bagikan tips dan strategi menghadapi ujian di Universitas Al-Azhar berdasarkan pengalaman pribadi.",
+    form_schema: { fields: [
+      { name: "faculty", label: "Fakultas/Jurusan", type: "text", required: true, minLength: 3 },
+      { name: "study_tips", label: "Tips Belajar yang Efektif", type: "text", required: true, minLength: 30 },
+      { name: "exam_tips", label: "Tips Saat Ujian (cara menghadapi soal, manajemen waktu, dll)", type: "text", required: true, minLength: 30 },
+      { name: "content", label: "Panduan Lengkap Persiapan Ujian", type: "textarea", required: true, minLength: 200 },
+    ]}},
+  { category: "Akademik", difficulty: "hard", base_points: 80, kb_category: "Akademik",
+    title: "Bank Soal Ujian Al-Azhar",
+    description: "Upload/tulis kumpulan soal ujian beserta jawaban dari mata kuliah di Al-Azhar untuk membantu Masisir lain belajar.",
+    form_schema: { fields: [
+      { name: "faculty", label: "Fakultas/Kulliyyah", type: "text", required: true, minLength: 3 },
+      { name: "subject", label: "Nama Mata Kuliah / Kitab", type: "text", required: true, minLength: 3 },
+      { name: "year", label: "Tahun Akademik", type: "text", required: true, minLength: 4 },
+      { name: "content", label: "Kumpulan Soal & Jawaban (tulis selengkap mungkin)", type: "textarea", required: true, minLength: 200 },
+    ]}},
+  // ── Administrasi ──
+  { category: "Administrasi", difficulty: "hard", base_points: 80, kb_category: "Administrasi",
+    title: "Panduan Perpanjang Iqamah di Mesir",
+    description: "Tulis panduan terlengkap dan terupdate cara memperpanjang iqamah (izin tinggal) di Mesir.",
+    form_schema: { fields: [
+      { name: "requirements", label: "Dokumen & Syarat yang Diperlukan", type: "textarea", required: true, minLength: 50 },
+      { name: "steps", label: "Langkah-langkah Proses Perpanjangan", type: "textarea", required: true, minLength: 100 },
+      { name: "cost", label: "Biaya & Waktu Proses (perkiraan)", type: "text", required: true, minLength: 10 },
+      { name: "content", label: "Tips & Informasi Tambahan", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Administrasi", difficulty: "medium", base_points: 50, kb_category: "Administrasi",
+    title: "Cara Buka Rekening Bank di Mesir",
+    description: "Panduan membuka rekening bank di Mesir — Bank Misr, CIB, QNB, atau bank lain yang biasa dipakai Masisir.",
+    form_schema: { fields: [
+      { name: "bank_name", label: "Nama Bank", type: "text", required: true, minLength: 3 },
+      { name: "requirements", label: "Dokumen/Syarat yang Diperlukan", type: "text", required: true, minLength: 20 },
+      { name: "steps", label: "Langkah-langkah Pembukaan Rekening", type: "textarea", required: true, minLength: 80 },
+      { name: "content", label: "Tips & Pengalaman (ATM, mobile banking, dll)", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Administrasi", difficulty: "hard", base_points: 80, kb_category: "Administrasi",
+    title: "Panduan Visa Pelajar Mesir",
+    description: "Tulis panduan lengkap pengurusan visa pelajar (student visa) untuk pertama kali dan perpanjangan.",
+    form_schema: { fields: [
+      { name: "visa_type", label: "Jenis Visa (baru/perpanjangan)", type: "text", required: true, minLength: 3 },
+      { name: "requirements", label: "Dokumen yang Dibutuhkan", type: "textarea", required: true, minLength: 50 },
+      { name: "steps", label: "Langkah-langkah Pengurusan", type: "textarea", required: true, minLength: 100 },
+      { name: "content", label: "Biaya, Waktu, dan Tips Penting", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Administrasi", difficulty: "medium", base_points: 50, kb_category: "Administrasi",
+    title: "Proses Legalisir Dokumen di Mesir",
+    description: "Panduan cara legalisir dokumen (ijazah, akta, dll) di KBRI Cairo atau instansi terkait.",
+    form_schema: { fields: [
+      { name: "document_type", label: "Jenis Dokumen yang Dilegalisir", type: "text", required: true, minLength: 5 },
+      { name: "institution", label: "Instansi/Tempat Legalisir", type: "text", required: true, minLength: 5 },
+      { name: "requirements", label: "Persyaratan & Dokumen Pendukung", type: "text", required: true, minLength: 30 },
+      { name: "content", label: "Langkah-langkah dan Tips Legalisir", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  // ── Kuliner ──
+  { category: "Kuliner", difficulty: "easy", base_points: 30, kb_category: "Kuliner",
+    title: "Rekomendasi Restoran/Tempat Makan Halal",
+    description: "Rekomendasikan tempat makan halal favorit di Cairo — bisa warung Indonesia, restoran lokal Mesir, atau tempat lain.",
+    form_schema: { fields: [
+      { name: "name", label: "Nama Tempat Makan", type: "text", required: true, minLength: 3 },
+      { name: "location", label: "Lokasi/Alamat (area di Cairo)", type: "text", required: true, minLength: 5 },
+      { name: "price_range", label: "Kisaran Harga per Orang (EGP)", type: "text", required: true, minLength: 3 },
+      { name: "menu_highlights", label: "Menu Unggulan yang Wajib Dicoba", type: "text", required: true, minLength: 10 },
+      { name: "content", label: "Review Lengkap (kenapa direkomendasikan, jam buka, cara ke sana)", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Kuliner", difficulty: "easy", base_points: 30, kb_category: "Kuliner",
+    title: "Review Makanan Khas Mesir untuk Masisir",
+    description: "Review makanan khas Mesir — apa yang enak, apa yang perlu dicoba, dan apa yang perlu dihindari untuk lidah Indonesia.",
+    form_schema: { fields: [
+      { name: "food_name", label: "Nama Makanan/Minuman Khas Mesir", type: "text", required: true, minLength: 3 },
+      { name: "where_to_buy", label: "Di Mana Bisa Membeli (nama tempat + lokasi)", type: "text", required: true, minLength: 5 },
+      { name: "price", label: "Kisaran Harga (EGP)", type: "text", required: true, minLength: 2 },
+      { name: "content", label: "Review Rasa, Tips Makan, dan Saran untuk Masisir Indonesia", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Kuliner", difficulty: "medium", base_points: 50, kb_category: "Kuliner",
+    title: "Tempat Makan Murah dan Halal di Cairo",
+    description: "Panduan tempat makan murah dan halal untuk Masisir dengan budget terbatas di kawasan-kawasan tertentu Cairo.",
+    form_schema: { fields: [
+      { name: "area", label: "Kawasan (Hay Asyir, Darrasah, Abbasiyah, dll)", type: "text", required: true, minLength: 5 },
+      { name: "budget_tips", label: "Tips Makan Hemat di Area Tersebut", type: "text", required: true, minLength: 20 },
+      { name: "recommendations", label: "3–5 Rekomendasi Tempat Makan Murah (nama + harga)", type: "textarea", required: true, minLength: 80 },
+      { name: "content", label: "Informasi Lengkap & Tips Tambahan", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  // ── Transport ──
+  { category: "Transport", difficulty: "medium", base_points: 50, kb_category: "Transport",
+    title: "Panduan Naik Metro Cairo untuk Masisir",
+    description: "Panduan lengkap menggunakan Metro Cairo — rute, tarif, cara beli tiket, dan tips aman.",
+    form_schema: { fields: [
+      { name: "useful_routes", label: "Rute Metro yang Paling Berguna untuk Masisir", type: "text", required: true, minLength: 20 },
+      { name: "ticket_info", label: "Cara Beli Tiket & Tarif", type: "text", required: true, minLength: 20 },
+      { name: "tips", label: "Tips Keamanan & Etika di Metro Cairo", type: "text", required: true, minLength: 20 },
+      { name: "content", label: "Panduan Lengkap Naik Metro Cairo", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Transport", difficulty: "easy", base_points: 30, kb_category: "Transport",
+    title: "Tips Pakai Careem & Uber di Cairo",
+    description: "Bagikan tips menggunakan Careem atau Uber di Cairo — cara order, negosiasi, dan hal yang perlu dihindari.",
+    form_schema: { fields: [
+      { name: "app_comparison", label: "Perbandingan Careem vs Uber di Cairo", type: "text", required: true, minLength: 20 },
+      { name: "pricing_tips", label: "Tips Mendapatkan Harga Terbaik", type: "text", required: true, minLength: 20 },
+      { name: "content", label: "Panduan Lengkap Menggunakan Ride-hailing di Cairo", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Transport", difficulty: "hard", base_points: 80, kb_category: "Transport",
+    title: "Panduan Lengkap Transportasi Cairo",
+    description: "Tulis panduan komprehensif semua moda transportasi di Cairo — metro, mikrobis, taksi, Careem, bus, dan cara kombinasinya.",
+    form_schema: { fields: [
+      { name: "transport_modes", label: "Moda Transportasi yang Tersedia di Cairo", type: "text", required: true, minLength: 30 },
+      { name: "cheapest_option", label: "Opsi Transportasi Termurah untuk Rute Tertentu", type: "text", required: true, minLength: 30 },
+      { name: "safety_tips", label: "Tips Keselamatan Saat Menggunakan Transportasi Umum", type: "text", required: true, minLength: 30 },
+      { name: "content", label: "Panduan Lengkap & Komprehensif Transportasi Cairo", type: "textarea", required: true, minLength: 250 },
+    ]}},
+  // ── Keuangan ──
+  { category: "Keuangan", difficulty: "medium", base_points: 50, kb_category: "Kehidupan Mesir",
+    title: "Panduan Transfer Uang IDR ke EGP",
+    description: "Panduan cara terbaik transfer uang dari Indonesia (IDR) ke rekening di Mesir (EGP) — rate terbaik, aplikasi, dan tips.",
+    form_schema: { fields: [
+      { name: "best_method", label: "Metode Transfer Terbaik saat ini", type: "text", required: true, minLength: 10 },
+      { name: "rate_comparison", label: "Perbandingan Rate (bank, Wise, jalur lain)", type: "text", required: true, minLength: 20 },
+      { name: "content", label: "Panduan Lengkap Transfer Uang + Tips Hemat Biaya", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Keuangan", difficulty: "easy", base_points: 30, kb_category: "Kehidupan Mesir",
+    title: "Tips Hemat Keuangan untuk Masisir",
+    description: "Bagikan tips dan strategi mengelola keuangan dengan hemat selama kuliah di Mesir.",
+    form_schema: { fields: [
+      { name: "monthly_budget", label: "Estimasi Biaya Hidup per Bulan (EGP)", type: "text", required: true, minLength: 5 },
+      { name: "saving_tips", label: "Tips Hemat yang Paling Efektif", type: "text", required: true, minLength: 30 },
+      { name: "common_mistakes", label: "Kesalahan Keuangan yang Sering Dilakukan Masisir Baru", type: "text", required: true, minLength: 20 },
+      { name: "content", label: "Panduan Lengkap Manajemen Keuangan di Mesir", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  // ── Kesehatan ──
+  { category: "Kesehatan", difficulty: "hard", base_points: 80, kb_category: "Kehidupan Mesir",
+    title: "Informasi Klinik & Dokter untuk Masisir",
+    description: "Dokumentasikan klinik, dokter, atau rumah sakit yang biasa dipakai Masisir Indonesia di Cairo.",
+    form_schema: { fields: [
+      { name: "clinic_name", label: "Nama Klinik / Dokter / RS", type: "text", required: true, minLength: 3 },
+      { name: "location", label: "Lokasi/Alamat", type: "text", required: true, minLength: 5 },
+      { name: "specialty", label: "Spesialisasi / Layanan yang Tersedia", type: "text", required: true, minLength: 5 },
+      { name: "contact", label: "Nomor Telepon / WhatsApp (jika ada)", type: "text", required: false },
+      { name: "content", label: "Review Pengalaman, Biaya Konsultasi, dan Tips", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Kesehatan", difficulty: "medium", base_points: 50, kb_category: "Kehidupan Mesir",
+    title: "Review Apotek & Obat di Cairo",
+    description: "Bagikan info apotek yang mudah diakses Masisir, obat-obatan umum yang tersedia, dan padanan obat Indonesia.",
+    form_schema: { fields: [
+      { name: "pharmacy_name", label: "Nama Apotek & Lokasi", type: "text", required: true, minLength: 5 },
+      { name: "medicines_available", label: "Obat-obatan Umum yang Tersedia (padanan obat Indonesia)", type: "text", required: true, minLength: 20 },
+      { name: "content", label: "Tips Membeli Obat di Mesir (bahasa, resep, harga, dll)", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Kesehatan", difficulty: "easy", base_points: 30, kb_category: "Kehidupan Mesir",
+    title: "Tips Menjaga Kesehatan di Mesir",
+    description: "Berbagi tips menjaga kesehatan menghadapi cuaca ekstrem Mesir, makanan lokal, dan tantangan kesehatan khas Masisir.",
+    form_schema: { fields: [
+      { name: "common_issues", label: "Masalah Kesehatan yang Sering Dialami Masisir", type: "text", required: true, minLength: 20 },
+      { name: "prevention_tips", label: "Tips Mencegah Sakit di Mesir", type: "text", required: true, minLength: 30 },
+      { name: "content", label: "Panduan Lengkap Menjaga Kesehatan di Mesir", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  // ── Komunitas ──
+  { category: "Komunitas", difficulty: "medium", base_points: 50, kb_category: "Kehidupan Mesir",
+    title: "Profil Kekeluargaan Daerah Masisir",
+    description: "Tulis profil lengkap satu kekeluargaan daerah (IKPM, KMA, PMBM, dll) — kegiatan, manfaat, dan cara bergabung.",
+    form_schema: { fields: [
+      { name: "org_name", label: "Nama Kekeluargaan/Organisasi", type: "text", required: true, minLength: 3 },
+      { name: "region", label: "Wilayah/Daerah Asal yang Dinaungi", type: "text", required: true, minLength: 3 },
+      { name: "activities", label: "Kegiatan Rutin Organisasi", type: "text", required: true, minLength: 20 },
+      { name: "contact", label: "Kontak / Media Sosial", type: "text", required: false },
+      { name: "content", label: "Deskripsi Lengkap + Manfaat Bergabung", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Komunitas", difficulty: "easy", base_points: 30, kb_category: "Kehidupan Mesir",
+    title: "Info Event & Kegiatan Masisir",
+    description: "Dokumentasikan event, kegiatan, atau acara Masisir yang sudah berlangsung atau akan datang.",
+    form_schema: { fields: [
+      { name: "event_name", label: "Nama Event/Kegiatan", type: "text", required: true, minLength: 3 },
+      { name: "organizer", label: "Penyelenggara (PPMI, kekeluargaan, dll)", type: "text", required: true, minLength: 3 },
+      { name: "date_location", label: "Waktu & Lokasi Event", type: "text", required: true, minLength: 5 },
+      { name: "content", label: "Deskripsi Event, Manfaat, dan Cara Mendaftar", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  // ── Kehidupan Sehari-hari ──
+  { category: "Kehidupan", difficulty: "medium", base_points: 50, kb_category: "Kehidupan Mesir",
+    title: "Tips Belanja Hemat di Pasar Lokal",
+    description: "Panduan berbelanja di pasar tradisional Mesir (souq) — cara nawar, barang apa yang murah, dan tempat terbaik.",
+    form_schema: { fields: [
+      { name: "market_name", label: "Nama Pasar / Souq & Lokasinya", type: "text", required: true, minLength: 5 },
+      { name: "bargaining_tips", label: "Tips Nawar Harga (termasuk kosakata bahasa Arab yang berguna)", type: "text", required: true, minLength: 30 },
+      { name: "best_buys", label: "Barang/Kebutuhan yang Paling Murah di Sini", type: "text", required: true, minLength: 20 },
+      { name: "content", label: "Panduan Lengkap Belanja di Pasar Mesir", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Kehidupan", difficulty: "easy", base_points: 30, kb_category: "Kehidupan Mesir",
+    title: "Rekomendasi Toko & Belanja Online di Cairo",
+    description: "Rekomendasikan toko fisik atau platform belanja online yang sering dipakai Masisir di Cairo.",
+    form_schema: { fields: [
+      { name: "store_name", label: "Nama Toko / Platform Online", type: "text", required: true, minLength: 3 },
+      { name: "category_items", label: "Jenis Barang yang Dijual", type: "text", required: true, minLength: 10 },
+      { name: "location_or_link", label: "Lokasi/Alamat atau Link (Talabat, Amazon EG, dll)", type: "text", required: false },
+      { name: "content", label: "Review & Tips Belanja di Sini", type: "textarea", required: true, minLength: 150 },
+    ]}},
+  { category: "Kehidupan", difficulty: "hard", base_points: 80, kb_category: "Kehidupan Mesir",
+    title: "Panduan Lengkap Kehidupan Masisir Baru",
+    description: "Tulis panduan komprehensif untuk Masisir yang baru tiba di Cairo — dari bandara sampai kehidupan sehari-hari.",
+    form_schema: { fields: [
+      { name: "first_days", label: "Yang Harus Dilakukan di Hari Pertama Tiba", type: "text", required: true, minLength: 30 },
+      { name: "essential_apps", label: "Aplikasi & Kontak Penting (Careem, Talabat, PPMI, dll)", type: "text", required: true, minLength: 30 },
+      { name: "common_mistakes", label: "Kesalahan Umum Masisir Baru yang Harus Dihindari", type: "text", required: true, minLength: 30 },
+      { name: "content", label: "Panduan Lengkap Kehidupan Masisir Baru (min 300 kata)", type: "textarea", required: true, minLength: 300 },
+    ]}},
+  // ── Bahasa ──
+  { category: "Bahasa", difficulty: "medium", base_points: 50, kb_category: "Bahasa",
+    title: "Kosakata & Ungkapan Arab Ammiyah Sehari-hari",
+    description: "Kumpulkan kosakata dan ungkapan bahasa Arab Ammiyah (dialek Mesir) yang sering dipakai Masisir sehari-hari.",
+    form_schema: { fields: [
+      { name: "context", label: "Konteks Penggunaan (di pasar, naik taksi, di kampus, dll)", type: "text", required: true, minLength: 10 },
+      { name: "vocab_list", label: "Daftar Kosakata (Arab — Indonesia — Cara Baca)", type: "textarea", required: true, minLength: 100 },
+      { name: "content", label: "Tips Belajar Bahasa Arab Ammiyah untuk Masisir", type: "textarea", required: true, minLength: 100 },
+    ]}},
+  { category: "Bahasa", difficulty: "easy", base_points: 30, kb_category: "Bahasa",
+    title: "Tips Adaptasi Budaya Mesir untuk Masisir",
+    description: "Bagikan tips dan pengalaman beradaptasi dengan budaya Mesir — kebiasaan, etika sosial, dan perbedaan budaya.",
+    form_schema: { fields: [
+      { name: "cultural_differences", label: "Perbedaan Budaya Mesir vs Indonesia yang Paling Mencolok", type: "text", required: true, minLength: 30 },
+      { name: "adaptation_tips", label: "Tips Beradaptasi yang Paling Berguna", type: "text", required: true, minLength: 30 },
+      { name: "content", label: "Panduan Adaptasi Budaya Lengkap untuk Masisir Baru", type: "textarea", required: true, minLength: 150 },
+    ]}},
+];
+
+async function seedMissionTemplates() {
+  const supabase = getAdminClient();
+  if (!supabase) return;
+  try {
+    const { data: existing } = await supabase.from("mission_templates").select("id").limit(1);
+    if (existing && existing.length > 0) return; // Already seeded
+    const rows = MISSION_TEMPLATES.map(t => ({
+      category: t.category,
+      title: t.title,
+      description: t.description,
+      form_schema: t.form_schema,
+      difficulty: t.difficulty,
+      base_points: t.base_points,
+      kb_category: t.kb_category,
+      is_active: true,
+    }));
+    const { error } = await supabase.from("mission_templates").insert(rows);
+    if (error) console.error("[Missions] Seed error:", error.message);
+    else console.log(`[Missions] ✓ Seeded ${rows.length} mission templates`);
+  } catch (e) {
+    console.error("[Missions] Seed failed:", e.message);
+  }
+}
+
+async function ensureDailyMissions() {
+  const supabase = getAdminClient();
+  if (!supabase) return [];
+  const missionDate = getCairoMissionDate();
+  const { data: existing } = await supabase
+    .from("daily_missions")
+    .select("id, template_id, mission_templates(*)")
+    .eq("mission_date", missionDate);
+  if (existing && existing.length >= 3) return existing;
+
+  // Get recently used template IDs (last 7 days) to avoid repeats
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const { data: recentMissions } = await supabase
+    .from("daily_missions")
+    .select("template_id")
+    .gte("mission_date", sevenDaysAgo)
+    .neq("mission_date", missionDate);
+  const recentIds = (recentMissions || []).map(m => m.template_id);
+
+  // Get available templates not used recently, spread across categories
+  let { data: templates } = await supabase
+    .from("mission_templates")
+    .select("id, category")
+    .eq("is_active", true);
+  if (!templates || templates.length === 0) return [];
+
+  const available = templates.filter(t => !recentIds.includes(t.id));
+  const pool = available.length >= 3 ? available : templates; // fallback if too few available
+
+  // Pick 3 with category variety
+  const shuffled = pool.sort(() => Math.random() - 0.5);
+  const chosen = [];
+  const usedCategories = new Set();
+  for (const t of shuffled) {
+    if (chosen.length >= 3) break;
+    if (!usedCategories.has(t.category) || chosen.length === 2) {
+      chosen.push(t);
+      usedCategories.add(t.category);
+    }
+  }
+  if (chosen.length < 3) {
+    for (const t of shuffled) {
+      if (chosen.length >= 3) break;
+      if (!chosen.find(c => c.id === t.id)) chosen.push(t);
+    }
+  }
+
+  // Clear old partial entries for today and insert new
+  await supabase.from("daily_missions").delete().eq("mission_date", missionDate);
+  for (const t of chosen) {
+    await supabase.from("daily_missions").insert({ template_id: t.id, mission_date: missionDate });
+  }
+
+  const { data: fresh } = await supabase
+    .from("daily_missions")
+    .select("id, template_id, mission_templates(*)")
+    .eq("mission_date", missionDate);
+  return fresh || [];
+}
+
+function validateMissionSubmission(formSchema, formData) {
+  const errors = [];
+  for (const field of formSchema.fields) {
+    if (!field.required) continue;
+    const val = (formData[field.name] || "").toString().trim();
+    if (!val) { errors.push(`Field "${field.label}" wajib diisi.`); continue; }
+    if (field.minLength && val.length < field.minLength) {
+      errors.push(`Field "${field.label}" minimal ${field.minLength} karakter (saat ini ${val.length}).`);
+    }
+  }
+  return errors;
+}
+
+function buildKBContentFromSubmission(template, formData) {
+  const lines = [`# ${template.title}\n`];
+  for (const field of template.form_schema.fields) {
+    const val = (formData[field.name] || "").toString().trim();
+    if (!val) continue;
+    if (field.name === "content") {
+      lines.push(val);
+    } else {
+      lines.push(`**${field.label}:** ${val}`);
+    }
+  }
+  return lines.join("\n\n");
+}
+
+/* ── GET /api/missions/today ── */
+app.get("/api/missions/today", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  // Verify contributor role
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const isContrib = (roles || []).some(r => ["contributor","senior_contributor","admin"].includes(r.role));
+  if (!isContrib) return res.status(403).json({ error: "Contributor access required" });
+
+  const missions = await ensureDailyMissions();
+  const missionIds = missions.map(m => m.id);
+
+  // Get user's submissions for today's missions
+  const { data: submissions } = missionIds.length
+    ? await supabase.from("mission_submissions").select("*").eq("contributor_id", user.id).in("daily_mission_id", missionIds)
+    : { data: [] };
+
+  // Get submission counts per mission
+  const { data: allSubs } = missionIds.length
+    ? await supabase.from("mission_submissions").select("daily_mission_id, status").in("daily_mission_id", missionIds)
+    : { data: [] };
+
+  const subMap = {};
+  const countMap = {};
+  (submissions || []).forEach(s => { subMap[s.daily_mission_id] = s; });
+  (allSubs || []).forEach(s => {
+    countMap[s.daily_mission_id] = (countMap[s.daily_mission_id] || 0) + 1;
+  });
+
+  const missionDate = getCairoMissionDate();
+  // Next reset: 5am Cairo next mission day
+  const nextReset = new Date(`${missionDate}T03:00:00.000Z`); // 5am Cairo (UTC+2) = 3am UTC
+  nextReset.setDate(nextReset.getDate() + 1);
+
+  res.json({
+    mission_date: missionDate,
+    next_reset: nextReset.toISOString(),
+    missions: missions.map(m => ({
+      id: m.id,
+      template: m.mission_templates,
+      submission: subMap[m.id] || null,
+      total_submissions: countMap[m.id] || 0,
+    })),
+  });
+});
+
+/* ── POST /api/missions/:dailyMissionId/submit ── */
+app.post("/api/missions/:dailyMissionId/submit", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const isContrib = (roles || []).some(r => ["contributor","senior_contributor","admin"].includes(r.role));
+  if (!isContrib) return res.status(403).json({ error: "Contributor access required" });
+
+  const dailyMissionId = parseInt(req.params.dailyMissionId);
+  if (isNaN(dailyMissionId)) return res.status(400).json({ error: "Invalid mission ID" });
+
+  const missionDate = getCairoMissionDate();
+  const { data: dm } = await supabase
+    .from("daily_missions")
+    .select("id, mission_date, mission_templates(*)")
+    .eq("id", dailyMissionId)
+    .eq("mission_date", missionDate)
+    .single();
+  if (!dm) return res.status(404).json({ error: "Misi tidak ditemukan atau sudah kadaluarsa" });
+
+  const formData = req.body.form_data || {};
+  const errors = validateMissionSubmission(dm.mission_templates.form_schema, formData);
+  if (errors.length > 0) return res.status(400).json({ error: errors.join(" "), validation_errors: errors });
+
+  // Check for existing submission
+  const { data: existing } = await supabase
+    .from("mission_submissions")
+    .select("id, status")
+    .eq("daily_mission_id", dailyMissionId)
+    .eq("contributor_id", user.id)
+    .single();
+
+  if (existing && existing.status === "pending") {
+    return res.status(409).json({ error: "Kamu sudah submit misi ini dan masih menunggu review admin." });
+  }
+  if (existing && existing.status === "approved") {
+    return res.status(409).json({ error: "Misi ini sudah kamu selesaikan hari ini!" });
+  }
+
+  let result;
+  if (existing && existing.status === "rejected") {
+    // Allow resubmit on rejected
+    const { data, error } = await supabase
+      .from("mission_submissions")
+      .update({ form_data: formData, status: "pending", rejection_note: null, submitted_at: new Date().toISOString() })
+      .eq("id", existing.id)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    result = data;
+  } else {
+    const { data, error } = await supabase
+      .from("mission_submissions")
+      .insert({ daily_mission_id: dailyMissionId, contributor_id: user.id, form_data: formData })
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    result = data;
+  }
+
+  res.json({ success: true, submission: result });
+});
+
+/* ── GET /api/missions/my-submissions ── */
+app.get("/api/missions/my-submissions", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const { data, error } = await supabase
+    .from("mission_submissions")
+    .select("*, daily_missions(mission_date, mission_templates(title, category, base_points, difficulty))")
+    .eq("contributor_id", user.id)
+    .order("submitted_at", { ascending: false })
+    .limit(limit);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("mission_points, mission_streak")
+    .eq("user_id", user.id)
+    .single();
+
+  res.json({
+    submissions: data || [],
+    mission_points: profile?.mission_points || 0,
+    mission_streak: profile?.mission_streak || 0,
+  });
+});
+
+/* ── GET /api/admin/missions/submissions ── */
+app.get("/api/admin/missions/submissions", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const status = req.query.status || "pending";
+  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+
+  const { data, error } = await supabase
+    .from("mission_submissions")
+    .select("*, daily_missions(mission_date, mission_templates(*)), profiles!mission_submissions_contributor_id_fkey(full_name, avatar_url)")
+    .eq("status", status)
+    .order("submitted_at", { ascending: false })
+    .limit(limit);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ submissions: data || [] });
+});
+
+/* ── PATCH /api/admin/missions/submissions/:id/approve ── */
+app.patch("/api/admin/missions/submissions/:id/approve", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const { id } = req.params;
+  const { data: sub } = await supabase
+    .from("mission_submissions")
+    .select("*, daily_missions(mission_date, mission_templates(*))")
+    .eq("id", id)
+    .single();
+  if (!sub) return res.status(404).json({ error: "Submission not found" });
+  if (sub.status !== "pending") return res.status(409).json({ error: "Submission already reviewed" });
+
+  const template = sub.daily_missions.mission_templates;
+
+  // 1. Create KB article
+  const content = buildKBContentFromSubmission(template, sub.form_data);
+  const titleBase = (sub.form_data.name || sub.form_data.location || template.title).slice(0, 180);
+  const articleTitle = titleBase.length >= 10 ? titleBase : `${template.title} — ${titleBase}`;
+
+  let kbArticleId = null;
+  try {
+    const { data: article, error: artErr } = await supabase
+      .from("knowledge_base")
+      .insert({
+        author_id: sub.contributor_id,
+        title: articleTitle.length >= 10 ? articleTitle : template.title,
+        content,
+        category: template.kb_category,
+        status: "approved",
+        article_type: "narrative",
+        keywords: template.category,
+      })
+      .select("id")
+      .single();
+    if (artErr) console.error("[Missions] KB insert error:", artErr.message);
+    else {
+      kbArticleId = article.id;
+      // Fire-and-forget: embed + enrich KB article
+      try { embedKBArticle(kbArticleId).catch(() => {}); } catch {}
+      try { triggerKeywordGen(kbArticleId); } catch {}
+      try { triggerSummaryGen(kbArticleId); } catch {}
+      try { triggerImportantNotesGen(kbArticleId); } catch {}
+    }
+  } catch (e) {
+    console.error("[Missions] KB creation error:", e.message);
+  }
+
+  // 2. Determine points (base + top-3 bonus)
+  const { count: approvedCount } = await supabase
+    .from("mission_submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("daily_mission_id", sub.daily_mission_id)
+    .eq("status", "approved");
+  const isTopThree = (approvedCount || 0) < 3;
+  const points = template.base_points + (isTopThree ? 15 : 0);
+
+  // 3. Update submission
+  await supabase
+    .from("mission_submissions")
+    .update({ status: "approved", reviewer_id: user.id, reviewed_at: new Date().toISOString(), kb_article_id: kbArticleId, points_awarded: points })
+    .eq("id", id);
+
+  // 4. Award points + update streak + increment contribution_count
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("mission_points, mission_streak, last_mission_date, contribution_count")
+    .eq("user_id", sub.contributor_id)
+    .single();
+
+  const today = getCairoMissionDate();
+  const yesterday = (() => {
+    const d = new Date(`${today}T12:00:00Z`);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
+  })();
+  const prevStreak = profile?.mission_streak || 0;
+  const lastDate = profile?.last_mission_date;
+  const newStreak = lastDate === yesterday ? prevStreak + 1 : (lastDate === today ? prevStreak : 1);
+
+  await supabase
+    .from("profiles")
+    .update({
+      mission_points: (profile?.mission_points || 0) + points,
+      mission_streak: newStreak,
+      last_mission_date: today,
+      contribution_count: (profile?.contribution_count || 0) + (kbArticleId ? 1 : 0),
+    })
+    .eq("user_id", sub.contributor_id);
+
+  // 5. Send notification
+  try {
+    await supabase.from("notifications").insert({
+      user_id: sub.contributor_id,
+      title: "Misi Harian Disetujui! 🎯",
+      message: `Misi "${template.title}" kamu disetujui! +${points} poin misi diberikan.${isTopThree ? " Bonus Top-3 termasuk!" : ""}`,
+      type: "mission_approved",
+    });
+  } catch {}
+
+  // Check and award badge
+  try {
+    const newPoints = (profile?.mission_points || 0) + points;
+    if (newStreak >= 30) {
+      await supabase.from("user_badges").upsert({ user_id: sub.contributor_id, badge_type: "mission_streak_30" }, { onConflict: "user_id,badge_type" });
+    } else if (newStreak >= 7) {
+      await supabase.from("user_badges").upsert({ user_id: sub.contributor_id, badge_type: "mission_streak_7" }, { onConflict: "user_id,badge_type" });
+    }
+    if (newPoints >= 100) {
+      await supabase.from("user_badges").upsert({ user_id: sub.contributor_id, badge_type: "mission_active" }, { onConflict: "user_id,badge_type" });
+    }
+  } catch {}
+
+  res.json({ success: true, points_awarded: points, kb_article_id: kbArticleId, is_top_three: isTopThree });
+});
+
+/* ── PATCH /api/admin/missions/submissions/:id/reject ── */
+app.patch("/api/admin/missions/submissions/:id/reject", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const { id } = req.params;
+  const rejection_note = (req.body.rejection_note || "").trim();
+  if (!rejection_note) return res.status(400).json({ error: "Catatan penolakan wajib diisi" });
+
+  const { data: sub } = await supabase.from("mission_submissions").select("*, daily_missions(mission_templates(title))").eq("id", id).single();
+  if (!sub) return res.status(404).json({ error: "Submission not found" });
+
+  await supabase
+    .from("mission_submissions")
+    .update({ status: "rejected", rejection_note, reviewer_id: user.id, reviewed_at: new Date().toISOString() })
+    .eq("id", id);
+
+  try {
+    await supabase.from("notifications").insert({
+      user_id: sub.contributor_id,
+      title: "Misi Perlu Direvisi",
+      message: `Misi "${sub.daily_missions.mission_templates.title}" perlu direvisi: ${rejection_note}`,
+      type: "mission_rejected",
+    });
+  } catch {}
+
+  res.json({ success: true });
+});
+
+/* ── GET /api/admin/missions/templates ── */
+app.get("/api/admin/missions/templates", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const { data, error } = await supabase.from("mission_templates").select("*").order("category").order("title");
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ templates: data || [] });
+});
+
+/* ── PATCH /api/admin/missions/templates/:id ── */
+app.patch("/api/admin/missions/templates/:id", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const { id } = req.params;
+  const allowed = ["title", "description", "difficulty", "base_points", "is_active", "kb_category"];
+  const updates = {};
+  for (const k of allowed) if (req.body[k] !== undefined) updates[k] = req.body[k];
+
+  const { error } = await supabase.from("mission_templates").update(updates).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 /* ── Beta Feedback (stored in Supabase, not local files) ─ */
 app.post("/api/feedback", feedbackLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -13170,6 +13927,43 @@ async function runColumnMigrations() {
     `INSERT INTO public.app_config (key, value) VALUES ('subscription_visible', 'false') ON CONFLICT (key) DO NOTHING;`,
     // Messages metadata — stores sources, intent, confidence for badge display in chat history
     `ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS metadata JSONB;`,
+    // Mission system — contributor daily missions
+    `CREATE TABLE IF NOT EXISTS public.mission_templates (
+      id SERIAL PRIMARY KEY,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      form_schema JSONB NOT NULL,
+      difficulty TEXT NOT NULL DEFAULT 'medium',
+      base_points INTEGER NOT NULL DEFAULT 50,
+      kb_category TEXT NOT NULL DEFAULT 'Kehidupan Mesir',
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS public.daily_missions (
+      id SERIAL PRIMARY KEY,
+      template_id INTEGER REFERENCES public.mission_templates(id),
+      mission_date DATE NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(template_id, mission_date)
+    );`,
+    `CREATE TABLE IF NOT EXISTS public.mission_submissions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      daily_mission_id INTEGER REFERENCES public.daily_missions(id),
+      contributor_id UUID NOT NULL,
+      form_data JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      rejection_note TEXT,
+      submitted_at TIMESTAMPTZ DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ,
+      reviewer_id UUID,
+      kb_article_id UUID,
+      points_awarded INTEGER,
+      UNIQUE(daily_mission_id, contributor_id)
+    );`,
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mission_points INTEGER DEFAULT 0;`,
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mission_streak INTEGER DEFAULT 0;`,
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_mission_date DATE;`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {
@@ -14097,6 +14891,7 @@ if (!process.env.VERCEL) {
   checkRequiredTables();
   runColumnMigrations().then(() => {
     seedPartnerArticles();
+    seedMissionTemplates();
     syncContributionCounts();
     autoEmbedMissingArticles();
     autoSummarizeMissingArticles();
