@@ -30,6 +30,7 @@ import { createHybridRetrievalService }    from "./server/services/hybridRetriev
 import { createSmartRetrievalService }     from "./server/services/smartRetrievalService.js";
 import { createMuqarrarRetrievalService }  from "./server/services/muqarrarRetrievalService.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
+import { createJobHelpers, getQueueStatus } from "./server/services/jobQueue.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
 import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
 
@@ -1319,6 +1320,55 @@ function _kbCacheSet(q, intent, results) {
 function invalidateKBCache() {
   _kbCache.clear();
   console.log("[KB Cache] cleared after article update");
+}
+
+/* ── Full AI Response Cache (45 min TTL, max 300 entries) ───────────────────
+ * Caches complete AI answers for non-personalized factual/procedural queries.
+ * Only caches when: intent is factual/procedural/recommendation/local,
+ * no user memories injected, no external sources (perplexity/wiki),
+ * and query is not time-sensitive (no currency/dynamic data).
+ * On hit: bypass LLM entirely — stream from cache in chunks.
+ * On miss: accumulate stream → save final reply to cache.
+ */
+const _aiResponseCache = new Map();
+const AI_CACHE_TTL_MS   = 45 * 60 * 1000; // 45 minutes
+const AI_CACHE_MAX_SIZE = 300;
+const AI_CACHE_INTENTS  = new Set(["factual", "procedural", "confused_procedural", "recommendation", "local"]);
+
+function _aiCacheKey(query, intent) {
+  return `${intent}|${query.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 150)}`;
+}
+function _aiCacheGet(query, intent) {
+  const k = _aiCacheKey(query, intent);
+  const entry = _aiResponseCache.get(k);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { _aiResponseCache.delete(k); return null; }
+  return entry;
+}
+function _aiCacheSet(query, intent, reply, metadata) {
+  if (!AI_CACHE_INTENTS.has(intent)) return;
+  if (_aiResponseCache.size >= AI_CACHE_MAX_SIZE) {
+    _aiResponseCache.delete(_aiResponseCache.keys().next().value);
+  }
+  _aiResponseCache.set(_aiCacheKey(query, intent), {
+    reply, metadata,
+    expiresAt: Date.now() + AI_CACHE_TTL_MS,
+    cachedAt:  new Date().toISOString(),
+  });
+}
+function invalidateAICache() {
+  _aiResponseCache.clear();
+  console.log("[AI Cache] cleared after KB update");
+}
+
+/* ── Job Queue helpers — initialized lazily after all background fn defs ─────
+ * Wraps embedKBArticle, triggerKeywordGen, triggerSummaryGen, triggerImportantNotesGen
+ * with retry + concurrency control via p-queue. Used in all article approval flows.
+ */
+let _jobs = null;
+function getJobs() {
+  if (!_jobs) _jobs = createJobHelpers({ embedKBArticle, triggerKeywordGen, triggerSummaryGen, triggerImportantNotesGen });
+  return _jobs;
 }
 
 /* ── Fetch relevant knowledge base articles ──────────── */
@@ -4494,6 +4544,47 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       : Promise.resolve([]),
   ]);
 
+  // ── City-based KB boost — re-rank articles that match user's city ─────────
+  // Extract user's city from profile and memories, then boost articles that
+  // mention that city so local-relevant results float to the top.
+  if (articles.length > 1) {
+    const EGYPT_CITIES = [
+      "kairo","cairo","hay asyir","asyir","mansoura","manshiyah","mansheya",
+      "tanta","ismailia","zagazig","alexandria","iskandariyah","port said",
+      "luxor","aswan","damanhour","sohag","minya","qena","fayoum","beni suef",
+      "suez","helwan","giza","dokki","maadi","nasr city","heliopolis","mohandiseen",
+    ];
+    // 1. Try userProfile fields for city
+    const _profCity = [
+      userProfile?.city, userProfile?.location, userProfile?.district, userProfile?.address,
+    ].filter(Boolean).join(" ").toLowerCase();
+    // 2. Try user memories for city mentions
+    const _memCity = userMemories.map(m => m.content ?? "").join(" ").toLowerCase();
+    // 3. Also look in the query itself
+    const _queryCity = lastUserMessage.toLowerCase();
+    const _allCityText = `${_profCity} ${_memCity} ${_queryCity}`;
+    const userCity = EGYPT_CITIES.find(c => _allCityText.includes(c)) ?? null;
+
+    if (userCity) {
+      const cityPattern = userCity.replace(/\s+/g, "|");
+      const cityRe = new RegExp(cityPattern, "i");
+      const boosted = articles.map(a => {
+        const cityMatch = cityRe.test(a.title ?? "") || cityRe.test(a.content ?? "") || cityRe.test(a.keywords ?? "");
+        return { ...a, _cityBoost: cityMatch ? 1 : 0 };
+      });
+      // Sort: city-matching articles first, preserve relative order within each group
+      boosted.sort((a, b) => b._cityBoost - a._cityBoost);
+      const reboosted = boosted.map(({ _cityBoost, ...a }) => a);
+      // Carry over _topScore if present
+      if (articles._topScore !== undefined) reboosted._topScore = articles._topScore;
+      // Replace articles array in-place (reassign via destructuring-safe mutation)
+      articles.splice(0, articles.length, ...reboosted);
+      if (boosted.some(a => a._cityBoost)) {
+        console.log(`[CityBoost] user city="${userCity}" → reranked ${articles.length} articles`);
+      }
+    }
+  }
+
   // Assess KB coverage strength before deciding whether to use external sources
   const kbStrength = assessKBStrength(articles);
 
@@ -5047,6 +5138,33 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // SSE headers + keepalive already set up right after auth — stream is live.
   _chatDebugStep = "streaming";
 
+  // ── AI Response Cache check (bypass LLM entirely on hit) ──────────────────
+  // Only cache when: cacheable intent + no user memories (generic answer) +
+  // not currency/dynamic + answered from KB only (no external sources).
+  const _canAICache = AI_CACHE_INTENTS.has(intent.primary)
+    && userMemories.length === 0
+    && !isCurrencyQuery(retrievalQuery)
+    && queryType !== "dynamic"
+    && !perplexityResult && !wikiResult && !ddgResult
+    && articles.length > 0; // only cache when KB has real content backing it
+
+  if (_canAICache) {
+    const _cached = _aiCacheGet(lastUserMessage, intent.primary);
+    if (_cached) {
+      console.log(`[AI Cache] HIT intent=${intent.primary} "${lastUserMessage.slice(0, 50)}" — skipping LLM`);
+      // Stream cached reply in chunks to preserve UI streaming feel
+      const CHUNK = 100;
+      for (let i = 0; i < _cached.reply.length; i += CHUNK) {
+        res.write(`data: ${JSON.stringify({ type: "chunk", content: _cached.reply.slice(i, i + CHUNK) })}\n\n`);
+        await new Promise(r => setTimeout(r, 4));
+      }
+      res.write(`data: ${JSON.stringify({ type: "done", reply: _cached.reply, cached: true, ..._cached.metadata })}\n\n`);
+      res.end();
+      console.log(`[CHAT] ✓ cache-hit | user=${user.id.slice(0,8)} intent=${intent.primary} ms=${Date.now()-_chatDebugStart}`);
+      return;
+    }
+  }
+
   // Helper: attempt a single streaming fetch from OpenRouter
   const tryStreamFetch = async (model, timeoutMs = 20000) => {
     const controller = new AbortController();
@@ -5376,6 +5494,29 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   if (kbImages.length > 0) {
     console.log(`[KB-Poster] showing ${kbImages.length} poster(s) — intent=${intent.primary} kbStrength=${kbStrength} userWantsImage=${userWantsImage}`);
+  }
+
+  // ── Save to AI response cache if eligible ─────────────────────────────────
+  if (_canAICache) {
+    _aiCacheSet(lastUserMessage, intent.primary, reply, {
+      model:        usedModel,
+      intent:       intent.primary,
+      intent_type:  intent.primary,
+      confidence:   normalizedConfidence,
+      source_used:  sourceUsed,
+      sources:      responseSources,
+      sourceMetadata: {
+        confidence:     normalizedConfidence,
+        primary_source: sourceResult.primary_source,
+        sources_used:   sourceResult.sources_used,
+        may_be_outdated:sourceResult.may_be_outdated,
+        source_summary: sourceResult.source_summary,
+        retrieved_at:   sourceResult.retrieved_at,
+        source_used:    sourceUsed,
+        intent_type:    intent.primary,
+      },
+    });
+    console.log(`[AI Cache] stored intent=${intent.primary} "${lastUserMessage.slice(0, 50)}" (${_aiResponseCache.size}/${AI_CACHE_MAX_SIZE})`);
   }
 
   // ── Send done event with final metadata ─────────────────────────────────────
@@ -7104,14 +7245,11 @@ app.post("/api/admin/articles/:id/review", async (req, res) => {
 
   await supabase.from("knowledge_base").update({ status }).eq("id", id);
 
-  // Fire-and-forget keyword generation, summary, important_notes, duplicate check, and embedding when article is approved
+  // Queue keyword generation, summary, important_notes, duplicate check, and embedding when article is approved
   if (status === "approved") {
-    invalidateKBCache();
-    triggerKeywordGen(id);
-    triggerSummaryGen(id);
-    triggerImportantNotesGen(id);
+    invalidateKBCache(); invalidateAICache();
+    getJobs().queueAllForArticle(id);
     checkAndArchiveDuplicate(supabase, id, article.title, article.category).catch(() => {});
-    embedKBArticle(id).catch(() => {});
   }
 
   const articleData = article; // alias — already has title
@@ -7477,10 +7615,10 @@ app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
       errors.push(`Gagal: ${art.title?.slice(0, 40)} — ${error.message}`);
     } else {
       imported++;
-      // Fire-and-forget duplicate check + embedding
+      // Queue duplicate check + full processing pipeline
       if (inserted?.id) {
         checkAndArchiveDuplicate(supabase, inserted.id, payload.title, category).catch(() => {});
-        embedKBArticle(inserted.id).catch(() => {});
+        getJobs().queueAllForArticle(inserted.id);
       }
     }
   }
@@ -7515,15 +7653,12 @@ app.post("/api/admin/articles/bulk-review", async (req, res) => {
   const pendingIds = pendingArticles.map(a => a.id);
   await supabase.from("knowledge_base").update({ status }).in("id", pendingIds);
 
-  // Fire-and-forget: keyword + summary + important_notes + duplicate check + embedding for all newly approved articles
+  // Queue all processing for newly approved articles (keyword, summary, notes, embed)
   if (status === "approved") {
-    invalidateKBCache();
+    invalidateKBCache(); invalidateAICache();
     for (const art of pendingArticles) {
-      triggerKeywordGen(art.id);
-      triggerSummaryGen(art.id);
-      triggerImportantNotesGen(art.id);
+      getJobs().queueAllForArticle(art.id);
       checkAndArchiveDuplicate(supabase, art.id, art.title, art.category).catch(() => {});
-      embedKBArticle(art.id).catch(() => {});
     }
   }
 
@@ -10182,11 +10317,8 @@ app.patch("/api/admin/missions/submissions/:id/approve", async (req, res) => {
     if (artErr) console.error("[Missions] KB insert error:", artErr.message);
     else {
       kbArticleId = article.id;
-      // Fire-and-forget: embed + enrich KB article
-      try { embedKBArticle(kbArticleId).catch(() => {}); } catch {}
-      try { triggerKeywordGen(kbArticleId); } catch {}
-      try { triggerSummaryGen(kbArticleId); } catch {}
-      try { triggerImportantNotesGen(kbArticleId); } catch {}
+      // Queue embed + enrich KB article via job queue
+      getJobs().queueAllForArticle(kbArticleId);
     }
   } catch (e) {
     console.error("[Missions] KB creation error:", e.message);
@@ -10728,8 +10860,8 @@ app.post("/api/admin/saved-answers/:id/promote-to-kb", async (req, res) => {
 
   if (kbErr) return res.status(500).json({ error: sanitizeErr(kbErr) });
 
-  // Fire-and-forget embedding for the promoted article
-  if (kbInserted?.id) embedKBArticle(kbInserted.id).catch(() => {});
+  // Queue embedding + enrichment for the promoted article
+  if (kbInserted?.id) getJobs().queueAllForArticle(kbInserted.id);
 
   // Mark the saved answer as promoted (add column if not exists)
   await supabase.from("saved_answers").update({ promoted_to_kb: true }).eq("id", id).catch(() => {});

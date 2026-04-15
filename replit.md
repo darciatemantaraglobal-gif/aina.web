@@ -10,6 +10,9 @@ An AI-powered assistant for Indonesian students in Egypt (Masisir), built with R
 - **AI Engine**: OpenRouter (Gemini 2.5 Flash primary, Gemini 2.0 Flash fallback)
 - **Semantic Search**: OpenAI `text-embedding-3-large` for vector KB search (Supabase `match_knowledge_base` RPC)
 - **KB Retrieval**: Hybrid mode (`USE_HYBRID_RETRIEVAL=true`) — vector + keyword + news knowledge sources merged
+- **Caching**: KB search cache (5 min TTL, 200 entries) + AI response cache (45 min TTL, 300 entries, factual/procedural only)
+- **City Boost**: After KB retrieval, articles matching user's city (from profile/memories) are re-ranked to top
+- **Job Queue**: `p-queue` (concurrency=2, max 5/s) wraps embed/keyword/summary/notes generation with exponential backoff retry
 - **PWA**: `vite-plugin-pwa` + Workbox (service worker, offline caching, install prompt, mobile bottom nav)
 - **Additional DB**: Replit PostgreSQL used for `masisir_procedures` table
 
