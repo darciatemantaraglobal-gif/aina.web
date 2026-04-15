@@ -29,19 +29,21 @@ function getMasisirLevel(totalDone: number) {
   return MASISIR_LEVELS.find(l => totalDone >= l.min && totalDone <= l.max) ?? MASISIR_LEVELS[0];
 }
 
+function getCairoDateStr(d?: Date): string {
+  return (d ?? new Date()).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+}
+
 function calcStreak(doneDates: string[]): number {
   if (!doneDates.length) return 0;
   const doneSet = new Set(doneDates);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  // If today already has done items, start counting from today; otherwise from yesterday
-  let cursor = new Date(today);
-  if (!doneSet.has(fmt(cursor))) cursor.setDate(cursor.getDate() - 1);
+  const cairoToday = getCairoDateStr();
+  const [y, m, day] = cairoToday.split("-").map(Number);
+  let cursor = new Date(Date.UTC(y, m - 1, day, 12));
+  if (!doneSet.has(getCairoDateStr(cursor))) cursor = new Date(cursor.getTime() - 86400000);
   let streak = 0;
-  while (doneSet.has(fmt(cursor))) {
+  while (doneSet.has(getCairoDateStr(cursor))) {
     streak++;
-    cursor.setDate(cursor.getDate() - 1);
+    cursor = new Date(cursor.getTime() - 86400000);
   }
   return streak;
 }
@@ -56,7 +58,7 @@ function GamificationBar({
 
   useEffect(() => {
     if (!userId) return;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getCairoDateStr();
     (async () => {
       try {
         // Fetch last 120 days of done items for streak + level
@@ -284,7 +286,7 @@ function FocusTab({ onFocusChange }: { onFocusChange?: () => void }) {
   const doneCount_ = items.filter(i => i.status === "done").length;
   useEffect(() => { onFocusChange?.(); }, [doneCount_, items.length]);
 
-  const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
+  const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", timeZone: "Africa/Cairo" });
   const activeCount = items.filter(i => i.status !== "done").length;
   const doneCount = items.filter(i => i.status === "done").length;
 
@@ -1075,7 +1077,7 @@ function TrackerTab() {
     not_started: "preparing", preparing: "submitted", submitted: "completed", completed: "not_started",
   };
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getCairoDateStr();
   const filtered = filterStatus === "all"
     ? items.filter(i => i.status !== "completed")
     : filterStatus === "completed"

@@ -947,19 +947,26 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"terbaru" | "populer" | "belum_dijawab">("terbaru");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [votingId, setVotingId] = useState<string | null>(null);
   const [trending, setTrending] = useState<Thread[]>([]);
   const [trendingLoaded, setTrendingLoaded] = useState(false);
 
-  const load = useCallback(async (pageNum = 1) => {
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const load = useCallback(async (pageNum = 1, searchQ = debouncedSearch) => {
     if (pageNum === 1) setLoading(true);
     else setLoadingMore(true);
     try {
       const params = new URLSearchParams();
       if (categoryFilter !== "all") params.set("category", categoryFilter);
       if (sortBy !== "terbaru") params.set("sort", sortBy);
+      if (searchQ) params.set("search", searchQ);
       params.set("page", String(pageNum));
       const data = await threadsFetch(`/api/threads?${params}`);
       if (pageNum === 1) {
@@ -967,14 +974,14 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
       } else {
         setThreads(prev => [...prev, ...data]);
       }
-      setHasMore(data.length === 30);
+      setHasMore(data.length === 30 && !searchQ);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
       if (pageNum === 1) setLoading(false);
       else setLoadingMore(false);
     }
-  }, [categoryFilter, sortBy]);
+  }, [categoryFilter, sortBy, debouncedSearch]);
 
   const loadTrending = useCallback(async () => {
     try {
@@ -985,11 +992,11 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
     }
   }, []);
 
-  // Reset to page 1 whenever category filter or sort changes
+  // Reset to page 1 whenever category, sort, or search changes
   useEffect(() => {
     setPage(1);
-    load(1);
-  }, [categoryFilter, sortBy]); // eslint-disable-line react-hooks/exhaustive-deps
+    load(1, debouncedSearch);
+  }, [categoryFilter, sortBy, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadTrending(); }, [loadTrending]);
 
@@ -999,12 +1006,7 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
     load(nextPage);
   };
 
-  const filtered = threads.filter(t =>
-    !search ||
-    (t.title ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (t.content ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (t.author_name ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = threads;
 
   const handleCreated = (thread: Thread) => {
     setThreads(prev => [thread, ...prev]);
@@ -1132,7 +1134,7 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
         <div className="md:max-w-5xl md:mx-auto">
 
         {/* Trending section — only when no active search/filter and sort is default */}
-        {!search && categoryFilter === "all" && sortBy === "terbaru" && trendingLoaded && trending.length > 0 && (
+        {!debouncedSearch && categoryFilter === "all" && sortBy === "terbaru" && trendingLoaded && trending.length > 0 && (
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-2.5">
               <TrendingUp className="h-4 w-4 text-orange-400" />
@@ -1175,12 +1177,12 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
           <div className="flex flex-col items-center py-16 text-center">
             <MessageSquare className="mb-3 h-12 w-12 text-muted-foreground/30" />
             <p className="font-medium text-foreground">
-              {search ? "Tidak ada thread yang cocok" : "Belum ada thread"}
+              {debouncedSearch ? "Tidak ada thread yang cocok" : "Belum ada thread"}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {search ? "Coba kata kunci lain" : "Jadilah yang pertama berbagi!"}
+              {debouncedSearch ? "Coba kata kunci lain" : "Jadilah yang pertama berbagi!"}
             </p>
-            {!search && (
+            {!debouncedSearch && (
               <Button
                 onClick={() => setCreateOpen(true)}
                 size="sm"
@@ -1263,7 +1265,7 @@ export default function ThreadsPage({ userId, isAdmin = false, onAskAINA }: Thre
             ))}
 
             {/* Load More */}
-            {hasMore && !search && (
+            {hasMore && !debouncedSearch && (
               <div className="flex justify-center pt-2 pb-4">
                 <button
                   onClick={handleLoadMore}

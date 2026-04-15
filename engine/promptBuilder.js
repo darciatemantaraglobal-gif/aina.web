@@ -576,7 +576,7 @@ function buildSchemaHint(intentPrimary) {
       `[/ARABIC_BLOCK]\n` +
       `\n` +
       `   Jika ada dalil pendukung lain → sebutkan referensinya saja di teks (misal: "lihat juga QS. Al-Maidah: 3"), JANGAN buat ARABIC_BLOCK tambahan.\n` +
-      `   ⚠️ DILARANG lebih dari 1 ARABIC_BLOCK per jawaban fiqh. DILARANG pakai blockquote (>) untuk dalil.\n` +
+      `   ⚠️ DILARANG lebih dari 1 ARABIC_BLOCK per jawaban fiqh. DILARANG pakai blockquote (>) untuk dalil. DILARANG menambahkan field Reading: pada ARABIC_BLOCK jawaban fiqh — field Reading HANYA untuk mode percakapan/belajar bahasa Arab.\n` +
       `3. Penjelasan singkat konteks/syarat yang relevan.\n` +
       `4. Contoh praktis jika membantu (opsional).\n` +
       `Jika ada perbedaan pendapat ulama, sebutkan secara singkat dan tunjukkan mana yang lebih rajih (kuat).`;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 const MD_LINK = { a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors break-all">{children}</a> };
@@ -331,7 +331,7 @@ type UsageStats = {
   totals: { threads: number; messages: number };
 };
 
-function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
+const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
   const [chartMode, setChartMode] = useState<"queries" | "dau">("queries");
@@ -549,7 +549,7 @@ function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
       </div>
     </div>
   );
-}
+});
 
 /* ─── Users Tab ──────────────────────────────────────── */
 function UsersTab() {
@@ -7891,7 +7891,7 @@ const AdminPage = () => {
     .map(g => ({ ...g, items: g.items.filter(item => !item.masterOnly || isMasterAdmin) }))
     .filter(g => g.items.length > 0);
 
-  const tabContent = (
+  const tabContent = useMemo(() => (
     <>
       {activeTab === "overview"      && <OverviewTab stats={stats} loading={statsLoading} />}
       {activeTab === "users"         && isMasterAdmin && <UsersTab />}
@@ -7912,7 +7912,7 @@ const AdminPage = () => {
       {activeTab === "library"         && <LibraryManagementTab />}
       {activeTab === "query-analytics" && isMasterAdmin && <QueryAnalyticsTab />}
     </>
-  );
+  ), [activeTab, isMasterAdmin, stats, statsLoading]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

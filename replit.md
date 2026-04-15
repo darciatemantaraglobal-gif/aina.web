@@ -78,6 +78,8 @@ This concurrently starts:
 
 Key tables: `profiles`, `user_roles`, `chats`, `messages`, `knowledge_base`, `threads`, `thread_replies`, `thread_votes`, `article_votes`, `tasks`, `user_memories`, `notifications`, `user_badges`, `pinned_updates`, `message_reports`, `beta_feedback`, `contributor_requests`, `subscriptions`, `daily_focus_items`, `admin_tracker_items`, `reminder_logs`, `query_log`, `missing_topics`, `user_notes`
 
+`messages` has a `metadata JSONB` column (added via `runColumnMigrations`), storing `{ intent, confidence, sources }` for AI replies — enables source badge persistence when reopening old chats.
+
 ## AI Improvements (A1–A6)
 
 - **A1 — Memory lintas sesi**: `user_memories` table checked at startup via `initUserMemories()`. Cross-session memory extracted after each response via `extractAndSaveMemories()` (fire-and-forget using OpenRouter).
@@ -86,6 +88,17 @@ Key tables: `profiles`, `user_roles`, `chats`, `messages`, `knowledge_base`, `th
 - **A4 — Language detection**: Server-side Arabic character ratio detection injected as `[INSTRUKSI BAHASA — SISTEM]` at the top of every system prompt, enforcing Indonesian OR Arabic response based on the user's actual message.
 - **A5 — System prompt Masisir**: Significantly expanded identity section with specific knowledge: Masisir organizations (PPMI, PPI, kekeluargaan), Cairo area names (Hay Asyir, Darrasah, Abbasiyah), Masisir terminology (sakan, Qaid, rasm, mugharrar), local apps (Talabat, Careem), banking, and Mazhab Syafi'i default.
 - **A6 — Feedback loop**: Thumbs-down rating now automatically calls `logMissingTopic()` with the user's query, surfacing it in the admin missing-topics dashboard for KB improvement.
+
+## Recent Improvements
+
+- **Source badges persist**: `messages.metadata` JSONB saves `intent`, `confidence`, `sources` after each AI reply; loaded when reopening chat history.
+- **Chat pagination**: `loadMessages()` fetches last 50 messages; "Muat pesan sebelumnya" button loads older pages.
+- **Threads server-side search**: `/api/threads` accepts `search` param (PostgreSQL `ILIKE`); frontend debounces 400ms — searches ALL threads, not just loaded page.
+- **Streak timezone**: All `ProductivityPage` date logic uses `getCairoDateStr()` helper with `Africa/Cairo` timezone — no more wrong streak on non-WIB devices.
+- **`sharp` lazy-loaded**: Removed top-level `import sharp` from server.js; now dynamic `await import("sharp")` inside upload handlers only. Faster cold start.
+- **Admin security**: `/api/admin/users` now whitelists columns instead of `select("*")` on `profiles`.
+- **AdminPage memoization**: `OverviewTab` wrapped with `React.memo`; `tabContent` uses `useMemo` — avoids unnecessary re-renders.
+- **Muqarrar AI**: Fiqh ARABIC_BLOCK explicitly prohibited from including `Reading:` field in `promptBuilder.js`.
 
 ## Deployment
 

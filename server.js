@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
 import { createHash } from "crypto";
@@ -5955,6 +5954,7 @@ app.post("/api/admin/upload-image", uploadLimiter, (req, res, next) => {
   let compressedBuffer;
   let finalMime = "image/jpeg";
   try {
+    const sharp = (await import("sharp")).default;
     compressedBuffer = await sharp(req.file.buffer)
       .resize({ width: 1000, withoutEnlargement: true })
       .jpeg({ quality: 78, progressive: true, mozjpeg: true })
@@ -6007,6 +6007,7 @@ app.post("/api/contributor/upload-image", uploadLimiter, (req, res, next) => {
   let compressedBuffer;
   let finalMime = "image/jpeg";
   try {
+    const sharp = (await import("sharp")).default;
     compressedBuffer = await sharp(req.file.buffer)
       .resize({ width: 1000, withoutEnlargement: true })
       .jpeg({ quality: 78, progressive: true, mozjpeg: true })
@@ -6317,7 +6318,7 @@ app.get("/api/admin/users", async (req, res) => {
 
   const supabase = getAdminClient();
   const [{ data: profiles }, { data: allRoles }, subsResult] = await Promise.all([
-    supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+    supabase.from("profiles").select("user_id, id, full_name, email, avatar_url, is_banned, contribution_count, level, created_at, custom_about, custom_instructions, hidden_from_leaderboard").order("created_at", { ascending: false }),
     supabase.from("user_roles").select("user_id, role"),
     Promise.resolve(supabase.from("subscriptions").select("user_id, plan, expires_at")).catch(() => ({ data: [] })),
   ]);
@@ -8901,13 +8902,14 @@ app.get("/api/threads", async (req, res) => {
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   const supabase = getAdminClient();
-  const { category, sort } = req.query;
+  const { category, sort, search } = req.query;
   const pageNum = Math.max(1, parseInt(req.query.page) || 1);
   const limit = 30;
   const offset = (pageNum - 1) * limit;
 
   let query = supabase.from("threads").select("*").range(offset, offset + limit - 1);
   if (category) query = query.eq("category", category);
+  if (search) query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
 
   // Sort modes
   if (sort === "populer") {
@@ -13166,6 +13168,8 @@ async function runColumnMigrations() {
     );`,
     // Seed default values for app_config (only if not yet set)
     `INSERT INTO public.app_config (key, value) VALUES ('subscription_visible', 'false') ON CONFLICT (key) DO NOTHING;`,
+    // Messages metadata — stores sources, intent, confidence for badge display in chat history
+    `ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS metadata JSONB;`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

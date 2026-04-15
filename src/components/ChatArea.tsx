@@ -1033,6 +1033,9 @@ const STREAM_INTERVAL_MS = 16;
 const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage, onGoContributor, isAdmin }: ChatAreaProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const oldestTimestampRef = useRef<string | null>(null);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -1297,21 +1300,32 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     fetchDailyUsage();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const PAGE_SIZE = 50;
+
   const loadMessages = async (id: string) => {
     setLoadingHistory(true);
+    setHasOlderMessages(false);
+    oldestTimestampRef.current = null;
     try {
       const [msgsRes, chatRes] = await Promise.all([
-        supabase.from("messages").select("*").eq("chat_id", id).order("created_at", { ascending: true }),
+        supabase.from("messages").select("*").eq("chat_id", id)
+          .order("created_at", { ascending: false }).limit(PAGE_SIZE),
         supabase.from("chats").select("title").eq("id", id).single(),
       ]);
       if (msgsRes.error) throw msgsRes.error;
       if (msgsRes.data) {
+        const sorted = [...msgsRes.data].reverse();
+        setHasOlderMessages(msgsRes.data.length === PAGE_SIZE);
+        if (sorted.length > 0) oldestTimestampRef.current = sorted[0].created_at;
         setMessages(
-          msgsRes.data.map((m) => ({
+          sorted.map((m) => ({
             id: m.id,
             role: m.role as "user" | "assistant",
             content: m.content,
             timestamp: new Date(m.created_at),
+            sources: (m.metadata as any)?.sources ?? [],
+            intent: (m.metadata as any)?.intent ?? null,
+            confidence: (m.metadata as any)?.confidence ?? null,
           }))
         );
       }
@@ -1321,6 +1335,42 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     } finally {
       setLoadingHistory(false);
       requestAnimationFrame(() => forceScrollToBottom());
+    }
+  };
+
+  const loadOlderMessages = async (id: string) => {
+    if (!oldestTimestampRef.current || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const { data, error } = await supabase.from("messages").select("*")
+        .eq("chat_id", id)
+        .lt("created_at", oldestTimestampRef.current)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const sorted = [...data].reverse();
+        oldestTimestampRef.current = sorted[0].created_at;
+        setHasOlderMessages(data.length === PAGE_SIZE);
+        setMessages(prev => [
+          ...sorted.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: new Date(m.created_at),
+            sources: (m.metadata as any)?.sources ?? [],
+            intent: (m.metadata as any)?.intent ?? null,
+            confidence: (m.metadata as any)?.confidence ?? null,
+          })),
+          ...prev,
+        ]);
+      } else {
+        setHasOlderMessages(false);
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -1774,12 +1824,17 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       // Signal first chat sent — used by announcement popup trigger
       window.dispatchEvent(new CustomEvent("aina:first_chat"));
 
-      // Save assistant reply to DB
+      // Save assistant reply to DB (with metadata for source badge persistence)
       await supabase.from("messages").insert({
         chat_id: currentChatId,
         user_id: userId,
         role: "assistant",
         content: doneEvent.reply || accumulated,
+        metadata: {
+          intent: doneEvent.intent ?? null,
+          confidence: doneEvent.confidence ?? null,
+          sources: doneEvent.sources ?? [],
+        },
       });
 
       // Self-learning: notify user when their clarification was queued for admin review
@@ -2042,6 +2097,17 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
         ) : (
           <>
           <div className="mx-auto w-full max-w-3xl xl:max-w-4xl space-y-8 px-4 py-8 md:px-8">
+            {hasOlderMessages && chatId && (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => loadOlderMessages(chatId)}
+                  disabled={loadingOlder}
+                  className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:border-primary/30 disabled:opacity-50"
+                >
+                  {loadingOlder ? "Memuat..." : "Muat pesan sebelumnya"}
+                </button>
+              </div>
+            )}
             {messages.map((msg, msgIdx) => {
               const isLastAI = msg.role === "assistant" && msgIdx === messages.length - 1 && !isLoading && !streamingMsg;
               const isArabicMsg = isArabicText(msg.content ?? "");
