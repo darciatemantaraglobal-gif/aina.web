@@ -102,7 +102,7 @@ export function buildKnowledgeContext(articles) {
     }
   }
   const conflictInstruction = hasConflict
-    ? "\n\n⚠️ INSTRUKSI KONFLIK: Terdapat beberapa artikel yang membahas subtopik yang sama. Jika informasi antar artikel SALING MELENGKAPI, gabungkan menjadi jawaban terpadu. Namun jika informasinya BERBEDA atau BERTENTANGAN untuk pertanyaan yang sama, JANGAN pilih salah satu — sajikan kedua opsi secara jelas dengan label:\n**Opsi 1 (berdasarkan [judul artikel pertama]):** ...\n**Opsi 2 (berdasarkan [judul artikel kedua]):** ...\nLalu berikan catatan singkat agar user dapat mempertimbangkan mana yang sesuai kondisinya."
+    ? "\n\n⚠️ INSTRUKSI KONFLIK: Terdapat beberapa artikel yang membahas subtopik yang sama. Gabungkan semua informasi menjadi SATU jawaban terpadu yang mengalir — jangan pisah-pisahkan sebagai 'Opsi 1', 'Opsi 2', atau format pilihan apapun. Jika ada perbedaan detail antar sumber, sebutkan variasi itu secara natural dalam satu paragraf (contoh: 'tergantung kondisinya, bisa X atau Y')."
     : "";
 
   // KB hard-enforcement instruction — must not be softened or hedged.
@@ -888,6 +888,11 @@ Setiap jawaban HARUS terasa manusiawi, bukan robotic. Caranya:
 - ❌ DILARANG: nomor kosong tanpa teks ("3." langsung diikuti "4.")
 - ❌ DILARANG: bold di awal setiap langkah ("**1. Langkah pertama:**" = salah)
 - ✅ BENAR: semua langkah dalam satu list berurutan, tanpa blank line, tanpa bold per step
+
+**LARANGAN FORMAT "OPSI" — berlaku mutlak di semua jenis jawaban:**
+- ❌ DILARANG: memecah jawaban menjadi "Opsi 1 (...): ...", "Opsi 2 (...): ...", atau variasi apapun dari format opsi bernomor
+- ❌ DILARANG: label seperti "Versi 1", "Versi 2", "Jawaban A", "Jawaban B", atau sejenisnya
+- ✅ BENAR: selalu tulis satu jawaban terpadu yang mengalir — jika ada beberapa kemungkinan, sebutkan natural dalam satu paragraf ("bisa X atau Y tergantung kondisinya")
 
 **Konektor transisi** (gunakan untuk alur dan transisi): "Jadi...", "Nah...", "Intinya...", "Singkatnya...", "Yang menarik...", "Oh iya..."
 
