@@ -601,41 +601,47 @@ const Dashboard = () => {
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        <DashboardSidebar
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          isAdmin={isAdmin}
-          onClose={() => setSidebarOpen(false)}
-          chats={chats}
-          fadingChatIds={fadingChatIds}
-          activeChatId={activeChatId}
-          onNewChat={handleNewChat}
-          onSelectChat={handleSelectChat}
-          onDeleteChat={handleDeleteChat}
-          onRenameChat={handleRenameChat}
-          onLoadMoreChats={loadMoreChats}
-          hasMoreChats={hasMoreChats}
-          onStartTour={handleStartTour}
-        />
+        <TabErrorBoundary tabName="Sidebar">
+          <DashboardSidebar
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            isAdmin={isAdmin}
+            onClose={() => setSidebarOpen(false)}
+            chats={chats}
+            fadingChatIds={fadingChatIds}
+            activeChatId={activeChatId}
+            onNewChat={handleNewChat}
+            onSelectChat={handleSelectChat}
+            onDeleteChat={handleDeleteChat}
+            onRenameChat={handleRenameChat}
+            onLoadMoreChats={loadMoreChats}
+            hasMoreChats={hasMoreChats}
+            onStartTour={handleStartTour}
+          />
+        </TabErrorBoundary>
       </div>
 
       <main className="flex-1 overflow-hidden min-w-0 flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:pb-0">
-        <BreakingUpdatesBanner />
+        <TabErrorBoundary tabName="Banner">
+          <BreakingUpdatesBanner />
+        </TabErrorBoundary>
 
         {/* Chat — always mounted, hidden when not active */}
         <div className={activeTab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
-          <WelcomeModal onGoContributor={handleGoContributor} onStartTour={handleStartTour} />
-          <div className="flex-1 min-h-0">
-            <ChatArea
-              onMenuClick={() => setSidebarOpen(true)}
-              chatId={activeChatId}
-              onChatCreated={handleChatCreated}
-              onNewChat={handleNewChat}
-              initialMessage={pendingMessage}
-              onGoContributor={handleGoContributor}
-              isAdmin={isAdmin}
-            />
-          </div>
+          <TabErrorBoundary tabName="Chat">
+            <WelcomeModal onGoContributor={handleGoContributor} onStartTour={handleStartTour} />
+            <div className="flex-1 min-h-0">
+              <ChatArea
+                onMenuClick={() => setSidebarOpen(true)}
+                chatId={activeChatId}
+                onChatCreated={handleChatCreated}
+                onNewChat={handleNewChat}
+                initialMessage={pendingMessage}
+                onGoContributor={handleGoContributor}
+                isAdmin={isAdmin}
+              />
+            </div>
+          </TabErrorBoundary>
         </div>
 
         {/* Non-chat tabs — only the active one is mounted at a time */}
