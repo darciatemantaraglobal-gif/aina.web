@@ -12884,17 +12884,19 @@ Tulis respons yang diperbaiki:`;
   const title = article_title?.trim() || `Koreksi: ${user_question.slice(0, 80).trim()}`;
   const content = `## Pertanyaan\n\n${user_question.trim()}\n\n## Jawaban\n\n${finalAnswer}`;
 
+  const hasTypeCol = await detectArticleTypeCol(supabase);
+  const kbPayload = {
+    title,
+    content,
+    category: "Koreksi AI",
+    status: "approved",
+    author_id: admin.id,
+    ...(hasTypeCol ? { article_type: "narrative" } : {}),
+  };
+
   const { data: kbRow, error: kbErr } = await supabase
     .from("knowledge_base")
-    .insert({
-      title,
-      content,
-      category: "Koreksi AI",
-      status: "approved",
-      source_url: null,
-      author_id: admin.id,
-      article_type: "narrative",
-    })
+    .insert(kbPayload)
     .select("id")
     .single();
 
@@ -12902,6 +12904,9 @@ Tulis respons yang diperbaiki:`;
     console.error("[FixIt] KB insert failed:", kbErr.message);
     return res.status(500).json({ error: "Gagal menyimpan ke knowledge base: " + sanitizeErr(kbErr) });
   }
+
+  // Queue embedding so the new article is searchable immediately
+  if (kbRow?.id) embedKBArticle(kbRow.id).catch(() => {});
 
   console.log(`[FixIt/save] admin=${admin.id} chat=${req.params.chatId} msg=${req.params.msgId} kb=${kbRow.id}`);
   res.json({ corrected_answer: finalAnswer, kb_id: kbRow.id });
