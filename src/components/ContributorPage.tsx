@@ -1168,6 +1168,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     </Button>
                   </div>
                 ) : (
+                  <>
                   <div className="space-y-3">
                     {(() => {
                       const skipCount = missions.filter((m: any) => m.submission?.status === "skipped").length;
@@ -1247,6 +1248,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       {missions.filter((m: any) => m.submission?.status === "skipped").length < 2 ? " · 1 ganti tersisa" : " · Batas ganti tercapai"}
                     </p>
                   )}
+                  </>
                 )}
 
                 <p className="text-center text-xs text-muted-foreground">Misi reset setiap hari pukul 05.00 pagi waktu Cairo · Semua poin tercatat di leaderboard kontributor</p>
