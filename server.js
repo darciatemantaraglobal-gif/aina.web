@@ -13854,7 +13854,7 @@ if (PAYMENT_ENABLED) {
 
 /* ── App Config (admin-only, controls toggles like subscription_visible) */
 app.get("/api/admin/app-config", async (req, res) => {
-  const admin = await verifyAdmin(req.headers.authorization);
+  const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
   const supabase = getAdminClient();
   if (!supabase) return res.status(503).json({ error: "Server error" });
@@ -13866,7 +13866,7 @@ app.get("/api/admin/app-config", async (req, res) => {
 });
 
 app.patch("/api/admin/app-config", writeLimiter, async (req, res) => {
-  const admin = await verifyAdmin(req.headers.authorization);
+  const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
   const supabase = getAdminClient();
   if (!supabase) return res.status(503).json({ error: "Server error" });
