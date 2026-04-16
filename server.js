@@ -10538,6 +10538,121 @@ app.post("/api/admin/missions/templates", async (req, res) => {
   res.json({ template: data });
 });
 
+/* ── POST /api/admin/missions/generate-fields ── */
+// Uses Gemini to suggest form fields for a new mission template, tailored to Masisir life in Egypt.
+app.post("/api/admin/missions/generate-fields", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const { title, description, category, difficulty } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: "title diperlukan" });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: "OpenRouter tidak dikonfigurasi" });
+
+  const prompt = `Kamu adalah AI yang membantu admin platform AINA — sebuah asisten AI khusus untuk mahasiswa Indonesia di Mesir (Masisir).
+
+Tugasmu: Buat 3–5 pertanyaan/field form yang akan diisi oleh Masisir (mahasiswa Indonesia di Mesir) sebagai bagian dari misi kontributor. Informasi yang mereka isi akan masuk ke Knowledge Base AINA untuk membantu sesama Masisir.
+
+Detail misi:
+- Judul: ${title.trim()}
+- Deskripsi: ${(description || "").trim() || "(tidak ada)"}
+- Kategori: ${(category || "Umum").trim()}
+- Kesulitan: ${difficulty || "medium"}
+
+Konteks kehidupan Masisir yang perlu kamu pahami:
+- Tinggal di Kairo (Hay Asyir/Asyir), Tanta, Mansoura, Zagazig, Ismailia, dll
+- Kuliah di Al-Azhar atau universitas Mesir lainnya
+- Berurusan dengan KBRI Kairo, PPMI Mesir, PPI Kota masing-masing
+- Iqomah (izin tinggal), visa pelajar, Qaid (daftar ulang Al-Azhar)
+- Kost/flat, transportasi (taksi, Uber, bus), pasar, warung indo
+- Kurs EGP ke IDR, pengiriman uang, biaya hidup
+- Mugharrar (buku teks Al-Azhar), ujian, semester, libur
+
+Buat field-field yang:
+1. Spesifik dan actionable — bukan pertanyaan abstrak
+2. Mengumpulkan info yang benar-benar berguna untuk Masisir lain
+3. Mencerminkan realita kehidupan di Mesir
+4. Kombinasi antara data konkret (harga, nama tempat, prosedur) dan tips/pengalaman
+
+Format respons HARUS berupa JSON array murni (tanpa markdown, tanpa penjelasan):
+[
+  {
+    "name": "nama_field_snakecase",
+    "label": "Label yang ditampilkan ke user (deskriptif, bahasa Indonesia)",
+    "type": "text",
+    "placeholder": "Contoh placeholder yang helpful"
+  },
+  {
+    "name": "nama_field_2",
+    "label": "Label field 2",
+    "type": "textarea",
+    "placeholder": "Placeholder field 2"
+  }
+]
+
+Tipe yang tersedia: "text" (jawaban singkat) atau "textarea" (jawaban panjang/deskripsi).
+Hanya kembalikan JSON array, tidak ada teks lain.`;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Mission Field Generator",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-preview",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 800,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error("[MissionGen] OpenRouter error:", errText.slice(0, 200));
+      return res.status(502).json({ error: "Gagal menghubungi AI" });
+    }
+
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "";
+
+    // Strip markdown code fences if present
+    const jsonStr = raw.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
+    let fields;
+    try {
+      fields = JSON.parse(jsonStr);
+      if (!Array.isArray(fields)) throw new Error("bukan array");
+    } catch {
+      console.error("[MissionGen] JSON parse failed:", raw.slice(0, 300));
+      return res.status(502).json({ error: "AI mengembalikan format tidak valid, coba lagi" });
+    }
+
+    // Sanitize and normalize
+    const sanitized = fields.slice(0, 5).map(f => ({
+      name: (f.name || "").toString().trim().replace(/\s+/g, "_").toLowerCase().replace(/[^a-z0-9_]/g, "") || "field",
+      label: (f.label || "").toString().trim() || "Field",
+      type: f.type === "textarea" ? "textarea" : "text",
+      placeholder: (f.placeholder || "").toString().trim(),
+      required: true,
+    }));
+
+    console.log(`[MissionGen] ✓ generated ${sanitized.length} fields for "${title.slice(0, 50)}"`);
+    res.json({ fields: sanitized });
+  } catch (e) {
+    console.error("[MissionGen] error:", e.message);
+    res.status(500).json({ error: "Gagal generate field" });
+  }
+});
+
 /* ── PATCH /api/admin/missions/templates/:id ── */
 app.patch("/api/admin/missions/templates/:id", async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);

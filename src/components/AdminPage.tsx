@@ -7830,6 +7830,7 @@ function MissionsTab() {
   });
   const [formFields, setFormFields] = useState([BLANK_FIELD()]);
   const [saving, setSaving] = useState(false);
+  const [generatingFields, setGeneratingFields] = useState(false);
 
   const loadTemplates = useCallback(async () => {
     setTplLoading(true);
@@ -7847,6 +7848,36 @@ function MissionsTab() {
       setTemplates(prev => prev.map(t => t.id === id ? { ...t, is_active: !current } : t));
     } catch (e: any) { toast.error(e.message || "Gagal update"); }
     finally { setTogglingId(null); }
+  };
+
+  const generateWithAI = async () => {
+    if (!newTpl.title.trim()) { toast.error("Isi judul misi dulu sebelum generate"); return; }
+    setGeneratingFields(true);
+    try {
+      const res = await adminFetch("/api/admin/missions/generate-fields", {
+        method: "POST",
+        body: JSON.stringify({
+          title: newTpl.title,
+          description: newTpl.description,
+          category: newTpl.kb_category || newTpl.category,
+          difficulty: newTpl.difficulty,
+        }),
+      });
+      if (res.fields?.length) {
+        setFormFields(res.fields.map((f: any) => ({
+          name: f.name,
+          label: f.label,
+          type: f.type as "text"|"textarea",
+          required: true,
+          minLength: f.type === "textarea" ? 100 : 20,
+          placeholder: f.placeholder || "",
+        })));
+        toast.success(`${res.fields.length} pertanyaan berhasil digenerate AI!`);
+      } else {
+        toast.error("AI tidak menghasilkan field, coba lagi");
+      }
+    } catch (e: any) { toast.error(e.message || "Gagal generate"); }
+    finally { setGeneratingFields(false); }
   };
 
   const createTemplate = async () => {
@@ -8036,19 +8067,39 @@ function MissionsTab() {
 
               {/* Form fields builder */}
               <div>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
                   <p className="text-xs font-semibold text-foreground">Field Form untuk Kontributor</p>
-                  {formFields.length < 5 && (
-                    <button onClick={() => setFormFields(f => [...f, BLANK_FIELD()])} className="flex items-center gap-1 text-xs text-primary hover:underline">
-                      <Plus className="h-3 w-3" /> Tambah Field
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={generateWithAI}
+                      disabled={generatingFields || !newTpl.title.trim()}
+                      className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                    >
+                      {generatingFields
+                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Generating...</>
+                        : <><Sparkles className="h-3 w-3" /> Generate dengan AI</>}
                     </button>
-                  )}
+                    {formFields.length < 5 && (
+                      <button onClick={() => setFormFields(f => [...f, BLANK_FIELD()])} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                        <Plus className="h-3 w-3" /> Tambah Manual
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {generatingFields && (
+                  <div className="mb-3 rounded-xl bg-violet-500/10 border border-violet-500/20 px-3 py-2.5 text-xs text-violet-300 flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 animate-pulse" />
+                    AI sedang menganalisis judul misi dan membuat pertanyaan yang relevan untuk Masisir...
+                  </div>
+                )}
                 <div className="space-y-3">
-                  {formFields.map((f, i) => (
-                    <div key={i} className="rounded-xl border border-border bg-background p-3 space-y-2">
+                  {formFields.map((f: any, i) => (
+                    <div key={i} className={`rounded-xl border bg-background p-3 space-y-2 transition-colors ${f.placeholder ? "border-violet-500/30 bg-violet-500/5" : "border-border"}`}>
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium text-muted-foreground">Field {i + 1}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-medium text-muted-foreground">Field {i + 1}</p>
+                          {f.placeholder && <span className="flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-400"><Sparkles className="h-2.5 w-2.5" />AI</span>}
+                        </div>
                         {formFields.length > 1 && (
                           <button onClick={() => setFormFields(ff => ff.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:underline">Hapus</button>
                         )}
@@ -8069,6 +8120,12 @@ function MissionsTab() {
                             <option value="textarea">Textarea (panjang)</option>
                           </select>
                         </div>
+                        {f.placeholder && (
+                          <div className="col-span-2">
+                            <label className="mb-1 block text-xs text-muted-foreground">Contoh jawaban (dari AI)</label>
+                            <input className={`${inp} text-muted-foreground italic`} readOnly value={f.placeholder} />
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
