@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
@@ -113,6 +114,16 @@ if (typeof globalThis.DOMMatrix === "undefined") {
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: false, // managed by Vite for the SPA
+}));
+
+/* ── Gzip/Brotli Compression ─────────────────────────── */
+// Skips SSE streams (text/event-stream) so streaming chat isn't buffered.
+app.use(compression({
+  filter: (req, res) => {
+    if (res.getHeader("Content-Type")?.includes("text/event-stream")) return false;
+    return compression.filter(req, res);
+  },
+  level: 6, // balanced: good compression ratio without CPU spike
 }));
 
 /* ── CORS — exact origin matching only ──────────────── */
@@ -796,6 +807,12 @@ console.log(`[MASTER_ADMIN_IDS] loaded: ${[...MASTER_ADMIN_IDS].join(",") || "(e
 // Bounded admin token cache — max 500 entries, 5-min TTL
 const _adminCache = new Map();
 const ADMIN_CACHE_MAX = 500;
+
+// Bounded regular-user token cache — max 2000 entries, 5-min TTL
+// Prevents hitting Supabase auth on every API request from logged-in users.
+const _userAuthCache = new Map();
+const USER_AUTH_CACHE_MAX  = 2000;
+const USER_AUTH_CACHE_TTL  = 5 * 60 * 1000; // 5 minutes
 async function verifyAdminUser(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.replace("Bearer ", "");
@@ -4310,10 +4327,19 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const supabaseAdmin = getAdminClient();
   if (!supabaseAdmin) return res.status(500).json({ error: "Server config error" });
 
-  // Verify token and apply per-user daily rate limit
+  // Verify token — check in-memory cache first to avoid Supabase round-trip on every chat message
   const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
-  if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
+  let user;
+  const _chatAuthCached = _userAuthCache.get(token);
+  if (_chatAuthCached && _chatAuthCached.expiresAt > Date.now()) {
+    user = _chatAuthCached.user;
+  } else {
+    const { data: { user: _u }, error: authErr } = await supabaseAdmin.auth.getUser(token);
+    if (authErr || !_u) return res.status(401).json({ error: "Token tidak valid" });
+    user = _u;
+    if (_userAuthCache.size >= USER_AUTH_CACHE_MAX) _userAuthCache.delete(_userAuthCache.keys().next().value);
+    _userAuthCache.set(token, { user, expiresAt: Date.now() + USER_AUTH_CACHE_TTL });
+  }
 
   // ── Set SSE headers immediately after auth ─────────────────────────────────
   // User sees the typing cursor RIGHT AWAY while preprocessing runs in background.
@@ -8645,11 +8671,26 @@ app.get("/api/admin/export/articles", async (req, res) => {
 /* ── Threads ─────────────────────────────────────────── */
 async function verifyAuth(authHeader) {
   if (!authHeader?.startsWith("Bearer ")) return null;
+  const token = authHeader.replace("Bearer ", "");
+
+  // Check in-memory cache first — avoids a Supabase round-trip on every request
+  const _cached = _userAuthCache.get(token);
+  if (_cached) {
+    if (_cached.expiresAt > Date.now()) return _cached.user;
+    _userAuthCache.delete(token); // expired — evict
+  }
+
   const supabase = getAdminClient();
   if (!supabase) return null;
-  const token = authHeader.replace("Bearer ", "");
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return null;
+
+  // Store in cache — evict oldest entry if at capacity
+  if (_userAuthCache.size >= USER_AUTH_CACHE_MAX) {
+    _userAuthCache.delete(_userAuthCache.keys().next().value);
+  }
+  _userAuthCache.set(token, { user, expiresAt: Date.now() + USER_AUTH_CACHE_TTL });
+
   return user;
 }
 
