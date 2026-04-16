@@ -10303,15 +10303,39 @@ app.get("/api/admin/missions/submissions", async (req, res) => {
   const status = req.query.status || "pending";
   const limit = Math.min(parseInt(req.query.limit) || 30, 100);
 
+  // Note: profiles FK hint removed — no direct FK between mission_submissions and profiles.
+  // Contributor names are fetched separately via auth.admin.listUsers.
   const { data, error } = await supabase
     .from("mission_submissions")
-    .select("*, daily_missions(mission_date, mission_templates(*)), profiles!mission_submissions_contributor_id_fkey(full_name, avatar_url)")
+    .select("*, daily_missions(mission_date, mission_templates(*))")
     .eq("status", status)
     .order("submitted_at", { ascending: false })
     .limit(limit);
 
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ submissions: data || [] });
+
+  // Enrich with contributor display info from auth (batch by unique IDs)
+  const rows = data || [];
+  const uniqueIds = [...new Set(rows.map(r => r.contributor_id).filter(Boolean))];
+  const nameMap = {};
+  if (uniqueIds.length > 0) {
+    await Promise.all(uniqueIds.map(async uid => {
+      try {
+        const { data: { user: au } } = await supabase.auth.admin.getUserById(uid);
+        nameMap[uid] = {
+          full_name: au?.user_metadata?.full_name || au?.email?.split("@")[0] || "Kontributor",
+          avatar_url: au?.user_metadata?.avatar_url || null,
+        };
+      } catch { nameMap[uid] = { full_name: "Kontributor", avatar_url: null }; }
+    }));
+  }
+
+  const enriched = rows.map(r => ({
+    ...r,
+    profiles: nameMap[r.contributor_id] || { full_name: "Kontributor", avatar_url: null },
+  }));
+
+  res.json({ submissions: enriched });
 });
 
 /* ── PATCH /api/admin/missions/submissions/:id/approve ── */
