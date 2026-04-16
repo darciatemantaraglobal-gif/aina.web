@@ -10506,6 +10506,38 @@ app.get("/api/admin/missions/templates", async (req, res) => {
   res.json({ templates: data || [] });
 });
 
+/* ── POST /api/admin/missions/templates ── */
+app.post("/api/admin/missions/templates", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const { title, description, difficulty, base_points, kb_category, category, form_schema } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: "title wajib diisi" });
+  if (!form_schema?.fields?.length) return res.status(400).json({ error: "Minimal 1 field di form_schema" });
+
+  const pointsMap = { easy: 30, medium: 50, hard: 80 };
+  const diff = ["easy","medium","hard"].includes(difficulty) ? difficulty : "medium";
+
+  const { data, error } = await supabase.from("mission_templates").insert({
+    title: title.trim(),
+    description: description?.trim() || "",
+    difficulty: diff,
+    base_points: base_points ?? pointsMap[diff],
+    kb_category: kb_category?.trim() || "Umum",
+    category: category?.trim() || "umum",
+    form_schema,
+    is_active: true,
+  }).select().single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ template: data });
+});
+
 /* ── PATCH /api/admin/missions/templates/:id ── */
 app.patch("/api/admin/missions/templates/:id", async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
@@ -10517,13 +10549,78 @@ app.patch("/api/admin/missions/templates/:id", async (req, res) => {
   if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
 
   const { id } = req.params;
-  const allowed = ["title", "description", "difficulty", "base_points", "is_active", "kb_category"];
+  const allowed = ["title", "description", "difficulty", "base_points", "is_active", "kb_category", "category"];
   const updates = {};
   for (const k of allowed) if (req.body[k] !== undefined) updates[k] = req.body[k];
 
   const { error } = await supabase.from("mission_templates").update(updates).eq("id", id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
+});
+
+/* ── DELETE /api/admin/missions/templates/:id ── */
+app.delete("/api/admin/missions/templates/:id", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const { id } = req.params;
+  // Soft-delete: just deactivate so existing daily_missions still resolve
+  const { error } = await supabase.from("mission_templates").update({ is_active: false }).eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+/* ── GET /api/admin/missions/today-status ── */
+app.get("/api/admin/missions/today-status", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  const missionDate = getCairoMissionDate();
+  const { data, error } = await supabase
+    .from("daily_missions")
+    .select("id, mission_date, mission_templates(*)")
+    .eq("mission_date", missionDate);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Also get submission counts for today's missions
+  const ids = (data || []).map(m => m.id);
+  const { data: subs } = ids.length
+    ? await supabase.from("mission_submissions").select("daily_mission_id, status").in("daily_mission_id", ids)
+    : { data: [] };
+
+  const countMap = {};
+  (subs || []).forEach(s => { countMap[s.daily_mission_id] = (countMap[s.daily_mission_id] || 0) + 1; });
+
+  const enriched = (data || []).map(m => ({ ...m, submission_count: countMap[m.id] || 0 }));
+  res.json({ missions: enriched, date: missionDate });
+});
+
+/* ── POST /api/admin/missions/regenerate-today ── */
+app.post("/api/admin/missions/regenerate-today", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  // Force-clear today's missions so ensureDailyMissions re-picks them
+  const missionDate = getCairoMissionDate();
+  await supabase.from("daily_missions").delete().eq("mission_date", missionDate);
+  const fresh = await ensureDailyMissions();
+  res.json({ missions: fresh, date: missionDate });
 });
 
 /* ── Beta Feedback (stored in Supabase, not local files) ─ */

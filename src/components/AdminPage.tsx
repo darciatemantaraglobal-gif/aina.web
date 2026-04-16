@@ -7784,32 +7784,125 @@ function QueryAnalyticsTab() {
 }
 
 /* ─── MissionsTab ─────────────────────────────────────── */
+type MissionInnerTab = "today" | "templates" | "submissions";
+
+const BLANK_FIELD = () => ({ name: "", label: "", type: "text" as "text"|"textarea", required: true, minLength: 30 });
+
 function MissionsTab() {
+  const [inner, setInner] = useState<MissionInnerTab>("today");
+
+  /* ── Today ── */
+  const [todayMissions, setTodayMissions] = useState<any[]>([]);
+  const [todayDate, setTodayDate] = useState("");
+  const [todayLoading, setTodayLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const loadToday = useCallback(async () => {
+    setTodayLoading(true);
+    try {
+      const res = await adminFetch("/api/admin/missions/today-status");
+      setTodayMissions(res.missions || []);
+      setTodayDate(res.date || "");
+    } catch { toast.error("Gagal memuat misi hari ini"); }
+    finally { setTodayLoading(false); }
+  }, []);
+
+  const regenerate = async () => {
+    if (!confirm("Regenerate misi hari ini? Submission yang sudah masuk tidak terpengaruh.")) return;
+    setRegenerating(true);
+    try {
+      const res = await adminFetch("/api/admin/missions/regenerate-today", { method: "POST" });
+      setTodayMissions(res.missions || []);
+      setTodayDate(res.date || "");
+      toast.success("Misi hari ini berhasil di-regenerate");
+    } catch (e: any) { toast.error(e.message || "Gagal regenerate"); }
+    finally { setRegenerating(false); }
+  };
+
+  /* ── Templates ── */
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [tplLoading, setTplLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [newTpl, setNewTpl] = useState({
+    title: "", description: "", difficulty: "medium" as "easy"|"medium"|"hard",
+    kb_category: "", category: "",
+  });
+  const [formFields, setFormFields] = useState([BLANK_FIELD()]);
+  const [saving, setSaving] = useState(false);
+
+  const loadTemplates = useCallback(async () => {
+    setTplLoading(true);
+    try {
+      const res = await adminFetch("/api/admin/missions/templates");
+      setTemplates(res.templates || []);
+    } catch { toast.error("Gagal memuat template"); }
+    finally { setTplLoading(false); }
+  }, []);
+
+  const toggleActive = async (id: string, current: boolean) => {
+    setTogglingId(id);
+    try {
+      await adminFetch(`/api/admin/missions/templates/${id}`, { method: "PATCH", body: JSON.stringify({ is_active: !current }) });
+      setTemplates(prev => prev.map(t => t.id === id ? { ...t, is_active: !current } : t));
+    } catch (e: any) { toast.error(e.message || "Gagal update"); }
+    finally { setTogglingId(null); }
+  };
+
+  const createTemplate = async () => {
+    if (!newTpl.title.trim()) { toast.error("Judul misi wajib diisi"); return; }
+    if (formFields.some(f => !f.name.trim() || !f.label.trim())) { toast.error("Semua field wajib punya nama dan label"); return; }
+    setSaving(true);
+    try {
+      const fields = formFields.map(f => ({
+        name: f.name.trim().replace(/\s+/g, "_").toLowerCase(),
+        label: f.label.trim(),
+        type: f.type,
+        required: f.required,
+        minLength: f.type === "textarea" ? 100 : 20,
+      }));
+      const pointsMap = { easy: 30, medium: 50, hard: 80 };
+      await adminFetch("/api/admin/missions/templates", {
+        method: "POST",
+        body: JSON.stringify({
+          ...newTpl,
+          base_points: pointsMap[newTpl.difficulty],
+          form_schema: { fields },
+        }),
+      });
+      toast.success("Template misi berhasil dibuat");
+      setShowCreate(false);
+      setNewTpl({ title: "", description: "", difficulty: "medium", kb_category: "", category: "" });
+      setFormFields([BLANK_FIELD()]);
+      loadTemplates();
+    } catch (e: any) { toast.error(e.message || "Gagal simpan template"); }
+    finally { setSaving(false); }
+  };
+
+  /* ── Submissions ── */
   const [submissions, setSubmissions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
+  const [subLoading, setSubLoading] = useState(true);
+  const [filter, setFilter] = useState<"pending"|"approved"|"rejected">("pending");
   const [acting, setActing] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState<Record<string, string>>({});
   const [showRejectInput, setShowRejectInput] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadSubs = useCallback(async () => {
+    setSubLoading(true);
     try {
       const res = await adminFetch(`/api/admin/missions/submissions?status=${filter}&limit=50`);
       setSubmissions(res.submissions || []);
     } catch { toast.error("Gagal memuat submission"); }
-    finally { setLoading(false); }
+    finally { setSubLoading(false); }
   }, [filter]);
-
-  useEffect(() => { load(); }, [load]);
 
   const approve = async (id: string) => {
     setActing(id);
     try {
       const res = await adminFetch(`/api/admin/missions/submissions/${id}/approve`, { method: "PATCH" });
       toast.success(`Disetujui! +${res.points_awarded} poin diberikan${res.is_top_three ? " (bonus Top-3!)" : ""}`);
-      load();
+      loadSubs();
     } catch (e: any) { toast.error(e.message || "Gagal approve"); }
     finally { setActing(null); }
   };
@@ -7820,134 +7913,315 @@ function MissionsTab() {
     setActing(id);
     try {
       await adminFetch(`/api/admin/missions/submissions/${id}/reject`, { method: "PATCH", body: JSON.stringify({ rejection_note: note }) });
-      toast.success("Submission ditolak, kontributor dinotifikasi");
+      toast.success("Submission ditolak");
       setShowRejectInput(null);
-      load();
+      loadSubs();
     } catch (e: any) { toast.error(e.message || "Gagal reject"); }
     finally { setActing(null); }
   };
 
+  useEffect(() => { if (inner === "today") loadToday(); }, [inner, loadToday]);
+  useEffect(() => { if (inner === "templates") loadTemplates(); }, [inner, loadTemplates]);
+  useEffect(() => { if (inner === "submissions") loadSubs(); }, [inner, loadSubs]);
+
   const diffColor = (d: string) => d === "easy" ? "text-green-400 bg-green-500/10" : d === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
   const diffLabel = (d: string) => d === "easy" ? "Mudah" : d === "hard" ? "Sulit" : "Sedang";
+  const inp = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <h2 className="font-display text-lg font-bold text-foreground">Misi Harian Kontributor</h2>
-        <p className="text-sm text-muted-foreground">Review dan setujui submission misi dari kontributor.</p>
+        <p className="text-sm text-muted-foreground">Kelola template misi, jadwal harian, dan review submission.</p>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        {(["pending","approved","rejected"] as const).map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors ${filter === s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"}`}>
-            {s === "pending" ? "Menunggu" : s === "approved" ? "Disetujui" : "Ditolak"}
+      {/* Inner tab bar */}
+      <div className="flex gap-1 rounded-xl bg-secondary p-1">
+        {([
+          { id: "today", label: "Misi Hari Ini", icon: CalendarDays },
+          { id: "templates", label: "Template Misi", icon: BookOpen },
+          { id: "submissions", label: "Review Submission", icon: ListChecks },
+        ] as const).map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setInner(id)}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${inner === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            <Icon className="h-3.5 w-3.5" />{label}
           </button>
         ))}
-        <button onClick={load} className="ml-auto rounded-lg bg-secondary px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
-          <RefreshCw className="h-4 w-4" />
-        </button>
       </div>
 
-      {loading ? (
-        <div className="flex flex-col gap-3">{[1,2,3].map(i => <div key={i} className="h-32 animate-pulse rounded-2xl bg-secondary/50" />)}</div>
-      ) : submissions.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border p-10 text-center">
-          <p className="text-muted-foreground">Tidak ada submission {filter === "pending" ? "menunggu review" : filter}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {submissions.map((s: any) => {
-            const t = s.daily_missions?.mission_templates;
-            const profile = s.profiles;
-            const isExp = expanded === s.id;
-            return (
-              <div key={s.id} className="rounded-2xl border border-border bg-card overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                      <Target className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-sm text-foreground">{t?.title}</p>
-                        {t?.difficulty && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${diffColor(t.difficulty)}`}>{diffLabel(t.difficulty)}</span>}
-                        <span className="text-xs text-muted-foreground bg-secondary rounded-full px-2 py-0.5">+{t?.base_points} poin</span>
+      {/* ── TAB: MISI HARI INI ── */}
+      {inner === "today" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">3 misi aktif hari ini · <span className="font-medium text-foreground">{todayDate}</span></p>
+            <button onClick={regenerate} disabled={regenerating || todayLoading}
+              className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/70 disabled:opacity-50">
+              <RefreshCw className={`h-3.5 w-3.5 ${regenerating ? "animate-spin" : ""}`} />
+              Regenerate Misi
+            </button>
+          </div>
+
+          {todayLoading ? (
+            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 animate-pulse rounded-2xl bg-secondary/50" />)}</div>
+          ) : todayMissions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-10 text-center">
+              <Target className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Belum ada misi hari ini. Klik "Regenerate Misi" untuk generate otomatis.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {todayMissions.map((m: any) => {
+                const t = m.mission_templates;
+                return (
+                  <div key={m.id} className="rounded-2xl border border-border bg-card p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                        <Target className="h-5 w-5 text-primary" />
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Kontributor: <span className="text-foreground font-medium">{profile?.full_name || "Unknown"}</span>
-                        {" · "}{new Date(s.submitted_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
-                        {s.points_awarded && <span className="ml-2 text-green-400 font-medium">+{s.points_awarded} poin awarded</span>}
-                      </p>
-                    </div>
-                    <button onClick={() => setExpanded(isExp ? null : s.id)} className="text-xs text-primary hover:underline shrink-0">
-                      {isExp ? "Sembunyikan" : "Lihat Data"}
-                    </button>
-                  </div>
-
-                  {isExp && (
-                    <div className="mt-4 rounded-xl bg-secondary/50 p-3 space-y-2">
-                      {Object.entries(s.form_data || {}).map(([k, v]: [string, any]) => (
-                        <div key={k}>
-                          <p className="text-xs font-medium text-muted-foreground capitalize">{k.replace(/_/g, " ")}</p>
-                          <p className="mt-0.5 text-sm text-foreground whitespace-pre-wrap">{v}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-sm text-foreground">{t?.title}</p>
+                          {t?.difficulty && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${diffColor(t.difficulty)}`}>{diffLabel(t.difficulty)}</span>}
+                          <span className="text-xs bg-secondary text-muted-foreground rounded-full px-2 py-0.5">+{t?.base_points} poin</span>
                         </div>
-                      ))}
+                        <p className="mt-1 text-xs text-muted-foreground">{t?.description}</p>
+                        <p className="mt-1.5 text-xs text-primary font-medium">{m.submission_count} submission masuk</p>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-                  {s.rejection_note && (
-                    <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                      <p className="text-xs text-red-400">Catatan penolakan: {s.rejection_note}</p>
-                    </div>
-                  )}
-                  {s.kb_article_id && (
-                    <p className="mt-2 text-xs text-green-400">✓ Artikel KB berhasil dibuat dari submission ini</p>
-                  )}
+      {/* ── TAB: TEMPLATE MISI ── */}
+      {inner === "templates" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">{templates.filter(t => t.is_active).length} template aktif dari {templates.length} total</p>
+            <button onClick={() => setShowCreate(v => !v)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+              <Plus className="h-3.5 w-3.5" />{showCreate ? "Tutup Form" : "Buat Template Baru"}
+            </button>
+          </div>
 
-                  {filter === "pending" && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <button
-                        disabled={!!acting}
-                        onClick={() => approve(s.id)}
-                        className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                      >
-                        {acting === s.id ? <span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> : <CheckCircle className="h-3.5 w-3.5" />}
-                        Setujui & Simpan ke KB
-                      </button>
-                      <button
-                        disabled={!!acting}
-                        onClick={() => setShowRejectInput(showRejectInput === s.id ? null : s.id)}
-                        className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50"
-                      >
-                        <XCircle className="h-3.5 w-3.5 text-red-400" />
-                        Tolak
-                      </button>
-                    </div>
-                  )}
-
-                  {showRejectInput === s.id && (
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        value={rejectNote[s.id] || ""}
-                        onChange={e => setRejectNote(prev => ({ ...prev, [s.id]: e.target.value }))}
-                        placeholder="Alasan penolakan (wajib diisi)..."
-                        className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                      <button
-                        disabled={!!acting}
-                        onClick={() => reject(s.id)}
-                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                      >
-                        {acting === s.id ? "..." : "Kirim"}
-                      </button>
-                    </div>
-                  )}
+          {/* Create form */}
+          {showCreate && (
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-4">
+              <p className="text-sm font-semibold text-foreground">Buat Template Misi Baru</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Judul Misi *</label>
+                  <input className={inp} placeholder="Contoh: Laporkan Harga Kost di Daerahmu" value={newTpl.title} onChange={e => setNewTpl(p => ({ ...p, title: e.target.value }))} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Deskripsi</label>
+                  <textarea className={inp} rows={2} placeholder="Penjelasan singkat untuk kontributor..." value={newTpl.description} onChange={e => setNewTpl(p => ({ ...p, description: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Kesulitan</label>
+                  <select className={inp} value={newTpl.difficulty} onChange={e => setNewTpl(p => ({ ...p, difficulty: e.target.value as any }))}>
+                    <option value="easy">Mudah (+30 poin)</option>
+                    <option value="medium">Sedang (+50 poin)</option>
+                    <option value="hard">Sulit (+80 poin)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Kategori KB</label>
+                  <input className={inp} placeholder="Contoh: Kehidupan, Akademik, Keuangan" value={newTpl.kb_category} onChange={e => setNewTpl(p => ({ ...p, kb_category: e.target.value }))} />
                 </div>
               </div>
-            );
-          })}
+
+              {/* Form fields builder */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-foreground">Field Form untuk Kontributor</p>
+                  {formFields.length < 5 && (
+                    <button onClick={() => setFormFields(f => [...f, BLANK_FIELD()])} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                      <Plus className="h-3 w-3" /> Tambah Field
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {formFields.map((f, i) => (
+                    <div key={i} className="rounded-xl border border-border bg-background p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-muted-foreground">Field {i + 1}</p>
+                        {formFields.length > 1 && (
+                          <button onClick={() => setFormFields(ff => ff.filter((_, j) => j !== i))} className="text-xs text-red-400 hover:underline">Hapus</button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Label (ditampilkan ke user) *</label>
+                          <input className={inp} placeholder="Contoh: Harga sewa per bulan" value={f.label} onChange={e => setFormFields(ff => ff.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Nama field (ID unik) *</label>
+                          <input className={inp} placeholder="Contoh: rent_price" value={f.name} onChange={e => setFormFields(ff => ff.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Tipe Input</label>
+                          <select className={inp} value={f.type} onChange={e => setFormFields(ff => ff.map((x, j) => j === i ? { ...x, type: e.target.value as any } : x))}>
+                            <option value="text">Text (satu baris)</option>
+                            <option value="textarea">Textarea (panjang)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowCreate(false)} className="rounded-lg bg-secondary px-4 py-2 text-xs font-medium text-foreground hover:bg-secondary/70">Batal</button>
+                <button onClick={createTemplate} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Simpan Template
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Template list */}
+          {tplLoading ? (
+            <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 animate-pulse rounded-xl bg-secondary/50" />)}</div>
+          ) : templates.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-10 text-center">
+              <p className="text-sm text-muted-foreground">Belum ada template. Buat yang pertama!</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {templates.map((t: any) => (
+                <div key={t.id} className={`rounded-xl border p-3 transition-opacity ${t.is_active ? "border-border bg-card" : "border-border/50 bg-secondary/30 opacity-60"}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${diffColor(t.difficulty)}`}>{diffLabel(t.difficulty)}</span>
+                        <span className="text-xs bg-secondary text-muted-foreground rounded-full px-2 py-0.5">+{t.base_points} poin</span>
+                        {t.kb_category && <span className="text-xs text-muted-foreground">· {t.kb_category}</span>}
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground truncate">{t.description}</p>
+                    </div>
+                    <button
+                      onClick={() => toggleActive(t.id, t.is_active)}
+                      disabled={togglingId === t.id}
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${t.is_active ? "bg-green-500/10 text-green-400 hover:bg-red-500/10 hover:text-red-400" : "bg-secondary text-muted-foreground hover:bg-green-500/10 hover:text-green-400"}`}
+                    >
+                      {togglingId === t.id ? "..." : t.is_active ? "Aktif" : "Nonaktif"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: REVIEW SUBMISSION ── */}
+      {inner === "submissions" && (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            {(["pending","approved","rejected"] as const).map(s => (
+              <button key={s} onClick={() => setFilter(s)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${filter === s ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"}`}>
+                {s === "pending" ? "Menunggu" : s === "approved" ? "Disetujui" : "Ditolak"}
+              </button>
+            ))}
+            <button onClick={loadSubs} className="ml-auto rounded-lg bg-secondary px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
+
+          {subLoading ? (
+            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-32 animate-pulse rounded-2xl bg-secondary/50" />)}</div>
+          ) : submissions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-10 text-center">
+              <p className="text-muted-foreground text-sm">Tidak ada submission {filter === "pending" ? "menunggu review" : filter}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {submissions.map((s: any) => {
+                const t = s.daily_missions?.mission_templates;
+                const profile = s.profiles;
+                const isExp = expanded === s.id;
+                return (
+                  <div key={s.id} className="rounded-2xl border border-border bg-card overflow-hidden">
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                          <Target className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm text-foreground">{t?.title}</p>
+                            {t?.difficulty && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${diffColor(t.difficulty)}`}>{diffLabel(t.difficulty)}</span>}
+                            <span className="text-xs bg-secondary text-muted-foreground rounded-full px-2 py-0.5">+{t?.base_points} poin</span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Kontributor: <span className="text-foreground font-medium">{profile?.full_name || "Unknown"}</span>
+                            {" · "}{new Date(s.submitted_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                            {s.points_awarded && <span className="ml-2 text-green-400 font-medium">+{s.points_awarded} poin awarded</span>}
+                          </p>
+                        </div>
+                        <button onClick={() => setExpanded(isExp ? null : s.id)} className="text-xs text-primary hover:underline shrink-0">
+                          {isExp ? "Sembunyikan" : "Lihat Data"}
+                        </button>
+                      </div>
+
+                      {isExp && (
+                        <div className="mt-4 rounded-xl bg-secondary/50 p-3 space-y-2">
+                          {Object.entries(s.form_data || {}).map(([k, v]: [string, any]) => (
+                            <div key={k}>
+                              <p className="text-xs font-medium text-muted-foreground capitalize">{k.replace(/_/g, " ")}</p>
+                              <p className="mt-0.5 text-sm text-foreground whitespace-pre-wrap">{v}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {s.rejection_note && (
+                        <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                          <p className="text-xs text-red-400">Catatan penolakan: {s.rejection_note}</p>
+                        </div>
+                      )}
+                      {s.kb_article_id && <p className="mt-2 text-xs text-green-400">✓ Artikel KB berhasil dibuat dari submission ini</p>}
+
+                      {filter === "pending" && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <button disabled={!!acting} onClick={() => approve(s.id)}
+                            className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50">
+                            {acting === s.id ? <span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                            Setujui & Simpan ke KB
+                          </button>
+                          <button disabled={!!acting} onClick={() => setShowRejectInput(showRejectInput === s.id ? null : s.id)}
+                            className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/80 disabled:opacity-50">
+                            <XCircle className="h-3.5 w-3.5 text-red-400" />Tolak
+                          </button>
+                        </div>
+                      )}
+
+                      {showRejectInput === s.id && (
+                        <div className="mt-3 flex gap-2">
+                          <input value={rejectNote[s.id] || ""}
+                            onChange={e => setRejectNote(prev => ({ ...prev, [s.id]: e.target.value }))}
+                            placeholder="Alasan penolakan (wajib diisi)..."
+                            className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
+                          <button disabled={!!acting} onClick={() => reject(s.id)}
+                            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                            {acting === s.id ? "..." : "Kirim"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
