@@ -14,7 +14,7 @@ import {
   Users, FileText, Plus, Clock, CheckCircle, XCircle, Send, Bot,
   Upload, X, RefreshCw, Sparkles, Pencil, Check, ChevronDown, ChevronUp,
   Link2, Loader2, Wand2, Target, Trophy, Flame, Star, ChevronRight,
-  AlertCircle, Award, Zap, RotateCcw,
+  AlertCircle, Award, Zap, RotateCcw, Shuffle,
 } from "lucide-react";
 
 const categories = ["Administrasi", "Akademik", "Kehidupan Mesir", "Transport", "Tempat Tinggal", "Kuliner", "Bahasa"];
@@ -184,6 +184,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [activeMission, setActiveMission] = useState<any | null>(null);
   const [missionFormData, setMissionFormData] = useState<Record<string, string>>({});
   const [missionSubmitting, setMissionSubmitting] = useState(false);
+  const [skippingMissionId, setSkippingMissionId] = useState<number | null>(null);
   const [countdown, setCountdown] = useState("");
 
   // Manual article write dialog
@@ -341,6 +342,40 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Gagal memuat ulang, coba lagi.");
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const skipMission = async (dailyMissionId: number) => {
+    setSkippingMissionId(dailyMissionId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`/api/missions/${dailyMissionId}/skip`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error || "Gagal mengganti misi");
+        return;
+      }
+      if (json.replacement) {
+        // Replace the skipped mission card with the new one in-place
+        setMissions(prev => prev.map(m =>
+          m.id === dailyMissionId
+            ? { ...json.replacement, _justAdded: true }
+            : m
+        ));
+        toast.success("Misi berhasil diganti! Kamu dapat misi baru.");
+      } else {
+        // No replacement — reload to reflect skip status
+        await loadMissions();
+        toast(json.message || "Misi dilewati. Tidak ada pengganti saat ini.", { icon: "ℹ️" });
+      }
+    } catch {
+      toast.error("Gagal mengganti misi, coba lagi.");
+    } finally {
+      setSkippingMissionId(null);
     }
   };
 
@@ -1134,49 +1169,84 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {missions.map((m: any) => {
-                      const t = m.template;
-                      const sub = m.submission;
-                      const isApproved = sub?.status === "approved";
-                      const isPending = sub?.status === "pending";
-                      const isRejected = sub?.status === "rejected";
-                      const diffColor = t.difficulty === "easy" ? "text-green-400 bg-green-500/10" : t.difficulty === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
-                      const diffLabel = t.difficulty === "easy" ? "Mudah" : t.difficulty === "hard" ? "Sulit" : "Sedang";
-                      return (
-                        <div key={m.id} className={`rounded-2xl border p-4 transition-all ${isApproved ? "border-green-500/30 bg-green-500/5" : isPending ? "border-yellow-500/30 bg-yellow-500/5" : isRejected ? "border-red-500/20 bg-red-500/5" : "border-border bg-card hover:border-primary/30"}`}>
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isApproved ? "bg-green-500/20" : isPending ? "bg-yellow-500/20" : "bg-primary/10"}`}>
-                              {isApproved ? <CheckCircle className="h-5 w-5 text-green-400" /> : isPending ? <Clock className="h-5 w-5 text-yellow-400" /> : isRejected ? <XCircle className="h-5 w-5 text-red-400" /> : <Target className="h-5 w-5 text-primary" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="font-semibold text-sm text-foreground">{t.title}</p>
-                                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${diffColor}`}><Star className="h-3 w-3" />{diffLabel}</span>
-                                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"><Zap className="h-3 w-3" />+{t.base_points}{t.difficulty !== "easy" ? "–"+(t.base_points+15) : "–"+(t.base_points+15)} poin</span>
+                    {(() => {
+                      const skipCount = missions.filter((m: any) => m.submission?.status === "skipped").length;
+                      const canSkip = skipCount < 2;
+                      return missions.map((m: any) => {
+                        const t = m.template;
+                        const sub = m.submission;
+                        const isApproved = sub?.status === "approved";
+                        const isPending = sub?.status === "pending";
+                        const isRejected = sub?.status === "rejected";
+                        const isSkipped = sub?.status === "skipped";
+                        const isSkipping = skippingMissionId === m.id;
+                        const diffColor = t.difficulty === "easy" ? "text-green-400 bg-green-500/10" : t.difficulty === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
+                        const diffLabel = t.difficulty === "easy" ? "Mudah" : t.difficulty === "hard" ? "Sulit" : "Sedang";
+
+                        if (isSkipped) return null;
+
+                        return (
+                          <div key={m.id} className={`rounded-2xl border p-4 transition-all ${m._justAdded ? "border-primary/40 bg-primary/5 animate-pulse-once" : isApproved ? "border-green-500/30 bg-green-500/5" : isPending ? "border-yellow-500/30 bg-yellow-500/5" : isRejected ? "border-red-500/20 bg-red-500/5" : "border-border bg-card hover:border-primary/30"}`}>
+                            {m._justAdded && (
+                              <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-primary">
+                                <Shuffle className="h-3 w-3" />Misi baru untukmu!
                               </div>
-                              <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{t.description}</p>
-                              <div className="mt-2 flex items-center gap-3">
-                                <span className="text-xs text-muted-foreground">{m.total_submissions} kontributor sudah submit</span>
-                                {isApproved && <span className="text-xs font-medium text-green-400">✓ Disetujui · +{sub.points_awarded} poin</span>}
-                                {isPending && <span className="text-xs font-medium text-yellow-400">⏳ Menunggu review admin</span>}
-                                {isRejected && <span className="text-xs font-medium text-red-400">✗ Perlu direvisi</span>}
-                              </div>
-                              {isRejected && sub.rejection_note && (
-                                <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                                  <p className="text-xs text-red-400 font-medium">Catatan admin: {sub.rejection_note}</p>
-                                </div>
-                              )}
-                            </div>
-                            {!isApproved && !isPending && (
-                              <Button size="sm" variant={isRejected ? "outline" : "hero"} className="shrink-0 gap-1.5" onClick={() => { setActiveMission(m); setMissionFormData(isRejected && sub?.form_data ? sub.form_data : {}); }}>
-                                {isRejected ? <><RotateCcw className="h-3.5 w-3.5" />Revisi</> : <><ChevronRight className="h-3.5 w-3.5" />Kerjakan</>}
-                              </Button>
                             )}
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isApproved ? "bg-green-500/20" : isPending ? "bg-yellow-500/20" : "bg-primary/10"}`}>
+                                {isApproved ? <CheckCircle className="h-5 w-5 text-green-400" /> : isPending ? <Clock className="h-5 w-5 text-yellow-400" /> : isRejected ? <XCircle className="h-5 w-5 text-red-400" /> : <Target className="h-5 w-5 text-primary" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-semibold text-sm text-foreground">{t.title}</p>
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${diffColor}`}><Star className="h-3 w-3" />{diffLabel}</span>
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"><Zap className="h-3 w-3" />+{t.base_points}{t.difficulty !== "easy" ? "–"+(t.base_points+15) : "–"+(t.base_points+15)} poin</span>
+                                </div>
+                                <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+                                <div className="mt-2 flex items-center gap-3 flex-wrap">
+                                  <span className="text-xs text-muted-foreground">{m.total_submissions} kontributor sudah submit</span>
+                                  {isApproved && <span className="text-xs font-medium text-green-400">✓ Disetujui · +{sub.points_awarded} poin</span>}
+                                  {isPending && <span className="text-xs font-medium text-yellow-400">⏳ Menunggu review admin</span>}
+                                  {isRejected && <span className="text-xs font-medium text-red-400">✗ Perlu direvisi</span>}
+                                </div>
+                                {isRejected && sub.rejection_note && (
+                                  <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                                    <p className="text-xs text-red-400 font-medium">Catatan admin: {sub.rejection_note}</p>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col items-end gap-2 shrink-0">
+                                {!isApproved && !isPending && (
+                                  <Button size="sm" variant={isRejected ? "outline" : "hero"} className="gap-1.5" onClick={() => { setActiveMission(m); setMissionFormData(isRejected && sub?.form_data ? sub.form_data : {}); }}>
+                                    {isRejected ? <><RotateCcw className="h-3.5 w-3.5" />Revisi</> : <><ChevronRight className="h-3.5 w-3.5" />Kerjakan</>}
+                                  </Button>
+                                )}
+                                {!isApproved && !isPending && !isRejected && canSkip && (
+                                  <button
+                                    onClick={() => skipMission(m.id)}
+                                    disabled={isSkipping}
+                                    title="Tidak paham? Ganti dengan misi lain"
+                                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 transition-colors">
+                                    {isSkipping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shuffle className="h-3 w-3" />}
+                                    {isSkipping ? "Mengganti..." : "Ganti Misi"}
+                                  </button>
+                                )}
+                                {!isApproved && !isPending && !isRejected && !canSkip && skipCount > 0 && (
+                                  <span className="text-[10px] text-muted-foreground/60">Batas ganti tercapai</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
+                  {missions.filter((m: any) => m.submission?.status === "skipped").length > 0 && (
+                    <p className="text-center text-xs text-muted-foreground">
+                      {missions.filter((m: any) => m.submission?.status === "skipped").length} misi dilewati hari ini
+                      {missions.filter((m: any) => m.submission?.status === "skipped").length < 2 ? " · 1 ganti tersisa" : " · Batas ganti tercapai"}
+                    </p>
+                  )}
                 )}
 
                 <p className="text-center text-xs text-muted-foreground">Misi reset setiap hari pukul 05.00 pagi waktu Cairo · Semua poin tercatat di leaderboard kontributor</p>

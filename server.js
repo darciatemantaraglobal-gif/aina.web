@@ -10194,6 +10194,106 @@ app.get("/api/missions/today", async (req, res) => {
   });
 });
 
+/* ── POST /api/missions/:dailyMissionId/skip ── */
+// User skips a mission they don't understand. Marks as "skipped" and returns a replacement.
+app.post("/api/missions/:dailyMissionId/skip", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const isContrib = (roles || []).some(r => ["contributor","senior_contributor","admin"].includes(r.role));
+  if (!isContrib) return res.status(403).json({ error: "Contributor access required" });
+
+  const dailyMissionId = parseInt(req.params.dailyMissionId);
+  if (isNaN(dailyMissionId)) return res.status(400).json({ error: "ID tidak valid" });
+
+  const missions = await ensureDailyMissions();
+  const mission = missions.find(m => m.id === dailyMissionId);
+  if (!mission) return res.status(404).json({ error: "Misi tidak ditemukan" });
+
+  const missionDate = getCairoMissionDate();
+  const missionIds = missions.map(m => m.id);
+
+  // Check this mission hasn't been submitted/pending/approved by this user
+  const { data: existingSub } = await supabase
+    .from("mission_submissions")
+    .select("id, status")
+    .eq("contributor_id", user.id)
+    .eq("daily_mission_id", dailyMissionId)
+    .maybeSingle();
+
+  if (existingSub && existingSub.status !== "skipped") {
+    return res.status(400).json({ error: "Misi ini sudah disubmit atau sedang diproses, tidak bisa diganti." });
+  }
+
+  // Check daily skip limit (max 2 skips per day)
+  const { data: skippedToday } = await supabase
+    .from("mission_submissions")
+    .select("id")
+    .eq("contributor_id", user.id)
+    .in("daily_mission_id", missionIds)
+    .eq("status", "skipped");
+
+  if ((skippedToday || []).length >= 2) {
+    return res.status(400).json({ error: "Kamu sudah melewati 2 misi hari ini. Maksimal 2 kali ganti per hari." });
+  }
+
+  // Mark as skipped (insert or it was already skipped)
+  if (!existingSub) {
+    await supabase.from("mission_submissions").insert({
+      contributor_id: user.id,
+      daily_mission_id: dailyMissionId,
+      status: "skipped",
+      form_data: {},
+    });
+  }
+
+  // Find a replacement template not already in today's pool
+  const currentTemplateIds = missions.map(m => m.template_id);
+  let altQuery = supabase
+    .from("mission_templates")
+    .select("id, category")
+    .eq("is_active", true);
+  if (currentTemplateIds.length > 0) {
+    altQuery = altQuery.not("id", "in", `(${currentTemplateIds.join(",")})`);
+  }
+  const { data: altTemplates } = await altQuery.limit(20);
+
+  if (!altTemplates || altTemplates.length === 0) {
+    // No alternate available — just confirm skip, no replacement
+    console.log(`[MissionSkip] user ${user.id} skipped mission ${dailyMissionId} — no replacement available`);
+    return res.json({ skipped: true, replacement: null, message: "Misi dilewati. Tidak ada misi pengganti tersedia saat ini." });
+  }
+
+  // Pick a random replacement
+  const pick = altTemplates[Math.floor(Math.random() * altTemplates.length)];
+
+  // Insert into daily_missions pool for today
+  const { data: newDm, error: insertErr } = await supabase
+    .from("daily_missions")
+    .insert({ template_id: pick.id, mission_date: missionDate })
+    .select("id, template_id, mission_templates(*)")
+    .single();
+
+  if (insertErr || !newDm) {
+    console.warn("[MissionSkip] failed to insert replacement:", insertErr?.message);
+    return res.json({ skipped: true, replacement: null, message: "Misi dilewati tapi gagal ambil pengganti." });
+  }
+
+  console.log(`[MissionSkip] user ${user.id} skipped ${dailyMissionId} → replacement ${newDm.id} (template ${pick.id})`);
+  res.json({
+    skipped: true,
+    replacement: {
+      id: newDm.id,
+      template: newDm.mission_templates,
+      submission: null,
+      total_submissions: 0,
+    },
+  });
+});
+
 /* ── POST /api/missions/:dailyMissionId/submit ── */
 app.post("/api/missions/:dailyMissionId/submit", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
