@@ -101,7 +101,19 @@ class TabErrorBoundary extends Component<
     return { hasError: true, error: error.message };
   }
   componentDidCatch(error: Error) {
-    console.error("Tab error:", error);
+    console.error(`[TabError:${this.props.tabName}]`, error);
+    // Log to server so crashes are visible in production logs
+    fetch("/api/client-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        section: `tab:${this.props.tabName}`,
+        message: error?.message ?? "Unknown",
+        stack: error?.stack?.slice(0, 1000) ?? "",
+        url: window.location.href,
+        ts: new Date().toISOString(),
+      }),
+    }).catch(() => {});
     if (isChunkError(error.message)) {
       const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
       const now = Date.now();

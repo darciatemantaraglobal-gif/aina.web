@@ -1181,10 +1181,12 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                         const isRejected = sub?.status === "rejected";
                         const isSkipped = sub?.status === "skipped";
                         const isSkipping = skippingMissionId === m.id;
-                        const diffColor = t.difficulty === "easy" ? "text-green-400 bg-green-500/10" : t.difficulty === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
-                        const diffLabel = t.difficulty === "easy" ? "Mudah" : t.difficulty === "hard" ? "Sulit" : "Sedang";
 
                         if (isSkipped) return null;
+                        if (!t) return null;
+
+                        const diffColor = t.difficulty === "easy" ? "text-green-400 bg-green-500/10" : t.difficulty === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
+                        const diffLabel = t.difficulty === "easy" ? "Mudah" : t.difficulty === "hard" ? "Sulit" : "Sedang";
 
                         return (
                           <div key={m.id} className={`rounded-2xl border p-4 transition-all ${m._justAdded ? "border-primary/40 bg-primary/5 animate-pulse-once" : isApproved ? "border-green-500/30 bg-green-500/5" : isPending ? "border-yellow-500/30 bg-yellow-500/5" : isRejected ? "border-red-500/20 bg-red-500/5" : "border-border bg-card hover:border-primary/30"}`}>

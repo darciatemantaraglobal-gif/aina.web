@@ -2897,6 +2897,16 @@ app.get("/api/exchange-rate", async (_req, res) => {
 /* ── Health check ────────────────────────────────────── */
 app.get("/api/ping", (_req, res) => res.json({ status: "ok" }));
 
+/* ── POST /api/client-error ── */
+// Receives frontend JavaScript errors caught by the Error Boundary.
+// Logs to console (and optionally to Supabase query_log for visibility).
+app.post("/api/client-error", express.json({ limit: "4kb" }), (req, res) => {
+  const { section = "unknown", message = "", stack = "", url = "", ua = "", ts = "" } = req.body || {};
+  console.error(`[ClientError][${section}] ${message} | url=${url} | ${ts}`);
+  if (stack) console.error(`[ClientError] stack: ${stack.slice(0, 500)}`);
+  res.json({ ok: true });
+});
+
 // Detailed health — returns uptime, memory, and service config status.
 // Public (no auth needed) so uptime monitors can use it.
 app.get("/api/health", (_req, res) => {
