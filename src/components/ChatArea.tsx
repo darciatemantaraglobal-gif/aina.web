@@ -306,7 +306,15 @@ function cleanMarkdown(text: string): string {
     }
   );
 
-  // 5. Collapse excess blank lines
+  // 5. Join lone "N." line with the content on the next line.
+  //    e.g. "3.\n**Siapkan...**" → "3. **Siapkan...**"
+  result = result.replace(/^(\d+\.)\s*\n([^\n])/gm, "$1 $2");
+
+  // 6. Remove blank lines between consecutive numbered list items.
+  //    e.g. "1. text\n\n2. text" → "1. text\n2. text"
+  result = result.replace(/^(\d+\.\s[^\n]+)\n\n(?=\d+\.\s)/gm, "$1\n");
+
+  // 7. Collapse excess blank lines
   result = result.replace(/\n{3,}/g, "\n\n");
 
   return result.trim();
