@@ -20,7 +20,7 @@ import {
   ExternalLink, ChevronDown, Megaphone, Save, Upload, Image, PartyPopper,
   ThumbsUp, Bookmark, Star, Newspaper, Utensils, Globe, Bus, GraduationCap, Pin,
   Wand2, FileUp, CheckCircle2, AlertTriangle, ChevronRight, Sparkles, Tags, Heading,
-  Loader2, BarChart2, CalendarDays, Target, CheckCircle, XCircle,
+  Loader2, BarChart2, CalendarDays, Target, CheckCircle, XCircle, Hash,
 } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -7832,6 +7832,33 @@ function MissionsTab() {
   const [saving, setSaving] = useState(false);
   const [generatingFields, setGeneratingFields] = useState(false);
 
+  /* ── Trending Topics (from query_log) ── */
+  const [trendingTopics, setTrendingTopics] = useState<{ keyword: string; count: number; samples: string[] }[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(false);
+  const [trendingLoaded, setTrendingLoaded] = useState(false);
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
+
+  const loadTrendingTopics = useCallback(async () => {
+    setTrendingLoading(true);
+    try {
+      const res = await adminFetch("/api/admin/missions/trending-topics");
+      setTrendingTopics(res.clusters || []);
+      setTrendingLoaded(true);
+    } catch { toast.error("Gagal ambil topik trending"); }
+    finally { setTrendingLoading(false); }
+  }, []);
+
+  const useTopicAsMission = (keyword: string, samples: string[]) => {
+    const titleized = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+    setNewTpl(p => ({
+      ...p,
+      title: `Laporan ${titleized} dari Masisir`,
+      description: `Berdasarkan pertanyaan yang sering ditanyakan: ${samples.slice(0, 2).join("; ")}`,
+    }));
+    setShowCreate(true);
+    setTimeout(() => document.getElementById("new-tpl-title")?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+  };
+
   const loadTemplates = useCallback(async () => {
     setTplLoading(true);
     try {
@@ -8038,6 +8065,87 @@ function MissionsTab() {
             </button>
           </div>
 
+          {/* ── Topik Trending dari Query User ── */}
+          <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                <p className="text-sm font-semibold text-foreground">Topik Sering Ditanya Masisir</p>
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">30 hari terakhir</span>
+              </div>
+              {!trendingLoaded && (
+                <button onClick={loadTrendingTopics} disabled={trendingLoading}
+                  className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/70 disabled:opacity-50">
+                  {trendingLoading ? <><Loader2 className="h-3 w-3 animate-spin" />Memuat...</> : <><BarChart2 className="h-3.5 w-3.5" />Tampilkan Topik</>}
+                </button>
+              )}
+              {trendingLoaded && (
+                <button onClick={loadTrendingTopics} disabled={trendingLoading}
+                  className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">
+                  {trendingLoading ? "Memuat..." : "Refresh"}
+                </button>
+              )}
+            </div>
+
+            {!trendingLoaded && !trendingLoading && (
+              <p className="text-xs text-muted-foreground">Klik "Tampilkan Topik" untuk melihat apa yang paling sering ditanyakan user Masisir — gunakan sebagai inspirasi template misi.</p>
+            )}
+
+            {trendingLoading && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />Menganalisis pertanyaan dari query log...
+              </div>
+            )}
+
+            {trendingLoaded && trendingTopics.length === 0 && (
+              <p className="text-xs text-muted-foreground">Belum ada data query. User perlu bertanya ke AINA dulu.</p>
+            )}
+
+            {trendingLoaded && trendingTopics.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Klik topik untuk jadikan inspirasi template misi. Klik lagi untuk lihat contoh pertanyaannya.</p>
+                <div className="flex flex-wrap gap-2">
+                  {trendingTopics.map(t => (
+                    <div key={t.keyword} className="flex flex-col">
+                      <button
+                        onClick={() => setExpandedTopic(prev => prev === t.keyword ? null : t.keyword)}
+                        className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:border-primary/50 hover:bg-primary/5 transition-colors">
+                        <Hash className="h-3 w-3 text-muted-foreground" />
+                        {t.keyword}
+                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{t.count}x</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {expandedTopic && (() => {
+                  const topic = trendingTopics.find(t => t.keyword === expandedTopic);
+                  if (!topic) return null;
+                  return (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-foreground">#{topic.keyword} — {topic.count} pertanyaan</p>
+                        <button
+                          onClick={() => useTopicAsMission(topic.keyword, topic.samples)}
+                          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                          <Plus className="h-3 w-3" />Buat Template dari Topik Ini
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-medium">Contoh pertanyaan nyata dari user:</p>
+                      <ul className="space-y-1">
+                        {topic.samples.map((s, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-foreground">
+                            <span className="mt-0.5 shrink-0 text-muted-foreground">"{s}"</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
           {/* Create form */}
           {showCreate && (
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-4">
@@ -8045,7 +8153,7 @@ function MissionsTab() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">Judul Misi *</label>
-                  <input className={inp} placeholder="Contoh: Laporkan Harga Kost di Daerahmu" value={newTpl.title} onChange={e => setNewTpl(p => ({ ...p, title: e.target.value }))} />
+                  <input id="new-tpl-title" className={inp} placeholder="Contoh: Laporkan Harga Kost di Daerahmu" value={newTpl.title} onChange={e => setNewTpl(p => ({ ...p, title: e.target.value }))} />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="mb-1 block text-xs font-medium text-muted-foreground">Deskripsi</label>

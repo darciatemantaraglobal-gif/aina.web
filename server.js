@@ -10538,8 +10538,73 @@ app.post("/api/admin/missions/templates", async (req, res) => {
   res.json({ template: data });
 });
 
+/* ── GET /api/admin/missions/trending-topics ── */
+// Returns top queried topics from query_log to inspire mission templates.
+app.get("/api/admin/missions/trending-topics", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
+
+  try {
+    const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: logs, error } = await supabase
+      .from("query_log")
+      .select("query_text, intent_type, created_at")
+      .gte("created_at", since30d)
+      .not("query_text", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (error) throw error;
+
+    // Count keyword frequency (simple clustering by dominant keywords)
+    const stopWords = new Set(["apa","gimana","bagaimana","cara","bisa","tolong","bantu","dong","sih","ya","di","ke","dari","yang","dan","untuk","itu","ini","tidak","buat","kalo","kalau","ada","mau","ada","gak","ga","ngga","tidak","bisa","atau"]);
+    const topicCounts = {};
+    for (const row of (logs || [])) {
+      const words = (row.query_text || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !stopWords.has(w));
+      for (const w of words) {
+        topicCounts[w] = (topicCounts[w] || 0) + 1;
+      }
+    }
+
+    // Build topic clusters: group queries sharing a top keyword
+    const topKeywords = Object.entries(topicCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([kw]) => kw);
+
+    const clusters = [];
+    const usedQueryIds = new Set();
+    for (const kw of topKeywords) {
+      const matching = (logs || []).filter((r, i) => {
+        if (usedQueryIds.has(i)) return false;
+        return r.query_text?.toLowerCase().includes(kw);
+      });
+      if (matching.length < 2) continue; // skip rare keywords
+      // Take sample questions for this cluster
+      const samples = matching.slice(0, 5).map(r => r.query_text?.trim());
+      matching.slice(0, 8).forEach((_, i) => usedQueryIds.add(logs.indexOf(matching[i])));
+      clusters.push({ keyword: kw, count: matching.length, samples });
+      if (clusters.length >= 15) break;
+    }
+
+    res.json({ clusters, total_queries: (logs || []).length, since: since30d });
+  } catch (e) {
+    console.error("[TrendingTopics] error:", e.message);
+    res.status(500).json({ error: "Gagal ambil data" });
+  }
+});
+
 /* ── POST /api/admin/missions/generate-fields ── */
-// Uses Gemini to suggest form fields for a new mission template, tailored to Masisir life in Egypt.
+// Uses Gemini to suggest form fields for a new mission template, drawing from real user queries.
 app.post("/api/admin/missions/generate-fields", async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -10555,6 +10620,52 @@ app.post("/api/admin/missions/generate-fields", async (req, res) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return res.status(503).json({ error: "OpenRouter tidak dikonfigurasi" });
 
+  // ── Pull real user queries from query_log related to this topic ──
+  let realQueriesBlock = "";
+  try {
+    const since60d = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: logs } = await supabase
+      .from("query_log")
+      .select("query_text")
+      .gte("created_at", since60d)
+      .not("query_text", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(300);
+
+    if (logs?.length) {
+      // Extract keywords from title for relevance matching
+      const titleWords = title.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(w => w.length > 3);
+
+      // Find queries that contain at least one title keyword
+      const relevant = logs
+        .filter(r => titleWords.some(kw => r.query_text?.toLowerCase().includes(kw)))
+        .map(r => r.query_text?.trim())
+        .filter(Boolean);
+
+      // Deduplicate similar-sounding queries (simple prefix dedup)
+      const seen = new Set();
+      const deduped = [];
+      for (const q of relevant) {
+        const key = q.toLowerCase().slice(0, 30);
+        if (!seen.has(key)) { seen.add(key); deduped.push(q); }
+        if (deduped.length >= 20) break;
+      }
+
+      if (deduped.length > 0) {
+        realQueriesBlock = `\nPertanyaan NYATA yang sering ditanyakan user Masisir di AINA tentang topik ini (60 hari terakhir):
+${deduped.map((q, i) => `${i + 1}. "${q}"`).join("\n")}
+
+Gunakan pertanyaan-pertanyaan ini sebagai inspirasi utama — buat field form yang akan mengumpulkan jawaban atas pertanyaan tersebut.\n`;
+        console.log(`[MissionGen] injecting ${deduped.length} real queries for "${title.slice(0, 40)}"`);
+      }
+    }
+  } catch (e) {
+    console.warn("[MissionGen] failed to fetch query_log:", e.message);
+  }
+
   const prompt = `Kamu adalah AI yang membantu admin platform AINA — sebuah asisten AI khusus untuk mahasiswa Indonesia di Mesir (Masisir).
 
 Tugasmu: Buat 3–5 pertanyaan/field form yang akan diisi oleh Masisir (mahasiswa Indonesia di Mesir) sebagai bagian dari misi kontributor. Informasi yang mereka isi akan masuk ke Knowledge Base AINA untuk membantu sesama Masisir.
@@ -10564,7 +10675,7 @@ Detail misi:
 - Deskripsi: ${(description || "").trim() || "(tidak ada)"}
 - Kategori: ${(category || "Umum").trim()}
 - Kesulitan: ${difficulty || "medium"}
-
+${realQueriesBlock}
 Konteks kehidupan Masisir yang perlu kamu pahami:
 - Tinggal di Kairo (Hay Asyir/Asyir), Tanta, Mansoura, Zagazig, Ismailia, dll
 - Kuliah di Al-Azhar atau universitas Mesir lainnya
@@ -10575,7 +10686,7 @@ Konteks kehidupan Masisir yang perlu kamu pahami:
 - Mugharrar (buku teks Al-Azhar), ujian, semester, libur
 
 Buat field-field yang:
-1. Spesifik dan actionable — bukan pertanyaan abstrak
+1. Spesifik dan actionable — menjawab pertanyaan nyata yang ditanyakan Masisir
 2. Mengumpulkan info yang benar-benar berguna untuk Masisir lain
 3. Mencerminkan realita kehidupan di Mesir
 4. Kombinasi antara data konkret (harga, nama tempat, prosedur) dan tips/pengalaman
@@ -10587,12 +10698,6 @@ Format respons HARUS berupa JSON array murni (tanpa markdown, tanpa penjelasan):
     "label": "Label yang ditampilkan ke user (deskriptif, bahasa Indonesia)",
     "type": "text",
     "placeholder": "Contoh placeholder yang helpful"
-  },
-  {
-    "name": "nama_field_2",
-    "label": "Label field 2",
-    "type": "textarea",
-    "placeholder": "Placeholder field 2"
   }
 ]
 
