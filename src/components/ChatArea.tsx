@@ -381,7 +381,8 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
   );
 }
 
-const ARABIC_BLOCK_RE = /\[ARABIC_BLOCK\]([\s\S]*?)\[\/ARABIC_BLOCK\]/g;
+// Tolerant to both [ARABIC_BLOCK]…[/ARABIC_BLOCK] and <ARABIC_BLOCK>…</ARABIC_BLOCK>
+const ARABIC_BLOCK_RE = /[\[<]ARABIC_BLOCK[\]>]([\s\S]*?)[\[<]\/ARABIC_BLOCK[\]>]/g;
 
 function renderWithArabicBlocks(content: string | null | undefined, applyClean = true): React.ReactNode {
   if (!content) return null;

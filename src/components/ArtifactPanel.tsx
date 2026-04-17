@@ -137,7 +137,7 @@ export function isArtifactWorthy(content: string): boolean {
   // Fenced code block
   if (/```[\s\S]+?```/.test(content)) return true;
   // Long Arabic block(s) — total panjang teks dalam ARABIC_BLOCK > 350 chars
-  const arabBlocks = content.match(/\[ARABIC_BLOCK\]([\s\S]*?)\[\/ARABIC_BLOCK\]/g);
+  const arabBlocks = content.match(/[\[<]ARABIC_BLOCK[\]>]([\s\S]*?)[\[<]\/ARABIC_BLOCK[\]>]/g);
   if (arabBlocks) {
     const totalArab = arabBlocks.reduce((acc, b) => acc + b.length, 0);
     if (totalArab > 350) return true;
@@ -157,7 +157,7 @@ export function deriveArtifactTitle(content: string, fallback = "Jawaban AINA"):
   const firstLine = content
     .split("\n")
     .map(l => l.trim())
-    .find(l => l.length > 0 && !l.startsWith("[ARABIC_BLOCK]"));
+    .find(l => l.length > 0 && !/^[\[<]ARABIC_BLOCK[\]>]/.test(l));
   if (firstLine) {
     const clean = firstLine.replace(/[*_`#>-]/g, "").trim();
     return clean.length > 60 ? clean.slice(0, 57) + "…" : clean;

@@ -3464,7 +3464,7 @@ function ArabicBlockCardMonitor({ arabic, reading, meaning }: { arabic: string; 
   );
 }
 
-const MONITOR_ARABIC_RE = /\[ARABIC_BLOCK\]([\s\S]*?)\[\/ARABIC_BLOCK\]/g;
+const MONITOR_ARABIC_RE = /[\[<]ARABIC_BLOCK[\]>]([\s\S]*?)[\[<]\/ARABIC_BLOCK[\]>]/g;
 
 function renderMonitorContent(content: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
