@@ -609,14 +609,21 @@ function buildSchemaHint(intentPrimary) {
   }
   if (intentPrimary === "arabic_analysis") {
     return `\n\n**Struktur jawaban WAJIB — analisis makna per kata:**\n` +
-      `Tampilkan hasil dalam TABEL MARKDOWN 3 kolom:\n` +
+      `Tampilkan hasil dalam TABEL MARKDOWN 3 kolom dengan format PERSIS:\n\n` +
       `| Kata Arab | Makna | Keterangan |\n` +
       `|-----------|-------|------------|\n` +
-      `| (kata dari teks) | (arti Indonesia) | (isim/fi'il/huruf + fungsi gramatikal) |\n\n` +
-      `- Ikuti urutan kata dari kalimat asli (baris 1 = kata pertama)\n` +
-      `- Setelah tabel: 1–2 kalimat catatan gramatikal/kontekstual jika ada yang penting\n` +
-      `- Jika ada beberapa kalimat/ayat: pisahkan dengan heading **Kalimat 1**, **Kalimat 2**, dst.\n` +
-      `JANGAN tulis paragraf panjang tanpa tabel.`;
+      `| الْكَلَامُ | ucapan/perkataan | isim mufrod, mubtada |\n` +
+      `| هُوَ | dia (kt. ganti) | dhomir munfashil, khobar muqaddam |\n\n` +
+      `⚠️ ATURAN MUTLAK TABEL — TIDAK BOLEH DILANGGAR:\n` +
+      `1. WAJIB sertakan SEMUA 3 baris: header (Kata Arab|Makna|Keterangan), separator (|---|---|---|), DAN minimum 3 baris data nyata.\n` +
+      `2. DILARANG menulis header tabel tanpa baris data — itu output rusak.\n` +
+      `3. DILARANG menulis deskripsi placeholder seperti "isi tabel di sini", "(kata dari teks)", "and/or the use of...", atau bahasa Inggris apapun di kolom mana pun.\n` +
+      `4. Tiap kolom WAJIB diisi konten nyata berbahasa Indonesia/Arab — bukan instruksi atau placeholder.\n` +
+      `5. Ikuti urutan kata dari kalimat asli (baris 1 = kata pertama).\n` +
+      `6. Tiap baris pisah dengan newline (\\n), JANGAN gabung di satu baris panjang.\n` +
+      `7. Jika ada beberapa kalimat/ayat: pisahkan dengan heading **Kalimat 1**, **Kalimat 2**, dst — masing-masing punya tabel sendiri.\n` +
+      `8. Setelah tabel: 1–2 kalimat catatan gramatikal/kontekstual jika ada yang penting.\n\n` +
+      `JANGAN tulis paragraf panjang tanpa tabel. JANGAN campur jawaban analisis Arab dengan topik lain (visa/iqomah/dll) — fokus pada teks Arab yang ditanya.`;
   }
   return ""; // casual, arabic_writing, brainstorming: no rigid structure needed
 }
@@ -880,6 +887,7 @@ Setiap jawaban HARUS terasa manusiawi, bukan robotic. Caranya:
 - Daftar dokumen/syarat → bullet, tiap item dengan keterangan 1 kalimat.
 - Perbandingan → tabel atau poin bernomor dengan positioning.
 - **Tabel dari KB:** Jika artikel sumber mengandung tabel markdown (format baris dengan karakter | pipe), WAJIB tampilkan tabel itu persis apa adanya dalam jawaban — JANGAN ubah ke paragraf atau bullet. Tambahkan penjelasan sebelum/sesudah tabel jika perlu.
+- **Aturan integritas tabel (berlaku untuk SEMUA tabel yang kamu buat):** Jika kamu MULAI menulis tabel markdown, WAJIB lengkap: header + baris separator (|---|---|) + minimum 2 baris data nyata. DILARANG menulis header doang tanpa data. DILARANG isi sel dengan placeholder ("isi di sini", "...", "(kata)", deskripsi tabel sendiri, atau teks bahasa Inggris). Jika gak punya cukup data buat ngisi minimum 2 baris, JANGAN buat tabel — pakai format lain (bullet/paragraf).
 - Topik luas → heading ## + paragraf pendek (hanya untuk section konten, BUKAN untuk kalimat penutup).
 - **Bold** untuk istilah kunci. JANGAN gunakan heading h1.
 - Maks 2–3 kalimat per paragraf, beri baris kosong antar seksi.
