@@ -1187,23 +1187,43 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
                         const diffColor = t.difficulty === "easy" ? "text-green-400 bg-green-500/10" : t.difficulty === "hard" ? "text-red-400 bg-red-500/10" : "text-yellow-400 bg-yellow-500/10";
                         const diffLabel = t.difficulty === "easy" ? "Mudah" : t.difficulty === "hard" ? "Sulit" : "Sedang";
+                        const isFlash = !!t.is_flash_mission && (t.point_multiplier ?? 1) > 1;
+                        const mult = isFlash ? (t.point_multiplier ?? 1) : 1;
+                        const pointsLow  = t.base_points * mult;
+                        const pointsHigh = (t.base_points + 15) * mult;
 
                         return (
-                          <div key={m.id} className={`rounded-2xl border p-4 transition-all ${m._justAdded ? "border-primary/40 bg-primary/5 animate-pulse-once" : isApproved ? "border-green-500/30 bg-green-500/5" : isPending ? "border-yellow-500/30 bg-yellow-500/5" : isRejected ? "border-red-500/20 bg-red-500/5" : "border-border bg-card hover:border-primary/30"}`}>
-                            {m._justAdded && (
+                          <div key={m.id} className={`rounded-2xl border p-4 transition-all ${
+                            isFlash && !isApproved && !isPending
+                              ? "border-amber-400/50 bg-gradient-to-br from-amber-500/10 via-card to-card shadow-[0_0_20px_-8px_rgba(251,191,36,0.4)]"
+                              : m._justAdded ? "border-primary/40 bg-primary/5 animate-pulse-once"
+                              : isApproved ? "border-green-500/30 bg-green-500/5"
+                              : isPending ? "border-yellow-500/30 bg-yellow-500/5"
+                              : isRejected ? "border-red-500/20 bg-red-500/5"
+                              : "border-border bg-card hover:border-primary/30"
+                          }`}>
+                            {isFlash && !isApproved && !isPending && (
+                              <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-amber-400">
+                                <Zap className="h-3.5 w-3.5 animate-pulse" />
+                                FLASH MISSION · {mult}× POIN MINGGU INI!
+                              </div>
+                            )}
+                            {m._justAdded && !isFlash && (
                               <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-primary">
                                 <Shuffle className="h-3 w-3" />Misi baru untukmu!
                               </div>
                             )}
                             <div className="flex items-start gap-3">
-                              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isApproved ? "bg-green-500/20" : isPending ? "bg-yellow-500/20" : "bg-primary/10"}`}>
-                                {isApproved ? <CheckCircle className="h-5 w-5 text-green-400" /> : isPending ? <Clock className="h-5 w-5 text-yellow-400" /> : isRejected ? <XCircle className="h-5 w-5 text-red-400" /> : <Target className="h-5 w-5 text-primary" />}
+                              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isFlash && !isApproved && !isPending ? "bg-amber-500/20" : isApproved ? "bg-green-500/20" : isPending ? "bg-yellow-500/20" : "bg-primary/10"}`}>
+                                {isApproved ? <CheckCircle className="h-5 w-5 text-green-400" /> : isPending ? <Clock className="h-5 w-5 text-yellow-400" /> : isRejected ? <XCircle className="h-5 w-5 text-red-400" /> : isFlash ? <Zap className="h-5 w-5 text-amber-400" /> : <Target className="h-5 w-5 text-primary" />}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <p className="font-semibold text-sm text-foreground">{t.title}</p>
                                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${diffColor}`}><Star className="h-3 w-3" />{diffLabel}</span>
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"><Zap className="h-3 w-3" />+{t.base_points}{t.difficulty !== "easy" ? "–"+(t.base_points+15) : "–"+(t.base_points+15)} poin</span>
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isFlash ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/40" : "bg-primary/10 text-primary"}`}>
+                                    <Zap className="h-3 w-3" />+{pointsLow}–{pointsHigh} poin
+                                  </span>
                                 </div>
                                 <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{t.description}</p>
                                 <div className="mt-2 flex items-center gap-3 flex-wrap">
@@ -1266,13 +1286,23 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                     {activeMission?.template?.title}
                   </DialogTitle>
                 </DialogHeader>
-                {activeMission && (
+                {activeMission && (() => {
+                  const tpl = activeMission.template;
+                  const aFlash = !!tpl.is_flash_mission && (tpl.point_multiplier ?? 1) > 1;
+                  const aMult = aFlash ? (tpl.point_multiplier ?? 1) : 1;
+                  return (
                   <div className="space-y-4">
+                    {aFlash && (
+                      <div className="flex items-center gap-2 rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-500/15 to-amber-500/5 px-3 py-2">
+                        <Zap className="h-4 w-4 text-amber-400 animate-pulse" />
+                        <p className="text-xs font-bold text-amber-300">FLASH MISSION · {aMult}× POIN MINGGU INI!</p>
+                      </div>
+                    )}
                     <div className="rounded-xl bg-secondary/50 p-3">
-                      <p className="text-sm text-muted-foreground">{activeMission.template.description}</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-xs font-medium text-primary">+{activeMission.template.base_points}–{activeMission.template.base_points + 15} poin</span>
-                        <span className="text-xs text-muted-foreground">· Top 3 submit +15 poin bonus</span>
+                      <p className="text-sm text-muted-foreground">{tpl.description}</p>
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        <span className={`text-xs font-medium ${aFlash ? "text-amber-300" : "text-primary"}`}>+{tpl.base_points * aMult}–{(tpl.base_points + 15) * aMult} poin</span>
+                        <span className="text-xs text-muted-foreground">· Top 3 submit +{15 * aMult} poin bonus</span>
                       </div>
                     </div>
                     {(activeMission.template.form_schema?.fields || []).map((field: any) => (
@@ -1311,7 +1341,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       </Button>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </DialogContent>
             </Dialog>
 

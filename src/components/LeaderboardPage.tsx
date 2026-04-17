@@ -16,8 +16,17 @@ interface Contributor {
   full_name: string | null;
   avatar_url: string | null;
   contribution_count: number;
+  period_points?: number | null;
   role: string;
 }
+
+type LeaderboardPeriod = "week" | "month" | "all";
+
+const PERIOD_LABEL: Record<LeaderboardPeriod, string> = {
+  week:  "Minggu Ini",
+  month: "Bulan Ini",
+  all:   "Sepanjang Masa",
+};
 
 interface Article {
   id: string;
@@ -317,8 +326,9 @@ function ArticleDetailModal({
 }
 
 /* ─── Contributor Card ───────────────────────────────── */
-function ContributorCard({ contributor, rank }: { contributor: Contributor; rank: number }) {
+function ContributorCard({ contributor, rank, period = "all" }: { contributor: Contributor; rank: number; period?: LeaderboardPeriod }) {
   const roleInfo = ROLE_LABEL[contributor.role] ?? ROLE_LABEL.user;
+  const showPeriodPoints = period !== "all" && contributor.period_points != null;
   return (
     <div className={`flex items-center gap-3 rounded-2xl border p-4 transition-colors ${rank <= 3 ? "border-primary/20 bg-primary/5" : "border-border bg-card"}`}>
       <RankBadge rank={rank} />
@@ -330,8 +340,18 @@ function ContributorCard({ contributor, rank }: { contributor: Contributor; rank
         </span>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-lg font-bold text-primary">{contributor.contribution_count}</p>
-        <p className="text-[11px] text-muted-foreground">artikel</p>
+        {showPeriodPoints ? (
+          <>
+            <p className="text-lg font-bold text-primary">{contributor.period_points}</p>
+            <p className="text-[11px] text-muted-foreground">poin misi</p>
+            <p className="text-[10px] text-muted-foreground/60">{contributor.contribution_count} artikel total</p>
+          </>
+        ) : (
+          <>
+            <p className="text-lg font-bold text-primary">{contributor.contribution_count}</p>
+            <p className="text-[11px] text-muted-foreground">artikel</p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -414,6 +434,7 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [votingId, setVotingId] = useState<string | null>(null);
   const [readingId, setReadingId] = useState<string | null>(null);
+  const [period, setPeriod] = useState<LeaderboardPeriod>("all");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -422,10 +443,10 @@ export default function LeaderboardPage() {
   const [searching, setSearching] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (p: LeaderboardPeriod = period) => {
     setLoading(true);
     try {
-      const data = await apiFetch("/api/leaderboard");
+      const data = await apiFetch(`/api/leaderboard?period=${p}`);
       setContributors(data.contributors ?? []);
       setArticles(data.articles ?? []);
     } catch (e: any) {
@@ -433,9 +454,9 @@ export default function LeaderboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [period]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(period); }, [period]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
@@ -530,7 +551,7 @@ export default function LeaderboardPage() {
             </p>
           </div>
           <button
-            onClick={load}
+            onClick={() => load(period)}
             disabled={loading}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             title="Refresh"
@@ -558,6 +579,26 @@ export default function LeaderboardPage() {
           <TabsContent value="contributors" className="flex-1 min-h-0 flex flex-col mt-0 data-[state=inactive]:hidden">
             <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-8 pb-6 pt-4">
               <div className="md:max-w-5xl md:mx-auto">
+                {/* Period selector */}
+                <div role="radiogroup" aria-label="Periode peringkat" className="mb-4 inline-flex rounded-xl border border-border bg-card p-1">
+                  {(["week", "month", "all"] as LeaderboardPeriod[]).map((p) => (
+                    <button
+                      key={p}
+                      role="radio"
+                      aria-checked={period === p}
+                      onClick={() => setPeriod(p)}
+                      disabled={loading}
+                      className={`rounded-lg px-3 py-1.5 text-xs md:text-sm font-medium transition-all disabled:opacity-50 ${
+                        period === p
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {PERIOD_LABEL[p]}
+                    </button>
+                  ))}
+                </div>
+
               {loading ? (
                 <div className="space-y-2">
                   {[...Array(6)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-card" />)}
@@ -565,14 +606,22 @@ export default function LeaderboardPage() {
               ) : contributors.length === 0 ? (
                 <div className="flex flex-col items-center py-16 text-center">
                   <Trophy className="mb-3 h-12 w-12 text-muted-foreground/30" />
-                  <p className="font-medium text-foreground">Belum ada kontributor</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Jadilah kontributor pertama dan tulis artikel!</p>
+                  <p className="font-medium text-foreground">
+                    {period === "all" ? "Belum ada kontributor" : `Belum ada poin misi di ${PERIOD_LABEL[period].toLowerCase()}`}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {period === "all"
+                      ? "Jadilah kontributor pertama dan tulis artikel!"
+                      : "Selesaikan misi harian untuk masuk ke peringkat ini."}
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground pb-1">{contributors.length} kontributor</p>
+                  <p className="text-xs text-muted-foreground pb-1">
+                    {contributors.length} kontributor · {PERIOD_LABEL[period]}
+                  </p>
                   {contributors.map((c, i) => (
-                    <ContributorCard key={c.user_id} contributor={c} rank={i + 1} />
+                    <ContributorCard key={c.user_id} contributor={c} rank={i + 1} period={period} />
                   ))}
                 </div>
               )}
