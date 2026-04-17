@@ -1744,7 +1744,10 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       streamAbortRef.current = controller;
       userStoppedRef.current = false;
       accumulatedRef.current = "";
-      const fetchTimeout = setTimeout(() => controller.abort(), 55000);
+      // 120s timeout — heavy queries (large tables, multi-source retrieval, long reasoning)
+      // can legitimately exceed 60s. Streaming headers arrive fast; this guards the
+      // "AI hung completely" case, not normal slow generation.
+      const fetchTimeout = setTimeout(() => controller.abort(), 120000);
       let res: Response;
       try {
         res = await fetch(API_URL, {
