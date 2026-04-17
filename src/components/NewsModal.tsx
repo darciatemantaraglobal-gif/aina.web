@@ -199,7 +199,10 @@ export function NewsModal({ item, onClose }: { item: NewsItem; onClose: () => vo
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative z-10 w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-t-2xl sm:rounded-2xl bg-card border border-border/60 shadow-2xl overflow-hidden">
+      <div
+        className="relative z-10 w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-t-2xl sm:rounded-2xl bg-card border border-border/60 shadow-2xl overflow-hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
 
         {/* Cover image — clickable to expand */}
         {item.image_url && (

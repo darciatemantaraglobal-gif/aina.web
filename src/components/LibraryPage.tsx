@@ -271,7 +271,10 @@ function DetailModal({
       />
 
       {/* Sheet */}
-      <div className="fixed inset-x-0 bottom-0 z-50 max-h-[92dvh] overflow-y-auto rounded-t-3xl bg-[#1a1a24] shadow-2xl animate-in slide-in-from-bottom-4 duration-300 sm:inset-x-auto sm:inset-y-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[640px] sm:max-h-[88vh] sm:rounded-3xl">
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 max-h-[92dvh] overflow-y-auto rounded-t-3xl bg-[#1a1a24] shadow-2xl animate-in slide-in-from-bottom-4 duration-300 sm:inset-x-auto sm:inset-y-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[640px] sm:max-h-[88vh] sm:rounded-3xl"
+        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
 
         {/* Drag handle (mobile) */}
         <div className="flex justify-center pt-3 pb-1 sm:hidden">

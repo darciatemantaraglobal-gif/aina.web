@@ -510,7 +510,10 @@ function PersonalizationModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* ── Mobile: save button (sticky bottom) ── */}
-          <div className="flex sm:hidden shrink-0 border-t border-white/[0.07] p-4">
+          <div
+            className="flex sm:hidden shrink-0 border-t border-white/[0.07] p-4"
+            style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+          >
             <button
               onClick={save}
               disabled={saving}

@@ -7,6 +7,7 @@ import remarkBreaks from "remark-breaks";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getPersonalization } from "@/components/DashboardSidebar";
+import ArtifactPanel, { isArtifactWorthy, deriveArtifactTitle } from "@/components/ArtifactPanel";
 
 interface SourceMetadata {
   confidence: "verified" | "community_based" | "web_result" | "fallback";
@@ -1060,6 +1061,27 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
   const [reportReason, setReportReason] = useState<string>("");
   const [reportNote, setReportNote] = useState<string>("");
   const [reportedMsgIds, setReportedMsgIds] = useState<Set<string>>(new Set());
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [activeArtifact, setActiveArtifact] = useState<{ title: string; content: string } | null>(null);
+  const mobileActionsRef = useRef<HTMLDivElement>(null);
+
+  // Close mobile actions popover on Escape or outside click
+  useEffect(() => {
+    if (!mobileActionsOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileActionsOpen(false); };
+    const onClick = (e: MouseEvent | TouchEvent) => {
+      const node = mobileActionsRef.current;
+      if (node && !node.contains(e.target as Node)) setMobileActionsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("touchstart", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("touchstart", onClick);
+    };
+  }, [mobileActionsOpen]);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [revisedAnswer, setRevisedAnswer] = useState("");
@@ -1205,7 +1227,15 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     const timer = setTimeout(() => {
       setStreamingMsg(prev => {
         if (!prev) return null;
-        const nextLen = Math.min(prev.displayed.length + STREAM_CHARS_PER_TICK, prev.full.length);
+        // Adaptive rate: smaller chunks for short remaining text (smoother),
+        // larger chunks for long remaining (snappier finalization).
+        const remaining = prev.full.length - prev.displayed.length;
+        const adaptiveStep =
+          remaining < 60   ? 2  :
+          remaining < 200  ? 4  :
+          remaining < 600  ? 6  :
+          remaining < 1500 ? 8  : 12;
+        const nextLen = Math.min(prev.displayed.length + adaptiveStep, prev.full.length);
         return { ...prev, displayed: prev.full.slice(0, nextLen) };
       });
     }, STREAM_INTERVAL_MS);
@@ -2323,6 +2353,20 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                           : <Bookmark className="h-3 w-3" />
                         }
                       </button>
+                      {/* Open in artifact panel — for long answers, tables, code, or large arabic blocks */}
+                      {isArtifactWorthy(msg.content) && (
+                        <button
+                          onClick={() => setActiveArtifact({
+                            title:   deriveArtifactTitle(msg.content),
+                            content: msg.content,
+                          })}
+                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] text-muted-foreground/50 transition-colors hover:bg-secondary hover:text-primary"
+                          title="Buka jawaban ini di panel besar (lebih nyaman dibaca)"
+                        >
+                          <FileText className="h-3 w-3" />
+                          <span className="hidden sm:inline">Panel</span>
+                        </button>
+                      )}
                       </div>
 
                       {/* Report */}
@@ -2452,7 +2496,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 <AinaLogo className={`mt-1 h-7 w-7 shrink-0 object-contain transition-all ${streamingMsg.isStreaming ? "animate-thinking-pulse" : ""}`} />
                 <div className="min-w-0 flex-1" dir="ltr">
                   <div className={`py-1.5 text-[15px] leading-[1.7] transition-all ${streamingMsg.isStreaming ? "border-l-2 border-primary/25 pl-3" : ""}`}>
-                    {renderWithArabicBlocks(streamingMsg.displayed, true)}
+                    {renderWithArabicBlocks(cleanMarkdown(streamingMsg.displayed), false)}
                     {streamingMsg.isStreaming && (
                       <span className="inline-block h-[1em] w-[2px] rounded-full bg-primary animate-streaming-cursor align-middle ml-0.5" />
                     )}
@@ -2735,12 +2779,59 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 className="hidden"
                 onChange={handleFileChange}
               />
-              {/* Paperclip button */}
+
+              {/* ── Mobile compact: "+" toggle + popover wrapper (hidden on sm+) ── */}
+              <div ref={mobileActionsRef} className="sm:hidden">
+                <button
+                  type="button"
+                  disabled={isLoading || isUploadingFile}
+                  onClick={() => setMobileActionsOpen(v => !v)}
+                  aria-expanded={mobileActionsOpen}
+                  aria-label={mobileActionsOpen ? "Tutup menu aksi" : "Buka menu aksi (lampiran & suara)"}
+                  className={`absolute left-3.5 bottom-3 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-secondary hover:text-foreground disabled:opacity-30 ${mobileActionsOpen ? "rotate-45 bg-secondary text-foreground" : ""}`}
+                  title="Aksi tambahan"
+                >
+                  {isUploadingFile
+                    ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    : <Plus className="h-4 w-4" />
+                  }
+                </button>
+
+                {mobileActionsOpen && (
+                  <div
+                    role="menu"
+                    className="absolute bottom-full left-2 mb-2 z-10 flex flex-col gap-1 rounded-2xl border border-border bg-card p-1.5 shadow-xl animate-in slide-in-from-bottom-2 fade-in duration-150"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={isLoading || isUploadingFile}
+                      onClick={() => { setMobileActionsOpen(false); fileInputRef.current?.click(); }}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary disabled:opacity-30"
+                    >
+                      <Paperclip className="h-4 w-4 text-muted-foreground" />
+                      <span>Lampirkan file</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={isLoading}
+                      onClick={() => { setMobileActionsOpen(false); toggleVoice(); }}
+                      className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors disabled:opacity-30 ${isListening ? "bg-red-500/10 text-red-400" : "text-foreground hover:bg-secondary"}`}
+                    >
+                      {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4 text-muted-foreground" />}
+                      <span>{isListening ? "Hentikan rekam" : "Input suara"}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Desktop / sm+: Paperclip ── */}
               <button
                 type="button"
                 disabled={isLoading || isUploadingFile}
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute left-3.5 bottom-3 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
+                className="hidden sm:flex absolute left-3.5 bottom-3 h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
                 title="Lampirkan gambar atau PDF"
               >
                 {isUploadingFile
@@ -2748,6 +2839,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   : <Paperclip className="h-4 w-4" />
                 }
               </button>
+
               <textarea
                 ref={textareaRef}
                 data-tour="chat-input"
@@ -2762,21 +2854,24 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                 }}
                 placeholder="Tanya AINA!"
                 rows={1}
-                className="w-full resize-none rounded-2xl bg-transparent px-5 py-4 pl-12 pr-24 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+                className={`w-full resize-none rounded-2xl bg-transparent px-5 py-4 pl-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none ${isListening ? "pr-24" : "pr-14 sm:pr-24"}`}
               />
+
+              {/* ── Mic: hidden on mobile when not listening; always visible while listening as stop indicator ── */}
               <button
                 type="button"
                 onClick={toggleVoice}
                 disabled={isLoading}
-                className={`absolute right-[3.25rem] bottom-3 flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${
+                className={`absolute right-[3.25rem] bottom-3 h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${
                   isListening
-                    ? "text-red-400 animate-pulse hover:bg-red-500/10"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    ? "flex text-red-400 animate-pulse hover:bg-red-500/10"
+                    : "hidden sm:flex text-muted-foreground hover:bg-secondary hover:text-foreground"
                 }`}
                 title={isListening ? "Berhenti merekam (kirim ke Whisper AI)" : "Input suara via Whisper AI (Indonesia / Arabic / lainnya)"}
               >
                 {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </button>
+
               <button
                 type="submit"
                 disabled={isLoading || (!input.trim() && !attachedFile)}
@@ -2810,6 +2905,16 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
           </form>
         )}
       </div>
+
+      {/* ── Artifact side panel ── */}
+      <ArtifactPanel
+        open={!!activeArtifact}
+        title={activeArtifact?.title ?? ""}
+        rawContent={activeArtifact?.content ?? ""}
+        onClose={() => setActiveArtifact(null)}
+      >
+        {activeArtifact && renderWithArabicBlocks(cleanMarkdown(activeArtifact.content), false)}
+      </ArtifactPanel>
     </div>
   );
 };

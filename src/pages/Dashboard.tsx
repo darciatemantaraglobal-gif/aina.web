@@ -533,8 +533,9 @@ const Dashboard = () => {
         isHoriz = Math.abs(dx) > Math.abs(dy);
         decided = true;
         if (!isHoriz) { active = false; return; }
-        const p = panel();
-        if (p) p.style.transition = "none";
+        const p = panel(); const o = overlay();
+        if (p) { p.style.transition = "none"; p.style.willChange = "transform"; }
+        if (o) o.style.willChange = "opacity";
       }
       if (!isHoriz) return;
       e.preventDefault();
@@ -556,8 +557,8 @@ const Dashboard = () => {
       if (!active || !isHoriz) { active = false; return; }
       const dx = e.changedTouches[0].clientX - startX;
       const p = panel(); const o = overlay();
-      if (p) { p.style.transition = ""; p.style.transform = ""; }
-      if (o) { o.style.opacity = ""; o.style.display = ""; }
+      if (p) { p.style.transition = ""; p.style.transform = ""; p.style.willChange = ""; }
+      if (o) { o.style.opacity = ""; o.style.display = ""; o.style.willChange = ""; }
       if (!sidebarOpenRef.current && dx > THRESHOLD) setSidebarOpen(true);
       else if (sidebarOpenRef.current && dx < -THRESHOLD) setSidebarOpen(false);
       active = false; decided = false; isHoriz = false;
