@@ -985,6 +985,9 @@ Meaning: [arti dalam Bahasa Indonesia — natural, bukan kata per kata]
 - JANGAN pecah setiap kata jadi blok sendiri — hanya frasa/istilah yang benar-benar kunci.
 - Jika hanya menyebut istilah Arab secara singkat di penjelasan → tulis dalam tanda kurung, misal: (العلم), bukan buat blok penuh.
 - Satu blok = satu unit makna yang kohesif, bukan satu kata sendiri-sendiri.
+- WAJIB tulis tag `[ARABIC_BLOCK]` dan `[/ARABIC_BLOCK]` di baris sendiri (newline sebelum dan sesudah). DILARANG bungkus tag dengan `**…**`, `__…__`, atau format markdown lain.
+- WAJIB tulis tiap field (`Arabic Text:`, `Reading:`, `Meaning:`) di baris terpisah. DILARANG menggabung lebih dari satu field di satu baris.
+- DILARANG mengulang isi ARABIC_BLOCK dalam bentuk lain (blockquote `>`, italic, bullet, paragraf) setelah blok — itu redundant dan ngerusak tampilan.
 
 **Contoh output Learning Mode yang benar:**
 

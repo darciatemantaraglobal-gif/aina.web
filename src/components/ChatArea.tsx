@@ -332,12 +332,22 @@ interface ArabicBlockData {
 }
 
 function parseArabicBlock(raw: string): ArabicBlockData {
+  // Normalize: strip wrapping bold/italic markers + force each known label
+  // onto its own line so inline-format ("Arabic Text: … Reading: … Meaning: …")
+  // still parses cleanly (AI sometimes collapses them to one line).
+  const normalized = raw
+    .replace(/\*+/g, "")
+    .replace(/\s*(Arabic Text|Reading|Meaning)\s*:\s*/gi, "\n$1: ")
+    .trim();
+
   const get = (label: string) => {
-    // Stop at any known field label to avoid bleeding into next field
-    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Reading|Meaning:)[^\\n]*)*)`, "i");
-    const m = raw.match(re);
+    const re = new RegExp(
+      `^${label}:\\s*([\\s\\S]*?)(?=\\n(?:Arabic Text|Reading|Meaning):|$)`,
+      "im"
+    );
+    const m = normalized.match(re);
     if (!m) return "";
-    return m[1].replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+    return m[1].replace(/\s+/g, " ").trim();
   };
   return {
     arabic:  get("Arabic Text"),

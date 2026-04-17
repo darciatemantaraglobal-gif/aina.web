@@ -3439,13 +3439,25 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
 /* ─── Markdown components for chat viewer — mirrors real ChatArea styling ── */
 // ── ARABIC_BLOCK renderer (mirrored from ChatArea) ──────────────────────────
 function parseArabicBlockMonitor(raw: string) {
+  // Mirror of ChatArea.parseArabicBlock — tolerates inline labels + bold wrappers.
+  const normalized = raw
+    .replace(/\*+/g, "")
+    .replace(/\s*(Arabic Text|Reading(?:\s*\(Latin\))?|Meaning)\s*:\s*/gi, "\n$1: ")
+    .trim();
   const get = (label: string) => {
-    const re = new RegExp(`${label}:\\s*([^\\n]+(?:\\n(?!Arabic Text:|Reading \\(Latin\\):|Meaning:)[^\\n]*)*)`, "i");
-    const m = raw.match(re);
+    const re = new RegExp(
+      `^${label}:\\s*([\\s\\S]*?)(?=\\n(?:Arabic Text|Reading(?:\\s*\\(Latin\\))?|Meaning):|$)`,
+      "im"
+    );
+    const m = normalized.match(re);
     if (!m) return "";
-    return m[1].replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+    return m[1].replace(/\s+/g, " ").trim();
   };
-  return { arabic: get("Arabic Text"), reading: get("Reading \\(Latin\\)"), meaning: get("Meaning") };
+  return {
+    arabic: get("Arabic Text"),
+    reading: get("Reading(?:\\s*\\(Latin\\))?"),
+    meaning: get("Meaning"),
+  };
 }
 
 function ArabicBlockCardMonitor({ arabic, reading, meaning }: { arabic: string; reading: string; meaning: string }) {
