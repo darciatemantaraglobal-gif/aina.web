@@ -9612,14 +9612,64 @@ app.get("/api/leaderboard", async (req, res) => {
 
   const supabase = getAdminClient();
 
+  const period = String(req.query.period || "all").toLowerCase();
+  const validPeriods = new Set(["week", "month", "all"]);
+  const usePeriod = validPeriods.has(period) ? period : "all";
+
+  // Compute period start (Cairo-anchored, simplified UTC+2)
+  const now = new Date();
+  let periodStartIso = null;
+  if (usePeriod === "week") {
+    // Start of current week (Monday 00:00 Cairo) in UTC
+    const d = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    const dow = d.getUTCDay() || 7; // 1=Mon..7=Sun
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() - (dow - 1));
+    periodStartIso = new Date(d.getTime() - 2 * 60 * 60 * 1000).toISOString();
+  } else if (usePeriod === "month") {
+    const d = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(1);
+    periodStartIso = new Date(d.getTime() - 2 * 60 * 60 * 1000).toISOString();
+  }
+
+  // For period leaderboards, sum mission_submissions points within range
+  // and rank by aggregated points (NOT by all-time contribution_count).
+  let periodPointsMap = null;
+  let periodTopIds = null;
+  if (periodStartIso) {
+    const { data: subs } = await supabase
+      .from("mission_submissions")
+      .select("contributor_id, points_awarded, reviewed_at")
+      .eq("status", "approved")
+      .gte("reviewed_at", periodStartIso)
+      .not("points_awarded", "is", null);
+    periodPointsMap = {};
+    for (const s of (subs ?? [])) {
+      periodPointsMap[s.contributor_id] = (periodPointsMap[s.contributor_id] || 0) + (s.points_awarded || 0);
+    }
+    periodTopIds = Object.entries(periodPointsMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([id]) => id);
+  }
+
   const [{ data: topProfiles }, { data: topArticles }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("user_id, full_name, avatar_url, contribution_count, leaderboard_display, alias")
-      .order("contribution_count", { ascending: false })
-      .gt("contribution_count", 0)
-      .neq("hidden_from_leaderboard", true)
-      .limit(20),
+    periodTopIds !== null
+      ? (periodTopIds.length === 0
+          ? Promise.resolve({ data: [] })
+          : supabase
+              .from("profiles")
+              .select("user_id, full_name, avatar_url, contribution_count, leaderboard_display, alias")
+              .in("user_id", periodTopIds)
+              .neq("hidden_from_leaderboard", true))
+      : supabase
+          .from("profiles")
+          .select("user_id, full_name, avatar_url, contribution_count, leaderboard_display, alias")
+          .order("contribution_count", { ascending: false })
+          .gt("contribution_count", 0)
+          .neq("hidden_from_leaderboard", true)
+          .limit(20),
     supabase
       .from("knowledge_base")
       .select("id, title, category, article_type, vote_count, created_at, author_id")
@@ -9661,14 +9711,27 @@ app.get("/api/leaderboard", async (req, res) => {
     (authors ?? []).forEach(a => { authorMap[a.user_id] = resolveDisplayName(a); });
   }
 
+  let contributors = (topProfiles ?? []).map(p => ({
+    user_id: p.user_id,
+    full_name: resolveDisplayName(p),
+    avatar_url: p.avatar_url,
+    contribution_count: p.contribution_count ?? 0,
+    period_points: periodPointsMap ? (periodPointsMap[p.user_id] || 0) : null,
+    role: roleMap[p.user_id] ?? "user",
+  }));
+
+  if (periodPointsMap) {
+    // Already pre-ranked by periodTopIds order; re-sort defensively after
+    // hidden_from_leaderboard filter (some IDs may have dropped out).
+    contributors = contributors
+      .filter(c => (c.period_points || 0) > 0)
+      .sort((a, b) => (b.period_points || 0) - (a.period_points || 0));
+  }
+
   res.json({
-    contributors: (topProfiles ?? []).map(p => ({
-      user_id: p.user_id,
-      full_name: resolveDisplayName(p),
-      avatar_url: p.avatar_url,
-      contribution_count: p.contribution_count ?? 0,
-      role: roleMap[p.user_id] ?? "user",
-    })),
+    period: usePeriod,
+    period_start: periodStartIso,
+    contributors,
     articles: (topArticles ?? []).map(a => ({
       ...a,
       user_voted: userArticleVotedSet.has(a.id),
@@ -10468,6 +10531,7 @@ app.patch("/api/admin/missions/submissions/:id/approve", async (req, res) => {
   if (sub.status !== "pending") return res.status(409).json({ error: "Submission already reviewed" });
 
   const template = sub.daily_missions.mission_templates;
+  const flashMultiplier = (template.is_flash_mission && template.point_multiplier > 1) ? template.point_multiplier : 1;
 
   // 1. Create KB article
   const content = buildKBContentFromSubmission(template, sub.form_data);
@@ -10506,7 +10570,8 @@ app.patch("/api/admin/missions/submissions/:id/approve", async (req, res) => {
     .eq("daily_mission_id", sub.daily_mission_id)
     .eq("status", "approved");
   const isTopThree = (approvedCount || 0) < 3;
-  const points = template.base_points + (isTopThree ? 15 : 0);
+  const basePoints = template.base_points + (isTopThree ? 15 : 0);
+  const points = basePoints * flashMultiplier;
 
   // 3. Update submission
   await supabase
@@ -10541,15 +10606,16 @@ app.patch("/api/admin/missions/submissions/:id/approve", async (req, res) => {
     })
     .eq("user_id", sub.contributor_id);
 
-  // 5. Send notification
+  // 5. Send notification (Realtime delivers it via NotificationBell subscription)
   try {
-    await supabase.from("notifications").insert({
+    const { error: notifErr } = await supabase.from("notifications").insert({
       user_id: sub.contributor_id,
       title: "Misi Harian Disetujui! 🎯",
-      message: `Misi "${template.title}" kamu disetujui! +${points} poin misi diberikan.${isTopThree ? " Bonus Top-3 termasuk!" : ""}`,
-      type: "mission_approved",
+      message: `Misi "${template.title}" kamu disetujui! +${points} poin misi diberikan.${isTopThree ? " Bonus Top-3 termasuk!" : ""}${flashMultiplier > 1 ? ` Flash Mission ${flashMultiplier}× aktif!` : ""}`,
+      type: "success",
     });
-  } catch {}
+    if (notifErr) console.error("[Missions] notif insert error:", notifErr.message);
+  } catch (e) { console.error("[Missions] notif crash:", e.message); }
 
   // Check and award badge
   try {
@@ -14699,6 +14765,11 @@ async function runColumnMigrations() {
     `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mission_points INTEGER DEFAULT 0;`,
     `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mission_streak INTEGER DEFAULT 0;`,
     `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_mission_date DATE;`,
+    // Flash Mission columns — weekly randomized bonus mission
+    `ALTER TABLE public.mission_templates ADD COLUMN IF NOT EXISTS is_flash_mission BOOLEAN DEFAULT false;`,
+    `ALTER TABLE public.mission_templates ADD COLUMN IF NOT EXISTS point_multiplier INTEGER DEFAULT 1;`,
+    // Enforce: at most one mission can be is_flash_mission=true at a time
+    `CREATE UNIQUE INDEX IF NOT EXISTS uniq_flash_mission_active ON public.mission_templates ((is_flash_mission)) WHERE is_flash_mission = true;`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {
@@ -15237,6 +15308,97 @@ app.delete("/api/flashcards/sets/:id", async (req, res) => {
     res.status(500).json({ error: "Gagal menghapus set" });
   }
 });
+
+/* ── Flash Mission rotation — picks 1 random active mission per week (Sat 5am Cairo) */
+async function rotateFlashMission() {
+  const supabase = getAdminClient();
+  if (!supabase) return { ok: false, error: "no_admin_client" };
+
+  // 1. Reset all flash flags
+  const { error: resetErr } = await supabase
+    .from("mission_templates")
+    .update({ is_flash_mission: false, point_multiplier: 1 })
+    .neq("id", -1);
+  if (resetErr) return { ok: false, error: resetErr.message };
+
+  // 2. Pick 1 random active mission
+  const { data: actives, error: listErr } = await supabase
+    .from("mission_templates")
+    .select("id, title")
+    .eq("is_active", true);
+  if (listErr) return { ok: false, error: listErr.message };
+  if (!actives || actives.length === 0) return { ok: true, picked: null, reason: "no_active_missions" };
+
+  const picked = actives[Math.floor(Math.random() * actives.length)];
+
+  // 3. Mark it flash with 3× multiplier
+  const { error: updErr } = await supabase
+    .from("mission_templates")
+    .update({ is_flash_mission: true, point_multiplier: 3 })
+    .eq("id", picked.id);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  // 4. Track last rotation timestamp in app_config
+  await supabase.from("app_config").upsert(
+    { key: "flash_mission_last_rotated", value: new Date().toISOString(), updated_at: new Date().toISOString() },
+    { onConflict: "key" }
+  );
+
+  console.log(`[FlashMission] rotated → "${picked.title}" (id:${picked.id}, 3× points)`);
+  return { ok: true, picked: { id: picked.id, title: picked.title }, multiplier: 3 };
+}
+
+// GET /api/cron/flash-mission — manual/external trigger (verifies cron secret OR admin)
+app.get("/api/cron/flash-mission", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const isCronCall = secret && req.headers["x-cron-secret"] === secret;
+  let isAdminCall = false;
+  if (!isCronCall) {
+    const admin = await verifyAdminUser(req.headers.authorization);
+    if (admin) isAdminCall = true;
+  }
+  if (!isCronCall && !isAdminCall) return res.status(403).json({ error: "Unauthorized" });
+
+  try {
+    const result = await rotateFlashMission();
+    res.json(result);
+  } catch (e) {
+    console.error("[Cron/flash-mission]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Auto-rotation loop — checks hourly if it's Saturday ~05:00 Cairo (UTC+2/+3)
+// Tracks last-run via app_config.flash_mission_last_rotated to avoid double-run
+setInterval(async () => {
+  try {
+    const supabase = getAdminClient();
+    if (!supabase) return;
+    // Use UTC+2 (Cairo standard time, ignores DST for simplicity → margin 1h is OK)
+    const now = new Date();
+    const cairoMs = now.getTime() + (2 * 60 * 60 * 1000);
+    const cairo = new Date(cairoMs);
+    const dayUTC = cairo.getUTCDay(); // 0=Sun, 6=Sat
+    const hourUTC = cairo.getUTCHours();
+    if (dayUTC !== 6 || hourUTC < 5 || hourUTC > 6) return; // only Sat 05:00–06:59 Cairo window
+
+    // Check last rotation — must be > 6 days ago
+    const { data: lastRow } = await supabase
+      .from("app_config")
+      .select("value")
+      .eq("key", "flash_mission_last_rotated")
+      .maybeSingle();
+    if (lastRow?.value) {
+      const lastMs = new Date(lastRow.value).getTime();
+      if (Date.now() - lastMs < 6 * 24 * 60 * 60 * 1000) return;
+    }
+
+    console.log("[FlashMission] auto-rotation triggered (Sat ~05:00 Cairo)");
+    await rotateFlashMission();
+  } catch (e) {
+    console.warn("[FlashMission] auto-rotation check failed:", e.message);
+  }
+}, 60 * 60 * 1000); // every hour
 
 // GET /api/cron/daily — runs every day at 17:00 UTC (00:00 WIB)
 app.get("/api/cron/daily", async (req, res) => {
