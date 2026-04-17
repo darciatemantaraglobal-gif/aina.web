@@ -13857,6 +13857,26 @@ if (PAYMENT_ENABLED) {
   );
 }
 
+/* ── App Config — public read (no auth, only safe flags exposed) */
+app.get("/api/app/public-config", async (_req, res) => {
+  const supabase = getAdminClient();
+  const out = { contributor_challenge_enabled: false };
+  if (!supabase) return res.json(out);
+  try {
+    const { data } = await supabase
+      .from("app_config")
+      .select("key, value")
+      .in("key", ["contributor_challenge_enabled"]);
+    for (const row of (data ?? [])) {
+      if (row.key === "contributor_challenge_enabled") {
+        out.contributor_challenge_enabled = row.value === "true";
+      }
+    }
+  } catch { /* table may not exist yet — defaults */ }
+  res.set("Cache-Control", "public, max-age=60");
+  res.json(out);
+});
+
 /* ── App Config (admin-only, controls toggles like subscription_visible) */
 app.get("/api/admin/app-config", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
@@ -14639,6 +14659,7 @@ async function runColumnMigrations() {
     );`,
     // Seed default values for app_config (only if not yet set)
     `INSERT INTO public.app_config (key, value) VALUES ('subscription_visible', 'false') ON CONFLICT (key) DO NOTHING;`,
+    `INSERT INTO public.app_config (key, value) VALUES ('contributor_challenge_enabled', 'false') ON CONFLICT (key) DO NOTHING;`,
     // Messages metadata — stores sources, intent, confidence for badge display in chat history
     `ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS metadata JSONB;`,
     // Mission system — contributor daily missions

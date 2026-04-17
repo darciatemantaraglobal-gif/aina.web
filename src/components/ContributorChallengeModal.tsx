@@ -14,8 +14,19 @@ const ContributorChallengeModal = () => {
   useEffect(() => {
     const dismissed = localStorage.getItem(DISMISS_KEY);
     if (dismissed === "1") return;
-    const t = setTimeout(() => setOpen(true), 600);
-    return () => clearTimeout(t);
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/app/public-config");
+        if (!r.ok) return;
+        const cfg = await r.json();
+        if (!alive) return;
+        if (cfg?.contributor_challenge_enabled === true) {
+          setTimeout(() => { if (alive) setOpen(true); }, 600);
+        }
+      } catch { /* silent — popup just stays hidden */ }
+    })();
+    return () => { alive = false; };
   }, []);
 
   useEffect(() => {

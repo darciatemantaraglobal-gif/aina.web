@@ -337,6 +337,7 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
   const [chartMode, setChartMode] = useState<"queries" | "dau">("queries");
 
   const [subscriptionVisible, setSubscriptionVisible] = useState(false);
+  const [challengeEnabled, setChallengeEnabled] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
 
@@ -345,6 +346,9 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
       .then((d: Record<string, string>) => {
         if (d.subscription_visible !== undefined) {
           setSubscriptionVisible(d.subscription_visible === "true");
+        }
+        if (d.contributor_challenge_enabled !== undefined) {
+          setChallengeEnabled(d.contributor_challenge_enabled === "true");
         }
       })
       .catch(() => {})
@@ -360,6 +364,22 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
       });
       setSubscriptionVisible(checked);
       toast.success(checked ? "Tombol berlangganan diaktifkan" : "Tombol berlangganan disembunyikan");
+    } catch {
+      toast.error("Gagal menyimpan pengaturan");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const handleChallengeToggle = async (checked: boolean) => {
+    setConfigSaving(true);
+    try {
+      await adminFetch("/api/admin/app-config", {
+        method: "PATCH",
+        body: JSON.stringify({ contributor_challenge_enabled: String(checked) }),
+      });
+      setChallengeEnabled(checked);
+      toast.success(checked ? "Popup Challenge diaktifkan" : "Popup Challenge dinonaktifkan");
     } catch {
       toast.error("Gagal menyimpan pengaturan");
     } finally {
@@ -542,6 +562,27 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
                 onCheckedChange={handleSubscriptionToggle}
                 disabled={configSaving}
                 aria-label="Toggle tombol berlangganan"
+              />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-secondary/30 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Popup Contributor Challenge</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {challengeEnabled
+                  ? "Popup ajakan challenge ditampilkan ke semua user di Dashboard."
+                  : "Popup challenge nonaktif. User tidak melihat pengumuman."}
+              </p>
+            </div>
+            {configLoading ? (
+              <div className="h-6 w-11 animate-pulse rounded-full bg-muted" />
+            ) : (
+              <Switch
+                checked={challengeEnabled}
+                onCheckedChange={handleChallengeToggle}
+                disabled={configSaving}
+                aria-label="Toggle popup contributor challenge"
               />
             )}
           </div>
