@@ -173,6 +173,8 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
 
   // Contributor tab
   const [contributorTab, setContributorTab] = useState<"missions" | "articles">("missions");
+  const [panduanOpen, setPanduanOpen] = useState(false);
+  const [panduanFaqOpen, setPanduanFaqOpen] = useState<number | null>(null);
 
   // Mission state
   const [missions, setMissions] = useState<any[]>([]);
@@ -1274,6 +1276,183 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                 )}
 
                 <p className="text-center text-xs text-muted-foreground">Misi reset setiap hari pukul 05.00 pagi waktu Cairo · Semua poin tercatat di leaderboard kontributor</p>
+
+                {/* ── Buku Panduan Kontributor (collapsible) ─────── */}
+                <div className="mt-6 rounded-2xl border border-border bg-gradient-to-br from-amber-500/5 via-card to-card overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setPanduanOpen(o => !o)}
+                    aria-expanded={panduanOpen}
+                    className="w-full flex items-center gap-3 px-4 md:px-5 py-4 text-left hover:bg-amber-500/5 transition-colors"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 ring-1 ring-amber-400/30">
+                      <Trophy className="h-5 w-5 text-amber-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-display text-sm md:text-base font-bold text-foreground">📖 Buku Panduan Kontributor</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Tier reward, cara naik level, jawaban pertanyaan jamaah</p>
+                    </div>
+                    {panduanOpen ? <ChevronUp className="h-5 w-5 text-muted-foreground shrink-0" /> : <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />}
+                  </button>
+
+                  {panduanOpen && (
+                    <div className="px-4 md:px-5 pb-5 space-y-5 border-t border-border/50">
+                      {/* Intro */}
+                      <div className="pt-4">
+                        <p className="text-sm text-foreground leading-relaxed">
+                          <strong className="text-amber-400">Ahlan wa sahlan, calon legend Masisir!</strong> 👋
+                        </p>
+                        <p className="text-sm text-muted-foreground leading-relaxed mt-2">
+                          Setiap artikel yang lo tulis bakal jadi jawaban buat ratusan adek-adek baru yang masih bingung cara bayar iqamah, beli token Vodafone, atau nyari warung Indo deket asrama.
+                          Makin lo aktif nulis, makin lo naik tier — dan makin gede juga rewardnya. Ini breakdown-nya 👇
+                        </p>
+                      </div>
+
+                      {/* Tier Table */}
+                      <div className="space-y-2.5">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">🏆 Sistem Tier Reward</p>
+
+                        {/* Bronze */}
+                        <div className="rounded-xl border border-amber-700/30 bg-amber-900/10 p-3.5">
+                          <div className="flex items-start gap-3">
+                            <div className="text-2xl shrink-0">🥉</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <p className="font-bold text-sm text-amber-300">Bronze · Top 10 Mingguan</p>
+                                <span className="text-xs text-muted-foreground">syarat: masuk 10 besar leaderboard mingguan</span>
+                              </div>
+                              <ul className="mt-2 space-y-1 text-sm text-foreground/90">
+                                <li>• <strong>AI quota 2× lipat</strong> selama seminggu</li>
+                                <li>• Badge <span className="inline-flex items-center gap-1 rounded-md bg-amber-700/20 px-1.5 py-0.5 text-xs font-semibold text-amber-300">🥉 Bronze Contributor</span> di profil</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Silver */}
+                        <div className="rounded-xl border border-zinc-400/30 bg-zinc-400/5 p-3.5">
+                          <div className="flex items-start gap-3">
+                            <div className="text-2xl shrink-0">🥈</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <p className="font-bold text-sm text-zinc-300">Silver · Top 3 Mingguan</p>
+                                <span className="text-xs text-muted-foreground">syarat: 3 besar leaderboard minggu ini</span>
+                              </div>
+                              <ul className="mt-2 space-y-1 text-sm text-foreground/90">
+                                <li>• Semua benefit <em>Bronze</em></li>
+                                <li>• <strong>Spotlight di IG/channel AINA</strong> — foto + cerita lo dipost</li>
+                                <li>• Badge <span className="inline-flex items-center gap-1 rounded-md bg-zinc-300/20 px-1.5 py-0.5 text-xs font-semibold text-zinc-200">🥈 Silver Contributor</span></li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Gold */}
+                        <div className="rounded-xl border border-amber-400/40 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent p-3.5 shadow-[0_0_20px_-10px_rgba(251,191,36,0.5)]">
+                          <div className="flex items-start gap-3">
+                            <div className="text-2xl shrink-0">🥇</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <p className="font-bold text-sm text-amber-300">Gold · Juara Bulanan</p>
+                                <span className="text-xs text-muted-foreground">syarat: poin tertinggi di akhir bulan</span>
+                              </div>
+                              <ul className="mt-2 space-y-1 text-sm text-foreground/90">
+                                <li>• Semua benefit <em>Silver</em></li>
+                                <li>• 🍽️ <strong className="text-amber-300">Voucher makan 1 menu di MA Resto</strong></li>
+                                <li>• <strong>Sertifikat resmi AINA Labs</strong> (digital, bisa ditaruh di CV/LinkedIn)</li>
+                                <li>• Slot mentoring 1-on-1 sama senior alumni</li>
+                                <li>• Badge <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-xs font-semibold text-amber-300 ring-1 ring-amber-400/40">🥇 Gold Contributor</span></li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Diamond */}
+                        <div className="rounded-xl border border-cyan-400/40 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-3.5 shadow-[0_0_20px_-10px_rgba(34,211,238,0.5)]">
+                          <div className="flex items-start gap-3">
+                            <div className="text-2xl shrink-0">💎</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <p className="font-bold text-sm text-cyan-300">Diamond · Legend of the Year</p>
+                                <span className="text-xs text-muted-foreground">syarat: top 1 sepanjang tahun · langka banget</span>
+                              </div>
+                              <ul className="mt-2 space-y-1 text-sm text-foreground/90">
+                                <li>• Semua benefit <em>Gold</em></li>
+                                <li>• <strong>Surat rekomendasi resmi</strong> dari AINA Labs (bagus buat aplikasi S2/beasiswa)</li>
+                                <li>• Prioritas seleksi <strong>internship/tim AINA</strong> kalo lagi buka</li>
+                                <li>• Akses grup WA <em>Inner Circle</em> bareng founder &amp; alumni</li>
+                                <li>• Badge <span className="inline-flex items-center gap-1 rounded-md bg-cyan-500/20 px-1.5 py-0.5 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-400/40">💎 Diamond Legend</span> permanen</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Flash bonus */}
+                        <div className="rounded-xl border border-amber-400/30 bg-amber-500/5 p-3 flex items-start gap-2.5">
+                          <Zap className="h-4 w-4 text-amber-400 mt-0.5 shrink-0 animate-pulse" />
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            <strong className="text-amber-300">Bonus Flash Mission:</strong> tiap minggu ada 1 misi yang dikasih multiplier <strong>3× poin</strong>. Lihat di list misi, yang ada border emasnya — kerjain dulu biar cepet naik tier!
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* FAQ */}
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">❓ Pertanyaan yang Sering Ditanya</p>
+                        {[
+                          {
+                            q: "Gw baru daftar, langsung dapet reward kah?",
+                            a: "Nggak otomatis sih. Lo harus aktif submit misi dulu sampe nongkrong di top 10 leaderboard mingguan. Mulai dari Bronze, terus naik. Anggep aja kayak ngerjain muqarrar — gak ada shortcut, harus telaten 😄"
+                          },
+                          {
+                            q: "Voucher MA Resto dikirim gimana?",
+                            a: "Kalo lo menang Gold (juara bulanan), tim AINA bakal DM lo via WA buat kasih kode voucher. Voucher berlaku buat 1 menu apa aja di MA Resto (kecuali paket family). Boleh dipake sendiri atau dikasih ke temen — bebas."
+                          },
+                          {
+                            q: "Kapan winner diumumin?",
+                            a: "Tier mingguan reset tiap Senin pagi (waktu Cairo). Tier bulanan reset tanggal 1 tiap bulan. Pengumuman juara via notifikasi in-app + post di IG @aina.labs. Pantengin terus ya!"
+                          },
+                          {
+                            q: "Bisa kombo? Misal Gold + masih dapet Bronze minggu depan?",
+                            a: "Bisa banget! Reward tiered itu cumulative — selama lo masih masuk top 10 mingguan, AI quota tetep dapet. Kalo bulan depan lo juara lagi, dapet voucher MA Resto lagi. Yang berhenti cuma kalo lo udah gak nongol di leaderboard."
+                          },
+                          {
+                            q: "Poin gw dipotong gak kalo artikelnya direject?",
+                            a: "Iya, kalo direject admin, poin dari misi itu gak masuk leaderboard. Tapi tenang — lo selalu bisa ngerjain ulang misi yang sama besoknya. Pastiin baca brief misi baik-baik biar gak salah format."
+                          },
+                          {
+                            q: "Kalo gw udah lulus dari Mesir, badge-nya ilang?",
+                            a: "Nggak. Badge Diamond/Gold/Silver/Bronze yang udah lo dapet permanen di profil, bahkan setelah lo balik Indo. Anggep aja kenang-kenangan digital dari masa Masisir 🇪🇬"
+                          },
+                        ].map((item, i) => (
+                          <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setPanduanFaqOpen(panduanFaqOpen === i ? null : i)}
+                              aria-expanded={panduanFaqOpen === i}
+                              className="w-full flex items-center gap-2 px-3.5 py-3 text-left hover:bg-secondary/30 transition-colors"
+                            >
+                              <span className="flex-1 text-sm font-medium text-foreground">{item.q}</span>
+                              <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${panduanFaqOpen === i ? "rotate-180" : ""}`} />
+                            </button>
+                            {panduanFaqOpen === i && (
+                              <div className="px-3.5 pb-3 pt-0">
+                                <p className="text-sm text-muted-foreground leading-relaxed">{item.a}</p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Closing */}
+                      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+                        <p className="text-sm text-foreground leading-relaxed">
+                          <strong className="text-primary">Kesimpulan:</strong> nulis di AINA itu bukan cuma cari cuan — tapi nabung jariyah ilmu buat adek-adek Masisir. Reward MA Resto, badge, sama recognition cuma <em>cherry on top</em>. Yang penting, lo udah jadi bagian dari ekosistem yang bantu ribuan mahasiswa Indo di Mesir hidup lebih gampang. Yallah, ngeruh nulis! ✍️🇮🇩
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

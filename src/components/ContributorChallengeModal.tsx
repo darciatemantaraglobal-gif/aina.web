@@ -177,34 +177,37 @@ const ContributorChallengeModal = () => {
             {/* Reward Card */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
               <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-amber-400 mb-3.5">
-                Reward untuk 3 Kontributor Teratas
+                Reward Tiered untuk Kontributor Aktif
               </p>
               <ul className="space-y-3 text-sm">
                 <li className="flex items-start gap-3">
-                  <Crown className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                  <Trophy className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
                   <span className="text-zinc-200">
-                    <strong className="text-white">Subscription Pro 1 tahun</strong> &mdash; akses penuh semua fitur AINA
+                    <strong className="text-white">Voucher makan 1 menu di MA Resto</strong> &mdash; buat juara mingguan & bulanan
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <Trophy className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                  <Crown className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
                   <span className="text-zinc-200">
-                    <strong className="text-white">Total 1.500 LE</strong> dibagi untuk 3 kontributor terbanyak
+                    <strong className="text-white">AI quota premium</strong> &mdash; akses tanpa batas ke fitur AINA Pro
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
                   <Award className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
                   <span className="text-zinc-200">
-                    <strong className="text-white">Sertifikat resmi</strong> dari AINA Labs
+                    <strong className="text-white">Sertifikat &amp; surat rekomendasi</strong> resmi dari AINA Labs
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
                   <BadgeCheck className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
                   <span className="text-zinc-200">
-                    <strong className="text-white">Badge eksklusif</strong> permanen di profil Anda
+                    <strong className="text-white">Badge eksklusif</strong> permanen di profil &amp; spotlight di IG AINA
                   </span>
                 </li>
               </ul>
+              <p className="mt-3.5 text-center text-[11px] text-zinc-500">
+                Detail lengkap tier ada di <strong className="text-zinc-300">Buku Panduan Kontributor</strong> &rarr;
+              </p>
             </div>
 
             <p className="text-xs italic text-zinc-500 text-center px-2 leading-relaxed">
