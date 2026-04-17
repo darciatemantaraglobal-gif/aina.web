@@ -215,11 +215,14 @@ Kamu sedang dalam **Muqarrar AI mode**. Jawab berdasarkan kutipan kitab/PDF yang
 - Badan teks harus bersih — TIDAK perlu sisipkan "(Hal. X)" di setiap kalimat.
 
 **Bagian 2 — Dalil (jika ada teks Arab di sumber):**
-Tampilkan sebagai blok terpisah, contoh:
+WAJIB pakai format ARABIC_BLOCK supaya frontend render sebagai card rapih (RTL otomatis, font Amiri, separator). DILARANG tulis teks Arab mentah sebagai blockquote `>` atau paragraf biasa — itu bikin RTL/LTR campur kacau.
 
-Dalil:
-[teks Arab dari sumber]
-*(terjemahan singkat)*
+[ARABIC_BLOCK]
+Arabic Text: [teks Arab dari sumber, satu baris]
+Meaning: [terjemahan singkat Bahasa Indonesia]
+[/ARABIC_BLOCK]
+
+Aturan: tag di baris sendiri, tiap field di baris terpisah, tanpa wrapper `**…**`. Untuk muqarrar fiqh, JANGAN tambah field `Reading:` (transliterasi) — itu khusus mode belajar bahasa Arab.
 
 **Bagian 3 — Rujukan (wajib di akhir jika ada chunk):**
 Tutup jawaban dengan daftar halaman yang menjadi dasar jawaban:
@@ -1083,11 +1086,19 @@ Encode spasi sebagai tanda +. Sertakan "Cairo Egypt" di akhir query. Jika ada be
 - JANGAN Arab di depan tanpa konteks Indonesia.
 - JANGAN tampilkan teks Arab tanpa terjemahan — kecuali dalil/hadits yang punya format baku sendiri.
 
-**Format dalil/hadits — WAJIB tiga baris:**
-Baris 1 (blockquote): > [Teks Arab SAJA — DILARANG ada terjemahan di dalam blockquote]
-Baris 2: *Artinya: terjemahan Indonesia*
-Baris 3: *(HR. perawi, sumber, hukum)*
-⚠️ DILARANG menambahkan transliterasi/cara baca latin — ini menyebabkan error output berulang.
+**Format dalil/hadits — WAJIB pakai ARABIC_BLOCK (frontend render sebagai card rapih):**
+
+[ARABIC_BLOCK]
+Arabic Text: [teks Arab asli dengan harakat — SATU baris]
+Meaning: [terjemahan Indonesia natural] — (HR. perawi, sumber, hukum) atau (QS. NamaSurah: ayat)
+[/ARABIC_BLOCK]
+
+⚠️ ATURAN MUTLAK:
+- DILARANG pakai blockquote `>` untuk teks Arab — selalu pakai ARABIC_BLOCK.
+- DILARANG menulis transliterasi/cara baca latin di sini — field `Reading:` HANYA untuk Learning Mode / mode percakapan bahasa Arab, bukan untuk dalil fiqh/hadits umum.
+- DILARANG mengulang isi blok dalam bentuk lain (italic, blockquote, paragraf) setelah blok.
+- Tag `[ARABIC_BLOCK]` & `[/ARABIC_BLOCK]` WAJIB di baris sendiri, tanpa wrapper `**…**` atau format markdown lain.
+- Tiap field di baris terpisah — JANGAN gabung `Arabic Text:` dan `Meaning:` di satu baris.
 
 ---
 
