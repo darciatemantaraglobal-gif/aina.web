@@ -176,6 +176,13 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
   const [panduanOpen, setPanduanOpen] = useState(false);
   const [panduanFaqOpen, setPanduanFaqOpen] = useState<number | null>(null);
 
+  // Mission AI parse state
+  const [parseUploading, setParseUploading] = useState(false);
+  const [parsedText, setParsedText] = useState("");
+  const [parsedFilename, setParsedFilename] = useState("");
+  const [parsedFieldsCount, setParsedFieldsCount] = useState(0);
+  const parseFileInputRef = useRef<HTMLInputElement>(null);
+
   // Mission state
   const [missions, setMissions] = useState<any[]>([]);
   const [missionDate, setMissionDate] = useState("");
@@ -378,6 +385,48 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
       toast.error("Gagal mengganti misi, coba lagi.");
     } finally {
       setSkippingMissionId(null);
+    }
+  };
+
+  const parseRequestIdRef = useRef<number | null>(null);
+  const parseAndFillMission = async (file: File, dailyMissionId: number) => {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { toast.error("File terlalu besar. Maksimal 4 MB."); return; }
+    const okType = ["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type);
+    if (!okType) { toast.error("Format tidak didukung. Pakai JPG, PNG, WebP, atau PDF."); return; }
+    parseRequestIdRef.current = dailyMissionId;
+    setParseUploading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Login diperlukan"); return; }
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/missions/${dailyMissionId}/parse-upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: fd,
+      });
+      const json = await res.json();
+      // Race-condition guard: bail if user closed/switched mission while upload was in-flight
+      if (parseRequestIdRef.current !== dailyMissionId) return;
+      if (!res.ok) { toast.error(json.error || "Gagal memproses file"); return; }
+      setParsedText(json.extracted_text || "");
+      setParsedFilename(json.filename || file.name);
+      const sug = json.suggestions || {};
+      const filledCount = Object.keys(sug).length;
+      setParsedFieldsCount(filledCount);
+      if (filledCount > 0) {
+        setMissionFormData(prev => ({ ...prev, ...sug }));
+        toast.success(`✨ AI auto-isi ${filledCount} field dari "${file.name}". Cek & edit sebelum submit ya!`);
+      } else if (json.ai_error) {
+        toast(json.ai_error, { icon: "⚠️" });
+      } else {
+        toast("Teks berhasil diekstrak — copy manual ke field yang sesuai.", { icon: "ℹ️" });
+      }
+    } catch {
+      if (parseRequestIdRef.current === dailyMissionId) toast.error("Gagal upload, coba lagi.");
+    } finally {
+      if (parseRequestIdRef.current === dailyMissionId) setParseUploading(false);
     }
   };
 
@@ -1457,7 +1506,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
             )}
 
             {/* ── Mission Form Dialog ───────────────────────── */}
-            <Dialog open={!!activeMission} onOpenChange={(open) => { if (!open) { setActiveMission(null); setMissionFormData({}); } }}>
+            <Dialog open={!!activeMission} onOpenChange={(open) => { if (!open) { parseRequestIdRef.current = null; setActiveMission(null); setMissionFormData({}); setParsedText(""); setParsedFilename(""); setParsedFieldsCount(0); setParseUploading(false); } }}>
               <DialogContent className="bg-card border-border sm:max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-display flex items-center gap-2">
@@ -1484,6 +1533,60 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                         <span className="text-xs text-muted-foreground">· Top 3 submit +{15 * aMult} poin bonus</span>
                       </div>
                     </div>
+
+                    {/* ── AI Upload & Auto-Fill ──────────────────────── */}
+                    <div className="rounded-xl border border-dashed border-primary/30 bg-gradient-to-br from-primary/5 via-card to-card p-3.5 space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+                          <Wand2 className="h-3.5 w-3.5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-foreground">Upload Foto / PDF (opsional)</p>
+                          <p className="text-[11px] text-muted-foreground leading-snug">AI bakal baca file lo & auto-isi field di bawah. Hemat ngetik!</p>
+                        </div>
+                      </div>
+                      <input
+                        ref={parseFileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        className="hidden"
+                        onChange={e => {
+                          const f = e.target.files?.[0];
+                          if (f && activeMission) parseAndFillMission(f, activeMission.id);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={parseUploading || missionSubmitting}
+                        onClick={() => parseFileInputRef.current?.click()}
+                        className="w-full gap-2 border-primary/40 bg-primary/5 hover:bg-primary/15 hover:border-primary/60"
+                      >
+                        {parseUploading ? (
+                          <><Loader2 className="h-4 w-4 animate-spin" /> AI lagi baca file...</>
+                        ) : (
+                          <><Upload className="h-4 w-4" /><Sparkles className="h-3.5 w-3.5" /> Pilih file & auto-fill</>
+                        )}
+                      </Button>
+                      {parsedText && (
+                        <div className="space-y-1.5">
+                          {parsedFieldsCount > 0 && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-green-400">
+                              <CheckCircle className="h-3 w-3" />
+                              <span>{parsedFieldsCount} field terisi otomatis dari <strong>{parsedFilename}</strong></span>
+                            </div>
+                          )}
+                          <details className="text-[11px] text-muted-foreground">
+                            <summary className="cursor-pointer hover:text-foreground select-none">📄 Lihat teks mentah hasil ekstraksi</summary>
+                            <pre className="mt-1.5 max-h-32 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background/50 p-2 text-[10px] leading-relaxed font-mono">{parsedText}</pre>
+                          </details>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-muted-foreground/70 leading-relaxed">Maks 4 MB · JPG/PNG/WebP/PDF · Hasil AI mungkin perlu kamu cek/edit sebelum submit</p>
+                    </div>
+
                     {(activeMission.template.form_schema?.fields || []).map((field: any) => (
                       <div key={field.name} className="space-y-1.5">
                         <label className="text-sm font-medium text-foreground">
@@ -1514,7 +1617,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       </div>
                     ))}
                     <div className="flex gap-2 pt-2">
-                      <Button variant="outline" className="flex-1" onClick={() => { setActiveMission(null); setMissionFormData({}); }}>Batal</Button>
+                      <Button variant="outline" className="flex-1" onClick={() => { parseRequestIdRef.current = null; setActiveMission(null); setMissionFormData({}); setParsedText(""); setParsedFilename(""); setParsedFieldsCount(0); setParseUploading(false); }}>Batal</Button>
                       <Button variant="hero" className="flex-1 gap-2" disabled={missionSubmitting} onClick={() => submitMission(activeMission.id)}>
                         {missionSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" />Submitting...</> : <><Send className="h-4 w-4" />Submit Misi</>}
                       </Button>

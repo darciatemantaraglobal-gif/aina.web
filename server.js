@@ -10433,6 +10433,176 @@ app.post("/api/missions/:dailyMissionId/submit", writeLimiter, async (req, res) 
   res.json({ success: true, submission: result });
 });
 
+/* ── POST /api/missions/:dailyMissionId/parse-upload ──
+   Upload foto/PDF → extract teks → AI struktur ke field-field form.
+   Hemat ngetik buat kontributor — AI auto-fill form berdasarkan konten file. */
+const missionParseUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB hard cap
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg","image/png","image/webp","application/pdf"];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error("Format tidak didukung. Pakai JPG, PNG, WebP, atau PDF."));
+    }
+    cb(null, true);
+  },
+});
+app.post("/api/missions/:dailyMissionId/parse-upload", uploadLimiter, (req, res, next) => {
+  missionParseUpload.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "File terlalu besar. Maksimal 4 MB." });
+    return res.status(400).json({ error: sanitizeErr(err) || err.message || "Gagal mengupload file" });
+  });
+}, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const isContrib = (roles || []).some(r => ["contributor","senior_contributor","admin"].includes(r.role));
+  if (!isContrib) return res.status(403).json({ error: "Contributor access required" });
+
+  const dailyMissionId = parseInt(req.params.dailyMissionId);
+  if (isNaN(dailyMissionId)) return res.status(400).json({ error: "Invalid mission ID" });
+
+  const missionDate = getCairoMissionDate();
+  const { data: dm } = await supabase
+    .from("daily_missions")
+    .select("id, mission_date, mission_templates(title, description, form_schema)")
+    .eq("id", dailyMissionId)
+    .eq("mission_date", missionDate)
+    .single();
+  if (!dm) return res.status(404).json({ error: "Misi tidak ditemukan atau sudah kadaluarsa" });
+  if (!req.file) return res.status(400).json({ error: "File diperlukan" });
+
+  const { buffer, mimetype, originalname } = req.file;
+  let extractedText = "";
+
+  try {
+    if (mimetype === "application/pdf") {
+      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
+      const result = await pdfParse(buffer);
+      extractedText = result.text;
+      if (!hasRealText(extractedText)) {
+        console.log(`[mission/parse-upload] PDF needs OCR: ${originalname}`);
+        extractedText = await ocrPdf(buffer);
+      }
+    } else if (["image/jpeg","image/png","image/webp"].includes(mimetype)) {
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (!apiKey) throw new Error("OPENROUTER_API_KEY tidak dikonfigurasi");
+      const b64 = buffer.toString("base64");
+      const dataUrl = `data:${mimetype};base64,${b64}`;
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}`, "HTTP-Referer": "https://ainalabs.pro", "X-Title": "AINA Mission OCR" },
+        body: JSON.stringify({
+          model: "google/gemini-2.0-flash-001",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: dataUrl } },
+              { type: "text", text: "Ekstrak semua teks yang terlihat di gambar ini secara akurat. Jika ada konteks visual penting (papan nama, lokasi, struktur), deskripsikan singkat di akhir. Bahasa Indonesia/Arab/campuran — semuanya. Kembalikan teks mentah saja, tanpa komentar." }
+            ]
+          }],
+          max_tokens: 3000,
+        }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message || "Gagal OCR gambar");
+      extractedText = data.choices?.[0]?.message?.content?.trim() ?? "";
+    } else {
+      return res.status(400).json({ error: "Format tidak didukung. Gunakan JPG, PNG, WebP, atau PDF." });
+    }
+  } catch (e) {
+    console.error("[mission/parse-upload] extract error:", e.message);
+    return res.status(422).json({ error: `Gagal membaca file: ${e.message}` });
+  }
+
+  extractedText = (extractedText || "").replace(/\r\n/g,"\n").replace(/\n{4,}/g,"\n\n\n").trim();
+  if (!hasRealText(extractedText)) {
+    return res.status(422).json({ error: "File tidak mengandung teks yang cukup untuk diekstrak. Coba scan ulang dengan resolusi lebih tinggi atau ketik manual." });
+  }
+  if (extractedText.length > 12_000) extractedText = extractedText.slice(0, 12_000) + "\n\n[...dipotong]";
+
+  // AI structure extracted text into form field values
+  const tpl = dm.mission_templates;
+  const fields = (tpl.form_schema?.fields) || [];
+  if (fields.length === 0) {
+    return res.json({ extracted_text: extractedText, suggestions: {}, filename: originalname });
+  }
+
+  const fieldDescriptors = fields.map(f =>
+    `- ${f.name} (${f.type || "text"}${f.required ? ", wajib" : ""}): ${f.label}${f.minLength ? ` — minimal ${f.minLength} karakter` : ""}`
+  ).join("\n");
+
+  const prompt = `Kamu adalah asisten AI yang membantu kontributor AINA mengisi form misi harian.
+
+MISI: ${tpl.title}
+DESKRIPSI MISI: ${tpl.description}
+
+FIELD YANG HARUS DIISI:
+${fieldDescriptors}
+
+KONTEN HASIL EKSTRAKSI DARI FILE YANG DIUPLOAD KONTRIBUTOR:
+"""
+${extractedText}
+"""
+
+TUGAS:
+Berdasarkan konten file di atas, isi tiap field dengan info yang relevan ke konteks misi. Aturan:
+- HANYA gunakan info dari file. Jangan mengarang atau nambah fakta.
+- Kalau suatu field gak ada info-nya di file, kasih string kosong "".
+- Tulis dalam Bahasa Indonesia natural, sesuai konteks Mahasiswa Indonesia di Mesir (Masisir).
+- Untuk field deskriptif/long-form: rangkum & rapikan, jangan copy mentah.
+- Untuk field nama/lokasi/angka: ambil persis dari file.
+
+Kembalikan HANYA JSON valid:
+{ "${fields[0].name}": "...", ... }
+
+Tanpa markdown fence, tanpa komentar.`;
+
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error("OPENROUTER_API_KEY tidak dikonfigurasi");
+    const aiResp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}`, "HTTP-Referer": "https://ainalabs.pro", "X-Title": "AINA Mission AutoFill" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+      }),
+    });
+    const aiData = await aiResp.json();
+    if (aiData.error) throw new Error(aiData.error.message || "AI error");
+    const raw = aiData.choices?.[0]?.message?.content?.trim() ?? "{}";
+    let suggestions = {};
+    try {
+      const cleaned = raw.replace(/^```json\s*/i,"").replace(/```\s*$/,"").trim();
+      suggestions = JSON.parse(cleaned);
+    } catch (parseErr) {
+      console.warn("[mission/parse-upload] JSON parse failed:", raw.slice(0,200));
+    }
+
+    // Whitelist field names + coerce to string
+    const allowed = Object.fromEntries(fields.map(f => [f.name, true]));
+    const out = {};
+    for (const [k, v] of Object.entries(suggestions)) {
+      if (allowed[k] && v !== null && v !== undefined && String(v).trim() !== "") {
+        out[k] = String(v).trim();
+      }
+    }
+
+    console.log(`[mission/parse-upload] ${user.id} → mission ${dailyMissionId} → ${Object.keys(out).length}/${fields.length} fields filled from "${originalname}"`);
+    res.json({ extracted_text: extractedText, suggestions: out, filename: originalname });
+  } catch (e) {
+    console.error("[mission/parse-upload] AI error:", e.message);
+    res.json({ extracted_text: extractedText, suggestions: {}, filename: originalname, ai_error: "AI gagal struktur — silakan copy manual dari teks di bawah." });
+  }
+});
+
 /* ── GET /api/missions/my-submissions ── */
 app.get("/api/missions/my-submissions", async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
