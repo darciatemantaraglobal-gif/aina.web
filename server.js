@@ -1284,7 +1284,7 @@ Berikan analisis lengkap dalam Bahasa Indonesia.`,
  * Fetches latest article fields (including keywords/summary if already generated).
  */
 async function embedKBArticle(articleId, { rethrow = false } = {}) {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!process.env.VOYAGE_API_KEY) return;
   const supabase = getAdminClient();
   if (!supabase) return;
   try {
@@ -1549,7 +1549,7 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 
   // ── Vector (semantic) search — try first if OpenAI key is available ─────────
   let vectorResults = [];
-  if (process.env.OPENAI_API_KEY && !vectorSearchDisabled) {
+  if (process.env.VOYAGE_API_KEY && !vectorSearchDisabled) {
     try {
       const queryEmbedding = await generateEmbedding(userQuestion);
       const { data: vecData, error: vecErr } = await supabase.rpc("match_knowledge_base", {
@@ -7772,7 +7772,7 @@ app.get("/api/admin/articles/generate-embeddings/status", async (req, res) => {
 app.post("/api/admin/articles/generate-embeddings", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
-  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "OPENAI_API_KEY not configured" });
+  if (!process.env.VOYAGE_API_KEY) return res.status(503).json({ error: "OPENAI_API_KEY not configured" });
   if (_embedState.running) return res.json({ alreadyRunning: true, ..._embedState });
 
   const supabase = getAdminClient();
@@ -15858,7 +15858,7 @@ async function initLibraryTable() {
 // New articles get embedded on approval; this catches existing ones and model upgrades.
 // Aborts early on quota/billing errors (429) to avoid wasting API calls.
 async function autoEmbedMissingArticles() {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!process.env.VOYAGE_API_KEY) return;
   const supabase = getAdminClient();
   if (!supabase) return;
   // Fetch articles missing embeddings OR embedded with an old model
