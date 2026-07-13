@@ -53,8 +53,8 @@ export function createMuqarrarRetrievalService({ getAdminClient, generateEmbeddi
       return [];
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      console.warn("[Muqarrar] OPENAI_API_KEY tidak dikonfigurasi — menggunakan keyword search.");
+    if (!process.env.VOYAGE_API_KEY) {
+      console.warn("[Muqarrar] VOYAGE_API_KEY tidak dikonfigurasi — menggunakan keyword search.");
       return _keywordFallback(supabase, userQuestion, { kitabId, kitabFilter });
     }
 
@@ -66,6 +66,10 @@ export function createMuqarrarRetrievalService({ getAdminClient, generateEmbeddi
       const matchCount = hasFilter ? 12 : 6;
 
       const queryEmbedding = await generateEmbedding(userQuestion);
+      if (!queryEmbedding) {
+        console.warn("[Muqarrar] Embedding null — fallback ke keyword search.");
+        return _keywordFallback(supabase, userQuestion, { kitabId, kitabFilter });
+      }
 
       const { data, error } = await supabase.rpc("match_muqarrar_chunks", {
         query_embedding: queryEmbedding,
@@ -74,8 +78,8 @@ export function createMuqarrarRetrievalService({ getAdminClient, generateEmbeddi
       });
 
       if (error) {
-        console.warn(`[Muqarrar] RPC error: ${error.message}`);
-        return [];
+        console.warn(`[Muqarrar] RPC error: ${error.message} — fallback ke keyword search.`);
+        return _keywordFallback(supabase, userQuestion, { kitabId, kitabFilter });
       }
 
       let results = (data || []).filter(c => c.similarity > threshold);
@@ -122,8 +126,12 @@ export function createMuqarrarRetrievalService({ getAdminClient, generateEmbeddi
       return _sortAndLimit(results);
 
     } catch (err) {
-      console.warn(`[Muqarrar] retrieve() failed: ${err.message}`);
-      return [];
+      console.warn(`[Muqarrar] retrieve() failed: ${err.message} — fallback ke keyword search.`);
+      try {
+        return await _keywordFallback(supabase, userQuestion, { kitabId, kitabFilter });
+      } catch {
+        return [];
+      }
     }
   }
 

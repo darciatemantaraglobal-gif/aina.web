@@ -724,7 +724,8 @@ console.log(`Admin client: ${SUPABASE_URL ? "✓ configured" : "✗ missing SUPA
 console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing SERVICE_ROLE_KEY"}`);
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
 console.log(`WebSearch: ${process.env.PERPLEXITY_API_KEY ? "✓ via Perplexity (real-time web)" : process.env.OPENROUTER_API_KEY ? "✓ via Gemini 2.5 Flash (OpenRouter, training data only)" : "✗ disabled — no API key set"}`);
-console.log(`OpenAI: ${process.env.OPENAI_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
+console.log(`Voyage AI (RAG embeddings): ${process.env.VOYAGE_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
+console.log(`OpenAI (moderation/whisper/vision): ${process.env.OPENAI_API_KEY ? "✓ configured" : "✗ not configured — moderation OFF, voice input & vision pre-analysis disabled"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 console.log(`Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? "✓ configured — real-time Places search enabled" : "✗ not configured — Places search disabled"}`);
 
@@ -1296,10 +1297,12 @@ async function embedKBArticle(articleId, { rethrow = false } = {}) {
     if (!art) return;
     const embedText = buildArticleEmbedText(art);
     const embedding = await generateEmbedding(embedText);
-    await supabase.from("knowledge_base")
+    if (!embedding) throw new Error("generateEmbedding returned null (VOYAGE_API_KEY missing?)");
+    const { error: updErr } = await supabase.from("knowledge_base")
       .update({ embedding: JSON.stringify(embedding), embedding_model: CURRENT_EMBED_MODEL })
       .eq("id", articleId);
-    console.log(`[RAG] ✓ embedded article ${articleId} [${CURRENT_EMBED_MODEL}]`);
+    if (updErr) throw new Error(`DB update failed: ${updErr.message}`);
+    console.log(`[RAG] ✓ embedded article ${articleId} [${CURRENT_EMBED_MODEL}] (${embedding.length} dims)`);
   } catch (e) {
     console.warn(`[RAG] embedding failed for ${articleId}: ${e.message}`);
     if (rethrow) throw e;
@@ -3141,11 +3144,17 @@ app.post("/api/setup/claim-admin", strictLimiter, async (req, res) => {
   if (error || !user) return res.status(401).json({ error: "Token tidak valid" });
 
   // Only allow if NO admin exists in the system
-  const { data: existingAdmins } = await supabase
+  const { data: existingAdmins, error: adminCheckErr } = await supabase
     .from("user_roles")
     .select("user_id")
     .eq("role", "admin")
     .limit(1);
+
+  // Fail-closed: if the check itself errors, NEVER allow the claim
+  if (adminCheckErr) {
+    console.error("[claim-admin] admin check failed:", adminCheckErr.message);
+    return res.status(500).json({ error: "Gagal memverifikasi status admin. Coba lagi." });
+  }
 
   if (existingAdmins && existingAdmins.length > 0) {
     return res.status(403).json({ error: "Admin sudah ada. Endpoint ini hanya untuk setup pertama kali." });
@@ -4442,27 +4451,46 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
 
   if (!isPaidUser) {
-    // Compute midnight in Cairo time (Africa/Cairo = UTC+2, no DST since 2011)
-    const CAIRO_OFFSET_MS = 2 * 60 * 60 * 1000;
-    const nowUtc = Date.now();
-    const nowCairoMs = nowUtc + CAIRO_OFFSET_MS;
-    const nowCairo = new Date(nowCairoMs);
-    const midnightCairo = new Date(
-      Date.UTC(nowCairo.getUTCFullYear(), nowCairo.getUTCMonth(), nowCairo.getUTCDate()) - CAIRO_OFFSET_MS
-    );
-    const { count } = await supabaseAdmin
-      .from("messages")
+    // Compute midnight in Cairo time. NOTE: Mesir kembali menerapkan DST sejak April 2023
+    // (UTC+3 di musim panas), jadi offset TIDAK boleh di-hardcode UTC+2.
+    const cairoFmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    });
+    const parts = Object.fromEntries(cairoFmt.formatToParts(new Date()).map(p => [p.type, p.value]));
+    // Detik yang sudah berlalu sejak tengah malam Kairo → mundur dari sekarang
+    const secsSinceMidnight = (+parts.hour % 24) * 3600 + (+parts.minute) * 60 + (+parts.second);
+    const midnightCairo = new Date(Date.now() - secsSinceMidnight * 1000);
+    // Count from SERVER-SIDE chat_usage log (not client-inserted `messages`),
+    // so the quota can't be bypassed by calling /api/chat directly.
+    // Falls back to `messages` count if chat_usage table doesn't exist yet.
+    let count = 0;
+    const { count: usageCount, error: usageErr } = await supabaseAdmin
+      .from("chat_usage")
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id)
-      .eq("role", "user")
       .gte("created_at", midnightCairo.toISOString());
+    if (!usageErr) {
+      count = usageCount ?? 0;
+    } else {
+      const { count: msgCount } = await supabaseAdmin
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("role", "user")
+        .gte("created_at", midnightCairo.toISOString());
+      count = msgCount ?? 0;
+    }
 
     console.log(`Rate limit check: user ${user.id} used ${count}/${DAILY_FREE_LIMIT} messages today`);
 
-    if ((count ?? 0) >= DAILY_FREE_LIMIT) {
+    if (count >= DAILY_FREE_LIMIT) {
       _sseError({ error: "Batas chat harian tercapai", limitReached: true });
       return;
     }
+
+    // Log this request server-side (fire-and-forget). Only free users are logged.
+    supabaseAdmin.from("chat_usage").insert({ user_id: user.id }).then(() => {}, () => {});
   }
 
   // ── Fast path: simple greetings (skip AI, respond instantly) ────────────────
@@ -7764,7 +7792,9 @@ app.get("/api/admin/articles/generate-embeddings/status", async (req, res) => {
     .from("knowledge_base")
     .select("*", { count: "exact", head: true })
     .eq("status", "approved");
-  res.json({ ..._embedState, withEmbedding: withEmbedding ?? 0, totalArticles: totalApproved ?? 0, openaiConfigured: !!process.env.OPENAI_API_KEY });
+  // NOTE: field name kept as "openaiConfigured" for AdminPage backward-compat,
+  // but it now reflects VOYAGE_API_KEY (the actual embedding provider).
+  res.json({ ..._embedState, withEmbedding: withEmbedding ?? 0, totalArticles: totalApproved ?? 0, openaiConfigured: !!process.env.VOYAGE_API_KEY, voyageConfigured: !!process.env.VOYAGE_API_KEY });
 });
 
 /* POST /api/admin/articles/generate-embeddings — batch re-embed approved articles
@@ -7772,7 +7802,7 @@ app.get("/api/admin/articles/generate-embeddings/status", async (req, res) => {
 app.post("/api/admin/articles/generate-embeddings", async (req, res) => {
   const admin = await verifyAdminUser(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
-  if (!process.env.VOYAGE_API_KEY) return res.status(503).json({ error: "OPENAI_API_KEY not configured" });
+  if (!process.env.VOYAGE_API_KEY) return res.status(503).json({ error: "VOYAGE_API_KEY not configured" });
   if (_embedState.running) return res.json({ alreadyRunning: true, ..._embedState });
 
   const supabase = getAdminClient();
@@ -11864,7 +11894,7 @@ app.delete("/api/news/:id/comments/:cid", async (req, res) => {
 });
 
 /* POST /api/news/:id/share-caption — generate (and cache) an AI share caption */
-app.post("/api/news/:id/share-caption", async (req, res) => {
+app.post("/api/news/:id/share-caption", writeLimiter, async (req, res) => {
   const supabase = getAdminClient();
   if (!supabase) return res.status(503).json({ error: "Service unavailable" });
 
@@ -11878,6 +11908,10 @@ app.post("/api/news/:id/share-caption", async (req, res) => {
   if (!row) return res.status(404).json({ error: "Berita tidak ditemukan" });
   const forceRegen = req.query.force === "true";
   if (row.share_caption && !forceRegen) return res.json({ caption: row.share_caption });
+
+  // Cache miss / force regen → this triggers a PAID AI call. Require login to prevent cost abuse.
+  const _capUser = await verifyAuth(req.headers.authorization);
+  if (!_capUser) return res.status(401).json({ error: "Login diperlukan" });
 
   // Generate with AI
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -14834,7 +14868,7 @@ async function runColumnMigrations() {
     // Step 1: enable pgvector extension (pre-installed on all Supabase projects)
     `CREATE EXTENSION IF NOT EXISTS vector;`,
     // Step 2: add embedding column to knowledge_base (text-embedding-3-large = 1536 dims)
-    `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding vector(1536);`,
+    `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding vector(512);`,
     `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS embedding_model varchar(80);`,
     `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS summary TEXT;`,
     `ALTER TABLE public.knowledge_base ADD COLUMN IF NOT EXISTS content_ar TEXT;`,
@@ -14842,7 +14876,7 @@ async function runColumnMigrations() {
     `CREATE INDEX IF NOT EXISTS idx_kb_embedding ON public.knowledge_base USING ivfflat (embedding vector_cosine_ops) WITH (lists = 10);`,
     // Step 4: match_knowledge_base RPC — returns articles sorted by semantic similarity
     `CREATE OR REPLACE FUNCTION match_knowledge_base(
-      query_embedding vector(1536),
+      query_embedding vector(512),
       match_threshold float DEFAULT 0.40,
       match_count int DEFAULT 5
     )
@@ -14881,6 +14915,14 @@ async function runColumnMigrations() {
       LIMIT match_count;
     END;
     $func$;`,
+    // Server-side chat usage log — daily free-tier quota that can't be bypassed client-side
+    `CREATE TABLE IF NOT EXISTS public.chat_usage (
+      id BIGSERIAL PRIMARY KEY,
+      user_id UUID NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_usage_user_time ON public.chat_usage(user_id, created_at DESC);`,
+    `ALTER TABLE public.chat_usage ENABLE ROW LEVEL SECURITY;`,
     // System settings table — for server restart flag and future config
     `CREATE TABLE IF NOT EXISTS public.system_settings (
       key TEXT PRIMARY KEY,
@@ -15229,11 +15271,17 @@ app.use("/api/internal/knowledge", createKnowledgeInsightsRouter({
    ─────────────────────────────────────────────────── */
 function verifyCron(req, res) {
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers["x-cron-secret"] !== secret) {
-    res.status(401).json({ error: "Unauthorized" });
+  // Fail-closed: cron endpoints must never be publicly triggerable.
+  if (!secret) {
+    console.warn("[Cron] CRON_SECRET belum diset — endpoint cron diblokir. Set CRON_SECRET di Railway DAN Vercel (env yang sama).");
+    res.status(503).json({ error: "CRON_SECRET not configured" });
     return false;
   }
-  return true;
+  // Accept both: custom x-cron-secret header AND Vercel Cron's "Authorization: Bearer <CRON_SECRET>"
+  const bearer = (req.headers.authorization || "").replace("Bearer ", "");
+  if (req.headers["x-cron-secret"] === secret || bearer === secret) return true;
+  res.status(401).json({ error: "Unauthorized" });
+  return false;
 }
 
 /* ── AI Flashcard Generator ────────────────────────────────────
@@ -15898,6 +15946,13 @@ async function autoEmbedMissingArticles() {
           console.warn("[RAG] ⚠️  OpenAI quota/billing issue — auto-embed stopped.");
           console.warn("[RAG] → Fix: add a payment method at https://platform.openai.com/settings/billing");
           console.warn(`[RAG] → Progress so far: ${ok} embedded, ${fail + 1} failed out of ${articles.length}`);
+          vectorSearchDisabled = true;
+          return;
+        } else if (/dimension|expected \d+ dimensions/i.test(e.message || "")) {
+          // Vector dimension mismatch — EVERY article will fail the same way.
+          // Abort immediately so Voyage credits aren't burned on the whole KB.
+          console.error("[RAG] ✗ Dimensi vector tidak cocok dengan kolom DB — auto-embed dihentikan.");
+          console.error("[RAG] → Jalankan migrasi SQL: ubah kolom embedding ke vector(512) lalu re-embed (lihat supabase/migrations/20260713_fix_vector_dims_voyage.sql).");
           vectorSearchDisabled = true;
           return;
         } else {

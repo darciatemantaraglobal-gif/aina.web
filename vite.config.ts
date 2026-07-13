@@ -46,12 +46,17 @@ export default defineConfig({
             // SSE/streaming + large upload endpoints — must NEVER be intercepted by SW.
             // SSE: service worker breaks long-lived connections (chat, flashcards).
             // Uploads: 8s SW timeout would prematurely fail large file uploads (PDF, voice).
-            urlPattern: /^\/api\/(chat|flashcards\/generate|upload|whisper|extract)(\/|$|\?)/,
+            // NOTE: pakai matchCallback (bukan RegExp ber-anchor) — RegExp dites terhadap
+            // URL PENUH (https://...), jadi /^\/api\//tidak pernah match dan rule ini mati.
+            urlPattern: ({ url }: { url: URL }) =>
+              /^\/api\/(chat|flashcards\/generate|upload|whisper|extract)(\/|$)/.test(url.pathname),
             handler: "NetworkOnly",
           },
           {
             // Other API endpoints — network first, reasonable timeout for overseas connections
-            urlPattern: /^\/api\/(?!chat|flashcards\/generate|upload|whisper|extract)/,
+            urlPattern: ({ url }: { url: URL }) =>
+              url.pathname.startsWith("/api/") &&
+              !/^\/api\/(chat|flashcards\/generate|upload|whisper|extract)(\/|$)/.test(url.pathname),
             handler: "NetworkFirst",
             options: {
               cacheName: "aina-api-cache",
