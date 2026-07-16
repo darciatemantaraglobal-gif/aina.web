@@ -1,0 +1,23 @@
+Simpel banget dari sisi mereka — cuma 4 langkah, sekali jalan:
+Flow calon user besok:
+
+Buka aina.web.id/akses-demo (atau domain lo) — paling enak lo tampilin QR code di slide/poster yang langsung ngarah ke situ, jadi gak ada yang ngetik URL.
+Isi form — nama, email, asal kota, kampus/fakultas, bidang studi, terus jawab "seberapa penting AI untuk Masisir?" skala 1–5 + alasan singkat (opsional). Sekitar 30–60 detik.
+Kode langsung muncul di layar — gede, format AINA-XXXXXX, ada tombol copy. Di bawahnya ada tombol "Lanjut ke Login". Gak nunggu approval, gak cek email — instan.
+Di halaman login: masukin email + kode itu → langsung masuk dashboard. Dan karena tadi dia isi fakultas & bidang studi, profilnya udah keprefill — pas dia ngobrol sama AINA, kerasa "loh kok udah kenal gue". Itu momen jualan lo.
+
+Kode itu berlaku terus (dia bisa login lagi dari rumah malamnya — bagus, biar mereka lanjut eksplorasi habis acara), dan datanya per-orang: chat, memories, profil masing-masing, gak campur.
+Skenario yang pasti kejadian di lapangan, dan udah ke-handle:
+
+"Kak, kodeku hilang" → suruh isi form lagi pake email yang sama. Sistem gak bikin akun dobel — dia bakal dikasih kode yang sama lagi. Atau lo cek sendiri dari admin endpoint, semua kode ada di situ.
+Ada yang iseng spam form → rate limit 5x/jam per IP. Tapi catet: kalau semua peserta pake WiFi venue yang sama, mereka share 1 IP publik — 5/jam bisa jadi bottleneck! Amannya suruh peserta pake data seluler masing-masing, atau kalau mau aman total, minta agent naikin limitnya ke ~30/jam khusus buat besok.
+Email udah pernah kepake daftar akun AINA beneran → dapet pesan suruh hubungin tim AINA (kasus langka, tapi gak bikin error jelek).
+
+Checklist lo sebelum acara mulai:
+
+Toggle "Demo Mode" ON dari admin panel minimal 2–3 menit sebelum lo nyuruh orang buka link (inget cache 60 detik).
+Test sendiri sekali pake email dummy: form → kode → login → chat jalan.
+Siapin QR code ke /akses-demo.
+Buka GET /api/admin/demo-access-requests di tab HP/laptop lo — itu dashboard hidup lo: keliatan real-time siapa aja yang daftar, plus jawaban survey "seberapa penting AI untuk masisir" — bisa lo bacain agregatnya di penutupan acara, keren buat closing.
+
+Selesai acara: toggle OFF. Peserta masih bisa login pake email+kode lewat form login biasa (karena akunnya real), jadi mereka otomatis jadi early user lo. Poin soal rate limit WiFi venue itu yang paling perlu lo putusin sekarang — mau naikin limit atau andelin data seluler peserta?
