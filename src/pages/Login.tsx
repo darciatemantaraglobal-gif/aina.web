@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Mail, Lock, ArrowRight, ArrowLeft, X, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Mail, Lock, ArrowRight, ArrowLeft, X, Eye, EyeOff, CheckCircle, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ainaLogo from "@/assets/aina-logo.png";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 type View = "main" | "emailForm" | "forgotPassword";
 type Mode = "login" | "register";
@@ -22,6 +23,7 @@ const GoogleIcon = () => (
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { demoMode, loading: demoLoading } = useDemoMode();
 
   useEffect(() => {
     const pending = (location.state as any)?.pendingMessage;
@@ -44,6 +46,11 @@ const Login = () => {
   const [resetSent, setResetSent] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendLoading, setResendLoading] = useState(false);
+
+  // Demo mode login state
+  const [demoEmail, setDemoEmail] = useState("");
+  const [demoCode, setDemoCode] = useState("");
+  const [demoLoggingIn, setDemoLoggingIn] = useState(false);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -159,6 +166,38 @@ const Login = () => {
     }
   };
 
+  const handleDemoLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!demoEmail || !demoCode) return;
+    setDemoLoggingIn(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: demoEmail.trim().toLowerCase(),
+        password: demoCode.trim(),
+      });
+      if (error) throw error;
+      navigate("/dashboard");
+    } catch {
+      toast.error("Email atau kode akses salah");
+    } finally {
+      setDemoLoggingIn(false);
+    }
+  };
+
+  // While config is loading, show background + spinner only
+  if (demoLoading) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/8 blur-[120px]" />
+          <div className="absolute -top-20 -left-20 h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,hsl(270_60%_18%/0.5),transparent_70%)] blur-[60px]" />
+          <div className="absolute -bottom-20 -right-20 h-[300px] w-[300px] rounded-full bg-[radial-gradient(ellipse,hsl(270_55%_15%/0.45),transparent_70%)] blur-[60px]" />
+        </div>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-4">
 
@@ -177,7 +216,7 @@ const Login = () => {
         <X className="h-4 w-4" />
       </button>
 
-      {/* ── MAIN VIEW — choose method ── */}
+      {/* ── MAIN VIEW ── */}
       {view === "main" && (
         <div className="relative z-10 w-full max-w-sm">
           {/* Logo + title */}
@@ -185,55 +224,123 @@ const Login = () => {
             <img src={ainaLogo} alt="AINA" className="h-14 w-14 object-contain" />
             <div>
               <h1 className="font-display text-2xl font-bold text-foreground">Selamat datang</h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">Pilih cara untuk masuk ke AINA</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {demoMode ? "Masuk ke AINA dengan kode akses demo" : "Pilih cara untuk masuk ke AINA"}
+              </p>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-border bg-card/80 backdrop-blur-sm">
+          {demoMode ? (
+            /* ── DEMO MODE: email + access code form ── */
+            <div className="overflow-hidden rounded-2xl border border-border bg-card/80 backdrop-blur-sm">
+              <form onSubmit={handleDemoLogin} className="space-y-3 p-5">
+                {/* Email */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="email"
+                      placeholder="email@contoh.com"
+                      value={demoEmail}
+                      onChange={(e) => setDemoEmail(e.target.value)}
+                      className="pl-9"
+                      required
+                    />
+                  </div>
+                </div>
 
-            {/* Google — primary CTA */}
-            <div className="p-5">
-              <button
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="group flex w-full items-center gap-3 rounded-xl bg-gradient-purple px-4 py-4 text-sm font-semibold text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.3)] transition-all hover:shadow-[0_0_24px_hsl(270_80%_65%/0.5)] hover:opacity-95 disabled:opacity-50"
-              >
-                <GoogleIcon />
-                <span className="flex-1 text-left">Masuk dengan Google</span>
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </button>
+                {/* Access code */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Kode Akses</label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="AINA-XXXXXX"
+                      value={demoCode}
+                      onChange={(e) => setDemoCode(e.target.value.toUpperCase())}
+                      className="pl-9 font-mono tracking-widest"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="mt-1 w-full gap-2 bg-gradient-purple text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.3)] hover:opacity-90 hover:shadow-[0_0_24px_hsl(270_80%_65%/0.5)]"
+                  disabled={demoLoggingIn}
+                >
+                  {demoLoggingIn ? "Masuk..." : "Masuk dengan Kode Akses"}
+                  {!demoLoggingIn && <ArrowRight className="h-4 w-4" />}
+                </Button>
+
+                <p className="pt-1 text-center text-sm text-muted-foreground">
+                  Belum punya kode akses?{" "}
+                  <Link to="/akses-demo" className="font-medium text-primary hover:underline">
+                    Daftar di sini
+                  </Link>
+                </p>
+              </form>
+
+              <div className="border-t border-border px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => goToEmailForm("login")}
+                  className="w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Login admin
+                </button>
+              </div>
             </div>
+          ) : (
+            /* ── NORMAL MODE: original layout ── */
+            <div className="overflow-hidden rounded-2xl border border-border bg-card/80 backdrop-blur-sm">
 
-            {/* Divider */}
-            <div className="flex items-center gap-3 px-5">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">atau gunakan email</span>
-              <div className="h-px flex-1 bg-border" />
+              {/* Google — primary CTA */}
+              <div className="p-5">
+                <button
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  className="group flex w-full items-center gap-3 rounded-xl bg-gradient-purple px-4 py-4 text-sm font-semibold text-primary-foreground shadow-[0_0_16px_hsl(270_80%_65%/0.3)] transition-all hover:shadow-[0_0_24px_hsl(270_80%_65%/0.5)] hover:opacity-95 disabled:opacity-50"
+                >
+                  <GoogleIcon />
+                  <span className="flex-1 text-left">Masuk dengan Google</span>
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 px-5">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground">atau gunakan email</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+
+              {/* Email options */}
+              <div className="space-y-2.5 p-5">
+                {/* Login with email — secondary */}
+                <button
+                  onClick={() => goToEmailForm("login")}
+                  className="group flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/60 px-4 py-3.5 text-sm font-medium text-foreground transition-all hover:border-primary/30 hover:bg-secondary/80"
+                >
+                  <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 text-left">Masuk dengan Email</span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </button>
+
+                {/* Register — tertiary */}
+                <button
+                  onClick={() => goToEmailForm("register")}
+                  className="group flex w-full items-center gap-3 rounded-xl border border-border/50 bg-transparent px-4 py-3.5 text-sm font-medium text-muted-foreground transition-all hover:border-border hover:bg-secondary/40 hover:text-foreground"
+                >
+                  <Mail className="h-4 w-4 shrink-0" />
+                  <span className="flex-1 text-left">Buat Akun Baru</span>
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </button>
+              </div>
             </div>
-
-            {/* Email options */}
-            <div className="space-y-2.5 p-5">
-              {/* Login with email — secondary */}
-              <button
-                onClick={() => goToEmailForm("login")}
-                className="group flex w-full items-center gap-3 rounded-xl border border-border bg-secondary/60 px-4 py-3.5 text-sm font-medium text-foreground transition-all hover:border-primary/30 hover:bg-secondary/80"
-              >
-                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 text-left">Masuk dengan Email</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </button>
-
-              {/* Register — tertiary */}
-              <button
-                onClick={() => goToEmailForm("register")}
-                className="group flex w-full items-center gap-3 rounded-xl border border-border/50 bg-transparent px-4 py-3.5 text-sm font-medium text-muted-foreground transition-all hover:border-border hover:bg-secondary/40 hover:text-foreground"
-              >
-                <Mail className="h-4 w-4 shrink-0" />
-                <span className="flex-1 text-left">Buat Akun Baru</span>
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </button>
-            </div>
-          </div>
+          )}
 
         </div>
       )}
@@ -396,7 +503,7 @@ const Login = () => {
                   {!loading && <ArrowRight className="h-4 w-4" />}
                 </Button>
 
-                {/* Toggle mode */}
+                {/* Toggle mode — only show register option in normal mode */}
                 <div className="pt-1 text-center text-xs text-muted-foreground">
                   {mode === "register" ? (
                     <>
@@ -411,16 +518,18 @@ const Login = () => {
                     </>
                   ) : (
                     <div className="flex flex-col gap-1.5">
-                      <span>
-                        Belum punya akun?{" "}
-                        <button
-                          type="button"
-                          onClick={() => { resetForm(); setMode("register"); }}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          Daftar sekarang
-                        </button>
-                      </span>
+                      {!demoMode && (
+                        <span>
+                          Belum punya akun?{" "}
+                          <button
+                            type="button"
+                            onClick={() => { resetForm(); setMode("register"); }}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            Daftar sekarang
+                          </button>
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => { setEmail(email); setView("forgotPassword"); }}

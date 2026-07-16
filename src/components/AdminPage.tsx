@@ -338,6 +338,7 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
 
   const [subscriptionVisible, setSubscriptionVisible] = useState(false);
   const [challengeEnabled, setChallengeEnabled] = useState(false);
+  const [demoModeEnabled, setDemoModeEnabled] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
 
@@ -349,6 +350,9 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
         }
         if (d.contributor_challenge_enabled !== undefined) {
           setChallengeEnabled(d.contributor_challenge_enabled === "true");
+        }
+        if (d.demo_mode !== undefined) {
+          setDemoModeEnabled(d.demo_mode === "true");
         }
       })
       .catch(() => {})
@@ -380,6 +384,22 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
       });
       setChallengeEnabled(checked);
       toast.success(checked ? "Popup Challenge diaktifkan" : "Popup Challenge dinonaktifkan");
+    } catch {
+      toast.error("Gagal menyimpan pengaturan");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const handleDemoModeToggle = async (checked: boolean) => {
+    setConfigSaving(true);
+    try {
+      await adminFetch("/api/admin/app-config", {
+        method: "PATCH",
+        body: JSON.stringify({ demo_mode: String(checked) }),
+      });
+      setDemoModeEnabled(checked);
+      toast.success(checked ? "Demo Mode diaktifkan" : "Demo Mode dinonaktifkan");
     } catch {
       toast.error("Gagal menyimpan pengaturan");
     } finally {
@@ -583,6 +603,25 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
                 onCheckedChange={handleChallengeToggle}
                 disabled={configSaving}
                 aria-label="Toggle popup contributor challenge"
+              />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-secondary/30 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Demo Mode (akses via kode)</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Saat aktif: login memakai email + kode akses, pendaftaran demo terbuka di /akses-demo, Google login disembunyikan.
+              </p>
+            </div>
+            {configLoading ? (
+              <div className="h-6 w-11 animate-pulse rounded-full bg-muted" />
+            ) : (
+              <Switch
+                checked={demoModeEnabled}
+                onCheckedChange={handleDemoModeToggle}
+                disabled={configSaving}
+                aria-label="Toggle demo mode"
               />
             )}
           </div>

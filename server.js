@@ -14115,16 +14115,19 @@ if (PAYMENT_ENABLED) {
 /* ── App Config — public read (no auth, only safe flags exposed) */
 app.get("/api/app/public-config", async (_req, res) => {
   const supabase = getAdminClient();
-  const out = { contributor_challenge_enabled: false };
+  const out = { contributor_challenge_enabled: false, demo_mode: false };
   if (!supabase) return res.json(out);
   try {
     const { data } = await supabase
       .from("app_config")
       .select("key, value")
-      .in("key", ["contributor_challenge_enabled"]);
+      .in("key", ["contributor_challenge_enabled", "demo_mode"]);
     for (const row of (data ?? [])) {
       if (row.key === "contributor_challenge_enabled") {
         out.contributor_challenge_enabled = row.value === "true";
+      }
+      if (row.key === "demo_mode") {
+        out.demo_mode = row.value === "true";
       }
     }
   } catch { /* table may not exist yet — defaults */ }
@@ -14923,6 +14926,7 @@ async function runColumnMigrations() {
     // Seed default values for app_config (only if not yet set)
     `INSERT INTO public.app_config (key, value) VALUES ('subscription_visible', 'false') ON CONFLICT (key) DO NOTHING;`,
     `INSERT INTO public.app_config (key, value) VALUES ('contributor_challenge_enabled', 'false') ON CONFLICT (key) DO NOTHING;`,
+    `INSERT INTO public.app_config (key, value) VALUES ('demo_mode', 'false') ON CONFLICT (key) DO NOTHING;`,
     // Messages metadata — stores sources, intent, confidence for badge display in chat history
     `ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS metadata JSONB;`,
     // Mission system — contributor daily missions
@@ -15991,6 +15995,139 @@ if (fs.existsSync(distPath)) {
     res.sendFile(path.join(distPath, "index.html"));
   });
 }
+
+/* ── Demo Access — rate limiter (5 req/hour per IP) ───── */
+const demoAccessLimiter = rl(60 * 60 * 1000, 5, "Terlalu banyak permintaan. Coba lagi dalam 1 jam.");
+
+/* ── POST /api/demo/request-access ────────────────────── */
+app.post("/api/demo/request-access", demoAccessLimiter, async (req, res) => {
+  // Step 1: check demo_mode — fail closed on any error
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(404).json({ error: "Not found" });
+  try {
+    const { data: cfg } = await supabase
+      .from("app_config")
+      .select("value")
+      .eq("key", "demo_mode")
+      .single();
+    if (!cfg || cfg.value !== "true") return res.status(404).json({ error: "Not found" });
+  } catch {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  // Step 2: validate body
+  const { full_name, email, origin_city, faculty, study_field, ai_importance, ai_importance_reason } = req.body ?? {};
+
+  if (!full_name || typeof full_name !== "string" || !full_name.trim() || full_name.trim().length > 100)
+    return res.status(400).json({ error: "Nama lengkap wajib diisi dan maksimal 100 karakter." });
+
+  const rawEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail))
+    return res.status(400).json({ error: "Format email tidak valid." });
+
+  const aiImp = parseInt(ai_importance, 10);
+  if (!Number.isInteger(aiImp) || aiImp < 1 || aiImp > 5)
+    return res.status(400).json({ error: "Tingkat kepentingan AI harus berupa angka 1–5." });
+
+  if (!study_field || typeof study_field !== "string" || !study_field.trim() || study_field.trim().length > 100)
+    return res.status(400).json({ error: "Bidang studi wajib diisi dan maksimal 100 karakter." });
+
+  if (ai_importance_reason && typeof ai_importance_reason === "string" && ai_importance_reason.length > 500)
+    return res.status(400).json({ error: "Alasan terlalu panjang (maks. 500 karakter)." });
+
+  // Step 3: idempotency — return existing code if email already registered
+  try {
+    const { data: existing } = await supabase
+      .from("demo_access_requests")
+      .select("access_code")
+      .eq("email", rawEmail)
+      .maybeSingle();
+    if (existing) {
+      return res.json({ access_code: existing.access_code, already_registered: true });
+    }
+  } catch (e) {
+    console.error("[DEMO-ACCESS] idempotency check failed:", e.message);
+    return res.status(500).json({ error: "Terjadi kesalahan server. Coba lagi." });
+  }
+
+  // Step 4: generate access code AINA-XXXXXX
+  const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let suffix = "";
+  for (let i = 0; i < 6; i++) suffix += CHARSET[crypto.randomInt(CHARSET.length)];
+  const accessCode = `AINA-${suffix}`;
+
+  // Step 5: create Supabase auth user
+  let userId;
+  try {
+    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+      email: rawEmail,
+      password: accessCode,
+      email_confirm: true,
+      user_metadata: { full_name: full_name.trim() },
+    });
+    if (createErr) {
+      if (createErr.message?.toLowerCase().includes("already registered") ||
+          createErr.message?.toLowerCase().includes("already been registered") ||
+          createErr.code === "email_exists") {
+        return res.status(409).json({
+          error: "Email ini sudah terdaftar sebagai akun AINA. Hubungi tim AINA jika kamu membutuhkan bantuan.",
+        });
+      }
+      throw createErr;
+    }
+    userId = created.user?.id;
+  } catch (e) {
+    console.error("[DEMO-ACCESS] createUser failed:", e.message);
+    return res.status(500).json({ error: "Gagal membuat akun. Coba lagi." });
+  }
+
+  // Step 6: prefill profile (handle_new_user trigger creates the row)
+  if (userId) {
+    try {
+      await supabase.from("profiles").update({
+        full_name: full_name.trim(),
+        ...(origin_city?.trim() ? { origin_city: origin_city.trim() } : {}),
+        ...(faculty?.trim() ? { faculty: faculty.trim() } : {}),
+        ...(study_field?.trim() ? { study_field: study_field.trim() } : {}),
+      }).eq("id", userId);
+    } catch (e) {
+      console.error("[DEMO-ACCESS] profile update failed (non-fatal):", e.message);
+    }
+  }
+
+  // Step 7: insert demo_access_requests row
+  try {
+    await supabase.from("demo_access_requests").insert({
+      full_name: full_name.trim(),
+      email: rawEmail,
+      origin_city: origin_city?.trim() || null,
+      faculty: faculty?.trim() || null,
+      study_field: study_field.trim(),
+      ai_importance: aiImp,
+      ai_importance_reason: ai_importance_reason?.trim() || null,
+      access_code: accessCode,
+      user_id: userId ?? null,
+    });
+  } catch (e) {
+    console.error("[DEMO-ACCESS] insert demo_access_requests failed:", e.message);
+  }
+
+  return res.json({ access_code: accessCode });
+});
+
+/* ── GET /api/admin/demo-access-requests ───────────────── */
+app.get("/api/admin/demo-access-requests", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Server error" });
+  const { data, error } = await supabase
+    .from("demo_access_requests")
+    .select("id,full_name,email,origin_city,faculty,study_field,ai_importance,ai_importance_reason,access_code,user_id,created_at")
+    .order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ requests: data ?? [] });
+});
 
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
 if (!process.env.VERCEL) {
