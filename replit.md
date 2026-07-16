@@ -1,110 +1,67 @@
-# AINA — Asisten Pintar Masisir
+# AINA — Asisten Pintar Mahasiswa Indonesia di Mesir
 
-An AI-powered assistant for Indonesian students in Egypt (Masisir), built with React + Express + Supabase.
+AI assistant built for Masisir (Indonesian students in Egypt). React + Vite frontend, Express.js backend, Supabase for auth & database, OpenRouter for AI chat.
 
-## Architecture
+## Stack
 
-- **Frontend**: React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui (port 5000)
-- **Backend**: Express.js server (port 3001), proxied via Vite `/api` prefix
-- **Auth & Database**: Supabase (PostgreSQL with RLS, Auth, Storage)
-- **AI Engine**: OpenRouter (Gemini 2.5 Flash primary, Gemini 2.0 Flash fallback)
-- **Semantic Search**: OpenAI `text-embedding-3-large` for vector KB search (Supabase `match_knowledge_base` RPC)
-- **KB Retrieval**: Hybrid mode (`USE_HYBRID_RETRIEVAL=true`) — vector + keyword + news knowledge sources merged
-- **Caching**: KB search cache (5 min TTL, 200 entries) + AI response cache (45 min TTL, 300 entries, factual/procedural only)
-- **City Boost**: After KB retrieval, articles matching user's city (from profile/memories) are re-ranked to top
-- **Job Queue**: `p-queue` (concurrency=2, max 5/s) wraps embed/keyword/summary/notes generation with exponential backoff retry
-- **PWA**: `vite-plugin-pwa` + Workbox (service worker, offline caching, install prompt, mobile bottom nav)
-- **Additional DB**: Replit PostgreSQL used for `masisir_procedures` table
+- **Frontend**: React 18, Vite 5, Tailwind CSS, shadcn/ui, React Router v6
+- **Backend**: Express.js (ESM), runs on `server.js`
+- **Auth/DB**: Supabase (service-role key on backend, anon key on frontend)
+- **AI**: OpenRouter API
+- **Payments**: Midtrans (disabled unless `PAYMENT_ENABLED=true`)
 
-### Knowledge Layer (foundation, not yet wired to chat)
+## Running on Replit
 
-A second knowledge schema (designed to receive data from the **news-harvester** repo) has been prepared as an additive layer. The existing `knowledge_base` retrieval in `server.js` remains the default.
-
-| File | Role |
-|---|---|
-| `supabase/migrations/20260406_news_knowledge_schema.sql` | DDL for `knowledge_sources` + `knowledge_chunks` tables |
-| `server/db/knowledgeSourceQueries.js` | Raw query layer (dependency-injected supabase client) |
-| `server/services/newsKnowledgeService.js` | Business logic + retrieval entry point (not wired to chat yet) |
-
-The chat route (`/api/chat`) still calls `fetchRelevantArticles()` which queries `knowledge_base`. The new service exposes `retrieveByKeywords()` as the future integration point for stage 2.
-
-## Running the App
-
-```bash
+```
 npm run dev
 ```
 
-This concurrently starts:
-1. `node server.js` — Express API on port 3001
-2. `vite` — React frontend on port 5000
+Starts both the Express backend (port 3001) and the Vite dev server concurrently.
 
-## Key Environment Variables
+### Required environment secrets
 
-### Secrets (set in Replit Secrets tab)
-- `SUPABASE_SERVICE_ROLE_KEY` — Server-side Supabase admin access
-- `OPENROUTER_API_KEY` — AI chat (required)
-- `OPENAI_API_KEY` — Optional: enables semantic/vector search
-- `PERPLEXITY_API_KEY` — Optional: enables web search fallback
-- `RESEND_API_KEY` — Optional: enables email notifications
-- `GOOGLE_MAPS_API_KEY` — Optional: enables Places search
+| Secret | Purpose |
+|---|---|
+| `SUPABASE_URL` | Supabase project URL (server-side) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key (never expose to frontend) |
+| `SUPABASE_ANON_KEY` | Supabase public anon key (server-side) |
+| `VITE_SUPABASE_URL` | Supabase URL exposed to frontend |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key exposed to frontend |
+| `VITE_SUPABASE_PROJECT_ID` | Supabase project ID exposed to frontend |
+| `OPENROUTER_API_KEY` | OpenRouter key for AI chat |
+| `CLIENT_URL` | Frontend origin for CORS (e.g. `https://your-app.vercel.app`) |
+| `SESSION_SECRET` | Express session secret |
 
-### Env Vars (set in Replit Environment Variables / shared)
-- `SUPABASE_URL` / `VITE_SUPABASE_URL` — Supabase project URL (`https://qyzimrshfcenpwvuownz.supabase.co`)
-- `SUPABASE_ANON_KEY` / `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon key
-- `VITE_SUPABASE_PROJECT_ID` — Supabase project ID (`qyzimrshfcenpwvuownz`)
-- `MASTER_ADMIN_IDS` — Comma-separated Supabase user UUIDs with master admin access
-- `EMAIL_FROM` — Email sender name/address for notifications
-- `PORT` — Express server port (3001)
-- `DATABASE_URL` — Replit PostgreSQL URL (auto-managed, used for `masisir_procedures` table)
+Optional secrets (features degrade gracefully without them):
+- `PERPLEXITY_API_KEY` — web search
+- `VOYAGEAI_API_KEY` — vector embeddings / RAG
+- `OPENAI_API_KEY` — moderation, vision
+- `RESEND_API_KEY` — email notifications
+- `GOOGLE_MAPS_API_KEY` — Places search
+- `MIDTRANS_SERVER_KEY` / `MIDTRANS_CLIENT_KEY` — payments (also set `PAYMENT_ENABLED=true`)
+- `MASTER_ADMIN_IDS` — comma-separated Supabase user UUIDs for master admin access
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram notifications
 
-## Project Structure
+## Build
 
 ```
-├── src/                    # React frontend
-│   ├── components/         # UI components (shadcn/ui + custom)
-│   ├── pages/              # Route pages
-│   ├── hooks/              # Custom React hooks
-│   └── integrations/       # Supabase client config
-├── server.js               # Main Express server (~11k lines)
-├── api/engine/             # AI engine modules
-│   ├── intentDetector.js   # Query intent classification
-│   ├── sourceOrchestrator.js # Multi-source retrieval logic
-│   ├── promptBuilder.js    # System prompt construction
-│   ├── responseFormatter.js
-│   ├── embedder.js         # OpenAI embedding support
-│   └── placesSearch.js     # Google Maps integration
-├── server/
-│   ├── routes/             # productivity.js, productivityAI.js
-│   └── services/           # reminderService.js, focusService.js, etc.
-└── supabase/migrations/    # All DB schema SQL files
+npm run build
 ```
 
-## Supabase Schema
+Produces `dist/` (frontend) and `dist/index.cjs` (server entry for production).
 
-Key tables: `profiles`, `user_roles`, `chats`, `messages`, `knowledge_base`, `threads`, `thread_replies`, `thread_votes`, `article_votes`, `tasks`, `user_memories`, `notifications`, `user_badges`, `pinned_updates`, `message_reports`, `beta_feedback`, `contributor_requests`, `subscriptions`, `daily_focus_items`, `admin_tracker_items`, `reminder_logs`, `query_log`, `missing_topics`, `user_notes`
+## Key source layout
 
-`messages` has a `metadata JSONB` column (added via `runColumnMigrations`), storing `{ intent, confidence, sources }` for AI replies — enables source badge persistence when reopening old chats.
+```
+server.js          — Express monolith (backend API)
+src/               — React frontend
+engine/            — AI pipeline (prompt builder, retrieval, etc.)
+server/routes/     — Modular Express routers
+server/services/   — Background services (reminders, job queue, etc.)
+scripts/           — Build helpers
+```
 
-## AI Improvements (A1–A6)
+## Notes
 
-- **A1 — Memory lintas sesi**: `user_memories` table checked at startup via `initUserMemories()`. Cross-session memory extracted after each response via `extractAndSaveMemories()` (fire-and-forget using OpenRouter).
-- **A2 — Perplexity citations**: `citation_urls` array now included in the SSE `done` event from server and rendered as clickable links in ChatArea below source badges.
-- **A3 — Missing topics detection**: `logMissingTopic()` now fires for: (a) weak-KB local-Masisir queries (existing), AND (b) any informational query (factual/procedural/recommendation) answered purely from model knowledge with no KB/external sources.
-- **A4 — Language detection**: Server-side Arabic character ratio detection injected as `[INSTRUKSI BAHASA — SISTEM]` at the top of every system prompt, enforcing Indonesian OR Arabic response based on the user's actual message.
-- **A5 — System prompt Masisir**: Significantly expanded identity section with specific knowledge: Masisir organizations (PPMI, PPI, kekeluargaan), Cairo area names (Hay Asyir, Darrasah, Abbasiyah), Masisir terminology (sakan, Qaid, rasm, mugharrar), local apps (Talabat, Careem), banking, and Mazhab Syafi'i default.
-- **A6 — Feedback loop**: Thumbs-down rating now automatically calls `logMissingTopic()` with the user's query, surfacing it in the admin missing-topics dashboard for KB improvement.
-
-## Recent Improvements
-
-- **Source badges persist**: `messages.metadata` JSONB saves `intent`, `confidence`, `sources` after each AI reply; loaded when reopening chat history.
-- **Chat pagination**: `loadMessages()` fetches last 50 messages; "Muat pesan sebelumnya" button loads older pages.
-- **Threads server-side search**: `/api/threads` accepts `search` param (PostgreSQL `ILIKE`); frontend debounces 400ms — searches ALL threads, not just loaded page.
-- **Streak timezone**: All `ProductivityPage` date logic uses `getCairoDateStr()` helper with `Africa/Cairo` timezone — no more wrong streak on non-WIB devices.
-- **`sharp` lazy-loaded**: Removed top-level `import sharp` from server.js; now dynamic `await import("sharp")` inside upload handlers only. Faster cold start.
-- **Admin security**: `/api/admin/users` now whitelists columns instead of `select("*")` on `profiles`.
-- **AdminPage memoization**: `OverviewTab` wrapped with `React.memo`; `tabContent` uses `useMemo` — avoids unnecessary re-renders.
-- **Muqarrar AI**: Fiqh ARABIC_BLOCK explicitly prohibited from including `Reading:` field in `promptBuilder.js`.
-
-## Deployment
-
-Uses Replit Autoscale. Build command: `npm run build`. Run command: `node ./dist/index.cjs`.
+- `npm test` will fail on Replit NixOS: the `canvas` package requires `libuuid.so.1` which is not available in this environment. This is a pre-existing limitation, not a code bug.
+- The `esbuild`/`vite` moderate vulnerability (GHSA-67mh-4wv8-2f99) requires `npm audit fix --force` (major version bump to Vite 8). Intentionally deferred — upgrade separately when ready.

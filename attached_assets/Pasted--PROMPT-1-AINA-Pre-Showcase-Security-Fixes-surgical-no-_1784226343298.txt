@@ -1,0 +1,59 @@
+# PROMPT 1 — AINA Pre-Showcase Security Fixes (surgical, no new features)
+
+You are working on the AINA repo (Express monolith `server.js` + React/Vite frontend in `src/`, Supabase for auth + DB). Frontend deploys to Vercel, backend to Railway. There is a live showcase TOMORROW. This task is strictly limited to the 4 fixes below — no refactors, no improvements beyond what is listed.
+
+## HARD CONSTRAINTS — read before doing anything
+
+- Do NOT touch the chat pipeline, anything in `engine/`, retrieval logic, RLS/migrations, payment code, rate limiters, CORS config, or ANY frontend file.
+- Do NOT add auth to `/api/ping` or `/api/health` — the Railway healthcheck depends on `/api/ping` staying public.
+- Do NOT run `npm audit fix --force` and do NOT upgrade any package across a major version.
+
+## TASK 1 — Delete the `/api/_seed-news` endpoint
+
+In `server.js` (around line 12177) there is:
+
+```js
+app.get("/api/_seed-news", async (req, res) => {
+  if (req.query.token !== "aina_seed_2026") return res.status(403).json({ error: "forbidden" });
+  ...
+});
+```
+
+The token is hardcoded in source, so anyone with repo access can insert fake news into the production database. Delete this entire endpoint (the whole handler including the seeded `items` array). Do not replace it with anything.
+
+## TASK 2 — Gate `/api/debug` and `/api/chat-test` behind admin auth
+
+Both endpoints (in `server.js`, around lines 2939 and 2987) are currently public and leak internal state. Protect both using the EXISTING helper, following the exact same pattern already used by `/api/admin/news`:
+
+```js
+const admin = await verifyAdminUser(req.headers.authorization);
+if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
+```
+
+Add this as the first statement inside each handler. Do not change anything else inside these handlers.
+
+## TASK 3 — Dependency vulnerabilities
+
+Run plain `npm audit fix` (NO `--force`). Then run `npm run build`. If the build breaks because of a fixed package, revert that specific package to its previous version and report it — do not force anything.
+
+## TASK 4 — Remove junk files from the repo
+
+Delete these files (verified: zero code references):
+
+- `eng.traineddata`
+- `vite.config.ts.timestamp-1774706438037-3f7cc617686b9.mjs`
+- `.bashrc`, `.bash_logout`, `.profile`
+
+Leave `attached_assets/` alone — the Replit workspace uses it.
+
+## VERIFICATION — run all of these and report results
+
+1. `npm run build` passes.
+2. `npm test` passes.
+3. `node server.js` boots without crashing (missing-env degradation messages are expected and fine).
+4. `GET /api/_seed-news?token=aina_seed_2026` returns 404 (endpoint gone).
+5. `GET /api/debug` and `GET /api/chat-test` WITHOUT an auth header return 403.
+6. `GET /api/ping` still returns 200 with no auth — this must be unchanged.
+7. List every file you changed or deleted, with a one-line reason each.
+
+Do not do anything outside these 4 tasks.

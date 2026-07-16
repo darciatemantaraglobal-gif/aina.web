@@ -2936,7 +2936,9 @@ app.get("/api/health", (_req, res) => {
 
 
 /* ── Debug endpoint — diagnose Vercel deployment issues ─ */
-app.get("/api/debug", async (_req, res) => {
+app.get("/api/debug", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
   const env = {
     SUPABASE_URL:           !!process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE:  !!process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -2983,8 +2985,10 @@ app.get("/api/debug", async (_req, res) => {
   });
 });
 
-/* ── Chat Pipeline Self-Test (no auth needed) ─────────── */
-app.get("/api/chat-test", async (_req, res) => {
+/* ── Chat Pipeline Self-Test (admin only) ─────────────── */
+app.get("/api/chat-test", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Tidak diizinkan" });
   const results = {};
   const MASTER_ID = [...MASTER_ADMIN_IDS][0] || "unknown";
   const supabase  = getAdminClient();
@@ -12172,25 +12176,6 @@ function escHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
-
-/* GET /api/_seed-news — ONE-TIME seed endpoint, remove after use */
-app.get("/api/_seed-news", async (req, res) => {
-  if (req.query.token !== "aina_seed_2026") return res.status(403).json({ error: "forbidden" });
-  const supabase = getAdminClient();
-  if (!supabase) return res.status(503).json({ error: "no client" });
-  const now = Date.now();
-  const items = [
-    { title: "KBRI Kairo Buka Layanan Paspor Walk-in Mulai April 2026", content: "KBRI Kairo mengumumkan pembukaan layanan paspor dengan sistem walk-in mulai 1 April 2026. Masisir tidak perlu lagi booking jauh-jauh hari.\n\nLayanan dibuka setiap Senin–Kamis pukul 09.00–12.00 waktu Kairo. Dokumen yang harus dibawa:\n• Paspor lama\n• Fotokopi KTP\n• Bukti mahasiswa aktif (Shahada Qaid)\n• Pas foto terbaru ukuran 4x6 berlatar putih\n\nAntrean diambil langsung di loket pada hari yang sama. Untuk info lebih lanjut hubungi hotline KBRI: +20 2 3761 0200.", category: "administrasi", source_name: "KBRI Kairo", is_pinned: true, published_at: new Date(now - 1*60*60*1000).toISOString() },
-    { title: "PERINGATAN: Badai Pasir (Khamaseen) Diprediksi Akhir Pekan Ini", content: "Badan Meteorologi Mesir (HIMET) memperingatkan badai pasir khamaseen akan melanda Kairo dan sekitarnya akhir pekan ini. Visibilitas bisa turun drastis dan suhu diprediksi mencapai 42°C.\n\nImbauan untuk Masisir:\n• Hindari keluar rumah jika tidak mendesak\n• Tutup rapat jendela dan pintu\n• Siapkan masker dan kacamata pelindung jika terpaksa keluar\n• Stok air minum dan makanan untuk 2–3 hari\n• Charge semua perangkat elektronik sebagai antisipasi pemadaman", category: "breaking_news", source_name: "HIMET / KBRI Kairo", is_pinned: true, published_at: new Date(now - 30*60*1000).toISOString() },
-    { title: "Restoran Halal Baru di Nasr City: Warung Nusantara Resmi Buka", content: "Kabar gembira buat Masisir yang kangen masakan Indonesia! Warung Nusantara resmi buka di Nasr City, lokasi strategis dekat Masjid Rabaa Al-Adawiyah.\n\nMenu andalan:\n• Nasi rendang daging sapi (EGP 75)\n• Ayam geprek sambal bawang (EGP 60)\n• Soto Betawi kuah santan (EGP 55)\n• Es teh manis jumbo (EGP 20)\n\nJam operasional: setiap hari 11.00–22.00 waktu Kairo. Tersedia layanan pesan antar via WhatsApp untuk area Nasr City.", category: "kuliner", source_name: "Info Kuliner Masisir", is_pinned: false, published_at: new Date(now - 3*60*60*1000).toISOString() },
-    { title: "Panduan Lengkap Naik Metro Kairo untuk Masisir Baru", content: "Metro Kairo adalah transportasi paling efisien dan murah di kota ini.\n\n3 Jalur Utama:\n• Line 1 (merah): Helwan ↔ New El-Marg\n• Line 2 (kuning): Shubra ↔ Giza\n• Line 3 (biru): Adly Mansour ↔ Kit Kat\n\nHarga tiket: EGP 8 single trip. Kartu prabayar lebih hemat untuk pemakai rutin.\n\nTips: Ada gerbong khusus wanita. Jam sibuk 07.00–09.00 dan 16.00–19.00 sebaiknya dihindari.", category: "transportasi", source_name: "Tim AINA", is_pinned: false, published_at: new Date(now - 2*24*60*60*1000).toISOString() },
-    { title: "Panduan Sewa Kos di Kairo 2026: Harga dan Area Terbaik untuk Masisir", content: "Panduan mencari tempat tinggal di Kairo:\n\nArea populer Masisir:\n• Nasr City — komunitas Indonesia paling besar\n• Abbasiyya — dekat kampus utama Al-Azhar\n• Shubra — harga murah, komunitas Indonesia besar\n\nEstimasi harga sewa (2026):\n• Single room sharing: EGP 800–1.500/bulan\n• Single room private: EGP 1.500–3.000/bulan\n• Studio/flat kecil: EGP 3.000–6.000/bulan\n\nSelalu baca kontrak sebelum tanda tangan dan tanya soal tagihan utilitas terpisah.", category: "kehidupan_mesir", source_name: "Tim AINA", is_pinned: false, published_at: new Date(now - 5*24*60*60*1000).toISOString() },
-    { title: "AIGYPT Gelar Seminar Nasional Beasiswa S2–S3 di Mesir", content: "AIGYPT (Asosiasi Ilmuwan dan Akademisi Indonesia di Mesir) mengadakan Seminar Nasional bertema \"Peluang Beasiswa Lanjut Studi S2–S3 di Mesir\".\n\nWaktu: Sabtu, 5 April 2026 | 13.00 WIB / 08.00 Kairo\nFormat: Online via Zoom\n\nTopik:\n• Beasiswa Al-Azhar untuk mahasiswa asing\n• Program double degree Indonesia–Mesir\n• Tips menulis proposal riset yang diterima\n• Pengalaman alumni S3 Al-Azhar\n\nPendaftaran GRATIS via link di bio Instagram @aigypt.official. Kapasitas 500 peserta.", category: "aigypt", source_name: "AIGYPT", is_pinned: false, published_at: new Date(now - 1*24*60*60*1000).toISOString() },
-  ];
-  const { data, error } = await supabase.from("masisir_news").insert(items).select("id, title");
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ inserted: data.length, items: data.map(d => d.title) });
-});
 
 /* GET /api/admin/news — list all news including inactive (admin only) */
 app.get("/api/admin/news", async (req, res) => {

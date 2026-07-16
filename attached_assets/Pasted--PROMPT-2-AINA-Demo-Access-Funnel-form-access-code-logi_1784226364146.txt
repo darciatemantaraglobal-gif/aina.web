@@ -1,0 +1,119 @@
+# PROMPT 2 — AINA Demo Access Funnel (form → access code → login), controlled by ONE admin-panel toggle
+
+You are working on the AINA repo (Express monolith `server.js` + React/Vite frontend in `src/`, Supabase auth + DB, frontend on Vercel, backend on Railway). AINA has not launched publicly. For the demo/showcase phase, users must fill in a short registration form (personal data + a mini survey) and receive an ACCESS CODE, which they then use together with their email to log in.
+
+The entire demo mode is switched on/off by a SINGLE runtime toggle: the `demo_mode` key in the existing `app_config` table, controlled from the admin panel. No env vars, no redeploys.
+
+## CORE PRINCIPLE — everything must be ADDITIVE and TOGGLE-GATED
+
+This must NOT change how the real AINA behaves. Concretely:
+
+- All new behavior is gated by `app_config.demo_mode === "true"`. When it is `"false"` or missing, AINA must behave EXACTLY as it does today: the login page renders identically, `/akses-demo` redirects to `/login`, and the new endpoint returns 404. Fail closed: if the config cannot be read, treat demo mode as OFF.
+- Do NOT touch the chat pipeline, anything in `engine/`, existing RLS policies, payment code, or CORS config.
+- Do NOT delete or modify the Google OAuth login logic — only hide it when demo mode is on.
+- Existing files you may edit, and ONLY in the ways specified: `src/pages/Login.tsx` (toggle-gated changes, Task 5), the routing file where pages are registered (add one route), the admin panel component that already renders `app_config` toggles (add one toggle, Task 6), and `server.js` — where you may ONLY (a) append new code, (b) add `"demo_mode"` to the whitelist array inside the existing `/api/app/public-config` handler (around line 14139, the `.in("key", [...])` list, plus its default in the `out` object), and (c) add one seed line `INSERT INTO public.app_config (key, value) VALUES ('demo_mode', 'false') ON CONFLICT (key) DO NOTHING;` next to the existing seed statements (around line 14939). No other modification to any existing handler.
+
+## HOW IT WORKS (overview)
+
+1. Admin flips the "Demo Mode" toggle in the admin panel → PATCH to the EXISTING `/api/admin/app-config` endpoint sets `demo_mode`.
+2. Frontend reads `demo_mode` at runtime from the EXISTING `/api/app/public-config` endpoint (it has a 60s cache — that propagation delay is acceptable).
+3. When ON: user opens `/akses-demo`, fills the form, frontend POSTs to `/api/demo/request-access`. Backend (service role) creates a real Supabase auth user — email = the user's email, password = a generated access code, `email_confirm: true` — stores the survey answers in a new table, prefills the user's AINA profile, and returns the code, which is shown on screen with a copy button.
+4. On the login page (demo mode ON), the user enters email + access code → existing `signInWithPassword` → dashboard.
+
+The access code IS the account password. No new auth mechanism.
+
+## TASK 1 — Migration file (I will run it manually in Supabase)
+
+Create `supabase/migrations/20260717_demo_access_requests.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS public.demo_access_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name text NOT NULL,
+  email text NOT NULL UNIQUE,
+  origin_city text,
+  faculty text,
+  study_field text,
+  ai_importance smallint NOT NULL CHECK (ai_importance BETWEEN 1 AND 5),
+  ai_importance_reason text,
+  access_code text NOT NULL,
+  user_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.demo_access_requests ENABLE ROW LEVEL SECURITY;
+-- No public policies on purpose: this table is accessed ONLY via the backend service role.
+```
+
+Do not run this migration yourself; just create the file.
+
+## TASK 2 — Wire `demo_mode` into the existing app_config plumbing
+
+1. In `/api/app/public-config` (server.js ~line 14131): add `demo_mode: false` to the `out` defaults and `"demo_mode"` to the `.in("key", [...])` whitelist, parsed with the same `row.value === "true"` pattern. Change nothing else in that handler.
+2. In the boot-time seed statements (~line 14939): add `INSERT INTO public.app_config (key, value) VALUES ('demo_mode', 'false') ON CONFLICT (key) DO NOTHING;` alongside the existing seeds.
+
+No changes to `/api/admin/app-config` are needed — its PATCH already upserts arbitrary keys.
+
+## TASK 3 — Backend endpoint (append to `server.js`)
+
+`POST /api/demo/request-access`:
+
+1. First step: read `app_config` for key `demo_mode` (same `.single()` pattern used for `subscription_visible`, e.g. ~line 13947). If the value is not `"true"` — including on any read error — return 404 `{ error: "Not found" }`. Fail closed.
+2. Rate limit: create a dedicated limiter with the existing `rl()` helper — 5 requests per hour per IP — attached to this route only.
+3. Validate body: `full_name` (non-empty, max 100 chars), `email` (valid format, normalize to lowercase), `ai_importance` (integer 1–5), `study_field` (non-empty, max 100 chars). `origin_city`, `faculty`, `ai_importance_reason` optional (max 500 chars for the reason). Reject invalid input with 400 and an Indonesian error message.
+4. Idempotency: if the email already exists in `demo_access_requests`, return the SAME stored `access_code` with `{ access_code, already_registered: true }` — do NOT create a duplicate user. This lets people who lost their code just re-submit the form.
+5. Otherwise generate an access code `AINA-XXXXXX` where `XXXXXX` is 6 random chars from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (ambiguous 0/O/1/I excluded). Use `crypto.randomInt`, not `Math.random`.
+6. Create the auth user with the existing admin client: `supabase.auth.admin.createUser({ email, password: accessCode, email_confirm: true, user_metadata: { full_name } })`. If Supabase reports the email is already registered as an auth user, return 409 with a friendly Indonesian message telling them to contact the AINA team.
+7. The existing `handle_new_user` trigger auto-creates a `profiles` row. After creating the user, UPDATE that profile row (by `user_id`) with `full_name`, `origin_city`, `faculty`, `study_field` from the form so their AINA profile is prefilled.
+8. Insert the row into `demo_access_requests` (including `access_code` and `user_id`).
+9. Return 200 `{ access_code }`. Log errors with a `[DEMO-ACCESS]` prefix; never leak internal error details to the client.
+
+Also append `GET /api/admin/demo-access-requests` (protected with the existing `verifyAdminUser` pattern) returning all rows ordered by `created_at` desc — so the admin can see survey results and help anyone who lost their code.
+
+## TASK 4 — Shared frontend hook + form page
+
+1. Create `src/hooks/useDemoMode.ts`: a small hook that fetches `/api/app/public-config` on mount and returns `{ demoMode: boolean, loading: boolean }`. On any fetch error, `demoMode` must resolve to `false` (normal AINA).
+2. Create `src/pages/DemoAccessPage.tsx`, registered at route `/akses-demo`:
+   - Use `useDemoMode()`. While loading, render the page background with a small spinner. If `demoMode` is false, redirect to `/login`.
+   - Form fields (labels in Indonesian): Nama lengkap*, Email*, Asal kota/daerah, Kampus/fakultas, Bidang studi*, "Seberapa penting AI untuk Masisir?"* as a 1–5 selector (1 = tidak penting, 5 = sangat penting), and an optional short textarea "Kenapa menurutmu begitu?".
+   - Client-side validation mirroring the backend rules; disable submit while loading.
+   - On success: replace the form with a success state showing the access code LARGE and prominent, a copy-to-clipboard button, a reminder line ("Simpan kode ini — kamu akan memakainya bersama email untuk login"), and a primary button "Lanjut ke Login" → `/login`. If the response has `already_registered: true`, add a note that this email was already registered and this is their existing code.
+   - On 429 or other errors, show the server's Indonesian message via the existing toast system.
+   - Visual style: reuse the exact same card, input, button, and background-glow patterns already used in `src/pages/Login.tsx`. Do not invent a new design.
+
+## TASK 5 — Login page (toggle-gated edits to `src/pages/Login.tsx`)
+
+Current structure: `type View = "main" | "emailForm" | "forgotPassword"`, `type Mode = "login" | "register"`, existing handlers `handleGoogleLogin`, `handleRegister`, `handleLogin` (uses `signInWithPassword`).
+
+Use `useDemoMode()`. While it is loading, show the page background with a small spinner instead of the login card (to avoid flashing the wrong mode).
+
+When `demoMode` is true:
+
+- The `"main"` view shows a demo login form as the primary content: Email field + "Kode Akses" field (auto-uppercase as the user types) + submit. On submit call the existing `supabase.auth.signInWithPassword({ email, password: accessCode })`; on success navigate to `/dashboard`; on failure toast "Email atau kode akses salah".
+- Below it, a clear secondary link: "Belum punya kode akses? Daftar di sini" → `/akses-demo`.
+- HIDE the Google button and every register/sign-up entry point. Keep one small, low-emphasis text link "Login admin" that opens the existing `emailForm` view in `login` mode only (register must not be reachable).
+
+When `demoMode` is false: the login page renders EXACTLY as it does today — zero visual or behavioral difference (apart from the brief initial config load).
+
+## TASK 6 — Admin panel toggle
+
+Find where the admin UI already renders `app_config` toggles (it uses `GET /api/admin/app-config` and `PATCH /api/admin/app-config`; look for how `subscription_visible` or `contributor_challenge_enabled` is handled in the admin components). Add a "Demo Mode" toggle following the EXACT same existing pattern:
+
+- A labeled switch: "Demo Mode (akses via kode)" with a one-line description in Indonesian: "Saat aktif: login memakai email + kode akses, pendaftaran demo terbuka di /akses-demo, Google login disembunyikan."
+- Toggling it PATCHes `{ demo_mode: "true" | "false" }` to `/api/admin/app-config` and reflects the saved state, with a success/failure toast.
+- Do not restructure the admin page; just add this control alongside the existing toggles.
+
+## VERIFICATION — run all of these and report results
+
+1. `npm run build` passes.
+2. `npm test` passes.
+3. `node server.js` boots without crashing.
+4. With `demo_mode` = "false" (or missing): `POST /api/demo/request-access` returns 404, `/akses-demo` redirects to `/login`, and the login page is identical to current behavior (Google visible, register reachable).
+5. With `demo_mode` = "true": the form submits, an `AINA-XXXXXX` code is returned, and re-submitting the same email returns the SAME code with `already_registered: true`.
+6. `GET /api/app/public-config` includes `demo_mode` as a boolean.
+7. `GET /api/admin/demo-access-requests` without auth returns 403.
+8. The admin panel shows the new toggle and PATCHing it flips the behavior above without any restart or redeploy.
+9. Confirm the ONLY edits to existing `server.js` handlers are the two whitelisted ones from Task 2 — everything else is appended new code.
+10. List every file you changed or added, with a one-line reason each.
+
+Do not do anything outside these 6 tasks.
