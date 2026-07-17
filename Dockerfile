@@ -1,16 +1,20 @@
-FROM node:20-slim
+FROM node:20
 
 WORKDIR /app
 
-# Copy manifest first so layer cache only busts on dep changes
+# System libs needed by @napi-rs/canvas at runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 libgif-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy manifest first — layer cache busts when deps change
 COPY package.json package-lock.json ./
 
-# Fresh install — no cache reuse
-RUN npm ci --omit=dev --no-audit
+RUN npm install --no-audit --no-fund
 
-# Copy rest of source
+# Copy source (node_modules excluded via .dockerignore)
 COPY . .
 
 EXPOSE 3000
-
 CMD ["node", "server.js"]
