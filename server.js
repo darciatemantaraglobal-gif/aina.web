@@ -31,6 +31,7 @@ function rateLimit({ windowMs, max, message, keyGenerator, validate } = {}) {
   };
 }
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 import multer from "multer";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
@@ -306,7 +307,8 @@ function getAdminClient() {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return null;
   if (!_adminClient) {
     _adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false }
+      auth: { autoRefreshToken: false, persistSession: false },
+      realtime: { transport: ws }
     });
   }
   return _adminClient;
