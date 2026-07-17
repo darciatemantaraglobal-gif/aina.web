@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Fresh install — no cache reuse
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 # Copy rest of source
 COPY . .
