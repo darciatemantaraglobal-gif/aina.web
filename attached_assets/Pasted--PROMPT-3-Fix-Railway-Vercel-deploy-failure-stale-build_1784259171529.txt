@@ -1,0 +1,77 @@
+# PROMPT 3 — Fix Railway & Vercel deploy failure (stale build cache after lockfile change)
+
+## CONTEXT — read this first, the diagnosis is already done
+
+Railway deploys are crashing at container start with:
+
+```
+Error: Cannot find package '/app/node_modules/multer/index.js' imported from /app/server.js
+code: 'ERR_MODULE_NOT_FOUND'
+```
+
+Root cause (already verified): a recent `npm audit fix` changed `package-lock.json` (multer 2.1.1 → 2.2.0). The CODE IS FINE — a clean `npm ci` + `node server.js` boot and `npm run build` have been verified to succeed with the current repo state. The failure is a stale/corrupted `node_modules` build cache on the deploy platforms after the lockfile changed. Railway currently installs with plain `npm install` (see `nixpacks.toml`), which reuses the cached layer.
+
+Your job: make the repo's build config deterministic, bust the Railway cache via a config change, push, and verify. Do NOT go hunting for bugs in application code — there are none related to this error.
+
+## HARD CONSTRAINTS
+
+- Do NOT run `npm audit fix` (or `--force`) again. Do NOT change any dependency version in `package.json`.
+- Do NOT touch application code: no edits to `server.js`, anything in `src/`, `engine/`, or `supabase/`.
+- Do NOT revert any previous commits — the recent security fixes and demo-mode feature must stay.
+- If at any point you need a credential (API token, etc.), STOP and ask me for it explicitly — tell me exactly which token, where to create it, and which Replit secret name to store it under. Never hardcode or print any token, and never commit one.
+
+## TASK 1 — Prove the repo state is healthy locally
+
+Run, in order, and capture the results:
+
+1. `rm -rf node_modules && npm ci` — must complete with no errors.
+   - If `npm ci` fails with a package.json/package-lock mismatch (EUSAGE): run `npm install` ONCE to re-sync the lockfile, then `rm -rf node_modules && npm ci` again to confirm it is now deterministic. Report clearly that the lockfile was re-synced.
+2. `node -e "import('multer').then(m=>console.log('multer OK')).catch(e=>{console.error(e.message);process.exit(1)})"` — must print `multer OK`.
+3. `timeout 15 node server.js` — must boot without any `ERR_MODULE_NOT_FOUND` (warnings about missing env vars are expected and fine in the Replit workspace).
+4. `npm run build` — must pass.
+
+If any step fails in a way not covered above, STOP and report the exact error instead of improvising.
+
+## TASK 2 — Make the Railway install deterministic (this also busts its cache)
+
+Edit `nixpacks.toml`:
+
+```toml
+[phases.install]
+cmds = ["npm ci"]
+```
+
+(Only that line changes — leave `[phases.build]` and `[start]` as they are.)
+
+Why: `npm ci` deletes any leftover `node_modules` and installs exactly what the lockfile says, so a cache can never leave a half-updated package behind again. Changing the build config also invalidates Railway's existing build cache on the next deploy — that is intentional and is part of the fix.
+
+## TASK 3 — Commit and push
+
+Commit with message: `fix(deploy): deterministic npm ci install on Railway (bust stale node_modules cache)` and push to the GitHub branch that Railway and Vercel deploy from (the current main branch). This push will trigger fresh deploys on both platforms.
+
+## TASK 4 — Verify production (wait 2–3 minutes after the push for deploys to finish)
+
+1. Ask me for the production backend URL if you cannot determine it (the Railway app URL). Then check: `curl -s -o /dev/null -w "%{http_code}" https://<railway-app>/api/ping` — must be `200`.
+2. Ask me for the production frontend URL and check it returns `200` and serves the app HTML.
+3. If the Railway deploy STILL fails with the same multer error after this push: do not attempt anything else in code. Tell me to open the Railway dashboard → the backend service → trigger a redeploy with "Clear build cache". That action is dashboard-only; you cannot do it.
+
+## TASK 5 — ONLY IF the Vercel deploy still fails after the push
+
+The likely cause on Vercel is the same: reused build cache. Two options — try in this order:
+
+1. Tell me the exact manual path first (it is 2 clicks): Vercel dashboard → Deployments → failed deployment → "…" menu → Redeploy → UNCHECK "Use existing Build Cache" → Redeploy. Ask me to do this and confirm.
+2. If I ask you to do it via CLI instead: request that I add a Replit secret named `VERCEL_TOKEN` (created at vercel.com → Account Settings → Tokens). Then:
+   - `npx vercel link --yes --token "$VERCEL_TOKEN"` — if it cannot determine the project, ask me for the Vercel project name and team/scope.
+   - `npx vercel --prod --force --token "$VERCEL_TOKEN"` — `--force` skips the build cache.
+   - Add `.vercel/` to `.gitignore` before running link, and never print the token.
+3. If Vercel fails with a DIFFERENT error than a dependency/module error, STOP and paste me the exact build log excerpt instead of attempting fixes.
+
+## REPORT BACK
+
+1. Results of all four local verification steps in Task 1.
+2. Whether the lockfile needed re-syncing.
+3. The commit hash pushed.
+4. HTTP status of the production `/api/ping` check and the frontend check.
+5. Anything that still requires my manual action, stated as a short checklist.
+
+Do not do anything outside these 5 tasks.
