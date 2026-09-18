@@ -71,18 +71,26 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
 const SERVER_START_MS = Date.now(); // epoch timestamp when this process started
+let httpServer = null; // set once app.listen() runs, below — used to shut down cleanly on a crash
 
 /* ── Process-level crash guards ──────────────────────── */
-// Prevent silent crashes — always log to console so Replit/ops can see it.
-process.on("uncaughtException", (err) => {
-  console.error("[FATAL] uncaughtException:", err.message);
-  console.error(err.stack);
-  // Don't exit — let the process keep running; Express is still intact.
-});
-process.on("unhandledRejection", (reason) => {
-  const msg = reason instanceof Error ? reason.message : String(reason);
-  console.error("[FATAL] unhandledRejection:", msg);
-});
+// After an uncaughtException/unhandledRejection, the process is in an
+// undefined state — module-level state (caches, in-flight counters, the
+// rate-limit Map) may be corrupted. Previously this logged and kept running,
+// which meant Railway's restartPolicyType=ON_FAILURE never triggered because
+// the process never actually died. Instead: log loudly, stop accepting new
+// connections, and force-exit so the platform restarts us clean. A hard
+// timeout guarantees the exit even if close() hangs on long-lived
+// connections (SSE chat streams).
+function crashExit(kind, err) {
+  console.error(`[FATAL] ${kind} — restarting process:`, err?.stack || err?.message || err);
+  if (httpServer) {
+    httpServer.close(() => process.exit(1));
+  }
+  setTimeout(() => process.exit(1), 3000);
+}
+process.on("uncaughtException", (err) => crashExit("uncaughtException", err));
+process.on("unhandledRejection", (reason) => crashExit("unhandledRejection", reason));
 
 /* ── Supabase retry utility ───────────────────────────── */
 // Wraps a Supabase query function and retries on transient network/timeout errors.
@@ -164,10 +172,16 @@ const allowedOrigins = new Set([
   process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null,
 ].filter(Boolean));
 
-// Allow *.replit.dev, *.replit.app, and *.vercel.app subdomains
+// Wildcard *.replit.dev / *.replit.app / *.vercel.app subdomains are opt-in
+// (ALLOW_PREVIEW_ORIGINS=true) — off by default so production doesn't accept
+// requests (with credentials: true) from any random *.vercel.app deploy.
+// Turn it on temporarily on Replit/staging, or while testing Vercel preview
+// deployments; the real production CLIENT_URL is always allowed regardless.
+const ALLOW_PREVIEW_ORIGINS = process.env.ALLOW_PREVIEW_ORIGINS === "true";
 function isAllowedOrigin(origin) {
   if (!origin) return true; // same-origin / non-browser requests
   if (allowedOrigins.has(origin)) return true;
+  if (!ALLOW_PREVIEW_ORIGINS) return false;
   try {
     const { hostname } = new URL(origin);
     return (
@@ -1710,6 +1724,41 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 }
 
 const DAILY_FREE_LIMIT = 5;
+const UNLIMITED_ROLES = ["contributor", "senior_contributor", "admin"];
+
+/**
+ * Resolves whether a user should bypass the daily free-chat quota.
+ * Checks BOTH the free unlimited roles (contributor/senior_contributor/admin)
+ * AND an active row in `subscriptions` (Midtrans-paid or admin-granted Pro).
+ * Previously only the role check existed, so a paying Pro user with the
+ * plain "user" role still got capped at DAILY_FREE_LIMIT — this was a bug.
+ *
+ * @param {object} supabase - admin Supabase client
+ * @param {string} userId
+ * @param {Array<{role:string}>|null} [rolesData] - pass already-fetched roles to skip a query
+ * @returns {Promise<{ isPaid: boolean, source: "role"|"subscription"|null }>}
+ */
+async function resolveEntitlement(supabase, userId, rolesData) {
+  let roles = rolesData;
+  if (roles === undefined) {
+    const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+    roles = data;
+  }
+  if (roles?.some(r => UNLIMITED_ROLES.includes(r.role))) {
+    return { isPaid: true, source: "role" };
+  }
+
+  const { data: sub, error } = await supabase
+    .from("subscriptions")
+    .select("expires_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!error && sub && new Date(sub.expires_at) > new Date()) {
+    return { isPaid: true, source: "subscription" };
+  }
+
+  return { isPaid: false, source: null };
+}
 
 // ── Hybrid retrieval — lazy init (only when USE_HYBRID_RETRIEVAL=true) ────────
 // fetchRelevantArticles is fully defined above — safe to reference here.
@@ -4481,7 +4530,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     fetchUserMemories(user.id, lastUserMessage, intent.primary),
   ]);
   const roles = rolesRes.data;
-  const isPaidUser = roles?.some(r => ["contributor", "senior_contributor", "admin"].includes(r.role)) ?? false;
+  const entitlement = await resolveEntitlement(supabaseAdmin, user.id, roles);
+  const isPaidUser = entitlement.isPaid;
 
   if (!isPaidUser) {
     // Compute midnight in Cairo time. NOTE: Mesir kembali menerapkan DST sejak April 2023
@@ -4494,36 +4544,50 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     // Detik yang sudah berlalu sejak tengah malam Kairo → mundur dari sekarang
     const secsSinceMidnight = (+parts.hour % 24) * 3600 + (+parts.minute) * 60 + (+parts.second);
     const midnightCairo = new Date(Date.now() - secsSinceMidnight * 1000);
-    // Count from SERVER-SIDE chat_usage log (not client-inserted `messages`),
-    // so the quota can't be bypassed by calling /api/chat directly.
-    // Falls back to `messages` count if chat_usage table doesn't exist yet.
-    let count = 0;
-    const { count: usageCount, error: usageErr } = await supabaseAdmin
-      .from("chat_usage")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .gte("created_at", midnightCairo.toISOString());
-    if (!usageErr) {
-      count = usageCount ?? 0;
-    } else {
-      const { count: msgCount } = await supabaseAdmin
-        .from("messages")
+
+    // Atomic check-and-increment via RPC (see migrations/003_chat_usage_atomic.sql).
+    // The old pattern (SELECT count, compare, fire-and-forget INSERT) let two
+    // concurrent requests both read the same pre-insert count and both pass —
+    // this closes that race by doing the count+insert in one DB round trip
+    // guarded by the RPC's own row lock, and by awaiting the result so an
+    // insert failure is never silently swallowed.
+    let count;
+    const { data: rpcCount, error: rpcErr } = await supabaseAdmin.rpc("increment_chat_usage", {
+      p_user_id: user.id,
+      p_window_start: midnightCairo.toISOString(),
+      p_limit: DAILY_FREE_LIMIT,
+    });
+
+    if (rpcErr) {
+      // Fail closed only if we truly cannot determine usage — log loudly so
+      // it gets noticed, but fall back to a plain (non-atomic) count so a
+      // missing/un-migrated RPC doesn't take chat down entirely.
+      console.error("[ChatQuota] increment_chat_usage RPC failed, falling back:", rpcErr.message);
+      const { count: usageCount, error: usageErr } = await supabaseAdmin
+        .from("chat_usage")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
-        .eq("role", "user")
         .gte("created_at", midnightCairo.toISOString());
-      count = msgCount ?? 0;
+      count = usageErr ? null : (usageCount ?? 0);
+      if (count === null) {
+        _sseError({ error: "Gagal memverifikasi kuota chat. Coba lagi." });
+        return;
+      }
+      if (count >= DAILY_FREE_LIMIT) {
+        _sseError({ error: "Batas chat harian tercapai", limitReached: true });
+        return;
+      }
+      await supabaseAdmin.from("chat_usage").insert({ user_id: user.id });
+    } else {
+      // RPC returns the post-increment count; it only inserts if under limit.
+      count = rpcCount;
+      if (count === null || count === undefined) {
+        _sseError({ error: "Batas chat harian tercapai", limitReached: true });
+        return;
+      }
     }
 
     console.log(`Rate limit check: user ${user.id} used ${count}/${DAILY_FREE_LIMIT} messages today`);
-
-    if (count >= DAILY_FREE_LIMIT) {
-      _sseError({ error: "Batas chat harian tercapai", limitReached: true });
-      return;
-    }
-
-    // Log this request server-side (fire-and-forget). Only free users are logged.
-    supabaseAdmin.from("chat_usage").insert({ user_id: user.id }).then(() => {}, () => {});
   }
 
   // ── Fast path: simple greetings (skip AI, respond instantly) ────────────────
@@ -16169,7 +16233,7 @@ if (!process.env.VERCEL) {
     autoEmbedMissingArticles();
     autoSummarizeMissingArticles();
   });
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer = app.listen(PORT, "0.0.0.0", () => {
     console.log(`AINA API server running on port ${PORT}`);
   });
 }

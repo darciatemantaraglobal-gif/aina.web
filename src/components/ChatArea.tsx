@@ -1308,15 +1308,22 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
       const userId = session.user.id;
 
-      // Parallel: fetch roles and profile
-      const [rolesRes, profileRes] = await Promise.all([
+      // Parallel: fetch roles, profile, and active subscription.
+      // NOTE: "paid" must check BOTH the free unlimited roles AND an active
+      // subscriptions row — a Midtrans-paid or admin-granted Pro user still
+      // has the plain "user" role, so role-only used to leave them capped
+      // at DAILY_LIMIT despite paying. Mirrors resolveEntitlement() in server.js.
+      const [rolesRes, profileRes, subRes] = await Promise.all([
         supabase.from("user_roles").select("role").eq("user_id", userId),
         supabase.from("profiles").select("*").eq("user_id", userId).single(),
+        supabase.from("subscriptions").select("expires_at").eq("user_id", userId).maybeSingle(),
       ]);
 
-      const paid = rolesRes.data?.some(r =>
+      const paidByRole = rolesRes.data?.some(r =>
         ["contributor", "senior_contributor", "admin"].includes(r.role)
       ) ?? false;
+      const paidBySubscription = !!subRes.data?.expires_at && new Date(subRes.data.expires_at) > new Date();
+      const paid = paidByRole || paidBySubscription;
       setIsPaidUser(paid);
 
       if (profileRes.data) {
