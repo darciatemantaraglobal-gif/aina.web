@@ -15890,6 +15890,8 @@ app.use("/api/internal/knowledge-analytics", createKnowledgeAnalyticsRouter({ ge
 app.use("/api/internal/knowledge", createKnowledgeInsightsRouter({
   getAdminClient,
   verifyAuth,
+  verifyAdminUser,             // publish ke knowledge_base wajib admin, bukan user biasa
+  embedArticle: embedKBArticle, // artikel yang baru dipublish langsung di-embed
   openRouterApiKey: process.env.OPENROUTER_API_KEY,
 }));
 

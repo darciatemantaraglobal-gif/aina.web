@@ -6896,6 +6896,185 @@ function InsightsTab() {
   );
 }
 
+/* ─── KB Drafts Tab (gap → draft → publish) ──────────────
+ * The last link in the self-improvement chain: questions AINA couldn't answer
+ * get logged, turned into draft articles, and — here — reviewed and published
+ * into knowledge_base so the next person asking gets a real answer.
+ * Backed by /api/internal/knowledge/*, which previously had no UI at all.
+ */
+interface KbDraft {
+  id: string;
+  topic: string | null;
+  title: string;
+  tags: string[] | null;
+  source: string | null;
+  status: string;
+  created_at: string;
+}
+
+const DRAFT_KB_CATEGORIES = ["Umum", "Administrasi", "Kehidupan", "Al-Azhar", "Akademik", "Keuangan", "Kesehatan", "Transportasi", "Komunitas"];
+
+function KbDraftsTab() {
+  const [drafts, setDrafts] = useState<KbDraft[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [status, setStatus] = useState<"draft" | "approved" | "rejected">("draft");
+  const [error, setError] = useState<string | null>(null);
+  const [categoryById, setCategoryById] = useState<Record<string, string>>({});
+
+  const load = useCallback(async (s: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await adminFetch(`/api/internal/knowledge/drafts?status=${s}&limit=50`);
+      setDrafts(res.drafts ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal memuat draft");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(status); }, [load, status]);
+
+  const autoDraft = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const res = await adminFetch("/api/internal/knowledge/auto-draft", {
+        method: "POST",
+        body: JSON.stringify({ max_topics: 3 }),
+      }, 120000); // generation calls an LLM per topic — well past the 15s default
+      toast.success(`${res.generated ?? 0} draft dibuat dari gap teratas`);
+      await load("draft");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal generate draft");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const publish = async (d: KbDraft) => {
+    const category = categoryById[d.id];
+    if (!category) {
+      toast.error("Pilih kategori dulu sebelum publish");
+      return;
+    }
+    setBusyId(d.id);
+    try {
+      await adminFetch(`/api/internal/knowledge/drafts/${d.id}/publish`, {
+        method: "POST",
+        body: JSON.stringify({ category }),
+      }, 30000);
+      toast.success(`"${d.title}" masuk knowledge base`);
+      await load(status);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal publish");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const reject = async (d: KbDraft) => {
+    setBusyId(d.id);
+    try {
+      await adminFetch(`/api/internal/knowledge/drafts/${d.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "rejected" }),
+      });
+      await load(status);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menolak draft");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4 p-4 md:p-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-display text-xl font-bold text-foreground">Draft Knowledge Base</h2>
+        <p className="text-sm text-muted-foreground">
+          Pertanyaan yang sering ditanya tapi belum ada jawabannya di KB, dibuatkan draft otomatis.
+          Publish untuk memasukkannya ke knowledge base — artikel langsung ikut dicari AI setelah di-embed.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {(["draft", "approved", "rejected"] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => setStatus(s)}
+            className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+              status === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
+            }`}
+          >
+            {s === "draft" ? "Menunggu Review" : s === "approved" ? "Sudah Publish" : "Ditolak"}
+          </button>
+        ))}
+        <div className="ml-auto">
+          <Button onClick={autoDraft} disabled={generating} size="sm">
+            {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Membuat draft…</> : <><Sparkles className="mr-2 h-4 w-4" />Generate dari Gap</>}
+          </Button>
+        </div>
+      </div>
+
+      {error && <div className="rounded-xl bg-destructive/10 p-4 text-sm text-destructive">{error}</div>}
+
+      {loading ? (
+        <div className="flex justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+      ) : drafts.length === 0 ? (
+        <div className="rounded-xl border border-border/50 bg-card/50 p-8 text-center text-sm text-muted-foreground">
+          {status === "draft"
+            ? "Belum ada draft menunggu review. Klik \"Generate dari Gap\" untuk membuat draft dari pertanyaan yang belum terjawab."
+            : "Belum ada draft di status ini."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {drafts.map(d => (
+            <div key={d.id} className="rounded-xl border border-border/50 bg-card/50 p-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="font-medium text-foreground">{d.title}</h3>
+                {d.topic && <p className="text-xs text-muted-foreground">Topik: {d.topic}</p>}
+                <p className="text-xs text-muted-foreground">
+                  {d.source ?? "auto-generated"} · {new Date(d.created_at).toLocaleDateString("id-ID")}
+                </p>
+                {d.tags && d.tags.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {d.tags.map(t => (
+                      <span key={t} className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{t}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {status === "draft" && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <select
+                    value={categoryById[d.id] ?? ""}
+                    onChange={e => setCategoryById(prev => ({ ...prev, [d.id]: e.target.value }))}
+                    className="rounded-lg border border-border/50 bg-background px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Pilih kategori…</option>
+                    {DRAFT_KB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <Button size="sm" onClick={() => publish(d)} disabled={busyId === d.id}>
+                    {busyId === d.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Publish ke KB"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => reject(d)} disabled={busyId === d.id}>
+                    Tolak
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Coverage Tab (KB Gap Analysis) ────────────────── */
 function CoverageTab() {
   const [data, setData] = useState<{ total: number; topics: Array<{ query: string; count: number; intent_type: string | null; created_at: string }> } | null>(null);
@@ -8486,7 +8665,7 @@ function MissionsTab() {
 }
 
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library" | "query-analytics" | "missions";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library" | "query-analytics" | "missions" | "kb-drafts";
 
 interface NavItem { id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }
 interface NavGroup { label: string; masterOnly?: boolean; items: NavItem[] }
@@ -8542,6 +8721,7 @@ const AdminPage = () => {
       {activeTab === "procedures"      && isMasterAdmin && <ProcedureManagementTab />}
       {activeTab === "coverage"        && isMasterAdmin && <CoverageTab />}
       {activeTab === "insights"        && isMasterAdmin && <InsightsTab />}
+      {activeTab === "kb-drafts"       && isMasterAdmin && <KbDraftsTab />}
       {activeTab === "library"         && <LibraryManagementTab />}
       {activeTab === "query-analytics" && isMasterAdmin && <QueryAnalyticsTab />}
       {activeTab === "missions"        && <MissionsTab />}
@@ -8607,6 +8787,7 @@ const AdminPage = () => {
         { id: "performance",     label: "Performa AI",       icon: TrendingUp },
         { id: "coverage",        label: "Coverage KB",        icon: Search },
         { id: "insights",        label: "Insights",           icon: Sparkles },
+        { id: "kb-drafts",       label: "Draft KB",           icon: FileText },
         { id: "query-analytics", label: "Query Analytics",   icon: BarChart2 },
       ],
     },

@@ -112,20 +112,90 @@ export async function updateDraftStatus(id, status, deps) {
   return data;
 }
 
-/* ── 4. publishDraftToKnowledgeBase — PLACEHOLDER ───────────────────── */
+/* ── 4. publishDraftToKnowledgeBase ──────────────────────────────────── */
 
 /**
- * PLACEHOLDER — Ambil draft dan insert ke knowledge_base, lalu set status = approved.
+ * Salin draft ke knowledge_base supaya benar-benar ikut retrieval AI, lalu
+ * tandai draft-nya 'approved'.
  *
- * ⚠️  TIDAK DIPANGGIL OTOMATIS. Harus dipanggil manual oleh admin setelah review.
- * Implementasi lengkap perlu skema knowledge_base (title, content, tags, dll).
+ * Sebelumnya ini placeholder yang sengaja throw, jadi seluruh rantai
+ * gap → draft → approve buntu di sini: draft bisa di-approve tapi tidak
+ * pernah sampai ke knowledge_base, sehingga AI tidak pernah jadi lebih pintar
+ * dari proses ini.
  *
- * @param {string} _draftId
- * @param {Object} _deps
+ * Dua field sengaja WAJIB dikirim caller, bukan ditebak:
+ *   category — knowledge_base.category NOT NULL, dan menebak kategori artikel
+ *              secara otomatis adalah persis jenis kesalahan yang merusak
+ *              kualitas retrieval. Admin yang me-review yang memilih.
+ *   authorId — knowledge_base.author_id NOT NULL. Yang tercatat sebagai penulis
+ *              adalah admin yang menyetujui, supaya jejak pertanggungjawabannya
+ *              jelas: artikel ini dibuat mesin, disetujui orang ini.
+ *
+ * @param {string} draftId
+ * @param {{ getAdminClient: Function, embedArticle?: Function }} deps
+ * @param {{ category: string, authorId: string, articleType?: string, status?: string }} opts
+ * @returns {Promise<{ article: Object, draft: Object }>}
  */
-export async function publishDraftToKnowledgeBase(_draftId, _deps) {
-  throw new Error(
-    "publishDraftToKnowledgeBase belum diimplementasi. " +
-    "Lakukan manual: approve draft, lalu copy content ke knowledge_base melalui admin panel."
-  );
+export async function publishDraftToKnowledgeBase(draftId, deps, opts = {}) {
+  const { getAdminClient, embedArticle } = deps;
+  const supabase = getAdminClient();
+  const { category, authorId, articleType = "narrative", status = "approved" } = opts;
+
+  if (!draftId?.trim()) throw new Error("ID draft tidak boleh kosong");
+  if (!category?.trim()) throw new Error("category wajib diisi — pilih kategori knowledge_base saat approve");
+  if (!authorId?.trim()) throw new Error("authorId wajib diisi — diambil dari admin yang menyetujui");
+
+  const { data: draft, error: readErr } = await supabase
+    .from("kb_drafts")
+    .select("*")
+    .eq("id", draftId)
+    .single();
+  if (readErr) throw new Error(`publishDraft: draft tidak terbaca — ${readErr.message}`);
+  if (!draft) throw new Error(`Draft dengan ID ${draftId} tidak ditemukan`);
+
+  // Tolak publikasi ganda: kalau sudah approved, kemungkinan besar sudah pernah
+  // disalin, dan artikel kembar di KB bikin retrieval makin buruk, bukan lebih baik.
+  if (draft.status === "approved") {
+    throw new Error("Draft ini sudah berstatus 'approved' — cek knowledge_base dulu sebelum publish ulang agar tidak duplikat.");
+  }
+
+  const { data: article, error: insertErr } = await supabase
+    .from("knowledge_base")
+    .insert({
+      author_id:    authorId,
+      title:        draft.title,
+      content:      draft.content,
+      category:     category.trim(),
+      article_type: articleType,
+      // Draft mesin masuk sebagai artikel aktif hanya karena seorang admin
+      // menekan approve — jadi langsung 'approved', bukan 'pending' lagi.
+      status,
+      keywords:     Array.isArray(draft.tags) && draft.tags.length ? draft.tags.join(", ") : null,
+      last_updated: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (insertErr) throw new Error(`publishDraft: gagal insert ke knowledge_base — ${insertErr.message}`);
+
+  const { data: updatedDraft, error: updErr } = await supabase
+    .from("kb_drafts")
+    .update({ status: "approved", updated_at: new Date().toISOString() })
+    .eq("id", draftId)
+    .select()
+    .single();
+  if (updErr) {
+    // Artikelnya sudah masuk KB — ini cuma gagal mencatat statusnya. Jangan
+    // gagalkan seluruh operasi, tapi jangan diam juga.
+    console.warn(`[publishDraft] artikel ${article.id} sudah masuk KB tapi status draft gagal diupdate: ${updErr.message}`);
+  }
+
+  // Tanpa embedding, artikel baru hanya bisa ketemu lewat keyword — separuh
+  // dari sistem retrieval. Fire-and-forget supaya admin tidak menunggu.
+  if (typeof embedArticle === "function") {
+    Promise.resolve(embedArticle(article.id))
+      .catch(e => console.warn(`[publishDraft] embedding artikel ${article.id} gagal: ${e.message}`));
+  }
+
+  console.log(`[publishDraft] draft "${draft.title}" → knowledge_base ${article.id} (kategori: ${category})`);
+  return { article, draft: updatedDraft ?? draft };
 }
