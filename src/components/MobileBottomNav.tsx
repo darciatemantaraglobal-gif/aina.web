@@ -1,17 +1,18 @@
 import { MessageSquare, Zap, Users, User, PenLine } from "lucide-react";
+import { filterEnabled } from "@/lib/features";
 
 interface MobileBottomNavProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
 }
 
-const NAV_ITEMS = [
+const NAV_ITEMS = filterEnabled([
   { id: "chat",         icon: MessageSquare, label: "Chat" },
   { id: "productivity", icon: Zap,           label: "Produktif" },
   { id: "contributor",  icon: PenLine,       label: "Kontribusi", special: true },
   { id: "threads",      icon: Users,         label: "Forum" },
   { id: "profile",      icon: User,          label: "Profil" },
-];
+]);
 
 export default function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps) {
   return (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { isFeatureEnabled } from "@/lib/features";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import PwaSplash from "@/components/PwaSplash";
@@ -211,7 +212,10 @@ const TabLoader = () => (
   </div>
 );
 
-const VALID_TABS = ["chat", "berita", "productivity", "library", "threads", "leaderboard", "contributor", "profile", "admin"];
+// A tab whose feature is switched off in this build is not reachable, including
+// by ?tab= or a stale localStorage value from before it was hidden.
+const VALID_TABS = ["chat", "berita", "productivity", "library", "threads", "leaderboard", "contributor", "profile", "admin"]
+  .filter(isFeatureEnabled);
 
 const Dashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();

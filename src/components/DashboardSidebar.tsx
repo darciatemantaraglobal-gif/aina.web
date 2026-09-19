@@ -40,6 +40,7 @@ import {
   DEFAULT_RESPONSE_STYLE,
   type ResponseStyleKey,
 } from "@/lib/responseStyles";
+import { filterEnabled } from "@/lib/features";
 import NotificationBell from "@/components/NotificationBell";
 
 interface Chat {
@@ -102,24 +103,26 @@ function savePersonalization(p: AinaPersonalization) {
   localStorage.setItem(PERSONALIZATION_KEY, JSON.stringify(p));
 }
 
+// Features switched off in this build are dropped here, and a group left with
+// no items disappears with them (see src/lib/features.ts).
 const NAV_GROUPS = [
   {
     label: "Utama",
-    items: [
+    items: filterEnabled([
       { id: "berita", label: "Berita Masisir", icon: Newspaper },
       { id: "library", label: "Library", icon: BookOpen },
       { id: "productivity", label: "Ruang Produktif", icon: LayoutDashboard },
-    ],
+    ]),
   },
   {
     label: "Komunitas",
-    items: [
+    items: filterEnabled([
       { id: "threads", label: "Threads", icon: Hash },
       { id: "leaderboard", label: "Leaderboard", icon: Trophy },
       { id: "contributor", label: "Contributor", icon: Users },
-    ],
+    ]),
   },
-];
+].filter(g => g.items.length > 0);
 
 const baseNavItems = NAV_GROUPS.flatMap((g) => g.items);
 
