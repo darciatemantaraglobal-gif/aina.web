@@ -11933,6 +11933,85 @@ app.get("/api/admin/missions/trending-topics", async (req, res) => {
   }
 });
 
+/* ── GET /api/admin/missions/title-collision-report ──────────────────────────
+ * Finds KB articles still carrying a generic, collided title — the signature
+ * of the title_field bug: mission templates whose identifying field wasn't
+ * `name`/`location` (org_name, pharmacy_name, store_name, ...) had their
+ * article title silently fall back to the template's own title, so e.g. every
+ * regional kekeluargaan submitted came out titled identically. Approved
+ * articles are safe to rename directly (PATCH /api/admin/articles/:id, which
+ * only ever touches the fields it's given). Archived ones are surfaced but
+ * left for a human to restore — the report can't tell a bug casualty apart
+ * from a genuine duplicate with full confidence, and restoring is the one step
+ * here that isn't a no-op if we're wrong.
+ */
+app.get("/api/admin/missions/title-collision-report", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Server error" });
+
+  try {
+    const { data: templates } = await supabase
+      .from("mission_templates")
+      .select("id, title, title_field")
+      .not("title_field", "is", null);
+    if (!templates?.length) return res.json({ live: [], archived: [] });
+    const templateById = Object.fromEntries(templates.map(t => [t.id, t]));
+
+    const { data: dailyMissions } = await supabase
+      .from("daily_missions")
+      .select("id, template_id")
+      .in("template_id", templates.map(t => t.id));
+    if (!dailyMissions?.length) return res.json({ live: [], archived: [] });
+    const templateIdByDailyMission = Object.fromEntries(dailyMissions.map(d => [d.id, d.template_id]));
+
+    const { data: subs } = await supabase
+      .from("mission_submissions")
+      .select("kb_article_id, form_data, contributor_id, submitted_at, daily_mission_id")
+      .not("kb_article_id", "is", null)
+      .in("daily_mission_id", dailyMissions.map(d => d.id));
+    if (!subs?.length) return res.json({ live: [], archived: [] });
+
+    const articleIds = subs.map(s => s.kb_article_id);
+    const { data: articles } = await supabase
+      .from("knowledge_base")
+      .select("id, title, status, category")
+      .in("id", articleIds);
+    const articleById = Object.fromEntries((articles ?? []).map(a => [a.id, a]));
+
+    const contributorIds = [...new Set(subs.map(s => s.contributor_id))];
+    const { data: profiles } = contributorIds.length
+      ? await supabase.from("profiles").select("user_id, full_name").in("user_id", contributorIds)
+      : { data: [] };
+    const nameById = Object.fromEntries((profiles ?? []).map(p => [p.user_id, p.full_name]));
+
+    const live = [], archived = [];
+    for (const sub of subs) {
+      const article = articleById[sub.kb_article_id];
+      const template = templateById[templateIdByDailyMission[sub.daily_mission_id]];
+      if (!article || !template) continue;
+      if (article.title !== template.title) continue; // already has its own title — not a casualty
+
+      const suggestedTitle = String(sub.form_data?.[template.title_field] ?? "").trim() || null;
+      const entry = {
+        article_id: article.id,
+        current_title: article.title,
+        suggested_title: suggestedTitle,
+        category: article.category,
+        contributor: nameById[sub.contributor_id] || "—",
+        submitted_at: sub.submitted_at,
+      };
+      (article.status === "archived" ? archived : live).push(entry);
+    }
+
+    res.json({ live, archived, checked_templates: templates.map(t => t.title) });
+  } catch (e) {
+    console.error("[Missions] title-collision-report error:", e.message);
+    res.status(500).json({ error: "Gagal membuat laporan" });
+  }
+});
+
 /* ── POST /api/admin/missions/generate-fields ── */
 // Uses Gemini to suggest form fields for a new mission template, drawing from real user queries.
 app.post("/api/admin/missions/generate-fields", async (req, res) => {

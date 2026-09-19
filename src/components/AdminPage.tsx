@@ -8197,6 +8197,63 @@ function MissionsTab() {
   const [saving, setSaving] = useState(false);
   const [generatingFields, setGeneratingFields] = useState(false);
 
+  /* ── Title collision report (title_field bug casualties) ── */
+  type TitleCollisionEntry = {
+    article_id: string; current_title: string; suggested_title: string | null;
+    category: string; contributor: string; submitted_at: string;
+  };
+  const [collisionReport, setCollisionReport] = useState<{ live: TitleCollisionEntry[]; archived: TitleCollisionEntry[] } | null>(null);
+  const [collisionLoading, setCollisionLoading] = useState(false);
+  const [fixingId, setFixingId] = useState<string | null>(null);
+
+  const loadCollisionReport = useCallback(async () => {
+    setCollisionLoading(true);
+    try {
+      const res = await adminFetch("/api/admin/missions/title-collision-report");
+      setCollisionReport({ live: res.live || [], archived: res.archived || [] });
+    } catch { toast.error("Gagal memuat laporan tabrakan judul"); }
+    finally { setCollisionLoading(false); }
+  }, []);
+
+  const fixLiveTitle = async (entry: TitleCollisionEntry) => {
+    if (!entry.suggested_title) return;
+    setFixingId(entry.article_id);
+    try {
+      await adminFetch(`/api/admin/articles/${entry.article_id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: entry.suggested_title }),
+      });
+      setCollisionReport(prev => prev && { ...prev, live: prev.live.filter(e => e.article_id !== entry.article_id) });
+      toast.success(`Judul diperbaiki: "${entry.suggested_title}"`);
+    } catch (e: any) { toast.error(e.message || "Gagal perbaiki judul"); }
+    finally { setFixingId(null); }
+  };
+
+  const fixAllLiveTitles = async () => {
+    const fixable = (collisionReport?.live || []).filter(e => e.suggested_title);
+    if (fixable.length === 0) return;
+    if (!confirm(`Perbaiki judul ${fixable.length} artikel sekaligus?`)) return;
+    setCollisionLoading(true);
+    for (const entry of fixable) await fixLiveTitle(entry);
+    setCollisionLoading(false);
+  };
+
+  const restoreAndRetitle = async (entry: TitleCollisionEntry) => {
+    setFixingId(entry.article_id);
+    try {
+      await adminFetch("/api/admin/articles/restore", { method: "POST", body: JSON.stringify({ ids: [entry.article_id] }) });
+      if (entry.suggested_title) {
+        await adminFetch(`/api/admin/articles/${entry.article_id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ title: entry.suggested_title }),
+        });
+      }
+      setCollisionReport(prev => prev && { ...prev, archived: prev.archived.filter(e => e.article_id !== entry.article_id) });
+      toast.success(entry.suggested_title ? `Dipulihkan sebagai "${entry.suggested_title}"` : "Artikel dipulihkan");
+    } catch (e: any) { toast.error(e.message || "Gagal memulihkan"); }
+    finally { setFixingId(null); }
+  };
+
   /* ── Trending Topics (from query_log) ── */
   const [trendingTopics, setTrendingTopics] = useState<{ keyword: string; count: number; samples: string[] }[]>([]);
   const [trendingLoading, setTrendingLoading] = useState(false);
@@ -8428,6 +8485,89 @@ function MissionsTab() {
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
               <Plus className="h-3.5 w-3.5" />{showCreate ? "Tutup Form" : "Buat Template Baru"}
             </button>
+          </div>
+
+          {/* ── Cek Tabrakan Judul (bug title_field lama) ── */}
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-400" />
+                <p className="text-sm font-semibold text-foreground">Cek Tabrakan Judul (Bug Lama)</p>
+              </div>
+              {!collisionReport && (
+                <button onClick={loadCollisionReport} disabled={collisionLoading}
+                  className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary/70 disabled:opacity-50">
+                  {collisionLoading ? <><Loader2 className="h-3 w-3 animate-spin" />Memeriksa...</> : "Jalankan Cek"}
+                </button>
+              )}
+              {collisionReport && (
+                <button onClick={loadCollisionReport} disabled={collisionLoading} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">
+                  {collisionLoading ? "Memuat..." : "Refresh"}
+                </button>
+              )}
+            </div>
+
+            {!collisionReport && (
+              <p className="text-xs text-muted-foreground">
+                Sebagian template (Kekeluargaan, Apotek, Toko, dll) sempat salah menebak nama field judul —
+                setiap submission-nya bisa jatuh ke judul generik template, bikin artikel yang beda-beda
+                terlihat identik. Klik "Jalankan Cek" untuk melihat apakah ada yang kena.
+              </p>
+            )}
+
+            {collisionReport && collisionReport.live.length === 0 && collisionReport.archived.length === 0 && (
+              <p className="text-xs text-green-400">✓ Tidak ada artikel yang kena bug ini.</p>
+            )}
+
+            {collisionReport && collisionReport.live.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-foreground">{collisionReport.live.length} artikel aktif punya judul generik</p>
+                  <button onClick={fixAllLiveTitles} disabled={collisionLoading}
+                    className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    Perbaiki Semua
+                  </button>
+                </div>
+                {collisionReport.live.map(e => (
+                  <div key={e.article_id} className="flex items-center justify-between gap-3 rounded-lg bg-card border border-border px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">"{e.current_title}" [{e.category}] — oleh {e.contributor}</p>
+                      <p className="text-xs font-medium text-foreground truncate">
+                        → {e.suggested_title || <span className="italic text-red-400">tidak ada nama tersimpan, perlu edit manual</span>}
+                      </p>
+                    </div>
+                    {e.suggested_title && (
+                      <button onClick={() => fixLiveTitle(e)} disabled={fixingId === e.article_id}
+                        className="shrink-0 rounded-lg bg-secondary px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-secondary/70 disabled:opacity-50">
+                        {fixingId === e.article_id ? "..." : "Perbaiki"}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {collisionReport && collisionReport.archived.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-foreground">
+                  {collisionReport.archived.length} artikel sudah terlanjur diarsipkan (kemungkinan dianggap "duplikat" gara-gara judulnya sama persis)
+                </p>
+                {collisionReport.archived.map(e => (
+                  <div key={e.article_id} className="flex items-center justify-between gap-3 rounded-lg bg-card border border-red-500/20 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">"{e.current_title}" [{e.category}] — oleh {e.contributor}</p>
+                      <p className="text-xs font-medium text-foreground truncate">
+                        → {e.suggested_title || <span className="italic text-red-400">tidak ada nama tersimpan, perlu edit manual</span>}
+                      </p>
+                    </div>
+                    <button onClick={() => restoreAndRetitle(e)} disabled={fixingId === e.article_id}
+                      className="shrink-0 rounded-lg bg-green-500/10 border border-green-500/30 px-2.5 py-1 text-[11px] font-medium text-green-400 hover:bg-green-500/20 disabled:opacity-50">
+                      {fixingId === e.article_id ? "..." : "Pulihkan & Perbaiki"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── Topik Trending dari Query User ── */}
