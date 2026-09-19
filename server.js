@@ -1453,7 +1453,7 @@ async function embedKBArticle(articleId, { rethrow = false } = {}) {
   try {
     const { data: art } = await supabase
       .from("knowledge_base")
-      .select("title, content, keywords, summary")
+      .select("title, content, keywords, summary, content_ar")
       .eq("id", articleId)
       .single();
     if (!art) return;
@@ -8864,8 +8864,19 @@ app.patch("/api/admin/articles/:id", async (req, res) => {
   if (typeof summary === "string") updatePayload.summary = summary.trim().slice(0, 600) || null;
   if (typeof important_notes === "string") updatePayload.important_notes = important_notes.trim().slice(0, 1000) || null;
   if (rawImg !== undefined) updatePayload.image_url = typeof rawImg === "string" && rawImg.trim() ? rawImg.trim().slice(0, 2000) : null;
+  // An edit changes what the article says, so everything derived from the old
+  // text has to follow it: the stored embedding (otherwise semantic search keeps
+  // matching the pre-edit wording forever), the freshness stamp the ranker and
+  // the age penalty read, and the cached copies already handed to chat.
+  updatePayload.last_updated = new Date().toISOString();
   const { error } = await supabase.from("knowledge_base").update(updatePayload).eq("id", req.params.id);
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  invalidateKBCache();
+  invalidateAICache();
+  // Only the embedding is re-derived — keywords/summary/important_notes may have
+  // been written by hand in this very request, and their generators skip
+  // non-empty fields anyway.
+  getJobs().queueEmbed(req.params.id);
   res.json({ success: true });
 });
 

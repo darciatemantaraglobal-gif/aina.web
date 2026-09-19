@@ -23,6 +23,7 @@ import {
   extractQuranReference,
   isFiqhQuery,
 } from "./server.js";
+import { buildArticleEmbedText } from "./engine/embedder.js";
 
 // ── resolveEntitlement ──────────────────────────────────────────────────────
 // The actual bug (Fase 1): a Midtrans-paid or admin-granted Pro user with
@@ -439,5 +440,41 @@ describe("isFiqhQuery — verse-reference gap", () => {
 
   it("does not misfire on an unrelated query containing the word 'surat'", () => {
     expect(isFiqhQuery("gimana cara bikin surat keterangan domisili")).toBe(false);
+  });
+});
+
+// ── buildArticleEmbedText ───────────────────────────────────────────────
+// The embedding input is capped at 8000 chars. What matters is WHICH 8000:
+// the title/keywords/summary carry most of the retrieval signal, so they must
+// sit ahead of the body and survive the cut. The Arabic translation is part of
+// the input too — it was supported here all along but the caller never
+// SELECTed the column, so every admin-generated translation sat unindexed.
+
+describe("buildArticleEmbedText", () => {
+  it("includes the Arabic translation when the article has one", () => {
+    const text = buildArticleEmbedText({
+      title: "Prosedur Iqomah",
+      content: "Langkah pengurusan izin tinggal.",
+      content_ar: "إجراءات الإقامة",
+    });
+    expect(text).toContain("إجراءات الإقامة");
+  });
+
+  it("keeps title, keywords and summary ahead of the body so truncation can't drop them", () => {
+    const text = buildArticleEmbedText({
+      title: "Biaya Wafidin",
+      keywords: "wafidin, biaya, al-azhar",
+      summary: "Rincian biaya wafidin terbaru.",
+      content: "x".repeat(20000),
+    });
+    expect(text.length).toBe(8000);
+    expect(text).toContain("Biaya Wafidin");
+    expect(text).toContain("wafidin, biaya, al-azhar");
+    expect(text).toContain("Rincian biaya wafidin terbaru.");
+  });
+
+  it("leaves a short article untouched", () => {
+    const text = buildArticleEmbedText({ title: "Judul", content: "Isi singkat." });
+    expect(text).toBe("Judul\n\nIsi singkat.");
   });
 });

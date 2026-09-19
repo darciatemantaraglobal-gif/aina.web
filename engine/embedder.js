@@ -37,7 +37,9 @@ export async function generateEmbedding(text) {
 }
 
 export function buildArticleEmbedText(article) {
-  return [
+  // High-signal fields first: whatever gets cut by MAX_INPUT_CHARS below should
+  // be the tail of a long body, never the title/keywords/summary.
+  const full = [
     article.title,
     article.keywords   ? `Keywords: ${article.keywords}`        : null,
     article.summary    ? `Ringkasan: ${article.summary}`         : null,
@@ -45,6 +47,16 @@ export function buildArticleEmbedText(article) {
     article.content_ar ? `النص بالعربية: ${article.content_ar}` : null,
   ]
     .filter(Boolean)
-    .join("\n\n")
-    .slice(0, MAX_INPUT_CHARS);
+    .join("\n\n");
+
+  // Truncation used to be silent, so an over-long article looked fully indexed
+  // while its tail was invisible to semantic search. Say so.
+  if (full.length > MAX_INPUT_CHARS) {
+    console.warn(
+      `[Embedder] ⚠️ "${article.title ?? "(untitled)"}" is ${full.length} chars — ` +
+      `only the first ${MAX_INPUT_CHARS} are embedded. Split it into focused articles ` +
+      `so the rest stays searchable.`
+    );
+  }
+  return full.slice(0, MAX_INPUT_CHARS);
 }
