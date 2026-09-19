@@ -4724,20 +4724,40 @@ async function submitClarificationDraft(draft, userId, supabase) {
 // query paid full Flash pricing). GET /api/admin/intel/model-config used to
 // carry its own separately-hardcoded copy of the same stale values, purely
 // for display — it now reads from here too, so the two can no longer drift.
+// "emergency" used to hardcode meta-llama/llama-3.3-70b-instruct:free as the
+// last-resort model when both paid tiers fail (e.g. OpenRouter credit runs
+// out). That was a single point of failure: OpenRouter's free-model roster
+// "shifts constantly as providers add, pull, or reprice models" (their own
+// docs' wording), so a hardcoded :free id can silently stop existing —
+// exactly the moment the safety net exists for is also the moment nobody is
+// watching closely enough to notice it's gone.
+// openrouter/free is OpenRouter's own router for this: it picks at random
+// among whatever free models are currently live, and — per their docs —
+// "filters for models that support features needed for your request" (image
+// input, tool calling, structured outputs), so it stays a valid drop-in for
+// both tiers even as the underlying free catalog turns over. Same chat-
+// completions call shape, no code change needed elsewhere.
+// Caveat worth knowing: OpenRouter caps :free-model usage at 50 requests/day
+// per account until you've purchased $10 of credit lifetime, then it's
+// 1,000/day. A $5 top-up alone keeps you under that 50/day ceiling — fine for
+// an occasional emergency, but if the PAID tiers are what's failing (e.g.
+// credit exhausted), every request cascades to this free tier and 50/day
+// disappears fast at real traffic. Cross $10 lifetime purchased to get real
+// headroom here.
 const MODEL_TIERS = {
   // Tier A — fast + cheap for casual / KB-covered stable queries
   // Uses Flash Lite as primary → ~40% cheaper, ~15% faster than Flash on simple tasks
   lightweight: {
-    primary:   "google/gemini-2.5-flash-lite",           // fast & cheap for simple queries
-    fallback:  "google/gemini-2.5-flash",                // upgrade if lite fails
-    emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
+    primary:   "google/gemini-2.5-flash-lite",  // fast & cheap for simple queries
+    fallback:  "google/gemini-2.5-flash",       // upgrade if lite fails
+    emergency: "openrouter/free",               // free safety-net — see note above
   },
   // Tier B — quality for complex, procedural, dynamic, and fiqh queries
   // Uses full Flash as primary → better instruction-following for structured outputs
   standard: {
-    primary:   "google/gemini-2.5-flash",                // proven stable primary
-    fallback:  "google/gemini-2.5-flash-lite",           // lite fallback if primary fails
-    emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
+    primary:   "google/gemini-2.5-flash",       // proven stable primary
+    fallback:  "google/gemini-2.5-flash-lite",  // lite fallback if primary fails
+    emergency: "openrouter/free",               // free last resort — see note above
   },
 };
 
