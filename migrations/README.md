@@ -47,6 +47,12 @@ Postgres langsung (`DATABASE_URL`), terpisah total dari Supabase client.
 7. migrations/005_payment_orders.sql — wajib SEBELUM mengaktifkan
    PAYMENT_ENABLED=true (lihat F4-2: webhook Midtrans butuh tabel ini
    untuk mencocokkan order_id ke user secara exact, bukan tebak prefix)
+8. migrations/006_masisir_aliases.sql — opsional tapi disarankan.
+   Memindahkan kamus istilah Masisir (74 istilah / 242 alias) dari
+   hardcode ke DB supaya admin & contributor bisa menambah istilah
+   tanpa deploy ulang. TIDAK mendesak: selama belum dijalankan,
+   server.js tetap memakai daftar hardcode yang sama sebagai fallback,
+   jadi pencarian KB tidak kehilangan apa pun.
 ```
 
 **Kenapa langkah 3 bisa terjadi:** `knowledge_base` adalah tabel yang
