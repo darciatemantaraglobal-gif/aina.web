@@ -975,8 +975,8 @@ async function verifyMasterAdmin(authHeader) {
 }
 
 /* ── OpenRouter AI call with primary→fallback ──────── */
-const OR_PRIMARY  = "google/gemini-2.5-flash";
-const OR_FALLBACK = "google/gemini-2.5-flash";
+const OR_PRIMARY  = "google/gemini-3.8-flash";
+const OR_FALLBACK = "google/gemini-3.8-flash";
 
 async function callOpenRouter(apiKey, { messages, temperature = 0.0, max_tokens = 200, timeoutMs = 20_000, label = "AI" }) {
   const tryModel = async (model) => {
@@ -1150,7 +1150,7 @@ async function generateArticleKeywords(title, content, category) {
         "X-Title": "AINA KB Keywords",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{
           role: "user",
           content: `Kamu adalah asisten yang membantu indexing artikel knowledge base untuk mahasiswa Indonesia di Mesir (Masisir).
@@ -3093,7 +3093,7 @@ ${convText}`;
           "X-Title": "AINA - Memory Extraction",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{ role: "user", content: extractionPrompt }],
           max_tokens: 600,
           temperature: 0.1,
@@ -3167,7 +3167,7 @@ async function detectAndSaveUserPreference(userId, message, apiKey) {
         "X-Title": "AINA Preference Detector",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{
           role: "user",
           content: `Pengguna mengirim pesan berikut dalam konteks chat dengan AI asisten:
@@ -4652,7 +4652,7 @@ Jika klarifikasi user tidak mengandung informasi yang cukup untuk dibuat artikel
         "X-Title":       "AINA Masisir",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
         max_tokens: 800,
@@ -4744,22 +4744,35 @@ async function submitClarificationDraft(draft, userId, supabase) {
 // credit exhausted), every request cascades to this free tier and 50/day
 // disappears fast at real traffic. Cross $10 lifetime purchased to get real
 // headroom here.
+// Upgraded from the 2.5 generation (Sep 2026): 3.1 Flash Lite is GA and
+// actually cheaper than 2.5 Flash Lite was ($0.25/$1.50 per 1M vs the old
+// pricing), and 3.8 Flash costs the same as 3.7 Flash while scoring
+// meaningfully better on reasoning/agentic/multi-step tasks — a same-price
+// upgrade with no downside. Re-validate with the eval harness
+// (POST /api/admin/eval/run-retrieval) if KB-strength routing behavior seems
+// to shift after this.
 const MODEL_TIERS = {
   // Tier A — fast + cheap for casual / KB-covered stable queries
   // Uses Flash Lite as primary → ~40% cheaper, ~15% faster than Flash on simple tasks
   lightweight: {
-    primary:   "google/gemini-2.5-flash-lite",  // fast & cheap for simple queries
-    fallback:  "google/gemini-2.5-flash",       // upgrade if lite fails
+    primary:   "google/gemini-3.1-flash-lite",  // fast & cheap for simple queries
+    fallback:  "google/gemini-3.8-flash",       // upgrade if lite fails
     emergency: "openrouter/free",               // free safety-net — see note above
   },
   // Tier B — quality for complex, procedural, dynamic, and fiqh queries
   // Uses full Flash as primary → better instruction-following for structured outputs
   standard: {
-    primary:   "google/gemini-2.5-flash",       // proven stable primary
-    fallback:  "google/gemini-2.5-flash-lite",  // lite fallback if primary fails
+    primary:   "google/gemini-3.8-flash",       // proven stable primary
+    fallback:  "google/gemini-3.1-flash-lite",  // lite fallback if primary fails
     emergency: "openrouter/free",               // free last resort — see note above
   },
 };
+
+// Vision-capable model for image uploads in chat. Module-scoped (moved out of
+// the /api/chat handler) so GET /api/admin/intel/model-config can read this
+// same value instead of carrying its own separately-hardcoded copy — that
+// duplication is exactly the drift MODEL_TIERS above already had to fix once.
+const VISION_MODEL = "google/gemini-3.8-flash";
 
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", chatLimiter, async (req, res) => {
@@ -5543,9 +5556,6 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     .replace(/&quot;/gi, '"')
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-
-  // Vision-capable model for image uploads; free model chain for text
-  const VISION_MODEL = "google/gemini-2.5-flash";
 
   // ── Model tier selector — runs AFTER retrieval + context prep ──────────────
   // Signals used: intentPrimary, kbStrength, query content (NOT length alone).
@@ -6395,7 +6405,7 @@ async function ocrPdf(buffer) {
               "X-Title": "AINA PDF OCR",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
+              model: "google/gemini-3.8-flash",
               messages: [{
                 role: "user",
                 content: [
@@ -6505,7 +6515,7 @@ app.post("/api/extract-file", uploadLimiter, (req, res, next) => {
           "X-Title": "AINA Image OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{
             role: "user",
             content: [
@@ -6913,7 +6923,7 @@ app.post("/api/extract-from-storage", uploadLimiter, async (req, res) => {
           "X-Title": "AINA Image OCR",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{
             role: "user",
             content: [
@@ -7757,7 +7767,7 @@ Jawab HANYA dengan JSON:
           "X-Title": "AINA BulkAutoTitle",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{ role: "user", content: prompt }],
           temperature: 0.2,
           max_tokens: 100,
@@ -7942,7 +7952,7 @@ Format output: [{"title":"...","content":"...","category":"...","keywords":"..."
         "X-Title": "AINA Admin Bulk Parse",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Parse teks berikut menjadi artikel-artikel knowledge base:\n\n${rawText.slice(0, 40_000)}` },
@@ -8024,7 +8034,7 @@ app.post("/api/admin/articles/image-extract", imageExtractUpload.single("image")
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{
           role: "user",
           content: [
@@ -8897,7 +8907,7 @@ app.post("/api/admin/articles/:id/reformat", async (req, res) => {
         "X-Title": "AINA Article Reformatter",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 6000,
       }),
@@ -8952,7 +8962,7 @@ app.post("/api/admin/articles/reformat-all", async (req, res) => {
           "X-Title": "AINA Article Reformatter",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 6000,
         }),
@@ -9018,7 +9028,7 @@ app.post("/api/admin/articles/bulk-reformat", async (req, res) => {
           "X-Title": "AINA Article Reformatter",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 6000,
         }),
@@ -9315,7 +9325,7 @@ Kembalikan HANYA JSON tanpa penjelasan atau markdown apapun. Dalam JSON, gunakan
         "X-Title": "AINA Article Parser",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 16000,
       }),
@@ -9486,7 +9496,7 @@ app.post("/api/kb/fetch-url", writeLimiter, async (req, res) => {
         "X-Title": "AINA KB URL Import",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [
           {
             role: "system",
@@ -11023,7 +11033,7 @@ app.post("/api/missions/:dailyMissionId/parse-upload", uploadLimiter, (req, res,
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}`, "HTTP-Referer": "https://ainalabs.pro", "X-Title": "AINA Mission OCR" },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{
             role: "user",
             content: [
@@ -11095,7 +11105,7 @@ Tanpa markdown fence, tanpa komentar.`;
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}`, "HTTP-Referer": "https://ainalabs.pro", "X-Title": "AINA Mission AutoFill" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         max_tokens: 2000,
@@ -11586,7 +11596,7 @@ Hanya kembalikan JSON array, tidak ada teks lain.`;
         "X-Title": "AINA Mission Field Generator",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
+        model: "google/gemini-3.8-flash",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 800,
         temperature: 0.7,
@@ -12742,7 +12752,7 @@ INSTRUKSI:
         "X-Title": "AINA News Polisher",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 2000,
       }),
@@ -13540,7 +13550,7 @@ Tulis respons yang diperbaiki:`;
           "X-Title": "AINA Fix It",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.8-flash",
           messages: [{ role: "user", content: fixPrompt }],
           max_tokens: 3000,
           temperature: 0.3,
@@ -15327,7 +15337,7 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
         routes_for: ["procedural", "fiqh", "arabic_writing", "dynamic", "time-sensitive", "currency", "KB lemah/tidak ada"],
       },
     },
-    vision_model: "google/gemini-2.5-flash",
+    vision_model: VISION_MODEL,
     source_pipeline: [
       { name: "Admin Pinned Updates",  trust: 100, always_checked: true },
       { name: "Knowledge Base (KB)",   trust: 90,  always_checked: true },
@@ -16060,7 +16070,7 @@ Kembalikan HANYA JSON tanpa markdown, format: {"flashcards":[{"question":"...","
         "X-Title": "AINA Flashcard Generator",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user",   content: userPrompt },
@@ -16160,7 +16170,7 @@ Balas HANYA dengan JSON array: ["topik 1", "topik 2", ..., "topik 8"]`;
         "X-Title": "AINA Topic Suggestions",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3.8-flash",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 300,
         temperature: 0.85,
