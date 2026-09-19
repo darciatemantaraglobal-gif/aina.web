@@ -1278,6 +1278,12 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                                   </span>
                                 </div>
                                 <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+                                {m.gap_query && (
+                                  <div className="mt-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
+                                    <p className="text-[11px] font-medium uppercase tracking-wide text-primary/80">Pertanyaan yang belum terjawab</p>
+                                    <p className="mt-0.5 text-sm text-foreground">"{m.gap_query}"</p>
+                                  </div>
+                                )}
                                 <div className="mt-2 flex items-center gap-3 flex-wrap">
                                   <span className="text-xs text-muted-foreground">{m.total_submissions} kontributor sudah submit</span>
                                   {isApproved && <span className="text-xs font-medium text-green-400">✓ Disetujui · +{sub.points_awarded} poin</span>}
@@ -1525,6 +1531,13 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
                       <div className="flex items-center gap-2 rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-500/15 to-amber-500/5 px-3 py-2">
                         <Zap className="h-4 w-4 text-amber-400 animate-pulse" />
                         <p className="text-xs font-bold text-amber-300">FLASH MISSION · {aMult}× POIN MINGGU INI!</p>
+                      </div>
+                    )}
+                    {activeMission.gap_query && (
+                      <div className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-primary/80">Pertanyaan yang belum terjawab</p>
+                        <p className="mt-1 text-sm font-medium text-foreground">"{activeMission.gap_query}"</p>
+                        <p className="mt-1.5 text-xs text-muted-foreground">Jawab pertanyaan ini selengkap mungkin. Jawabanmu yang akan dipakai AINA lain kali.</p>
                       </div>
                     )}
                     <div className="rounded-xl bg-secondary/50 p-3">

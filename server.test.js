@@ -25,6 +25,7 @@ import {
   cloneArticleList,
   needsFollowUpContext,
   buildFollowUpQuery,
+  pickTopGap,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 
@@ -553,5 +554,72 @@ describe("buildFollowUpQuery", () => {
 
   it("returns the query unchanged when there is no previous turn", () => {
     expect(buildFollowUpQuery("berapa biayanya?", null)).toBe("berapa biayanya?");
+  });
+});
+
+// ── pickTopGap ──────────────────────────────────────────────────────────
+// Daily missions used to be drawn at random from a fixed template pool, so
+// contributors wrote about whatever the shuffle landed on while the questions
+// AINA actually failed on sat unread in missing_topics. One slot per day now
+// carries the most-asked unanswered question.
+
+function fakeGapDb({ misses = [], used = [] } = {}) {
+  return {
+    from(table) {
+      // missing_topics: .select().gte().limit()
+      if (table === "missing_topics") {
+        return { select: () => ({ gte: () => ({ limit: () => Promise.resolve({ data: misses }) }) }) };
+      }
+      // daily_missions: .select().not().gte()
+      if (table === "daily_missions") {
+        return { select: () => ({ not: () => ({ gte: () => Promise.resolve({ data: used }) }) }) };
+      }
+      throw new Error(`unexpected table in test: ${table}`);
+    },
+  };
+}
+
+describe("pickTopGap", () => {
+  it("picks the question asked most often", async () => {
+    const gap = await pickTopGap(fakeGapDb({
+      misses: [
+        { query: "berapa biaya perpanjang iqomah sekarang" },
+        { query: "berapa biaya perpanjang iqomah sekarang" },
+        { query: "berapa biaya perpanjang iqomah sekarang" },
+        { query: "dimana beli buku muqarrar murah" },
+        { query: "dimana beli buku muqarrar murah" },
+      ],
+    }));
+    expect(gap?.query).toBe("berapa biaya perpanjang iqomah sekarang");
+    expect(gap?.count).toBe(3);
+  });
+
+  it("REGRESSION: ignores a one-off, so a typo never becomes a mission", async () => {
+    const gap = await pickTopGap(fakeGapDb({
+      misses: [{ query: "asdfghjkl qwerty typo panjang sekali" }],
+    }));
+    expect(gap).toBeNull();
+  });
+
+  it("skips questions that were already handed out", async () => {
+    const gap = await pickTopGap(fakeGapDb({
+      misses: [
+        { query: "berapa biaya perpanjang iqomah sekarang" },
+        { query: "berapa biaya perpanjang iqomah sekarang" },
+        { query: "dimana beli buku muqarrar murah" },
+        { query: "dimana beli buku muqarrar murah" },
+      ],
+      used: [{ gap_query: "Berapa biaya perpanjang iqomah sekarang" }],
+    }));
+    expect(gap?.query).toBe("dimana beli buku muqarrar murah");
+  });
+
+  it("returns null when nothing has been missed", async () => {
+    expect(await pickTopGap(fakeGapDb({ misses: [] }))).toBeNull();
+  });
+
+  it("never throws when the table is unavailable", async () => {
+    const broken = { from() { throw new Error("relation does not exist"); } };
+    expect(await pickTopGap(broken)).toBeNull();
   });
 });

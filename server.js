@@ -10952,6 +10952,83 @@ const MISSION_TEMPLATES = [
     ]}},
 ];
 
+/* ── Gap missions ─────────────────────────────────────────
+ * missing_topics records every question AINA could not answer. The daily
+ * missions used to be drawn at random from the template pool, so contributors
+ * spent their effort wherever the shuffle landed while the real gaps sat in a
+ * log nobody was obliged to read. One slot per day now carries the most-asked
+ * unanswered question instead.
+ *
+ * Kept out of the random pool on purpose: without a question attached this
+ * template says nothing.
+ */
+const GAP_MISSION_TEMPLATE = {
+  category: "Gap KB",
+  difficulty: "medium",
+  base_points: 60,
+  kb_category: "Umum",
+  title: "Jawab Pertanyaan Masisir yang Belum Terjawab",
+  description: "Pertanyaan ini sudah beberapa kali ditanyakan ke AINA tapi belum ada jawabannya di Knowledge Base. Jawabanmu langsung menutup lubang itu.",
+  form_schema: { fields: [
+    { name: "content", label: "Jawaban Lengkap", type: "textarea", required: true, minLength: 150 },
+    { name: "source",  label: "Dasar Jawaban (pengalaman sendiri, info kampus, sumber resmi — sebutkan)", type: "text", required: true, minLength: 10 },
+  ]},
+};
+
+async function ensureGapMissionTemplate(supabase) {
+  try {
+    const { data } = await supabase
+      .from("mission_templates").select("id").eq("title", GAP_MISSION_TEMPLATE.title).limit(1);
+    if (data?.length) return data[0].id;
+    const { data: inserted, error } = await supabase
+      .from("mission_templates").insert({ ...GAP_MISSION_TEMPLATE, is_active: true }).select("id").single();
+    if (error) { console.warn("[Missions] gap template insert failed:", error.message); return null; }
+    console.log("[Missions] ✓ gap mission template created");
+    return inserted.id;
+  } catch (e) {
+    console.warn("[Missions] gap template check failed:", e.message);
+    return null;
+  }
+}
+
+/**
+ * The most-asked unanswered question that has not already been handed out.
+ * Requires at least two sightings so a one-off typo never becomes a mission.
+ */
+export async function pickTopGap(supabase) {
+  const sinceIso  = new Date(Date.now() - 30 * 86400000).toISOString();
+  const sinceDate = sinceIso.split("T")[0];
+  try {
+    const { data: misses } = await supabase
+      .from("missing_topics").select("query").gte("created_at", sinceIso).limit(2000);
+    if (!misses?.length) return null;
+
+    const norm = q => (q ?? "").toLowerCase().trim().slice(0, 80);
+    const counts = {};
+    for (const row of misses) {
+      const key = norm(row.query);
+      if (key.length < 12) continue; // too short to be a real question
+      if (!counts[key]) counts[key] = { query: row.query, count: 0 };
+      counts[key].count++;
+    }
+
+    const ranked = Object.values(counts)
+      .filter(g => g.count >= 2)
+      .sort((a, b) => b.count - a.count);
+    if (ranked.length === 0) return null;
+
+    const { data: used } = await supabase
+      .from("daily_missions").select("gap_query")
+      .not("gap_query", "is", null).gte("mission_date", sinceDate);
+    const alreadyAsked = new Set((used ?? []).map(u => norm(u.gap_query)));
+
+    return ranked.find(g => !alreadyAsked.has(norm(g.query))) ?? null;
+  } catch (e) {
+    console.warn("[Missions] gap lookup failed:", e.message);
+    return null;
+  }
+}
+
 async function seedMissionTemplates() {
   const supabase = getAdminClient();
   if (!supabase) return;
@@ -10982,7 +11059,7 @@ async function ensureDailyMissions() {
   const missionDate = getCairoMissionDate();
   const { data: existing } = await supabase
     .from("daily_missions")
-    .select("id, template_id, mission_templates(*)")
+    .select("id, template_id, gap_query, mission_templates(*)")
     .eq("mission_date", missionDate);
   if (existing && existing.length >= 3) return existing;
 
@@ -11002,36 +11079,48 @@ async function ensureDailyMissions() {
     .eq("is_active", true);
   if (!templates || templates.length === 0) return [];
 
-  const available = templates.filter(t => !recentIds.includes(t.id));
-  const pool = available.length >= 3 ? available : templates; // fallback if too few available
+  // One slot goes to the most-asked question AINA still cannot answer; the
+  // gap template itself stays out of the random pool, since without a question
+  // attached it says nothing.
+  const gapTemplateId = await ensureGapMissionTemplate(supabase);
+  const gap = gapTemplateId ? await pickTopGap(supabase) : null;
+  const randomSlots = gap ? 2 : 3;
 
-  // Pick 3 with category variety
+  const available = templates.filter(t => !recentIds.includes(t.id) && t.id !== gapTemplateId);
+  const poolSource = templates.filter(t => t.id !== gapTemplateId);
+  const pool = available.length >= randomSlots ? available : poolSource; // fallback if too few available
+
+  // Pick the random slots with category variety
   const shuffled = pool.sort(() => Math.random() - 0.5);
   const chosen = [];
   const usedCategories = new Set();
   for (const t of shuffled) {
-    if (chosen.length >= 3) break;
-    if (!usedCategories.has(t.category) || chosen.length === 2) {
+    if (chosen.length >= randomSlots) break;
+    if (!usedCategories.has(t.category) || chosen.length === randomSlots - 1) {
       chosen.push(t);
       usedCategories.add(t.category);
     }
   }
-  if (chosen.length < 3) {
+  if (chosen.length < randomSlots) {
     for (const t of shuffled) {
-      if (chosen.length >= 3) break;
+      if (chosen.length >= randomSlots) break;
       if (!chosen.find(c => c.id === t.id)) chosen.push(t);
     }
+  }
+  if (gap) {
+    chosen.unshift({ id: gapTemplateId, category: GAP_MISSION_TEMPLATE.category, __gapQuery: gap.query });
+    console.log(`[Missions] gap mission: "${gap.query.slice(0, 60)}" (ditanya ${gap.count}x)`);
   }
 
   // Clear old partial entries for today and insert new
   await supabase.from("daily_missions").delete().eq("mission_date", missionDate);
   for (const t of chosen) {
-    await supabase.from("daily_missions").insert({ template_id: t.id, mission_date: missionDate });
+    await supabase.from("daily_missions").insert({ template_id: t.id, mission_date: missionDate, gap_query: t.__gapQuery ?? null });
   }
 
   const { data: fresh } = await supabase
     .from("daily_missions")
-    .select("id, template_id, mission_templates(*)")
+    .select("id, template_id, gap_query, mission_templates(*)")
     .eq("mission_date", missionDate);
   return fresh || [];
 }
@@ -11106,6 +11195,7 @@ app.get("/api/missions/today", async (req, res) => {
     missions: missions.map(m => ({
       id: m.id,
       template: m.mission_templates,
+      gap_query: m.gap_query ?? null,
       submission: subMap[m.id] || null,
       total_submissions: countMap[m.id] || 0,
     })),
@@ -11539,18 +11629,21 @@ app.patch("/api/admin/missions/submissions/:id/approve", async (req, res) => {
   const { id } = req.params;
   const { data: sub } = await supabase
     .from("mission_submissions")
-    .select("*, daily_missions(mission_date, mission_templates(*))")
+    .select("*, daily_missions(mission_date, gap_query, mission_templates(*))")
     .eq("id", id)
     .single();
   if (!sub) return res.status(404).json({ error: "Submission not found" });
   if (sub.status !== "pending") return res.status(409).json({ error: "Submission already reviewed" });
 
   const template = sub.daily_missions.mission_templates;
+  const gapQuery = sub.daily_missions.gap_query ?? null;
   const flashMultiplier = (template.is_flash_mission && template.point_multiplier > 1) ? template.point_multiplier : 1;
 
   // 1. Create KB article
   const content = buildKBContentFromSubmission(template, sub.form_data);
-  const titleBase = (sub.form_data.name || sub.form_data.location || template.title).slice(0, 180);
+  // A gap mission's article is titled with the question it answers, so the next
+  // person asking it matches the article that was written for them.
+  const titleBase = (gapQuery || sub.form_data.name || sub.form_data.location || template.title).slice(0, 180);
   const articleTitle = titleBase.length >= 10 ? titleBase : `${template.title} — ${titleBase}`;
 
   let kbArticleId = null;
@@ -16068,6 +16161,8 @@ async function runColumnMigrations() {
     // Flash Mission columns — weekly randomized bonus mission
     `ALTER TABLE public.mission_templates ADD COLUMN IF NOT EXISTS is_flash_mission BOOLEAN DEFAULT false;`,
     `ALTER TABLE public.mission_templates ADD COLUMN IF NOT EXISTS point_multiplier INTEGER DEFAULT 1;`,
+    // The actual unanswered question a gap mission asks the contributor to answer.
+    `ALTER TABLE public.daily_missions ADD COLUMN IF NOT EXISTS gap_query TEXT;`,
     // Enforce: at most one mission can be is_flash_mission=true at a time
     `CREATE UNIQUE INDEX IF NOT EXISTS uniq_flash_mission_active ON public.mission_templates ((is_flash_mission)) WHERE is_flash_mission = true;`,
   ];
