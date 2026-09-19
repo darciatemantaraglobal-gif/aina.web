@@ -5141,8 +5141,13 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       // Sort: city-matching articles first, preserve relative order within each group
       boosted.sort((a, b) => b._cityBoost - a._cityBoost);
       const reboosted = boosted.map(({ _cityBoost, ...a }) => a);
-      // Carry over _topScore if present
+      // Carry over strength signals used by assessKBStrength (both keyword's
+      // _topScore and vector's _topSimilarity — dropping either one here
+      // makes a vector-only-matched article look like it has no strength
+      // signal at all downstream, same failure mode already fixed once for
+      // fetchRelevantArticles itself).
       if (articles._topScore !== undefined) reboosted._topScore = articles._topScore;
+      if (articles._topSimilarity !== undefined) reboosted._topSimilarity = articles._topSimilarity;
       // Replace articles array in-place (reassign via destructuring-safe mutation)
       articles.splice(0, articles.length, ...reboosted);
       if (boosted.some(a => a._cityBoost)) {
@@ -5395,9 +5400,23 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     );
 
     if (isHyperLocal) {
-      // Hyper-local community data (org names, contacts, events) — model rarely has this
-      // → answer what you can, but strongly advise direct verification
-      finalSystemPrompt += `\n\n---\n## 📌 PANDUAN SUMBER — TOPIK KOMUNITAS MASISIR\n\nTopik ini menyangkut hal yang SANGAT SPESIFIK komunitas Indonesia di Mesir (organisasi, kekeluargaan, acara, kontak pengurus, dll.).\n\n**Prioritas sumber:**\n1. Knowledge Base AINA (gunakan jika tersedia di atas)\n2. Pengetahuan umum tentang komunitas Masisir yang kamu miliki — boleh digunakan, tapi...\n3. Selalu akhiri dengan: "Untuk info yang paling akurat dan terkini, cek langsung ke grup komunitas atau senior Masisir ya."\n\n**JANGAN** memberikan nama, kontak, atau data spesifik yang kamu tidak yakin akurat — lebih baik jawab dengan gambaran umum lalu arahkan ke sumber primer.\n---`;
+      // Hyper-local community data (org names, contacts, events) — this ran
+      // UNCONDITIONALLY whenever kbStrength !== "strong", including "weak" —
+      // which just means "KB has SOME match, just not a rock-solid one," NOT
+      // "KB has nothing." The old wording — "JANGAN memberikan nama... yang
+      // kamu tidak yakin akurat" — made no distinction between "a name the
+      // model is guessing" and "a name that's sitting right there in the KB
+      // context injected above," so a real, admin-verified answer (e.g. a
+      // PPMI Mesir president article the admin added) could get hedged into
+      // a non-answer purely because kbStrength landed on "weak" rather than
+      // "strong." This is exactly the class of bug already fixed once for
+      // the weak-KB and procedural-Masisir hints — same root cause, third
+      // instance, caught by a live report of a KB-answered question still
+      // coming back "gak tau."
+      const hasKB = articles.length > 0;
+      finalSystemPrompt += hasKB
+        ? `\n\n---\n## 📌 PANDUAN SUMBER — TOPIK KOMUNITAS MASISIR\n\nTopik ini menyangkut hal yang SANGAT SPESIFIK komunitas Indonesia di Mesir (organisasi, kekeluargaan, acara, kontak pengurus, dll.).\n\nKnowledge Base AINA di atas MEMILIKI info untuk topik ini — itu sumber terverifikasi (admin-input), BUKAN tebakan model. Kalau nama/kontak/data yang ditanya user ADA di konteks KB tersebut, WAJIB jawab dengan percaya diri, JANGAN bilang tidak tahu dan JANGAN tambahkan disclaimer "kurang yakin" untuk info yang jelas-jelas tertulis di KB. Disclaimer hanya untuk bagian yang TIDAK tercakup KB dan kamu lengkapi sendiri dari pengetahuan umum — itu WAJIB ditandai, jangan dicampur seolah dari KB.\n---`
+        : `\n\n---\n## 📌 PANDUAN SUMBER — TOPIK KOMUNITAS MASISIR\n\nTopik ini menyangkut hal yang SANGAT SPESIFIK komunitas Indonesia di Mesir (organisasi, kekeluargaan, acara, kontak pengurus, dll.), dan Knowledge Base AINA TIDAK memiliki data untuk ini.\n\nBoleh gunakan pengetahuan umum tentang komunitas Masisir jika kamu genuinely tahu, tapi **JANGAN** memberikan nama, kontak, atau data spesifik yang kamu tidak yakin akurat — lebih baik jawab dengan gambaran umum lalu arahkan ke sumber primer. Selalu akhiri dengan: "Untuk info yang paling akurat dan terkini, cek langsung ke grup komunitas atau senior Masisir ya."\n---`;
     } else {
       // Procedural / admin / academic Masisir topics — highest real-world stakes:
       // this is visa/iqomah/university-admin territory, where a confidently
