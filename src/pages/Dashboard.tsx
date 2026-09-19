@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, lazy, Suspense, Component, ReactNode, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { isFeatureEnabled } from "@/lib/features";
+import { isFeatureEnabled, useFeaturesReady } from "@/lib/features";
 import DashboardSidebar from "@/components/DashboardSidebar";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import PwaSplash from "@/components/PwaSplash";
@@ -212,10 +212,7 @@ const TabLoader = () => (
   </div>
 );
 
-// A tab whose feature is switched off in this build is not reachable, including
-// by ?tab= or a stale localStorage value from before it was hidden.
-const VALID_TABS = ["chat", "berita", "productivity", "library", "threads", "leaderboard", "contributor", "profile", "admin"]
-  .filter(isFeatureEnabled);
+const VALID_TABS = ["chat", "berita", "productivity", "library", "threads", "leaderboard", "contributor", "profile", "admin"];
 
 const Dashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -223,6 +220,7 @@ const Dashboard = () => {
     ? searchParams.get("tab")!
     : (VALID_TABS.includes(localStorage.getItem("aina_active_tab") ?? "") ? localStorage.getItem("aina_active_tab")! : "chat");
   const [activeTab, setActiveTab] = useState(initialTab);
+  const featuresReady = useFeaturesReady();
   const [authReady, setAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | undefined>(undefined);
@@ -578,7 +576,13 @@ const Dashboard = () => {
     };
   }, []);
 
-  if (!authReady) {
+  // A ?tab= link or a localStorage value saved before a feature was switched
+  // off would otherwise open a section that is meant to be hidden.
+  useEffect(() => {
+    if (featuresReady && !isFeatureEnabled(activeTab)) setActiveTab("chat");
+  }, [featuresReady, activeTab]);
+
+  if (!authReady || !featuresReady) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />

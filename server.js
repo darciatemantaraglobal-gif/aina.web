@@ -14951,10 +14951,39 @@ if (PAYMENT_ENABLED) {
   );
 }
 
+/* ── Optional dashboard features ──────────────────────────
+ * AINA launches narrow: chat, the KB behind it, and the contributor flow that
+ * keeps the KB growing. These five ship in the build but stay hidden until
+ * there is enough traffic to make them look alive — an empty forum reads worse
+ * than no forum. Absent key = off, so a fresh database starts narrow.
+ */
+const OPTIONAL_FEATURES = ["berita", "library", "productivity", "threads", "leaderboard"];
+const _featureKey = id => `feature_${id}`;
+
+async function readFeatureFlags(supabase) {
+  const out = Object.fromEntries(OPTIONAL_FEATURES.map(id => [id, false]));
+  if (!supabase) return out;
+  try {
+    const { data } = await supabase
+      .from("app_config")
+      .select("key, value")
+      .in("key", OPTIONAL_FEATURES.map(_featureKey));
+    for (const row of (data ?? [])) {
+      const id = row.key.replace(/^feature_/, "");
+      if (id in out) out[id] = row.value === "true";
+    }
+  } catch { /* table may not exist yet — everything stays off */ }
+  return out;
+}
+
 /* ── App Config — public read (no auth, only safe flags exposed) */
 app.get("/api/app/public-config", async (_req, res) => {
   const supabase = getAdminClient();
-  const out = { contributor_challenge_enabled: false, demo_mode: false };
+  const out = {
+    contributor_challenge_enabled: false,
+    demo_mode: false,
+    features: Object.fromEntries(OPTIONAL_FEATURES.map(id => [id, false])),
+  };
   if (!supabase) return res.json(out);
   try {
     const { data } = await supabase
@@ -14969,9 +14998,40 @@ app.get("/api/app/public-config", async (_req, res) => {
         out.demo_mode = row.value === "true";
       }
     }
+    out.features = await readFeatureFlags(supabase);
   } catch { /* table may not exist yet — defaults */ }
-  res.set("Cache-Control", "public, max-age=60");
+  // Short cache: a master admin flipping a feature should see it take effect
+  // across the app within a minute, not after a redeploy.
+  res.set("Cache-Control", "public, max-age=30");
   res.json(out);
+});
+
+/* PATCH /api/admin/features — master admin only.
+ * Separate from the generic app-config endpoint because turning a whole
+ * section of the product on or off is not an everyday admin action.
+ */
+app.patch("/api/admin/features", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Tidak diizinkan" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Server error" });
+
+  const updates = req.body;
+  if (!updates || typeof updates !== "object") return res.status(400).json({ error: "Body harus objek fitur/boolean" });
+
+  const unknown = Object.keys(updates).filter(id => !OPTIONAL_FEATURES.includes(id));
+  if (unknown.length > 0) return res.status(400).json({ error: `Fitur tidak dikenal: ${unknown.join(", ")}` });
+
+  const upserts = Object.entries(updates).map(([id, value]) => ({
+    key: _featureKey(id),
+    value: String(value === true || value === "true"),
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase.from("app_config").upsert(upserts, { onConflict: "key" });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  console.log(`[Features] ${Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(" ")} by ${admin.email}`);
+  res.json({ features: await readFeatureFlags(supabase) });
 });
 
 /* ── App Config (admin-only, controls toggles like subscription_visible) */

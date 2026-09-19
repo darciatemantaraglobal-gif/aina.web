@@ -103,28 +103,32 @@ function savePersonalization(p: AinaPersonalization) {
   localStorage.setItem(PERSONALIZATION_KEY, JSON.stringify(p));
 }
 
-// Features switched off in this build are dropped here, and a group left with
-// no items disappears with them (see src/lib/features.ts).
-const NAV_GROUPS = [
+const ALL_NAV_GROUPS = [
   {
     label: "Utama",
-    items: filterEnabled([
+    items: [
       { id: "berita", label: "Berita Masisir", icon: Newspaper },
       { id: "library", label: "Library", icon: BookOpen },
       { id: "productivity", label: "Ruang Produktif", icon: LayoutDashboard },
-    ]),
+    ],
   },
   {
     label: "Komunitas",
-    items: filterEnabled([
+    items: [
       { id: "threads", label: "Threads", icon: Hash },
       { id: "leaderboard", label: "Leaderboard", icon: Trophy },
       { id: "contributor", label: "Contributor", icon: Users },
-    ]),
+    ],
   },
-].filter(g => g.items.length > 0);
+];
 
-const baseNavItems = NAV_GROUPS.flatMap((g) => g.items);
+// Built per render, not once at import: the flags arrive from the server after
+// this module loads. A group left with no enabled items disappears with them.
+function visibleNavGroups() {
+  return ALL_NAV_GROUPS
+    .map(g => ({ ...g, items: filterEnabled(g.items) }))
+    .filter(g => g.items.length > 0);
+}
 
 function AvatarDisplay({ name, avatarUrl, size = "sm" }: { name: string | null; avatarUrl: string | null; size?: "sm" | "md" | "lg" }) {
   const [imgError, setImgError] = useState(false);
@@ -1017,7 +1021,7 @@ const DashboardSidebar = ({
           )}
         </button>
 
-        {NAV_GROUPS.map((group) => (
+        {visibleNavGroups().map((group) => (
           <div key={group.label}>
             {!collapsed && (
               <p className="mt-3 mb-1 px-3 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/35 select-none">

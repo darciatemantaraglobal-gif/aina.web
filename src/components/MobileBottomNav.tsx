@@ -6,13 +6,13 @@ interface MobileBottomNavProps {
   onTabChange: (tab: string) => void;
 }
 
-const NAV_ITEMS = filterEnabled([
+const ALL_NAV_ITEMS = [
   { id: "chat",         icon: MessageSquare, label: "Chat" },
   { id: "productivity", icon: Zap,           label: "Produktif" },
   { id: "contributor",  icon: PenLine,       label: "Kontribusi", special: true },
   { id: "threads",      icon: Users,         label: "Forum" },
   { id: "profile",      icon: User,          label: "Profil" },
-]);
+];
 
 export default function MobileBottomNav({ activeTab, onTabChange }: MobileBottomNavProps) {
   return (
@@ -21,7 +21,7 @@ export default function MobileBottomNav({ activeTab, onTabChange }: MobileBottom
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <div className="flex items-stretch h-14">
-        {NAV_ITEMS.map(({ id, icon: Icon, label, special }) => {
+        {filterEnabled(ALL_NAV_ITEMS).map(({ id, icon: Icon, label, special }) => {
           const active = activeTab === id;
 
           if (special) {

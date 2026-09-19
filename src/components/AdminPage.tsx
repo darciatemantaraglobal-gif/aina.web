@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { OPTIONAL_FEATURES, FEATURE_LABELS, type OptionalFeature } from "@/lib/features";
 import {
   Shield, Users, FileText, Check, X, LayoutDashboard,
   MessageSquare, BookOpen, Clock, Search,
@@ -331,7 +332,7 @@ type UsageStats = {
   totals: { threads: number; messages: number };
 };
 
-const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats; loading: boolean }) {
+const OverviewTab = memo(function OverviewTab({ stats, loading, isMasterAdmin = false }: { stats: Stats; loading: boolean; isMasterAdmin?: boolean }) {
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
   const [chartMode, setChartMode] = useState<"queries" | "dau">("queries");
@@ -341,6 +342,32 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
   const [demoModeEnabled, setDemoModeEnabled] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    fetch("/api/app/public-config")
+      .then(r => r.json())
+      .then((cfg: { features?: Record<string, boolean> }) => setFeatures(cfg.features ?? {}))
+      .catch(() => {});
+  }, []);
+
+  // Switching a section on or off changes what every user sees, so it is
+  // master-admin only and lives behind its own endpoint.
+  const handleFeatureToggle = async (id: string, checked: boolean) => {
+    setConfigSaving(true);
+    try {
+      const { features: next } = await adminFetch("/api/admin/features", {
+        method: "PATCH",
+        body: JSON.stringify({ [id]: checked }),
+      });
+      setFeatures(next ?? {});
+      toast.success(`${FEATURE_LABELS[id as OptionalFeature]} ${checked ? "diaktifkan" : "disembunyikan"}`);
+    } catch {
+      toast.error("Gagal menyimpan pengaturan fitur");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
 
   useEffect(() => {
     adminFetch("/api/admin/app-config")
@@ -627,6 +654,36 @@ const OverviewTab = memo(function OverviewTab({ stats, loading }: { stats: Stats
           </div>
         </div>
       </div>
+
+      {/* Optional sections — master admin only */}
+      {isMasterAdmin && (
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <h3 className="mb-1 font-medium text-foreground">Fitur Dashboard</h3>
+          <p className="mb-4 text-xs text-muted-foreground">
+            AINA sengaja launch sempit. Nyalakan sebuah menu kalau sudah ada isi dan orang yang mengurusnya —
+            forum kosong atau leaderboard dengan lima nama terasa lebih buruk daripada tidak ada sama sekali.
+            Perubahan berlaku untuk semua user dalam waktu satu menit.
+          </p>
+          <div className="space-y-4">
+            {OPTIONAL_FEATURES.map(id => (
+              <div key={id} className="flex items-center justify-between gap-4 rounded-xl border border-border bg-secondary/30 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{FEATURE_LABELS[id]}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {features[id] ? "Tampil di sidebar untuk semua user." : "Disembunyikan dari semua user."}
+                  </p>
+                </div>
+                <Switch
+                  checked={!!features[id]}
+                  onCheckedChange={checked => handleFeatureToggle(id, checked)}
+                  disabled={configSaving}
+                  aria-label={`Toggle ${FEATURE_LABELS[id]}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 });
@@ -8742,7 +8799,7 @@ const AdminPage = () => {
 
   const tabContent = useMemo(() => (
     <>
-      {activeTab === "overview"        && <OverviewTab stats={stats} loading={statsLoading} />}
+      {activeTab === "overview"        && <OverviewTab stats={stats} loading={statsLoading} isMasterAdmin={isMasterAdmin} />}
       {activeTab === "users"           && isMasterAdmin && <UsersTab />}
       {activeTab === "monitor"         && isMasterAdmin && <ChatMonitorTab />}
       {activeTab === "requests"        && <RequestsTab />}
