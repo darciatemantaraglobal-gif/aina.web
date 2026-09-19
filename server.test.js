@@ -18,6 +18,7 @@ import {
   fuseByReciprocalRank,
   assessKBStrength,
   detectIntent,
+  MASISIR_ALIASES_SEED,
 } from "./server.js";
 
 // ── resolveEntitlement ──────────────────────────────────────────────────────
@@ -303,5 +304,34 @@ describe("detectIntent unmatched flag", () => {
 
   it("does not mark specialised intents as unmatched", () => {
     expect(detectIntent("tulisin surat ghaib bahasa arab").unmatched).toBe(false);
+  });
+});
+
+// ── MASISIR_ALIASES_SEED ────────────────────────────────────────────────────
+// The seed is the fallback KB search uses when masisir_aliases hasn't been
+// migrated yet, so it must stay complete. It was moved out of
+// fetchRelevantArticles programmatically; this guards against that move (or a
+// later edit) quietly dropping entries.
+
+describe("MASISIR_ALIASES_SEED", () => {
+  it("still carries the full dictionary that migration 006 seeds", () => {
+    expect(Object.keys(MASISIR_ALIASES_SEED)).toHaveLength(74);
+    const total = Object.values(MASISIR_ALIASES_SEED).reduce((n, v) => n + v.length, 0);
+    expect(total).toBe(242);
+  });
+
+  it("keeps the Masisir-specific terms a generic dictionary would miss", () => {
+    expect(MASISIR_ALIASES_SEED.iqomah).toContain("izin tinggal");
+    expect(MASISIR_ALIASES_SEED.qaid).toContain("shahada");
+    expect(MASISIR_ALIASES_SEED.rasm).toContain("biaya kuliah");
+    expect(MASISIR_ALIASES_SEED.imtihan).toContain("ujian");
+  });
+
+  it("maps every alias entry to a non-empty array of strings", () => {
+    for (const [term, aliases] of Object.entries(MASISIR_ALIASES_SEED)) {
+      expect(Array.isArray(aliases), `${term} must map to an array`).toBe(true);
+      expect(aliases.length, `${term} must have aliases`).toBeGreaterThan(0);
+      for (const a of aliases) expect(typeof a).toBe("string");
+    }
   });
 });

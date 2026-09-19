@@ -1515,6 +1515,157 @@ function getJobs() {
   return _jobs;
 }
 
+// ── Indonesian stopwords — high-frequency words that add search noise ───────
+const INDO_STOPWORDS = new Set([
+  // Question / wh-words
+  "apa","apakah","bagaimana","gimana","kenapa","mengapa","kapan","siapa","mana",
+  "dimana","kemana","berapa","gimana",
+  // Prepositions / connectors
+  "dan","atau","tapi","tetapi","namun","juga","serta","bahkan","karena","sehingga",
+  "agar","supaya","oleh","pada","dalam","antara","melalui","dengan","untuk","dari",
+  "tentang","mengenai","soal","hal",
+  // Pronouns / articles
+  "saya","aku","gue","gwa","gw","kamu","kau","elo","dia","mereka","kami","kita",
+  "ini","itu","nya",
+  // Modal / auxiliary verbs
+  "bisa","boleh","minta","tolong","mohon","harus","perlu","wajib","dapat","ada",
+  "tidak","bukan","gak","nggak","udah","sudah","belum","sedang","akan","lagi",
+  "punya","mau","ingin","pengen",
+  // Discourse fillers
+  "ya","dong","deh","sih","nih","tuh","kan","cuma","aja","saja","banget","sekali",
+  "info","tahu","tau","cara","tolong","kasih","jelasin","jelaskan",
+]);
+
+// ── Masisir term aliases — maps one spelling to alternative spellings ────────
+// When user uses any variant, all variants are searched in the KB.
+export const MASISIR_ALIASES_SEED = {
+  "iqomah":     ["iqama","igamah","izin tinggal","residence"],
+  "iqama":      ["iqomah","igamah","izin tinggal"],
+  "igamah":     ["iqomah","iqama","izin tinggal"],
+  "kbri":       ["kedutaan","kedubes","konsulat"],
+  "kedutaan":   ["kbri","kedubes"],
+  "kedubes":    ["kbri","kedutaan"],
+  "paspor":     ["passport"],
+  "passport":   ["paspor"],
+  "visa":       ["viza","izin masuk"],
+  "viza":       ["visa"],
+  "azhar":      ["al-azhar","universitas azhar"],
+  "qaid":       ["shahada","surat aktif","syahadat"],
+  "shahada":    ["qaid","syahadat"],
+  "ppmi":       ["organisasi","masisir","persatuan","perhimpunan"],
+  "lokasi":     ["alamat","kantor","tempat","gedung","letak"],
+  "alamat":     ["lokasi","kantor","tempat","gedung"],
+  "kantor":     ["lokasi","alamat","gedung","tempat"],
+  "kost":       ["sewa","apartemen","kontrakan"],
+  "kos":        ["sewa","apartemen","kontrakan"],
+  "sewa":       ["kost","kos","kontrakan","apartemen"],
+  "bus":        ["autobus","metro"],
+  "metro":      ["bus","autobus"],
+  "halal":      ["kuliner","makanan halal"],
+  "kuliner":    ["makanan","restoran"],
+  "makan":      ["kuliner","restoran"],
+  "transfer":   ["bayar","pembayaran","kirim uang"],
+  "rasm":       ["biaya kuliah","spp","uang kuliah"],
+  "riyal":      ["egp","pound mesir"],
+  "perpanjang": ["perpanjangan","renew","renewal"],
+  "daftar":     ["pendaftaran","registrasi","register"],
+  "kuliah":     ["akademik","kampus","perkuliahan"],
+  "rumah":      ["apartemen","sewa","kost"],
+  "muadzin":    ["mu'adzin","azan"],
+  // ── Kesehatan / health ───────────────────────────────────────────────────────
+  "sakit":      ["klinik","dokter","rumah sakit","rs","kesehatan","berobat"],
+  "dokter":     ["klinik","rumah sakit","sakit","berobat","kesehatan"],
+  "klinik":     ["dokter","rumah sakit","kesehatan","berobat"],
+  "obat":       ["apotek","pharmacy","farmasi","klinik"],
+  "apotek":     ["obat","pharmacy","farmasi"],
+  // ── Transport ────────────────────────────────────────────────────────────────
+  "taksi":      ["uber","grab","careem","transport","kendaraan"],
+  "careem":     ["taksi","uber","grab","transport"],
+  "uber":       ["taksi","careem","grab","transport"],
+  "bandara":    ["airport","kairo","terminal","terbang","pesawat"],
+  "pesawat":    ["tiket","terbang","bandara","airport"],
+  "kereta":     ["metro","train","rail","stasiun"],
+  // ── Akademik ─────────────────────────────────────────────────────────────────
+  "imtihan":    ["ujian","exam","tes","nilai","kuliah"],
+  "ujian":      ["imtihan","exam","tes"],
+  "skripsi":    ["tesis","penelitian","tugas akhir"],
+  "tesis":      ["skripsi","penelitian","tugas akhir"],
+  "beasiswa":   ["scholarship","bantuan","dana","biaya"],
+  "semester":   ["kuliah","akademik","tahun ajaran"],
+  "wisuda":     ["graduation","lulus","selesai kuliah"],
+  // ── Keuangan / finance ───────────────────────────────────────────────────────
+  "bank":       ["atm","transfer","rekening","western union"],
+  "atm":        ["bank","transfer","rekening","uang"],
+  "western":    ["western union","transfer","kirim uang","remitansi"],
+  "remitansi":  ["western union","transfer","kirim uang","bank"],
+  "pound":      ["egp","le","riyal","mata uang"],
+  "egp":        ["pound","le","riyal","mata uang"],
+  // ── Komunitas / community ───────────────────────────────────────────────────
+  "kpm":        ["kelompok pengajian","komunitas","pengajian"],
+  "pengajian":  ["kpm","komunitas","majelis","belajar"],
+  "masjid":     ["sholat","mushola","ibadah","majelis"],
+  "komunitas":  ["kpm","ppmi","organisasi","perkumpulan"],
+  // ── Tempat tinggal ──────────────────────────────────────────────────────────
+  "kairo":      ["cairo","mesir","hay asyir","asyir","manshiyah"],
+  "hay":        ["hay asyir","asyir","wilayah","kawasan"],
+  "asyir":      ["hay asyir","hay","wilayah","kawasan"],
+  "manshiyah":  ["mansheya","tempat tinggal","kost","sewa"],
+  "kontrakan":  ["kost","sewa","apartemen","flat"],
+  "flat":       ["apartemen","kost","sewa","kontrakan"],
+  // ── Jabatan / role aliases — so "presiden PPMI" also searches "ketua PPMI" ──
+  "presiden":   ["ketua","pimpinan","pemimpin","koordinator"],
+  "ketua":      ["presiden","pimpinan","pemimpin"],
+  "pimpinan":   ["presiden","ketua","pemimpin"],
+  "pemimpin":   ["presiden","ketua","pimpinan"],
+  "sekretaris": ["sekjen","sekretariat"],
+  "bendahara":  ["keuangan"],
+  "koordinator":["ketua","kepala"],
+};
+
+/* ── Masisir alias dictionary — DB-backed with hardcoded fallback ────────────
+ * The seed above is the list that shipped hardcoded. It stays in the source as
+ * the fallback so KB search keeps its vocabulary even when the table is
+ * missing (migration not run yet) or unreachable — there is no window where
+ * queries lose alias expansion.
+ *
+ * Once migrations/006_masisir_aliases.sql is applied, the table wins, and
+ * contributors can extend Masisir vocabulary without a deploy.
+ */
+let _aliasCache = null;          // { map, expiresAt }
+const ALIAS_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function invalidateAliasCache() {
+  _aliasCache = null;
+  console.log("[Aliases] cache cleared");
+}
+
+async function loadMasisirAliases() {
+  if (_aliasCache && Date.now() < _aliasCache.expiresAt) return _aliasCache.map;
+
+  const supabase = getAdminClient();
+  if (!supabase) return MASISIR_ALIASES_SEED;
+
+  try {
+    const { data, error } = await supabase.from("masisir_aliases").select("term, aliases");
+    // Empty table is treated the same as a missing one: fall back to the seed
+    // rather than silently running with no alias expansion at all.
+    if (error || !data || data.length === 0) {
+      _aliasCache = { map: MASISIR_ALIASES_SEED, expiresAt: Date.now() + ALIAS_CACHE_TTL_MS };
+      return MASISIR_ALIASES_SEED;
+    }
+    const map = {};
+    for (const row of data) {
+      if (row.term && Array.isArray(row.aliases)) map[row.term.toLowerCase()] = row.aliases;
+    }
+    _aliasCache = { map, expiresAt: Date.now() + ALIAS_CACHE_TTL_MS };
+    console.log(`[Aliases] loaded ${Object.keys(map).length} terms from DB`);
+    return map;
+  } catch (e) {
+    console.warn(`[Aliases] load failed, using built-in seed: ${e.message}`);
+    return MASISIR_ALIASES_SEED;
+  }
+}
+
 /* ── Retrieval tunables ─────────────────────────────────────────────────────
  * Kept as env-overridable constants because the right values depend on the
  * live KB's size and writing style — they can't be settled from code alone.
@@ -1603,112 +1754,6 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     hasImgUrlCol  ? ", image_url"        : "",
   ].join("");
 
-  // ── Indonesian stopwords — high-frequency words that add search noise ───────
-  const INDO_STOPWORDS = new Set([
-    // Question / wh-words
-    "apa","apakah","bagaimana","gimana","kenapa","mengapa","kapan","siapa","mana",
-    "dimana","kemana","berapa","gimana",
-    // Prepositions / connectors
-    "dan","atau","tapi","tetapi","namun","juga","serta","bahkan","karena","sehingga",
-    "agar","supaya","oleh","pada","dalam","antara","melalui","dengan","untuk","dari",
-    "tentang","mengenai","soal","hal",
-    // Pronouns / articles
-    "saya","aku","gue","gwa","gw","kamu","kau","elo","dia","mereka","kami","kita",
-    "ini","itu","nya",
-    // Modal / auxiliary verbs
-    "bisa","boleh","minta","tolong","mohon","harus","perlu","wajib","dapat","ada",
-    "tidak","bukan","gak","nggak","udah","sudah","belum","sedang","akan","lagi",
-    "punya","mau","ingin","pengen",
-    // Discourse fillers
-    "ya","dong","deh","sih","nih","tuh","kan","cuma","aja","saja","banget","sekali",
-    "info","tahu","tau","cara","tolong","kasih","jelasin","jelaskan",
-  ]);
-
-  // ── Masisir term aliases — maps one spelling to alternative spellings ────────
-  // When user uses any variant, all variants are searched in the KB.
-  const MASISIR_ALIASES = {
-    "iqomah":     ["iqama","igamah","izin tinggal","residence"],
-    "iqama":      ["iqomah","igamah","izin tinggal"],
-    "igamah":     ["iqomah","iqama","izin tinggal"],
-    "kbri":       ["kedutaan","kedubes","konsulat"],
-    "kedutaan":   ["kbri","kedubes"],
-    "kedubes":    ["kbri","kedutaan"],
-    "paspor":     ["passport"],
-    "passport":   ["paspor"],
-    "visa":       ["viza","izin masuk"],
-    "viza":       ["visa"],
-    "azhar":      ["al-azhar","universitas azhar"],
-    "qaid":       ["shahada","surat aktif","syahadat"],
-    "shahada":    ["qaid","syahadat"],
-    "ppmi":       ["organisasi","masisir","persatuan","perhimpunan"],
-    "lokasi":     ["alamat","kantor","tempat","gedung","letak"],
-    "alamat":     ["lokasi","kantor","tempat","gedung"],
-    "kantor":     ["lokasi","alamat","gedung","tempat"],
-    "kost":       ["sewa","apartemen","kontrakan"],
-    "kos":        ["sewa","apartemen","kontrakan"],
-    "sewa":       ["kost","kos","kontrakan","apartemen"],
-    "bus":        ["autobus","metro"],
-    "metro":      ["bus","autobus"],
-    "halal":      ["kuliner","makanan halal"],
-    "kuliner":    ["makanan","restoran"],
-    "makan":      ["kuliner","restoran"],
-    "transfer":   ["bayar","pembayaran","kirim uang"],
-    "rasm":       ["biaya kuliah","spp","uang kuliah"],
-    "riyal":      ["egp","pound mesir"],
-    "perpanjang": ["perpanjangan","renew","renewal"],
-    "daftar":     ["pendaftaran","registrasi","register"],
-    "kuliah":     ["akademik","kampus","perkuliahan"],
-    "rumah":      ["apartemen","sewa","kost"],
-    "muadzin":    ["mu'adzin","azan"],
-    // ── Kesehatan / health ───────────────────────────────────────────────────────
-    "sakit":      ["klinik","dokter","rumah sakit","rs","kesehatan","berobat"],
-    "dokter":     ["klinik","rumah sakit","sakit","berobat","kesehatan"],
-    "klinik":     ["dokter","rumah sakit","kesehatan","berobat"],
-    "obat":       ["apotek","pharmacy","farmasi","klinik"],
-    "apotek":     ["obat","pharmacy","farmasi"],
-    // ── Transport ────────────────────────────────────────────────────────────────
-    "taksi":      ["uber","grab","careem","transport","kendaraan"],
-    "careem":     ["taksi","uber","grab","transport"],
-    "uber":       ["taksi","careem","grab","transport"],
-    "bandara":    ["airport","kairo","terminal","terbang","pesawat"],
-    "pesawat":    ["tiket","terbang","bandara","airport"],
-    "kereta":     ["metro","train","rail","stasiun"],
-    // ── Akademik ─────────────────────────────────────────────────────────────────
-    "imtihan":    ["ujian","exam","tes","nilai","kuliah"],
-    "ujian":      ["imtihan","exam","tes"],
-    "skripsi":    ["tesis","penelitian","tugas akhir"],
-    "tesis":      ["skripsi","penelitian","tugas akhir"],
-    "beasiswa":   ["scholarship","bantuan","dana","biaya"],
-    "semester":   ["kuliah","akademik","tahun ajaran"],
-    "wisuda":     ["graduation","lulus","selesai kuliah"],
-    // ── Keuangan / finance ───────────────────────────────────────────────────────
-    "bank":       ["atm","transfer","rekening","western union"],
-    "atm":        ["bank","transfer","rekening","uang"],
-    "western":    ["western union","transfer","kirim uang","remitansi"],
-    "remitansi":  ["western union","transfer","kirim uang","bank"],
-    "pound":      ["egp","le","riyal","mata uang"],
-    "egp":        ["pound","le","riyal","mata uang"],
-    // ── Komunitas / community ───────────────────────────────────────────────────
-    "kpm":        ["kelompok pengajian","komunitas","pengajian"],
-    "pengajian":  ["kpm","komunitas","majelis","belajar"],
-    "masjid":     ["sholat","mushola","ibadah","majelis"],
-    "komunitas":  ["kpm","ppmi","organisasi","perkumpulan"],
-    // ── Tempat tinggal ──────────────────────────────────────────────────────────
-    "kairo":      ["cairo","mesir","hay asyir","asyir","manshiyah"],
-    "hay":        ["hay asyir","asyir","wilayah","kawasan"],
-    "asyir":      ["hay asyir","hay","wilayah","kawasan"],
-    "manshiyah":  ["mansheya","tempat tinggal","kost","sewa"],
-    "kontrakan":  ["kost","sewa","apartemen","flat"],
-    "flat":       ["apartemen","kost","sewa","kontrakan"],
-    // ── Jabatan / role aliases — so "presiden PPMI" also searches "ketua PPMI" ──
-    "presiden":   ["ketua","pimpinan","pemimpin","koordinator"],
-    "ketua":      ["presiden","pimpinan","pemimpin"],
-    "pimpinan":   ["presiden","ketua","pemimpin"],
-    "pemimpin":   ["presiden","ketua","pimpinan"],
-    "sekretaris": ["sekjen","sekretariat"],
-    "bendahara":  ["keuangan"],
-    "koordinator":["ketua","kepala"],
-  };
 
   // ── Extract keywords: strip stopwords → expand aliases → sort by specificity ──
   const rawWords = userQuestion
@@ -1718,9 +1763,10 @@ async function fetchRelevantArticles(userQuestion, intentType) {
     .filter(w => w.length >= 3 && !INDO_STOPWORDS.has(w));
 
   // Expand with Masisir aliases (multi-word phrases stay as one entry for phrase search)
+  const aliasMap = await loadMasisirAliases();
   const expandedSet = new Set(rawWords);
   for (const w of rawWords) {
-    const aliases = MASISIR_ALIASES[w];
+    const aliases = aliasMap[w];
     if (aliases) aliases.forEach(a => expandedSet.add(a));
   }
 
@@ -13627,6 +13673,84 @@ app.delete("/api/admin/pinned-updates/:id", async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+/* ── Masisir alias dictionary (admin) ────────────────────
+ * Lets admins extend KB search vocabulary without a deploy. Every write
+ * invalidates the cache so the next query picks it up immediately rather than
+ * waiting out the 10-minute TTL.
+ * Falls back to the built-in seed when the table doesn't exist yet — see
+ * migrations/006_masisir_aliases.sql.
+ */
+app.get("/api/admin/aliases", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  try {
+    const { data, error } = await supabase
+      .from("masisir_aliases")
+      .select("*")
+      .order("term");
+    if (error) throw error;
+    res.json({ source: "db", terms: data ?? [] });
+  } catch (e) {
+    // Migration not applied yet — show what search is actually using so the
+    // admin screen isn't misleadingly empty.
+    const seed = Object.entries(MASISIR_ALIASES_SEED).map(([term, aliases]) => ({ term, aliases, note: null }));
+    res.json({ source: "seed", terms: seed, hint: "Jalankan migrations/006_masisir_aliases.sql agar bisa diedit." });
+  }
+});
+
+app.post("/api/admin/aliases", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const term = String(req.body.term ?? "").trim().toLowerCase();
+  const rawAliases = req.body.aliases;
+  if (!term) return res.status(400).json({ error: "term wajib diisi" });
+  if (!Array.isArray(rawAliases) || rawAliases.length === 0) {
+    return res.status(400).json({ error: "aliases wajib berupa array dan tidak kosong" });
+  }
+  const aliases = [...new Set(
+    rawAliases.map(a => String(a).trim().toLowerCase()).filter(a => a && a !== term)
+  )];
+  if (aliases.length === 0) return res.status(400).json({ error: "aliases tidak boleh sama dengan term-nya sendiri" });
+
+  const supabase = getAdminClient();
+  try {
+    const { data, error } = await supabase
+      .from("masisir_aliases")
+      .upsert({ term, aliases, note: req.body.note?.trim() || null, updated_at: new Date().toISOString() })
+      .select()
+      .single();
+    if (error) throw error;
+    invalidateAliasCache();
+    invalidateKBCache(); // cached KB results were built with the old vocabulary
+    console.log(`[ADMIN] alias "${term}" → [${aliases.join(", ")}] by ${admin.email}`);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: sanitizeErr(e) });
+  }
+});
+
+app.delete("/api/admin/aliases/:term", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  try {
+    const { error } = await supabase
+      .from("masisir_aliases")
+      .delete()
+      .eq("term", String(req.params.term).toLowerCase());
+    if (error) throw error;
+    invalidateAliasCache();
+    invalidateKBCache();
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: sanitizeErr(e) });
   }
 });
 
