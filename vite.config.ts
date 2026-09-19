@@ -101,4 +101,23 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Splits the framework runtime + Supabase SDK (the bulk of the
+        // main entry chunk — confirmed by inspecting the built output;
+        // no heavy feature library like recharts/react-markdown/pdfjs
+        // leaks in here, every lazy-loaded page already keeps its own
+        // dependencies in its own chunk) into a chunk that changes far
+        // less often than app code. Doesn't shrink first-load size, but
+        // repeat visitors stop re-downloading React/ReactDOM/Supabase on
+        // every deploy — the cache only invalidates when this dependency
+        // set itself changes, not on every app code change.
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-supabase": ["@supabase/supabase-js"],
+        },
+      },
+    },
+  },
 });

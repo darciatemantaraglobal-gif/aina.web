@@ -44,6 +44,9 @@ Postgres langsung (`DATABASE_URL`), terpisah total dari Supabase client.
 4. migrations/001_query_analytics.sql
 5. migrations/002_kb_drafts.sql
 6. migrations/003_chat_usage_atomic.sql
+7. migrations/005_payment_orders.sql — wajib SEBELUM mengaktifkan
+   PAYMENT_ENABLED=true (lihat F4-2: webhook Midtrans butuh tabel ini
+   untuk mencocokkan order_id ke user secara exact, bukan tebak prefix)
 ```
 
 **Kenapa langkah 3 bisa terjadi:** `knowledge_base` adalah tabel yang

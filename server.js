@@ -76,6 +76,7 @@ import { optimizeHistory, estimateTokens, debugTokenReport } from './engine/hist
 import { buildSourceResult, logSourceDecision } from './engine/sourceOrchestrator.js';
 import { detectMasisirContext } from './engine/contextDetector.js';
 import { expandQuery } from './engine/queryExpander.js';
+import { createProceduresRouter } from "./server/routes/procedures.js";
 import { createProductivityRouter }   from "./server/routes/productivity.js";
 import { createProductivityAIRouter } from "./server/routes/productivityAI.js";
 import { createKnowledgeTestRouter }      from "./server/routes/knowledgeTest.js";
@@ -4451,6 +4452,37 @@ async function submitClarificationDraft(draft, userId, supabase) {
   }
 }
 
+// ── Tiered model routing ────────────────────────────────────────────────────
+// Tier A (lightweight): fast + cheap — casual, short queries, KB-strong simple answers
+// Tier B (standard):   quality   — procedural, memory-aware, complex, time-sensitive
+// Fallback:            free safety-net — only if both paid tiers fail
+//
+// Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
+//
+// Hoisted to module scope (was previously a local const re-declared inside
+// the /api/chat handler with primary/fallback both hardcoded to the SAME
+// model in both tiers — despite the comments below already describing the
+// intended lite/full split — so the "tiered" routing was a no-op and every
+// query paid full Flash pricing). GET /api/admin/intel/model-config used to
+// carry its own separately-hardcoded copy of the same stale values, purely
+// for display — it now reads from here too, so the two can no longer drift.
+const MODEL_TIERS = {
+  // Tier A — fast + cheap for casual / KB-covered stable queries
+  // Uses Flash Lite as primary → ~40% cheaper, ~15% faster than Flash on simple tasks
+  lightweight: {
+    primary:   "google/gemini-2.5-flash-lite",           // fast & cheap for simple queries
+    fallback:  "google/gemini-2.5-flash",                // upgrade if lite fails
+    emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
+  },
+  // Tier B — quality for complex, procedural, dynamic, and fiqh queries
+  // Uses full Flash as primary → better instruction-following for structured outputs
+  standard: {
+    primary:   "google/gemini-2.5-flash",                // proven stable primary
+    fallback:  "google/gemini-2.5-flash-lite",           // lite fallback if primary fails
+    emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
+  },
+};
+
 /* ── AI Chat ─────────────────────────────────────────── */
 app.post("/api/chat", chatLimiter, async (req, res) => {
   const _chatDebugStart = Date.now();
@@ -4737,30 +4769,6 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[CHAT] greeting fast-path → user=${user.id.slice(0,8)}`);
     return;
   }
-
-  // ── Tiered model routing ────────────────────────────────────────────────────
-  // Tier A (lightweight): fast + cheap — casual, short queries, KB-strong simple answers
-  // Tier B (standard):   quality   — procedural, memory-aware, complex, time-sensitive
-  // Fallback:            free safety-net — only if both paid tiers fail
-  //
-  // Models are tried SEQUENTIALLY per tier (not raced) to avoid wasting paid API calls.
-  // ──────────────────────────────────────────────────────────────────────────────
-  const MODEL_TIERS = {
-    // Tier A — fast + cheap for casual / KB-covered stable queries
-    // Uses Flash Lite as primary → ~40% cheaper, ~15% faster than Flash on simple tasks
-    lightweight: {
-      primary:   "google/gemini-2.5-flash",       // fast & cheap for simple queries
-      fallback:  "google/gemini-2.5-flash",            // upgrade if lite fails
-      emergency: "meta-llama/llama-3.3-70b-instruct:free", // free safety-net
-    },
-    // Tier B — quality for complex, procedural, dynamic, and fiqh queries
-    // Uses full Flash as primary → better instruction-following for structured outputs
-    standard: {
-      primary:   "google/gemini-2.5-flash",            // proven stable primary
-      fallback:  "google/gemini-2.5-flash",       // lite fallback if primary fails
-      emergency: "meta-llama/llama-3.3-70b-instruct:free", // free last resort
-    },
-  };
 
   // ── Early Perplexity pre-fetch (in parallel with Wave 1) ──────────────────
   // Heuristic: start Perplexity early for queries that are likely to need external context.
@@ -12544,80 +12552,8 @@ app.delete("/api/admin/news/:id", adminContentLimiter, async (req, res) => {
 // ─── PROCEDURES (MASISIR) ─────────────────────────────────────────────────
 
 /* GET /api/procedures — public, returns all active procedures */
-app.get("/api/procedures", async (req, res) => {
-  const supabase = getAdminClient();
-  if (!supabase) return res.json({ procedures: DEFAULT_PROCEDURES.map(p => ({ ...p, is_active: true })) });
-  const { data, error } = await supabase
-    .from("masisir_procedures")
-    .select("*")
-    .eq("is_active", true)
-    .order("display_order", { ascending: true });
-  if (error) {
-    // Table may not exist yet — fallback to hardcoded defaults
-    if (error.code === "42P01") return res.json({ procedures: DEFAULT_PROCEDURES.map(p => ({ ...p, is_active: true })), fallback: true });
-    return res.status(500).json({ error: sanitizeErr(error) });
-  }
-  res.json({ procedures: data });
-});
-
-/* POST /api/admin/procedures — create procedure (master admin only) */
-app.post("/api/admin/procedures", writeLimiter, async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
-  const { title, subtitle, icon_name = "FileText", color = "text-violet-400", steps = [], display_order = 0 } = req.body;
-  if (!title?.trim()) return res.status(400).json({ error: "Judul wajib diisi" });
-  const id = `proc_${Date.now()}`;
-  const supabase = getAdminClient();
-  const { data, error } = await supabase.from("masisir_procedures").insert({
-    id, title: title.trim(), subtitle: subtitle?.trim() || null,
-    icon_name, color, steps, display_order, is_active: true,
-  }).select().single();
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.status(201).json({ procedure: data });
-});
-
-/* PUT /api/admin/procedures/:id — update procedure (master admin only) */
-app.put("/api/admin/procedures/:id", writeLimiter, async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
-  const { title, subtitle, icon_name, color, steps, display_order, is_active } = req.body;
-  const updates = {};
-  if (title !== undefined)         updates.title         = title?.trim();
-  if (subtitle !== undefined)      updates.subtitle      = subtitle?.trim() || null;
-  if (icon_name !== undefined)     updates.icon_name     = icon_name;
-  if (color !== undefined)         updates.color         = color;
-  if (steps !== undefined)         updates.steps         = steps;
-  if (display_order !== undefined) updates.display_order = display_order;
-  if (is_active !== undefined)     updates.is_active     = !!is_active;
-  updates.updated_at = new Date().toISOString();
-  const supabase = getAdminClient();
-  const { data, error } = await supabase.from("masisir_procedures").update(updates).eq("id", req.params.id).select().single();
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.json({ procedure: data });
-});
-
-/* DELETE /api/admin/procedures/:id — delete procedure (master admin only) */
-app.delete("/api/admin/procedures/:id", writeLimiter, async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
-  const supabase = getAdminClient();
-  const { error } = await supabase.from("masisir_procedures").delete().eq("id", req.params.id);
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.json({ success: true });
-});
-
-/* POST /api/admin/procedures/reorder — save new display_order (master admin only) */
-app.post("/api/admin/procedures/reorder", writeLimiter, async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin || !isMasterAdminId(admin.id)) return res.status(403).json({ error: "Hanya master admin" });
-  const { order } = req.body; // [{ id, display_order }]
-  if (!Array.isArray(order)) return res.status(400).json({ error: "Format tidak valid" });
-  const supabase = getAdminClient();
-  await Promise.all(order.map(({ id, display_order }) =>
-    supabase.from("masisir_procedures").update({ display_order, updated_at: new Date().toISOString() }).eq("id", id)
-  ));
-  res.json({ success: true });
-});
+// Procedures routes (GET /api/procedures + CRUD /api/admin/procedures/*)
+// extracted to server/routes/procedures.js — see mount call below (F4-5).
 
 // ─── LIBRARY ───────────────────────────────────────────────────────────────
 
@@ -14164,6 +14100,20 @@ if (PAYMENT_ENABLED) {
         },
       });
 
+      // Record the exact order_id → user_id mapping BEFORE handing the
+      // token to the client, so the webhook can look the user up by exact
+      // match instead of guessing from a truncated uid prefix embedded in
+      // orderId (order_id can't fit a full UUID — Midtrans caps it at 50
+      // chars). Fail closed: an order Midtrans could later confirm but we
+      // can never attribute to a user is worse than not starting it.
+      const { error: orderRecordErr } = await supabase
+        .from("payment_orders")
+        .insert({ order_id: orderId, user_id: user.id, plan: plan_id });
+      if (orderRecordErr) {
+        console.error("[PAYMENT] Failed to record payment_orders row:", orderRecordErr.message);
+        return res.status(500).json({ error: "Gagal membuat sesi pembayaran" });
+      }
+
       console.log(`[PAYMENT] Snap token created: orderId=${orderId} plan=${plan_id} user=${user.id}`);
       res.json({ token: snapToken, order_id: orderId });
     } catch (e) {
@@ -14185,22 +14135,25 @@ if (PAYMENT_ENABLED) {
         transaction_status === "settlement";
 
       if (isSuccess) {
-        // Parse userId and plan from orderId: AINA-PRO_MONTHLY-<8-char-uid>-<timestamp>
-        const parts = order_id.split("-");
-        const planKey = parts.slice(1, 3).join("_").toLowerCase(); // e.g. pro_monthly
-        const plan = PLANS[planKey];
+        const supabase = getAdminClient();
+        // Exact lookup by order_id (set at creation time in
+        // /api/payment/create-order) — order_id itself can't carry a full
+        // UUID (Midtrans caps it at 50 chars), so identity is resolved via
+        // this mapping table instead of guessing from a truncated prefix
+        // embedded in the string, which risked matching the wrong user.
+        const { data: orderRecord, error: orderLookupErr } = await supabase
+          .from("payment_orders")
+          .select("user_id, plan")
+          .eq("order_id", order_id)
+          .maybeSingle();
+        if (orderLookupErr) {
+          console.error("[PAYMENT] payment_orders lookup failed:", orderLookupErr.message);
+        }
+        const planKey = orderRecord?.plan;
+        const plan = planKey ? PLANS[planKey] : null;
 
         if (plan) {
-          const supabase = getAdminClient();
-          // Find user by matching the 8-char uid prefix
-          const uidPrefix = parts[3];
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("user_id")
-            .ilike("user_id", `${uidPrefix}%`)
-            .limit(1);
-
-          const userId = profiles?.[0]?.user_id;
+          const userId = orderRecord.user_id;
           if (userId) {
             const expiresAt = new Date(Date.now() + plan.duration_days * 86400 * 1000).toISOString();
 
@@ -14769,21 +14722,21 @@ app.get("/api/admin/intel/model-config", async (req, res) => {
   const admin = await verifyMasterAdmin(req.headers.authorization);
   if (!admin) return res.status(403).json({ error: "Unauthorized" });
   res.json({
+    // Reads the actual routing config (module-level MODEL_TIERS) instead of
+    // a separately-hardcoded copy — the two used to drift silently, so this
+    // display could show a tiering scheme that wasn't what /api/chat
+    // actually did.
     tiers: {
       lightweight: {
         label: "Tier A — Ringan",
         description: "Pertanyaan kasual, KB kuat + intent sederhana",
-        primary:   "google/gemini-2.5-flash",
-        fallback:  "google/gemini-2.5-flash",
-        emergency: "meta-llama/llama-3.3-70b-instruct:free",
+        ...MODEL_TIERS.lightweight,
         routes_for: ["casual", "KB kuat + factual/procedural/confused"],
       },
       standard: {
         label: "Tier B — Standar",
         description: "Pertanyaan kompleks, time-sensitive, fiqh, Arabic, atau KB lemah/tidak ada",
-        primary:   "google/gemini-2.5-flash",
-        fallback:  "google/gemini-2.5-flash",
-        emergency: "meta-llama/llama-3.3-70b-instruct:free",
+        ...MODEL_TIERS.standard,
         routes_for: ["procedural", "fiqh", "arabic_writing", "dynamic", "time-sensitive", "currency", "KB lemah/tidak ada"],
       },
     },
@@ -15403,6 +15356,12 @@ app.post("/api/admin/telegram/userbot/disconnect", async (req, res) => {
     return res.json({ ok: true });
   } catch { return res.json({ ok: true }); }
 });
+
+// ── Procedures routes (moved to server/routes/procedures.js) — F4-5 ────────
+app.use("/api", createProceduresRouter({
+  getAdminClient, verifyAdminUser, isMasterAdminId, sanitizeErr, writeLimiter,
+  defaultProcedures: DEFAULT_PROCEDURES,
+}));
 
 // ── Productivity CRUD routes (moved to server/routes/productivity.js) ──────
 app.use("/api/productivity", createProductivityRouter({ verifyAuth, getAdminClient }));

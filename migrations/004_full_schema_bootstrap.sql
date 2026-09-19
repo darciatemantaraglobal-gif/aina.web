@@ -474,7 +474,7 @@ FROM (VALUES
   ('knowledge_sources'), ('knowledge_chunks'), ('demo_access_requests'),
   -- dari migrations/*.sql
   ('query_analytics'), ('query_feedback'), ('kb_drafts'), ('chat_usage'),
-  ('reminder_logs'),
+  ('reminder_logs'), ('payment_orders'),
   -- dari file bootstrap ini (Bagian 2-4)
   ('app_config'), ('system_settings'), ('system_announcements'),
   ('user_announcement_views'), ('answer_feedback'), ('saved_answers'),

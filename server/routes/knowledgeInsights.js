@@ -14,6 +14,20 @@
  *
  * ADDITIVE-ONLY: tidak mengubah /api/chat, tidak mengubah retrieval.
  * kb_drafts tidak terhubung ke knowledge_base — tidak masuk ke retrieval.
+ *
+ * ── STATUS: belum siap produksi / tidak ada UI (launch checklist F4-6) ──────
+ * Router ini TIDAK dipanggil dari mana pun di src/ (Admin Panel) — cuma bisa
+ * diakses lewat panggilan API langsung dengan X-Internal-Key atau bearer
+ * token admin. Belum ada tombol atau halaman di dashboard untuk ini.
+ *
+ * PENTING: PATCH /drafts/:id dengan status="approved" HANYA mengubah kolom
+ * status di kb_drafts — draft-nya TIDAK otomatis disalin ke knowledge_base,
+ * jadi tidak pernah benar-benar ikut retrieval AI. publishDraftToKnowledgeBase()
+ * di draftStorageService.js masih placeholder (sengaja throw error kalau
+ * dipanggil). Kalau mau fitur ini dipakai beneran, publishDraftToKnowledgeBase
+ * perlu diimplementasi dulu (perlu keputusan desain: draft tidak punya field
+ * `category` yang knowledge_base butuhkan) — lihat PATCH /drafts/:id di bawah
+ * untuk catatan yang sama, dikirim balik ke caller API.
  */
 import { Router } from "express";
 import {
@@ -137,7 +151,10 @@ export function createKnowledgeInsightsRouter({ getAdminClient, verifyAuth, open
   // ── PATCH /drafts/:id ─────────────────────────────────────────────────
   // Update status draft: approved | rejected | draft
   // Body: { status: "approved" | "rejected" | "draft" }
-  // Response: updated draft row
+  // Response: updated draft row + a `note` when status="approved" — this
+  // ONLY flips the kb_drafts.status column, it does NOT copy the draft
+  // into knowledge_base (publishDraftToKnowledgeBase() is unimplemented —
+  // see file header). Without the note, "approved" reads as "published".
   router.patch("/drafts/:id", h(async (req, res) => {
     if (!(await guardInternal(req, res))) return;
 
@@ -146,7 +163,10 @@ export function createKnowledgeInsightsRouter({ getAdminClient, verifyAuth, open
     if (!status) return res.status(400).json({ error: "Field 'status' wajib diisi" });
 
     const updated = await updateDraftStatus(id, status, svcDeps);
-    res.json(updated);
+    const note = status === "approved"
+      ? "Status diubah ke 'approved', TAPI draft ini belum tersalin ke knowledge_base dan belum ikut retrieval AI — publishDraftToKnowledgeBase() belum diimplementasi. Salin manual lewat Admin Panel kalau mau draft ini benar-benar aktif."
+      : undefined;
+    res.json(note ? { ...updated, note } : updated);
   }));
 
   return router;
