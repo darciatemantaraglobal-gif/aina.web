@@ -22,6 +22,9 @@ import {
   classifyConfidence,
   extractQuranReference,
   isFiqhQuery,
+  cloneArticleList,
+  needsFollowUpContext,
+  buildFollowUpQuery,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 
@@ -476,5 +479,79 @@ describe("buildArticleEmbedText", () => {
   it("leaves a short article untouched", () => {
     const text = buildArticleEmbedText({ title: "Judul", content: "Isi singkat." });
     expect(text).toBe("Judul\n\nIsi singkat.");
+  });
+});
+
+// ── cloneArticleList ────────────────────────────────────────────────────
+// The KB cache used to hand out the stored array itself. The chat handler
+// re-ranks what it gets IN PLACE (the city boost splices it), so the first
+// user's city-personalised ordering was written straight back into the shared
+// cache entry and served to everyone else asking the same question for the
+// next 5 minutes.
+
+describe("cloneArticleList", () => {
+  it("REGRESSION: in-place re-ranking of the copy cannot reach the original", () => {
+    const original = [{ title: "A" }, { title: "B" }];
+    const copy = cloneArticleList(original);
+    copy.splice(0, copy.length, { title: "B" }, { title: "A" });
+    expect(original.map(a => a.title)).toEqual(["A", "B"]);
+  });
+
+  it("carries over the strength signals that live on the array itself", () => {
+    const original = [{ title: "A" }];
+    original._topScore = 8;
+    original._topSimilarity = 0.72;
+    const copy = cloneArticleList(original);
+    expect(copy._topScore).toBe(8);
+    expect(copy._topSimilarity).toBe(0.72);
+  });
+
+  it("leaves absent signals absent rather than inventing zeros", () => {
+    const copy = cloneArticleList([{ title: "A" }]);
+    expect(copy._topScore).toBeUndefined();
+    expect(copy._topSimilarity).toBeUndefined();
+  });
+});
+
+// ── Follow-up query resolution ──────────────────────────────────────────
+// KB retrieval ran on the last message alone, so "berapa biayanya?" searched
+// for "biayanya" — matching a little of every article that mentions a cost and
+// nothing about the topic the user was actually still asking about.
+
+describe("needsFollowUpContext", () => {
+  it("flags a back-reference that carries no topic", () => {
+    expect(needsFollowUpContext("berapa biayanya?")).toBe(true);
+    expect(needsFollowUpContext("kapan tuh?")).toBe(true);
+  });
+
+  it("flags a standalone command", () => {
+    expect(needsFollowUpContext("jelaskan")).toBe(true);
+  });
+
+  it("leaves a question that carries its own topic alone", () => {
+    expect(needsFollowUpContext("berapa biaya wafidin al-azhar")).toBe(false);
+    expect(needsFollowUpContext("gimana cara ngurus iqomah")).toBe(false);
+  });
+
+  it("is false for an empty message", () => {
+    expect(needsFollowUpContext("")).toBe(false);
+  });
+});
+
+describe("buildFollowUpQuery", () => {
+  it("borrows the topic from the previous user turn", () => {
+    const q = buildFollowUpQuery("berapa biayanya?", "gimana cara daftar kuliah di Al-Azhar");
+    expect(q).toContain("biayanya");
+    expect(q).toContain("daftar");
+    expect(q).toContain("azhar");
+  });
+
+  it("does not touch a query that already stands on its own", () => {
+    const q = "berapa biaya wafidin al-azhar";
+    expect(buildFollowUpQuery(q, "pertanyaan sebelumnya soal iqomah")).toBe(q);
+  });
+
+  it("returns the query unchanged when there is no previous turn", () => {
+    expect(buildFollowUpQuery("berapa biayanya?", null)).toBe("berapa biayanya?");
   });
 });

@@ -1484,19 +1484,36 @@ const KB_CACHE_MAX_SIZE = 200;
 function _kbCacheKey(q, intent) {
   return `${intent}|${q.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 120)}`;
 }
+/**
+ * Shallow-copy a retrieved article list, carrying over the two strength signals
+ * that live as properties ON the array (not inside it).
+ *
+ * Callers re-rank what they get back IN PLACE — the city boost in the chat
+ * handler splices the array — so handing out the cached array itself let one
+ * user's personalised ordering overwrite the shared entry, and everyone who
+ * asked the same question inside the 5-minute TTL got it.
+ */
+export function cloneArticleList(list) {
+  const copy = list.slice();
+  if (list._topScore !== undefined)      copy._topScore = list._topScore;
+  if (list._topSimilarity !== undefined) copy._topSimilarity = list._topSimilarity;
+  return copy;
+}
+
 function _kbCacheGet(q, intent) {
   const k = _kbCacheKey(q, intent);
   const entry = _kbCache.get(k);
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) { _kbCache.delete(k); return null; }
-  return entry.results;
+  return cloneArticleList(entry.results);
 }
 function _kbCacheSet(q, intent, results) {
   if (_kbCache.size >= KB_CACHE_MAX_SIZE) {
     // Evict oldest entry (first inserted)
     _kbCache.delete(_kbCache.keys().next().value);
   }
-  _kbCache.set(_kbCacheKey(q, intent), { results, expiresAt: Date.now() + KB_CACHE_TTL_MS });
+  // Store a copy too — the caller keeps using the array it was handed.
+  _kbCache.set(_kbCacheKey(q, intent), { results: cloneArticleList(results), expiresAt: Date.now() + KB_CACHE_TTL_MS });
 }
 /** Call this whenever a KB article is approved/updated to invalidate the cache. */
 function invalidateKBCache() {
@@ -1573,6 +1590,49 @@ const INDO_STOPWORDS = new Set([
   "ya","dong","deh","sih","nih","tuh","kan","cuma","aja","saja","banget","sekali",
   "info","tahu","tau","cara","tolong","kasih","jelasin","jelaskan",
 ]);
+
+/* ── Follow-up query resolution ───────────────────────────────────────────
+ * KB retrieval ran on the last message alone, so a follow-up carried none of
+ * the topic it was following up ON. "berapa biayanya?" right after a question
+ * about pendaftaran Al-Azhar searched the KB for "biayanya" — which matches a
+ * bit of every article that mentions a cost, and nothing about Al-Azhar. The
+ * user sees AINA lose the thread on the most natural thing to type next.
+ *
+ * So: when a message cannot stand on its own as a search query, borrow the
+ * topic words from the previous user message. Retrieval only — the message
+ * shown to the user and sent to the model is untouched.
+ */
+const _BACKREF_PATTERN     = /\b(itu|ini|tersebut|tadi|barusan|sana|situ)\b|nya\b/i;
+const _BARE_INTERROGATIVE  = /^(berapa|kapan|di\s?mana|dimana|kemana|siapa|apa|apakah|gimana|bagaimana|kenapa|mengapa|kok|terus|lalu)\b/i;
+
+function _contentWords(text) {
+  return (String(text ?? "").toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter(w => w.length >= 3 && !INDO_STOPWORDS.has(w));
+}
+
+/**
+ * True when a message has no topic of its own and only makes sense as a
+ * continuation — a back-reference ("harganya berapa"), a bare question word,
+ * or a standalone command ("jelaskan").
+ */
+export function needsFollowUpContext(query) {
+  const q = String(query ?? "").trim();
+  if (!q) return false;
+  // Two or more topic words of its own → it can be searched as written.
+  if (_contentWords(q).length >= 2) return false;
+  return _BACKREF_PATTERN.test(q) || _BARE_INTERROGATIVE.test(q) || STANDALONE_CMD_PATTERNS.test(q);
+}
+
+/**
+ * Append the previous user message's topic words to a follow-up, so the KB
+ * search sees what the user is actually still asking about.
+ * Returns the query unchanged when it already stands alone.
+ */
+export function buildFollowUpQuery(currentQuery, prevUserMessage) {
+  if (!prevUserMessage || !needsFollowUpContext(currentQuery)) return currentQuery;
+  const topic = _contentWords(prevUserMessage).slice(0, 6).join(" ");
+  return topic ? `${currentQuery} ${topic}` : currentQuery;
+}
 
 // ── Masisir term aliases — maps one spelling to alternative spellings ────────
 // When user uses any variant, all variants are searched in the KB.
@@ -5048,7 +5108,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
 
   // Context detection + query expansion (synchronous — before any async calls)
   const masisirCtx = detectMasisirContext(retrievalQuery);
-  const { kbQuery, strategy: retrievalStrategy, changed: queryExpanded } = expandQuery(retrievalQuery, masisirCtx);
+  // A follow-up ("berapa biayanya?") carries no topic of its own, so the KB
+  // query — and only the KB query — borrows it from the previous user turn.
+  // Intent, Dorar, Perplexity and the model prompt all keep the raw message.
+  const _userTurns = messages.filter(m => m.role === "user" && typeof m.content === "string");
+  const _prevUserMessage = _userTurns.length >= 2 ? _userTurns[_userTurns.length - 2].content : null;
+  const contextualQuery = buildFollowUpQuery(retrievalQuery, _prevUserMessage);
+  if (contextualQuery !== retrievalQuery) {
+    console.log(`[FollowUp] KB query enriched: "${retrievalQuery.slice(0, 40)}" → "${contextualQuery.slice(0, 80)}"`);
+  }
+  const { kbQuery, strategy: retrievalStrategy, changed: queryExpanded } = expandQuery(contextualQuery, masisirCtx);
 
   // Content moderation — fired here but NOT awaited yet. This used to block
   // everything below it for its own ~0.5–2s round trip even though nothing
