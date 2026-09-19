@@ -849,7 +849,7 @@ console.log(`Service role: ${SERVICE_ROLE_KEY ? "✓ configured" : "✗ missing 
 console.log(`OpenRouter: ${process.env.OPENROUTER_API_KEY ? "✓ configured" : "✗ missing OPENROUTER_API_KEY"}`);
 console.log(`WebSearch: ${process.env.PERPLEXITY_API_KEY ? "✓ via Perplexity (real-time web)" : process.env.OPENROUTER_API_KEY ? "✓ via Gemini 2.5 Flash (OpenRouter, training data only)" : "✗ disabled — no API key set"}`);
 console.log(`Voyage AI (RAG embeddings): ${process.env.VOYAGE_API_KEY ? "✓ configured — semantic (vector) search enabled" : "✗ not configured — keyword search only"}`);
-console.log(`OpenAI (moderation/whisper/vision): ${process.env.OPENAI_API_KEY ? "✓ configured" : "✗ not configured — moderation OFF, voice input & vision pre-analysis disabled"}`);
+console.log(`Moderation/Whisper/Vision (via OpenRouter): ${process.env.OPENROUTER_API_KEY ? "✓ enabled" : "✗ disabled — no OPENROUTER_API_KEY"}`);
 console.log(`Email (Resend): ${process.env.RESEND_API_KEY ? "✓ configured" : "✗ not configured — email notifications disabled"}`);
 console.log(`Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? "✓ configured — real-time Places search enabled" : "✗ not configured — Places search disabled"}`);
 
@@ -1208,50 +1208,79 @@ async function triggerKeywordGen(articleId) {
   } catch { /* silent — keyword gen is best-effort */ }
 }
 
-/* ── OpenAI Content Moderation ──────────────────────────────────────────────
-   Uses the free OpenAI Moderation API to screen user messages before processing.
-   Fail-safe: if moderation API is down, always returns { flagged: false }.        */
+/* ── Content Moderation (LLM classifier via OpenRouter) ──────────────────────
+ * OpenAI's dedicated /v1/moderations endpoint has no OpenRouter equivalent —
+ * OpenRouter's catalog is chat/embeddings/transcription, not a free-standing
+ * safety classifier. This is a real trade-off, not a drop-in swap:
+ *   - a purpose-built classifier vs. an LLM asked to classify (less
+ *     consistent, no fixed category taxonomy)
+ *   - adds one small model call to every chat turn instead of a call to a
+ *     free dedicated endpoint
+ * Kept because the alternative is leaving moderation permanently off, and a
+ * cheap approximate check beats none. Same fail-safe contract as before:
+ * any error, timeout, or unparseable reply returns { flagged: false } —
+ * moderation must never be why a chat request fails.
+ */
 async function checkModeration(text) {
-  if (!process.env.OPENAI_API_KEY) return { flagged: false };
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return { flagged: false };
   try {
-    const res = await fetch("https://api.openai.com/v1/moderations", {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       signal: AbortSignal.timeout(3000),
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Moderation",
       },
-      body: JSON.stringify({ input: text }),
+      body: JSON.stringify({
+        model: MODEL_TIERS.lightweight.primary,
+        temperature: 0,
+        max_tokens: 20,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Kamu adalah filter keamanan konten untuk chat mahasiswa. Balas HANYA dengan satu baris:\n" +
+              '"SAFE" jika pesan wajar (termasuk pertanyaan kuliah, kehidupan sehari-hari, curhat biasa, bahasa gaul/informal).\n' +
+              '"FLAGGED: <kategori>" HANYA jika pesan mengandung ajakan kekerasan nyata, eksploitasi seksual anak, ' +
+              "instruksi membuat senjata/bahan berbahaya, atau ujaran kebencian ekstrem. " +
+              "Jangan flag keluhan, kekesalan, bahasa kasar ringan, atau topik sensitif yang dibahas secara wajar.",
+          },
+          { role: "user", content: text.slice(0, 2000) },
+        ],
+      }),
     });
     if (!res.ok) return { flagged: false };
     const data = await res.json();
-    const result = data.results?.[0];
-    if (result?.flagged) {
-      const categories = Object.entries(result.categories || {})
-        .filter(([, v]) => v).map(([k]) => k).join(", ");
-      console.warn(`[Moderation] ⚠️  flagged categories: ${categories || "unknown"}`);
-    }
-    return { flagged: result?.flagged ?? false };
+    const raw = (data?.choices?.[0]?.message?.content ?? "").trim();
+    const flagged = /^FLAGGED/i.test(raw);
+    if (flagged) console.warn(`[Moderation] ⚠️  ${raw.slice(0, 100)}`);
+    return { flagged };
   } catch {
-    return { flagged: false }; // never block on moderation API failure
+    return { flagged: false }; // never block on moderation call failure
   }
 }
 
-/* ── Article Summary Generator (gpt-4o-mini) ────────────────────────────────
+/* ── Article Summary Generator (gpt-4o-mini via OpenRouter) ──────────────────
    Generates a 2-3 sentence Indonesian summary for KB articles using gpt-4o-mini.
-   Much cheaper than GPT-4o ($0.15/1M tokens) — $5 covers ~30k article summaries. */
+   Routed through OpenRouter (openai/gpt-4o-mini) rather than OpenAI directly —
+   same model, no separate OpenAI account/billing needed. */
 async function generateArticleSummary(title, content, category) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!process.env.OPENROUTER_API_KEY) return null;
   try {
     const snippet = content?.slice(0, 2500) || "";
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Article Summary",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages: [{
           role: "user",
           content: `Buat ringkasan 2-3 kalimat dalam Bahasa Indonesia untuk artikel knowledge base berikut. Ringkasan harus padat, informatif, dan langsung ke poin — berguna untuk mahasiswa Indonesia di Mesir (Masisir).
@@ -1274,18 +1303,23 @@ Tulis hanya ringkasannya, tanpa kalimat pembuka seperti "Artikel ini membahas...
   }
 }
 
-/* ── Important Notes Generator (gpt-4o-mini) ─────────────────────────────────
+/* ── Important Notes Generator (gpt-4o-mini via OpenRouter) ──────────────────
    Generates critical warnings/tips for KB articles. Free-format 1-3 bullet points.
    Examples: deadlines, requirements, common mistakes, frequently changing info. */
 async function generateImportantNotes(title, content, category) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!process.env.OPENROUTER_API_KEY) return null;
   try {
     const snippet = content?.slice(0, 2500) || "";
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Important Notes",
+      },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages: [{
           role: "user",
           content: `Kamu adalah asisten untuk Knowledge Base AINA (mahasiswa Indonesia di Mesir/Masisir).
@@ -1318,7 +1352,7 @@ Format: Tulis poin-poin singkat (maks 2 kalimat per poin), pisahkan dengan baris
 
 /* Trigger important_notes generation for one article (fire-and-forget) */
 async function triggerImportantNotesGen(articleId) {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!process.env.OPENROUTER_API_KEY) return;
   const supabase = getAdminClient();
   if (!supabase) return;
   try {
@@ -1338,7 +1372,7 @@ async function triggerImportantNotesGen(articleId) {
 
 /* Trigger summary generation for one article (fire-and-forget) */
 async function triggerSummaryGen(articleId) {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!process.env.OPENROUTER_API_KEY) return;
   const supabase = getAdminClient();
   if (!supabase) return;
   try {
@@ -1356,21 +1390,25 @@ async function triggerSummaryGen(articleId) {
   } catch { /* silent — summary gen is best-effort */ }
 }
 
-/* ── OpenAI GPT-4o Vision — Arabic document analysis ───────────────────────
+/* ── GPT-4o Vision via OpenRouter — Arabic document analysis ─────────────────
    Analyses an image using GPT-4o Vision, specialised for Arabic documents.
    Returns a string with extracted text and explanation, or null on failure.
-   Used as pre-analysis context in the main chat pipeline.                    */
+   Used as pre-analysis context in the main chat pipeline. Routed through
+   OpenRouter (openai/gpt-4o) — same model and image_url request shape as
+   OpenAI's own API, no separate OpenAI account needed.                       */
 async function analyzeImageWithVision(dataUrl, userQuestion) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!process.env.OPENROUTER_API_KEY) return null;
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Vision",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "openai/gpt-4o",
         messages: [{
           role: "user",
           content: [
@@ -2920,16 +2958,23 @@ async function fetchUserMemories(userId, query = "", intentPrimary = "factual") 
     });
     if (active.length === 0) return [];
 
-    // ── Semantic reranking (if OpenAI available) ─────────────────────────────
-    // Batch-embed query + all memories in one API call → cosine similarity → rerank
-    if (process.env.OPENAI_API_KEY && query.trim().length > 3 && active.length > 0) {
+    // ── Semantic reranking (via OpenRouter embeddings) ────────────────────────
+    // Batch-embed query + all memories in one API call → cosine similarity → rerank.
+    // OpenRouter's /embeddings endpoint is OpenAI-compatible (same request/
+    // response shape), so this is a URL + model-id swap, not a rewrite.
+    if (process.env.OPENROUTER_API_KEY && query.trim().length > 3 && active.length > 0) {
       try {
         const texts = [query.trim().slice(0, 500), ...active.map(m => m.memory.slice(0, 300))];
-        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+        const embRes = await fetch("https://openrouter.ai/api/v1/embeddings", {
           method: "POST",
           signal: AbortSignal.timeout(5000),
-          headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "text-embedding-3-small", input: texts }),
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://ainalabs.pro",
+            "X-Title": "AINA Memory Rerank",
+          },
+          body: JSON.stringify({ model: "openai/text-embedding-3-small", input: texts }),
         });
         if (embRes.ok) {
           const embData = await embRes.json();
@@ -3218,9 +3263,10 @@ app.get("/api/health", (_req, res) => {
     },
     services: {
       supabase:   !!process.env.SUPABASE_URL,
+      // Covers chat, moderation, whisper, vision, embeddings, and article
+      // summary/translation generation — all routed through OpenRouter now.
       openrouter: !!process.env.OPENROUTER_API_KEY,
       perplexity: !!process.env.PERPLEXITY_API_KEY,
-      openai:     !!process.env.OPENAI_API_KEY,
       resend:     !!process.env.RESEND_API_KEY,
       google_maps:!!process.env.GOOGLE_MAPS_API_KEY,
     },
@@ -5383,7 +5429,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   if (attachedFile?.type === "image" && attachedFile.dataUrl) {
     // Pre-analysis with GPT-4o Vision for Arabic document understanding
     // This runs alongside the existing multimodal model for richer context
-    if (process.env.OPENAI_API_KEY) {
+    if (process.env.OPENROUTER_API_KEY) {
       try {
         console.log("[Vision] Analysing image with GPT-4o Vision...");
         const visionAnalysis = await analyzeImageWithVision(attachedFile.dataUrl, lastUserMessage);
@@ -6501,13 +6547,21 @@ const chatFileUpload = multer({
   },
 });
 
-/* POST /api/whisper — transcribe audio using OpenAI Whisper
+/* POST /api/whisper — transcribe audio using Whisper via OpenRouter
    Body: { audio: base64String, mimeType?: string }
-   Returns: { transcript: string }                                            */
+   Returns: { transcript: string }
+ *
+ * OpenRouter's transcription endpoint (POST /audio/transcriptions) takes a
+ * DIFFERENT request shape than OpenAI's own API: base64 audio inline in a
+ * JSON body (input_audio: { data, format }), not multipart/form-data with a
+ * file upload. The client already sends us base64, so this is actually
+ * simpler than before — no Buffer/Blob/FormData round-trip needed, the
+ * incoming base64 string is forwarded as-is.
+ */
 app.post("/api/whisper", writeLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Login diperlukan" });
-  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: "OpenAI belum dikonfigurasi" });
+  if (!process.env.OPENROUTER_API_KEY) return res.status(503).json({ error: "OpenRouter belum dikonfigurasi" });
 
   const { audio, mimeType = "audio/webm" } = req.body || {};
   if (!audio || typeof audio !== "string") return res.status(400).json({ error: "audio (base64) diperlukan" });
@@ -6519,18 +6573,21 @@ app.post("/api/whisper", writeLimiter, async (req, res) => {
   if (authErr || !user) return res.status(401).json({ error: "Token tidak valid" });
 
   try {
-    const buffer = Buffer.from(audio, "base64");
-    const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
-    const audioBlob = new Blob([buffer], { type: mimeType });
-    const formData = new FormData();
-    formData.append("model", "whisper-1");
-    formData.append("file", audioBlob, `audio.${ext}`);
+    const format = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
     // Don't force language — let Whisper auto-detect (supports Indonesian + Arabic + mixed)
 
-    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    const resp = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: formData,
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Whisper",
+      },
+      body: JSON.stringify({
+        model: "openai/whisper-1",
+        input_audio: { data: audio, format },
+      }),
     });
 
     if (!resp.ok) {
@@ -8487,8 +8544,8 @@ app.post("/api/admin/articles/:id/translate-arabic", async (req, res) => {
   }
   if (!art) return res.status(404).json({ error: "Artikel tidak ditemukan" });
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: "OPENAI_API_KEY belum dikonfigurasi" });
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: "OPENROUTER_API_KEY belum dikonfigurasi" });
 
   try {
     const prompt = `Terjemahkan artikel berikut ke dalam Bahasa Arab (فصحى / Modern Standard Arabic).
@@ -8499,11 +8556,16 @@ ${art.content}
 
 Kembalikan hanya terjemahan konten dalam Bahasa Arab tanpa judul, tanpa penjelasan tambahan.`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Translate Arabic",
+      },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages: [
           { role: "system", content: "Kamu adalah penerjemah profesional Indonesia-Arab. Terjemahkan teks ke Bahasa Arab Modern (فصحى) yang jelas dan tepat." },
           { role: "user", content: prompt },
@@ -8515,7 +8577,7 @@ Kembalikan hanya terjemahan konten dalam Bahasa Arab tanpa judul, tanpa penjelas
 
     if (!response.ok) {
       const err = await response.text();
-      console.error("[Translate Arabic] OpenAI error:", err.slice(0, 200));
+      console.error("[Translate Arabic] OpenRouter error:", err.slice(0, 200));
       return res.status(502).json({ error: "Terjemahan gagal. Coba lagi." });
     }
 
@@ -11714,17 +11776,22 @@ app.get("/api/admin/missing-topics", async (req, res) => {
 
     const rows = data ?? [];
 
-    // ── Semantic clustering (if OpenAI available) ──────────────────────────────
+    // ── Semantic clustering (via OpenRouter embeddings) ─────────────────────────
     // Groups queries by meaning (not exact text) so admin sees topic themes, not duplicates.
-    if (process.env.OPENAI_API_KEY && rows.length > 1) {
+    if (process.env.OPENROUTER_API_KEY && rows.length > 1) {
       try {
         // Deduplicate by normalized text first
         const uniqueQueries = [...new Set(rows.map(r => r.query.trim().slice(0, 200)))];
-        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+        const embRes = await fetch("https://openrouter.ai/api/v1/embeddings", {
           method: "POST",
           signal: AbortSignal.timeout(20000),
-          headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "text-embedding-3-small", input: uniqueQueries }),
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://ainalabs.pro",
+            "X-Title": "AINA Topic Clustering",
+          },
+          body: JSON.stringify({ model: "openai/text-embedding-3-small", input: uniqueQueries }),
         });
         if (embRes.ok) {
           const embData = await embRes.json();
@@ -16538,7 +16605,7 @@ async function initLibraryTable() {
 }
 
 // Auto-embed approved KB articles that are missing embeddings OR have a stale model.
-// Runs at startup when OPENAI_API_KEY is configured.
+// Runs at startup when VOYAGE_API_KEY is configured.
 // New articles get embedded on approval; this catches existing ones and model upgrades.
 // Aborts early on quota/billing errors (429) to avoid wasting API calls.
 async function autoEmbedMissingArticles() {
@@ -16603,10 +16670,10 @@ async function autoEmbedMissingArticles() {
 }
 
 // Auto-generate summaries for approved KB articles that are missing them.
-// Runs at startup when OPENAI_API_KEY is configured.
+// Runs at startup when OPENROUTER_API_KEY is configured.
 // New articles get summaries on approval; this catches existing ones.
 async function autoSummarizeMissingArticles() {
-  if (!process.env.OPENAI_API_KEY) return;
+  if (!process.env.OPENROUTER_API_KEY) return;
   const supabase = getAdminClient();
   if (!supabase) return;
   const { data: articles, error } = await supabase

@@ -28,14 +28,13 @@ Starts both the Express backend (port 3001) and the Vite dev server concurrently
 | `VITE_SUPABASE_URL` | Supabase URL exposed to frontend |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key exposed to frontend |
 | `VITE_SUPABASE_PROJECT_ID` | Supabase project ID exposed to frontend |
-| `OPENROUTER_API_KEY` | OpenRouter key for AI chat |
+| `OPENROUTER_API_KEY` | OpenRouter key — powers chat, moderation, vision, whisper, embeddings, and KB article generation |
 | `CLIENT_URL` | Frontend origin for CORS (e.g. `https://your-app.vercel.app`) |
 | `SESSION_SECRET` | Express session secret |
 
 Optional secrets (features degrade gracefully without them):
 - `PERPLEXITY_API_KEY` — web search
-- `VOYAGEAI_API_KEY` — vector embeddings / RAG
-- `OPENAI_API_KEY` — moderation, vision
+- `VOYAGE_API_KEY` — vector embeddings / RAG
 - `RESEND_API_KEY` — email notifications
 - `GOOGLE_MAPS_API_KEY` — Places search
 - `MIDTRANS_SERVER_KEY` / `MIDTRANS_CLIENT_KEY` — payments (also set `PAYMENT_ENABLED=true`)

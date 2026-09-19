@@ -2944,7 +2944,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
               onClick={handleGenerateEmbeddings}
               title={
                 embedProgress?.openaiConfigured === false
-                  ? "OPENAI_API_KEY belum dikonfigurasi — vector RAG tidak tersedia. Hanya keyword search yang aktif."
+                  ? "VOYAGE_API_KEY belum dikonfigurasi — vector RAG tidak tersedia. Hanya keyword search yang aktif."
                   : embedProgress
                   ? `${embedProgress.withEmbedding}/${embedProgress.totalArticles} artikel sudah ter-embed. Klik untuk re-embed semua.`
                   : "Generate embedding RAG untuk semua artikel KB"

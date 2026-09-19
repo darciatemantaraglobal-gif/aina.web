@@ -37,7 +37,7 @@ export function createMuqarrarRetrievalService({ getAdminClient, generateEmbeddi
 
   /**
    * Retrieve relevant muqarrar chunks for a given user question.
-   * Primary: semantic search via pgvector (requires OPENAI_API_KEY).
+   * Primary: semantic search via pgvector (requires VOYAGE_API_KEY — generateEmbedding is Voyage-backed, not OpenAI).
    * Fallback: keyword-based full-text search in Supabase.
    *
    * @param {string} userQuestion     The user's raw question (after prefix is stripped).
