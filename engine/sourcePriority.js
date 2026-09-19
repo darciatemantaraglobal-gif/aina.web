@@ -20,6 +20,7 @@ import { WIKI_SKIP_PATTERNS } from "./utils.js";
 export const SOURCE_TRUST_SCORES = {
   pinned_update:   100,
   kb_article:       90,
+  quran:            95,
   exchange_rate:    85,
   dorar:            82,
   perplexity:       78,

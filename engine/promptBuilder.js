@@ -532,6 +532,25 @@ export function buildDorarContext(dorarResult) {
   return `\n\n---\n## 📚 Referensi Hadits dari Dorar.net (الدرر السنية)\n\n**FORMAT WAJIB — gunakan ARABIC_BLOCK untuk setiap hadits, TANPA PENGECUALIAN:**\n\n[ARABIC_BLOCK]\nArabic Text: [teks Arab asli persis dari data di bawah]\nMeaning: [terjemahan Indonesia yang akurat] — (HR. [rawi/perawi], [sumber kitab], [hukum: shahih/hasan/dll])\n[/ARABIC_BLOCK]\n\n⚠️ LARANGAN KERAS:\n- DILARANG pakai blockquote (>) untuk hadits — gunakan ARABIC_BLOCK\n- DILARANG menggabungkan Arab + terjemahan di luar format blok\n- DILARANG menambahkan transliterasi/cara baca latin — ini menyebabkan error repetisi\n- Field Meaning HARUS berisi terjemahan Indonesia + atribusi (HR. ...)\n\nSetelah setiap ARABIC_BLOCK, jelaskan relevansi atau hukumnya dalam 1-3 kalimat.\n\n${hadithBlocks}\n---`;
 }
 
+/**
+ * Build the verified Quran-verse context block.
+ * Used exclusively for fiqh queries that reference a specific ayat.
+ * Trust: very high (score: 95) — canonical Arabic text from a public Quran API,
+ * fetched instead of relying on the model's memorized (and error-prone) recall.
+ *
+ * @param {object|null} quranResult - Result from fetchQuranVerse()
+ * @returns {string}
+ */
+export function buildQuranContext(quranResult) {
+  if (!quranResult) return "";
+
+  const { surah, ayah, surahName, arabic, translation, label } = quranResult;
+  const ref = label ? `${label} (QS. ${surahName ?? surah}: ${ayah})` : `QS. ${surahName ?? surah}: ${ayah}`;
+
+  console.log(`[Quran] injected verified verse ${ref}`);
+  return `\n\n---\n## 📖 Teks Al-Qur'an Terverifikasi (${ref})\n\n**SUMBER RESMI — WAJIB PAKAI TEKS INI, BUKAN HAFALAN SENDIRI:**\nTeks Arab dan terjemahan di bawah diambil langsung dari sumber Al-Qur'an terverifikasi. Jika jawabanmu menyebutkan ayat ini, WAJIB gunakan teks Arab dan terjemahan PERSIS seperti di bawah — JANGAN mengandalkan hafalan/ingatan sendiri, karena berisiko salah harakat atau kata.\n\n**FORMAT WAJIB — gunakan ARABIC_BLOCK:**\n\n[ARABIC_BLOCK]\nArabic Text: ${arabic}\nMeaning: ${translation} (${ref})\n[/ARABIC_BLOCK]\n\n⚠️ DILARANG mengubah teks Arab di atas walau satu huruf. DILARANG menambahkan field Reading (transliterasi) — field itu khusus mode belajar bahasa Arab, bukan dalil fiqh.\n\n---`;
+}
+
 /* ── Main system prompt assembler ─────────────────────────────────────────── */
 
 /**
@@ -552,6 +571,7 @@ export function buildDorarContext(dorarResult) {
  * @param {string} params.knowledgeContext
  * @param {string} params.exchangeContext
  * @param {string} params.dorarContext
+ * @param {string} params.quranContext
  * @param {string} params.perplexityContext
  * @param {string} params.wikiContext
  * @param {string} params.ddgContext
@@ -644,6 +664,7 @@ export function buildSystemPrompt({
   muqarrarKitabName = "",
   exchangeContext,
   dorarContext,
+  quranContext = "",
   perplexityContext,
   wikiContext,
   ddgContext,
@@ -1140,7 +1161,7 @@ JANGAN sebutkan sumber secara eksplisit dalam body jawaban ("Menurut Wikipedia..
 *Catatan: Untuk obrolan santai, aturan format di atas lebih longgar — ekspresi natural dan reaksi ceria tetap boleh.*
 
 ---
-${intentHint}${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${muqarrarContext}${exchangeContext}${dorarContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
+${intentHint}${buildSchemaHint(intentPrimary)}${pinnedContext}${memoryContext}${personalizationContext}${knowledgeContext}${muqarrarContext}${exchangeContext}${dorarContext}${quranContext}${perplexityContext}${wikiContext}${ddgContext}${confidence.hint}
 ${sourceMeta ? `
 **Footer sumber — WAJIB di akhir setiap jawaban substantif:**
 Setelah selesai menjawab (bukan untuk sapaan, obrolan 1 kalimat, atau tanya balik), tambahkan baris ini PERSIS:

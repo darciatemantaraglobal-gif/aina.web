@@ -68,7 +68,7 @@ import fs from "fs";
 import {
   buildKnowledgeContext, buildMuqarrarContext, buildPinnedContext, buildPersonalizationContext,
   buildMemoryContext, buildExchangeContext, buildWikiContext,
-  buildDDGContext, buildPerplexityContext, buildDorarContext,
+  buildDDGContext, buildPerplexityContext, buildDorarContext, buildQuranContext,
   buildSystemPrompt,
 } from './engine/promptBuilder.js';
 import { validateResponse, postProcessResponse, buildSourceBadges, formatAINAResponse } from './engine/responseFormatter.js';
@@ -2318,6 +2318,7 @@ const SOURCE_TRUST_SCORES = {
   exchange_rate:    85, // Real-time ECB/Frankfurter data
   perplexity:       78, // Real-time web search — current, but unverified by admin
   dorar:            82, // Dorar.net hadith encyclopedia — scholarly Islamic primary sources
+  quran:            95, // alquran.cloud verified Quran text — canonical, no scholarly grading needed
   wikipedia:        60, // Public encyclopedia — mostly reliable, occasionally outdated
   duckduckgo:       35, // General web instant answer — unverified
   model_knowledge:  20, // LLM training data — may be stale
@@ -2632,7 +2633,7 @@ const FIQH_TERM_MAP = {
 };
 
 // Detect fiqh-related queries (Arabic or Indonesian)
-function isFiqhQuery(query) {
+export function isFiqhQuery(query) {
   const lq = query.toLowerCase();
   // Indonesian fiqh keywords
   const hasIdFiqh = Object.keys(FIQH_TERM_MAP).some(k => lq.includes(k))
@@ -2640,7 +2641,10 @@ function isFiqhQuery(query) {
   // Arabic fiqh keywords
   const hasArFiqh = /[\u0600-\u06FF]/.test(query)
     && /(حكم|فقه|صلاة|زكاة|صوم|حج|نكاح|طلاق|وضوء|طهارة|حلال|حرام|سنة|واجب|مكروه|مباح|ربا|عبادة|معاملة|ميراث|فتوى|قرآن|حديث|دليل)/.test(query);
-  return hasIdFiqh || hasArFiqh;
+  // Explicit Quran verse reference (e.g. "surat al-baqarah ayat 255") — carries
+  // no other fiqh trigger word but is unmistakably a religious/tafsir query.
+  const hasVerseRef = !!extractQuranReference(query);
+  return hasIdFiqh || hasArFiqh || hasVerseRef;
 }
 
 // Extract the best Arabic search term from user query
@@ -2720,6 +2724,125 @@ async function fetchDorarHadith(query) {
     return { searchTerm, hadiths };
   } catch (err) {
     console.log(`[Dorar] fetch error: ${err.message}`);
+    return null;
+  }
+}
+
+/* ── Quran verse verification API ───────────────────────
+ * Fiqh answers cite Quranic Arabic text the same way they cite hadith — but
+ * unlike hadith (verified via Dorar.net above), Quran verses had zero
+ * ground-truth check: the model wrote the Arabic purely from memorized
+ * training data, risking wrong harakat/wording. This mirrors the Dorar
+ * pattern: detect an explicit verse reference, fetch the canonical Arabic +
+ * Indonesian translation from a public Quran API, and inject it as verified
+ * context the model must quote verbatim instead of recalling from memory.
+ */
+const SURAH_NAMES = [
+  [1, "Al-Fatihah"], [2, "Al-Baqarah"], [3, "Ali Imran"], [4, "An-Nisa"], [5, "Al-Maidah"],
+  [6, "Al-An'am"], [7, "Al-A'raf"], [8, "Al-Anfal"], [9, "At-Taubah"], [10, "Yunus"],
+  [11, "Hud"], [12, "Yusuf"], [13, "Ar-Ra'd"], [14, "Ibrahim"], [15, "Al-Hijr"],
+  [16, "An-Nahl"], [17, "Al-Isra"], [18, "Al-Kahfi"], [19, "Maryam"], [20, "Ta-Ha"],
+  [21, "Al-Anbiya"], [22, "Al-Hajj"], [23, "Al-Mu'minun"], [24, "An-Nur"], [25, "Al-Furqan"],
+  [26, "Asy-Syu'ara"], [27, "An-Naml"], [28, "Al-Qasas"], [29, "Al-Ankabut"], [30, "Ar-Rum"],
+  [31, "Luqman"], [32, "As-Sajdah"], [33, "Al-Ahzab"], [34, "Saba"], [35, "Fatir"],
+  [36, "Yasin"], [37, "As-Saffat"], [38, "Sad"], [39, "Az-Zumar"], [40, "Ghafir"],
+  [41, "Fussilat"], [42, "Asy-Syura"], [43, "Az-Zukhruf"], [44, "Ad-Dukhan"], [45, "Al-Jasiyah"],
+  [46, "Al-Ahqaf"], [47, "Muhammad"], [48, "Al-Fath"], [49, "Al-Hujurat"], [50, "Qaf"],
+  [51, "Adz-Dzariyat"], [52, "At-Tur"], [53, "An-Najm"], [54, "Al-Qamar"], [55, "Ar-Rahman"],
+  [56, "Al-Waqiah"], [57, "Al-Hadid"], [58, "Al-Mujadalah"], [59, "Al-Hasyr"], [60, "Al-Mumtahanah"],
+  [61, "As-Saff"], [62, "Al-Jumuah"], [63, "Al-Munafiqun"], [64, "At-Taghabun"], [65, "At-Talaq"],
+  [66, "At-Tahrim"], [67, "Al-Mulk"], [68, "Al-Qalam"], [69, "Al-Haqqah"], [70, "Al-Ma'arij"],
+  [71, "Nuh"], [72, "Al-Jinn"], [73, "Al-Muzzammil"], [74, "Al-Muddatsir"], [75, "Al-Qiyamah"],
+  [76, "Al-Insan"], [77, "Al-Mursalat"], [78, "An-Naba"], [79, "An-Naziat"], [80, "Abasa"],
+  [81, "At-Takwir"], [82, "Al-Infitar"], [83, "Al-Mutaffifin"], [84, "Al-Insyiqaq"], [85, "Al-Buruj"],
+  [86, "At-Tariq"], [87, "Al-A'la"], [88, "Al-Ghasyiyah"], [89, "Al-Fajr"], [90, "Al-Balad"],
+  [91, "Asy-Syams"], [92, "Al-Lail"], [93, "Ad-Duha"], [94, "Asy-Syarh"], [95, "At-Tin"],
+  [96, "Al-Alaq"], [97, "Al-Qadr"], [98, "Al-Bayyinah"], [99, "Az-Zalzalah"], [100, "Al-Adiyat"],
+  [101, "Al-Qariah"], [102, "At-Takatsur"], [103, "Al-Asr"], [104, "Al-Humazah"], [105, "Al-Fil"],
+  [106, "Quraisy"], [107, "Al-Maun"], [108, "Al-Kautsar"], [109, "Al-Kafirun"], [110, "An-Nasr"],
+  [111, "Al-Lahab"], [112, "Al-Ikhlas"], [113, "Al-Falaq"], [114, "An-Nas"],
+];
+
+// Colloquial/alternate spellings not reachable by stripping the standard al-/an-/at- prefix below
+const SURAH_EXTRA_ALIASES = {
+  imran: 3, yaasin: 36, shad: 38, mumin: 40, hamim: 41,
+  jatsiyah: 45, jathiyah: 45, zariyat: 51, mujadilah: 58, jumat: 62,
+  thalaq: 65, jin: 72, muddassir: 74, muddatstsir: 74, dahr: 76,
+  alamnasyrah: 94, insyirah: 94, qadar: 97, zilzal: 99, takasur: 102,
+  quraysh: 106, kawthar: 108, masad: 111, maida: 5, israa: 17, isro: 17,
+  haji: 22, mukminun: 23, thoha: 20, dhuha: 93, layl: 91, fatiha: 1,
+};
+
+function _normSurah(s) {
+  return s.toLowerCase().replace(/['’ʼ]/g, "").replace(/[^a-z]/g, "");
+}
+
+const SURAH_NUMBER_MAP = {};
+for (const [num, name] of SURAH_NAMES) {
+  const full = _normSurah(name);
+  SURAH_NUMBER_MAP[full] = num;
+  const bare = full.replace(/^(al|an|as|ar|adz|adh|ash|asy|ad|at|az)/, "");
+  if (bare && bare !== full && !SURAH_NUMBER_MAP[bare]) SURAH_NUMBER_MAP[bare] = num;
+}
+for (const [alias, num] of Object.entries(SURAH_EXTRA_ALIASES)) {
+  SURAH_NUMBER_MAP[alias] = num;
+}
+
+// Detect an explicit Quran verse reference in the query (e.g. "QS Al-Baqarah: 255",
+// "surat an-nisa ayat 34", "ayat kursi"). Returns null when no verse is referenced.
+export function extractQuranReference(query) {
+  const q = (query ?? "").trim();
+  if (!q) return null;
+
+  if (/\bayat\s*kursi\b/i.test(q)) return { surah: 2, ayah: 255, label: "Ayat Kursi" };
+
+  const withName = q.match(
+    /\b(?:qs\.?|q\.?\s?s\.?|surat|surah)\s+([a-z0-9][a-z0-9'\- ]{0,25}?)\s*(?:ayat|ayah|:|no\.?)\s*(\d{1,3})\b/i
+  );
+  const m = withName ?? q.match(/\b(?:qs\.?|q\.?\s?s\.?)\s+([a-z0-9][a-z0-9'\- ]{0,25}?)\s+(\d{1,3})\b/i);
+  if (!m) return null;
+
+  const rawName = m[1].trim();
+  const ayah = parseInt(m[2], 10);
+  if (!ayah || ayah < 1 || ayah > 286) return null;
+
+  if (/^\d{1,3}$/.test(rawName)) {
+    const surahNum = parseInt(rawName, 10);
+    return surahNum >= 1 && surahNum <= 114 ? { surah: surahNum, ayah } : null;
+  }
+
+  const surahNum = SURAH_NUMBER_MAP[_normSurah(rawName)];
+  return surahNum ? { surah: surahNum, ayah } : null;
+}
+
+// Fetch the canonical Arabic text (with harakat) + Kemenag Indonesian translation
+// for a single verse from alquran.cloud — the same trusted-third-party pattern
+// already used for hadith via Dorar.net.
+async function fetchQuranVerse({ surah, ayah, label } = {}) {
+  const TIMEOUT = 5000;
+  if (!surah || !ayah) return null;
+  try {
+    const res = await fetch(
+      `https://api.alquran.cloud/v1/ayah/${surah}:${ayah}/editions/quran-uthmani,id.indonesian`,
+      { signal: AbortSignal.timeout(TIMEOUT), headers: { "User-Agent": "AINA-Bot/1.0" } }
+    );
+    if (!res.ok) { console.log(`[Quran] HTTP ${res.status}`); return null; }
+
+    const data = await res.json();
+    const editions = data?.data;
+    if (!Array.isArray(editions) || editions.length < 2) return null;
+
+    const arabicEd = editions.find(e => e.edition?.identifier === "quran-uthmani") ?? editions[0];
+    const idEd     = editions.find(e => e.edition?.identifier === "id.indonesian") ?? editions[1];
+    const arabic      = arabicEd?.text?.trim();
+    const translation = idEd?.text?.trim();
+    if (!arabic || !translation) return null;
+
+    const surahName = arabicEd?.surah?.englishName || idEd?.surah?.englishName || `Surah ${surah}`;
+    console.log(`[Quran] fetched QS ${surah}:${ayah} (${surahName})`);
+    return { surah, ayah, surahName, arabic, translation, label: label ?? null };
+  } catch (err) {
+    console.log(`[Quran] fetch error: ${err.message}`);
     return null;
   }
 }
@@ -5109,7 +5232,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // Wave 1 — fast internal fetches (always run in parallel with early Perplexity)
   // kbQuery = expanded/enriched query for better KB hit-rate; retrievalQuery used for everything else
   _chatDebugStep = "wave1-fetches";
-  const [articles, pinnedUpdates, exchangeRates, dorarResult, muqarrarChunks] = await Promise.all([
+  const quranRef = intent.primary === "fiqh" ? extractQuranReference(retrievalQuery) : null;
+  const [articles, pinnedUpdates, exchangeRates, dorarResult, muqarrarChunks, quranResult] = await Promise.all([
     resolveArticles(kbQuery, intent.primary),
     fetchPinnedUpdates(),
     isCurrencyQuery(retrievalQuery) ? fetchExchangeRates() : Promise.resolve(null),
@@ -5119,6 +5243,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     muqarrarActive
       ? getMuqarrarSvc().retrieve(retrievalQuery, { kitabId, kitabFilter })
       : Promise.resolve([]),
+    quranRef ? fetchQuranVerse(quranRef) : Promise.resolve(null),
   ]);
 
   // Moderation was fired before Wave 1 started (see above) and has been
@@ -5183,6 +5308,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // B2 fix: when fiqh intent + Dorar found nothing + no KB → Gemini web fallback
   const fiqhDorarMiss = intent.primary === "fiqh"
     && !(dorarResult?.hadiths?.length > 0)
+    && !quranResult
     && articles.length === 0;
   const perplexityNeeded = isLocalMasisir ? false
     : (fiqhDorarMiss || needsPerplexity(intent.primary, kbStrength, retrievalQuery));
@@ -5243,13 +5369,17 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     kb_strength:      kbStrength,
     query_type:       queryType,
     external_type:    queryType === "currency" ? "currency_api"
+                      : quranResult ? "quran"
+                      : (dorarResult?.hadiths?.length > 0) ? "dorar"
                       : perplexityResult ? "perplexity"
                       : (wikiResult || ddgResult) ? "wiki_ddg"
                       : "none",
     external_called:  queryType !== "currency" && (perplexityNeeded || needsExternal) && !kbCoversQuery,
-    external_success: !!(perplexityResult || wikiResult || ddgResult || (queryType === "currency" && exchangeRates)),
+    external_success: !!(perplexityResult || wikiResult || ddgResult || quranResult || (dorarResult?.hadiths?.length > 0) || (queryType === "currency" && exchangeRates)),
     fallback_used:    !perplexityResult && !!(wikiResult || ddgResult),
     final_source:     articles.length > 0 ? "kb"
+                      : quranResult ? "quran"
+                      : (dorarResult?.hadiths?.length > 0) ? "dorar"
                       : perplexityResult ? "perplexity"
                       : queryType === "currency" && exchangeRates ? "currency_api"
                       : (wikiResult || ddgResult) ? "wiki_ddg"
@@ -5261,6 +5391,8 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   // ── Trust meta: compute source label + trust level for footer ────────────
   const _SOURCE_LABEL_MAP = {
     kb:            "Knowledge Base AINA",
+    quran:         "Al-Qur'an (terverifikasi)",
+    dorar:         "Dorar.net (Hadits terverifikasi)",
     perplexity:    "Web (real-time)",
     currency_api:  "API Kurs Real-time",
     wiki_ddg:      "Wikipedia / Web",
@@ -5288,6 +5420,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     ddgResult,
     exchangeRates,
     dorarResult,
+    quranResult,
     kbStrength,
     queryType,
     intent,
@@ -5318,6 +5451,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const ddgContext             = buildDDGContext(ddgResult, articles, wikiContext);
   const perplexityContext      = buildPerplexityContext(perplexityResult, kbStrength, intent);
   const dorarContext           = buildDorarContext(dorarResult);
+  const quranContext           = buildQuranContext(quranResult);
 
   // ── Compute external trust level (for confidence classification + logging) ─
   const externalTrust = computeExternalTrustLevel(!!wikiContext, !!ddgContext, !!perplexityContext);
@@ -5371,6 +5505,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     muqarrarKitabName: kitabFilter || "",
     exchangeContext,
     dorarContext,
+    quranContext,
     perplexityContext,
     wikiContext,
     ddgContext,
@@ -6015,6 +6150,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   if (articles.length > 0)                             responseSources.push("Knowledge Base AINA");
   if (queryType === "currency" && exchangeRates)       responseSources.push("Kurs Real-time");
   if (dorarResult && dorarResult.hadiths.length > 0)  responseSources.push("Dorar.net");
+  if (quranResult)                                     responseSources.push("Al-Qur'an (terverifikasi)");
   if (perplexityResult)                                responseSources.push("Pencarian Web");
   if (wikiResult)                                      responseSources.push("Wikipedia");
   if (ddgResult)                                       responseSources.push("DuckDuckGo");

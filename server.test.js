@@ -20,6 +20,8 @@ import {
   detectIntent,
   MASISIR_ALIASES_SEED,
   classifyConfidence,
+  extractQuranReference,
+  isFiqhQuery,
 } from "./server.js";
 
 // ── resolveEntitlement ──────────────────────────────────────────────────────
@@ -374,5 +376,68 @@ describe("classifyConfidence — weak KB hint", () => {
       query: "berapa biaya wafidin di al-azhar",
     });
     expect(hint).toMatch(/percaya diri/i);
+  });
+});
+
+// ── extractQuranReference ────────────────────────────────────────────────
+// Fiqh answers cited Quranic Arabic purely from the model's memorized
+// knowledge — zero ground-truth check, unlike hadith (verified via Dorar.net).
+// This detects an explicit verse reference so the real text can be fetched
+// from a Quran API instead of trusting the model's recall.
+
+describe("extractQuranReference", () => {
+  it("recognises the well-known named verse Ayat Kursi", () => {
+    expect(extractQuranReference("apa arti ayat kursi")).toEqual({ surah: 2, ayah: 255, label: "Ayat Kursi" });
+  });
+
+  it("parses 'surat <name> ayat <n>' phrasing", () => {
+    expect(extractQuranReference("apa arti surat al-baqarah ayat 255")).toEqual({ surah: 2, ayah: 255 });
+  });
+
+  it("parses 'QS <name>: <n>' phrasing", () => {
+    expect(extractQuranReference("QS An-Nisa: 34")).toEqual({ surah: 4, ayah: 34 });
+  });
+
+  it("parses bare numeric surah with QS prefix", () => {
+    expect(extractQuranReference("qs 2:255")).toEqual({ surah: 2, ayah: 255 });
+  });
+
+  it("resolves a colloquial surah name without the al-/an- prefix", () => {
+    expect(extractQuranReference("surah baqarah ayat 183")).toEqual({ surah: 2, ayah: 183 });
+  });
+
+  it("resolves the 'Ali Imran' exception (not derivable by simple prefix-stripping)", () => {
+    expect(extractQuranReference("qs ali imran ayat 190")).toEqual({ surah: 3, ayah: 190 });
+  });
+
+  it("returns null when there is no verse reference", () => {
+    expect(extractQuranReference("gimana cara bikin surat izin tinggal")).toBeNull();
+    expect(extractQuranReference("berapa biaya hidup di kairo")).toBeNull();
+  });
+
+  it("returns null for an out-of-range ayah number", () => {
+    expect(extractQuranReference("qs al-baqarah ayat 999")).toBeNull();
+  });
+});
+
+// ── isFiqhQuery — pure verse-reference gap ──────────────────────────────
+// Before this fix, a query like "apa arti surat al-baqarah ayat 255" carried
+// none of isFiqhQuery's trigger keywords (quran/dalil/hukum/fiqh/...) and a
+// specific verse reference is not a FIQH_TERM_MAP topic word either, so it
+// silently fell through to the generic "factual" intent — wrong response
+// shape/hints for what is unmistakably a tafsir question.
+
+describe("isFiqhQuery — verse-reference gap", () => {
+  it("REGRESSION: a pure verse reference with no other fiqh keyword is still fiqh", () => {
+    expect(isFiqhQuery("apa arti surat al-baqarah ayat 255")).toBe(true);
+    expect(isFiqhQuery("QS An-Nisa: 34")).toBe(true);
+  });
+
+  it("still recognises existing keyword-based fiqh triggers", () => {
+    expect(isFiqhQuery("apakah boleh puasa tanpa niat")).toBe(true);
+  });
+
+  it("does not misfire on an unrelated query containing the word 'surat'", () => {
+    expect(isFiqhQuery("gimana cara bikin surat keterangan domisili")).toBe(false);
   });
 });

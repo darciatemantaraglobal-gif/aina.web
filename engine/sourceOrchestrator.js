@@ -163,6 +163,7 @@ export function planSourceFetches({ intent, kbStrength, query, isCurrency = fals
  * @param {object|null} opts.ddgResult
  * @param {object|null} opts.exchangeRates
  * @param {object|null} opts.dorarResult
+ * @param {object|null} opts.quranResult
  * @param {"strong"|"weak"|"absent"} opts.kbStrength
  * @param {string}  opts.queryType        - "currency" | "dynamic" | "general"
  * @param {{ primary: string }} opts.intent
@@ -185,6 +186,7 @@ export function buildSourceResult({
   ddgResult = null,
   exchangeRates = null,
   dorarResult = null,
+  quranResult = null,
   kbStrength = "absent",
   queryType = "general",
   intent,
@@ -237,6 +239,17 @@ export function buildSourceResult({
       name:    `Dorar.net (${dorarResult.hadiths.length} hadits)`,
       type:    "encyclopedia",
       key:     "dorar",
+      primary: isPrimary,
+    }));
+  }
+
+  // ── Verified Quran verse (trust: 95) ──────────────────────────────────────
+  if (quranResult) {
+    const isPrimary = pinnedUpdates.length === 0 && articles.length === 0;
+    sources.push(makeEntry({
+      name:    `Al-Qur'an Terverifikasi (QS. ${quranResult.surahName ?? quranResult.surah}: ${quranResult.ayah})`,
+      type:    "api",
+      key:     "quran",
       primary: isPrimary,
     }));
   }
@@ -298,6 +311,7 @@ export function buildSourceResult({
     hasDDG:         !!ddgResult,
     hasExchange:    queryType === "currency" && !!exchangeRates,
     hasDorar:       dorarResult?.hadiths?.length > 0,
+    hasQuran:       !!quranResult,
     primarySource,
   });
 
@@ -350,10 +364,11 @@ export function buildSourceResult({
  * its own knowledge — labelling that as "verified" is misleading.
  */
 function classifyConfidenceLabel({
-  hasPinned, hasKB, kbStrength, hasPerplexity, hasWiki, hasDDG, hasExchange, hasDorar, primarySource,
+  hasPinned, hasKB, kbStrength, hasPerplexity, hasWiki, hasDDG, hasExchange, hasDorar, hasQuran, primarySource,
 }) {
   if (hasPinned)                          return "verified";
   if (hasKB && kbStrength === "strong")   return "verified";
+  if (hasQuran)                           return "verified"; // canonical API text, not scholarly-graded like hadith
   if (hasKB && kbStrength === "weak")     return "community_based";
   if (hasPerplexity || hasExchange)       return "web_result";
   if (hasDorar)                           return "web_result";
@@ -370,6 +385,7 @@ function deriveSourceKey(entry) {
   if (n.includes("knowledge"))   return entry.source_type === "model" ? "model_knowledge" : "kb_article";
   if (n.includes("frankfurter")) return "exchange_rate";
   if (n.includes("dorar"))       return "dorar";
+  if (n.includes("qur'an") || n.includes("quran")) return "quran";
   if (n.includes("perplexity"))  return "perplexity";
   if (n.includes("wikipedia"))   return "wikipedia";
   if (n.includes("duckduckgo"))  return "duckduckgo";
@@ -388,7 +404,7 @@ function deriveMayBeOutdated({ confidence, primarySource, queryType, query, arti
   if (TIMELESS_INTENTS.has(intentPrimary)) return false;
 
   // Sumber real-time atau terverifikasi → tidak perlu warning
-  if (["perplexity", "exchange_rate", "kb_article", "pinned_update", "dorar"].includes(primarySource)) return false;
+  if (["perplexity", "exchange_rate", "kb_article", "pinned_update", "dorar", "quran"].includes(primarySource)) return false;
 
   // Hanya tampilkan warning ketika model menjawab dari pengetahuan sendiri (fallback)
   // DAN query-nya tentang hal yang genuinely time-sensitive + berisiko jika salah
@@ -413,6 +429,7 @@ function buildSourceSummary(confidence, primarySource, totalSources) {
   switch (confidence) {
     case "verified":
       if (primarySource === "pinned_update") return `Update Resmi AINA${extra}`;
+      if (primarySource === "quran")         return `Al-Qur'an (terverifikasi)${extra}`;
       return `Knowledge Base AINA (terverifikasi)${extra}`;
 
     case "community_based":
