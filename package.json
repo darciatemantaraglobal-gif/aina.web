@@ -9,6 +9,7 @@
     "server": "node server.js",
     "build": "vite build && node scripts/create-prod-entry.js",
     "build:dev": "vite build --mode development",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -62,7 +63,7 @@
     "next-themes": "^0.3.0",
     "p-queue": "^9.1.2",
     "pdf-parse": "^1.1.4",
-    "pdfjs-dist": "^5.5.207",
+    "pdfjs-dist": "^6.3.289",
     "pg": "^8.20.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
@@ -110,6 +111,6 @@
   },
   "optionalDependencies": {
     "@napi-rs/canvas": "^0.1.97",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.4"
   }
 }

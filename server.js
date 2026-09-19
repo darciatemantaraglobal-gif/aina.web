@@ -3,6 +3,24 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 // express-rate-limit replaced with inline implementation (no external dep)
+//
+// consumeRateWindow is the shared fixed-window counter core, usable both as
+// the guts of the Express middleware below AND called imperatively inside a
+// route handler — needed for limits that can only be keyed by something
+// that isn't known/trustworthy until AFTER other work runs (e.g. a verified
+// user id, which requires an awaited auth.getUser() call and so can't live
+// in a synchronous Express keyGenerator). See chatUserRateStore below.
+function consumeRateWindow(store, key, windowMs, max) {
+  const now = Date.now();
+  let entry = store.get(key);
+  if (!entry || now > entry.reset) {
+    entry = { count: 0, reset: now + windowMs };
+    store.set(key, entry);
+  }
+  entry.count++;
+  return { allowed: entry.count <= max, retryAfterSec: Math.ceil((entry.reset - now) / 1000) };
+}
+
 function rateLimit({ windowMs, max, message, keyGenerator, validate } = {}) {
   const hits = new Map();
   const msg = message ?? { error: "Too many requests" };
@@ -16,15 +34,9 @@ function rateLimit({ windowMs, max, message, keyGenerator, validate } = {}) {
   }, windowMs).unref?.();
   return function rateLimitMiddleware(req, res, next) {
     const key = keygen(req);
-    const now = Date.now();
-    let entry = hits.get(key);
-    if (!entry || now > entry.reset) {
-      entry = { count: 0, reset: now + windowMs };
-      hits.set(key, entry);
-    }
-    entry.count++;
-    if (entry.count > max) {
-      res.setHeader("Retry-After", Math.ceil((entry.reset - now) / 1000));
+    const { allowed, retryAfterSec } = consumeRateWindow(hits, key, windowMs, max);
+    if (!allowed) {
+      res.setHeader("Retry-After", retryAfterSec);
       return res.status(429).json(msg);
     }
     next();
@@ -147,9 +159,48 @@ if (typeof globalThis.DOMMatrix === "undefined") {
 }
 
 /* ── Security headers ────────────────────────────────── */
+// CSP applies to whatever THIS process serves directly: the SPA fallback
+// below (express.static + sendFile, used when dist/ exists — e.g. Railway
+// standalone or Replit), the server-rendered /share/news/:id page, and API
+// JSON responses. In the primary Vercel+Railway split deploy, Vercel serves
+// the built SPA directly and does NOT go through this middleware — its own
+// matching CSP lives in vercel.json's headers config. Keep the two in sync.
+//
+// Origins allowed here reflect what the frontend actually talks to
+// (src/integrations/supabase/client.ts, src/hooks/usePayment.ts, Google
+// fonts + self-hosted SF Pro in public/fonts, Google OAuth avatars). script-src
+// has no 'unsafe-inline'/'unsafe-eval' — the Vite build emits no inline
+// scripts (verified against dist/index.html). style-src keeps 'unsafe-inline'
+// since React's style={{...}} props render as inline style attributes
+// throughout the app.
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: false, // managed by Vite for the SPA
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://*.supabase.co", "https://*.googleusercontent.com"],
+      mediaSrc: ["'self'", "blob:"],
+      workerSrc: ["'self'", "blob:"],
+      manifestSrc: ["'self'"],
+      // Midtrans Snap.js (payment) — currently PAYMENT_ENABLED=false but kept
+      // whitelisted so CSP doesn't silently break payment the day it's turned on.
+      connectSrc: [
+        "'self'",
+        "https://*.supabase.co",
+        "wss://*.supabase.co",
+        "https://app.midtrans.com",
+        "https://app.sandbox.midtrans.com",
+      ],
+      frameSrc: ["https://app.midtrans.com", "https://app.sandbox.midtrans.com"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'self'"],
+    },
+  },
 }));
 
 /* ── Gzip/Brotli Compression ─────────────────────────── */
@@ -228,28 +279,41 @@ app.use(rl(60_000, 400, "Terlalu banyak permintaan, coba lagi sebentar."));
 const strictLimiter   = rl(60_000,  10, "Terlalu banyak percobaan, tunggu 1 menit.");
 // Admin content limiter: admin CRUD ops (news, KB, etc.) — more lenient
 const adminContentLimiter = rl(60_000, 60, "Terlalu banyak operasi admin, tunggu sebentar.");
-// Chat limiter uses JWT user ID as the rate-limit key when available,
-// so dormitory shared-IP networks don't cause false positives for other users.
+// Chat limiter (pre-auth, Express middleware): keyed by IP only.
+//
+// It used to decode the JWT payload's `sub` claim and key by that instead,
+// to spare dormitory shared-IP networks from tripping each other's limit —
+// but that decode never verified the token's signature, so anyone could
+// send a Bearer token with an arbitrary, unsigned `sub` claim to get a
+// fresh rate-limit bucket on every request, bypassing this limiter
+// entirely and forcing a full auth.getUser() round trip each time. This
+// middleware runs BEFORE auth, so its key can never be trusted with
+// anything the caller can forge — IP is the only thing that's actually
+// theirs. The dormitory-fairness goal is still met, correctly, by
+// chatUserRateStore below, which keys by user id ONLY after that id has
+// been cryptographically verified.
 const chatLimiter = rateLimit({
   windowMs: 60_000,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Terlalu banyak pesan, tunggu sebentar." },
-  // Suppress IPv6 validation: the /api/chat route rejects unauthenticated
-  // requests before the limiter key is ever used as an IP address.
-  validate: { keyGeneratorIpFallback: false },
-  keyGenerator: (req) => {
-    const auth = req.headers.authorization || "";
-    if (auth.startsWith("Bearer ")) {
-      try {
-        const payload = JSON.parse(Buffer.from(auth.split(".")[1], "base64url").toString());
-        if (payload?.sub) return `uid:${payload.sub}`;
-      } catch { /* fall through to IP */ }
-    }
-    return req.ip ?? "unknown";
-  },
+  keyGenerator: (req) => req.ip ?? "unknown",
 });
+
+// Per-user chat/flashcard limiter — call checkChatUserRate(user.id) AFTER
+// the caller's token has been verified (auth.getUser / verifyAuth), never
+// before. Shares one 20/min bucket per user across /api/chat and
+// /api/flashcards/generate, same as the two routes shared one bucket via
+// chatLimiter's old uid-based key.
+const chatUserRateStore = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of chatUserRateStore) if (now > v.reset) chatUserRateStore.delete(k);
+}, 60_000).unref?.();
+function checkChatUserRate(userId) {
+  return consumeRateWindow(chatUserRateStore, userId, 60_000, 20);
+}
 const uploadLimiter   = rl(60_000,   5, "Terlalu banyak upload, tunggu sebentar.");
 const feedbackLimiter = rl(60_000,   5, "Terlalu banyak feedback, tunggu sebentar.");
 const writeLimiter    = rl(60_000,  30, "Terlalu banyak operasi tulis, tunggu sebentar.");
@@ -4440,6 +4504,14 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     user = _u;
     if (_userAuthCache.size >= USER_AUTH_CACHE_MAX) _userAuthCache.delete(_userAuthCache.keys().next().value);
     _userAuthCache.set(token, { user, expiresAt: Date.now() + USER_AUTH_CACHE_TTL });
+  }
+
+  // Per-user 20/min cap — see chatUserRateStore above for why this must run
+  // here (post-verification) rather than in chatLimiter's keyGenerator.
+  const _userRate = checkChatUserRate(user.id);
+  if (!_userRate.allowed) {
+    res.setHeader("Retry-After", _userRate.retryAfterSec);
+    return res.status(429).json({ error: "Terlalu banyak pesan, tunggu sebentar." });
   }
 
   // ── Set SSE headers immediately after auth ─────────────────────────────────
@@ -15374,6 +15446,13 @@ function verifyCron(req, res) {
 app.post("/api/flashcards/generate", chatLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Login diperlukan" });
+
+  // Per-user 20/min cap, shared with /api/chat — see chatUserRateStore above.
+  const _userRate = checkChatUserRate(user.id);
+  if (!_userRate.allowed) {
+    res.setHeader("Retry-After", _userRate.retryAfterSec);
+    return res.status(429).json({ error: "Terlalu banyak pesan, tunggu sebentar." });
+  }
 
   const { topic, content, count = 8, bilingual = false } = req.body;
   if (!topic && !content) return res.status(400).json({ error: "topic atau content harus diisi" });
