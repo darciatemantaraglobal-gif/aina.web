@@ -10759,6 +10759,7 @@ const MISSION_TEMPLATES = [
     ]}},
   { category: "Administrasi", difficulty: "medium", base_points: 50, kb_category: "Administrasi",
     title: "Cara Buka Rekening Bank di Mesir",
+    titleField: "bank_name",
     description: "Panduan membuka rekening bank di Mesir — Bank Misr, CIB, QNB, atau bank lain yang biasa dipakai Masisir.",
     form_schema: { fields: [
       { name: "bank_name", label: "Nama Bank", type: "text", required: true, minLength: 3 },
@@ -10797,6 +10798,7 @@ const MISSION_TEMPLATES = [
     ]}},
   { category: "Kuliner", difficulty: "easy", base_points: 30, kb_category: "Kuliner",
     title: "Review Makanan Khas Mesir untuk Masisir",
+    titleField: "food_name",
     description: "Review makanan khas Mesir — apa yang enak, apa yang perlu dicoba, dan apa yang perlu dihindari untuk lidah Indonesia.",
     form_schema: { fields: [
       { name: "food_name", label: "Nama Makanan/Minuman Khas Mesir", type: "text", required: true, minLength: 3 },
@@ -10861,6 +10863,7 @@ const MISSION_TEMPLATES = [
   // ── Kesehatan ──
   { category: "Kesehatan", difficulty: "hard", base_points: 80, kb_category: "Kehidupan Mesir",
     title: "Informasi Klinik & Dokter untuk Masisir",
+    titleField: "clinic_name",
     description: "Dokumentasikan klinik, dokter, atau rumah sakit yang biasa dipakai Masisir Indonesia di Cairo.",
     form_schema: { fields: [
       { name: "clinic_name", label: "Nama Klinik / Dokter / RS", type: "text", required: true, minLength: 3 },
@@ -10871,6 +10874,7 @@ const MISSION_TEMPLATES = [
     ]}},
   { category: "Kesehatan", difficulty: "medium", base_points: 50, kb_category: "Kehidupan Mesir",
     title: "Review Apotek & Obat di Cairo",
+    titleField: "pharmacy_name",
     description: "Bagikan info apotek yang mudah diakses Masisir, obat-obatan umum yang tersedia, dan padanan obat Indonesia.",
     form_schema: { fields: [
       { name: "pharmacy_name", label: "Nama Apotek & Lokasi", type: "text", required: true, minLength: 5 },
@@ -10888,6 +10892,7 @@ const MISSION_TEMPLATES = [
   // ── Komunitas ──
   { category: "Komunitas", difficulty: "medium", base_points: 50, kb_category: "Kehidupan Mesir",
     title: "Profil Kekeluargaan Daerah Masisir",
+    titleField: "org_name",
     description: "Tulis profil lengkap satu kekeluargaan daerah (IKPM, KMA, PMBM, dll) — kegiatan, manfaat, dan cara bergabung.",
     form_schema: { fields: [
       { name: "org_name", label: "Nama Kekeluargaan/Organisasi", type: "text", required: true, minLength: 3 },
@@ -10898,6 +10903,7 @@ const MISSION_TEMPLATES = [
     ]}},
   { category: "Komunitas", difficulty: "easy", base_points: 30, kb_category: "Kehidupan Mesir",
     title: "Info Event & Kegiatan Masisir",
+    titleField: "event_name",
     description: "Dokumentasikan event, kegiatan, atau acara Masisir yang sudah berlangsung atau akan datang.",
     form_schema: { fields: [
       { name: "event_name", label: "Nama Event/Kegiatan", type: "text", required: true, minLength: 3 },
@@ -10908,6 +10914,7 @@ const MISSION_TEMPLATES = [
   // ── Kehidupan Sehari-hari ──
   { category: "Kehidupan", difficulty: "medium", base_points: 50, kb_category: "Kehidupan Mesir",
     title: "Tips Belanja Hemat di Pasar Lokal",
+    titleField: "market_name",
     description: "Panduan berbelanja di pasar tradisional Mesir (souq) — cara nawar, barang apa yang murah, dan tempat terbaik.",
     form_schema: { fields: [
       { name: "market_name", label: "Nama Pasar / Souq & Lokasinya", type: "text", required: true, minLength: 5 },
@@ -10917,6 +10924,7 @@ const MISSION_TEMPLATES = [
     ]}},
   { category: "Kehidupan", difficulty: "easy", base_points: 30, kb_category: "Kehidupan Mesir",
     title: "Rekomendasi Toko & Belanja Online di Cairo",
+    titleField: "store_name",
     description: "Rekomendasikan toko fisik atau platform belanja online yang sering dipakai Masisir di Cairo.",
     form_schema: { fields: [
       { name: "store_name", label: "Nama Toko / Platform Online", type: "text", required: true, minLength: 3 },
@@ -11034,10 +11042,14 @@ async function seedMissionTemplates() {
   if (!supabase) return;
   try {
     const { data: existing } = await supabase.from("mission_templates").select("id").limit(1);
-    if (existing && existing.length > 0) return; // Already seeded
+    if (existing && existing.length > 0) {
+      await backfillMissionTitleFields(supabase);
+      return;
+    }
     const rows = MISSION_TEMPLATES.map(t => ({
       category: t.category,
       title: t.title,
+      title_field: t.titleField ?? null,
       description: t.description,
       form_schema: t.form_schema,
       difficulty: t.difficulty,
@@ -11050,6 +11062,26 @@ async function seedMissionTemplates() {
     else console.log(`[Missions] ✓ Seeded ${rows.length} mission templates`);
   } catch (e) {
     console.error("[Missions] Seed failed:", e.message);
+  }
+}
+
+/**
+ * Fix already-seeded installs: title_field didn't exist until a submission for
+ * e.g. Kekeluargaan, Apotek or Toko had no `name`/`location` field to fall back
+ * to, so its article title silently collapsed to the generic template title —
+ * every regional kekeluargaan submitted came out titled identically "Profil
+ * Kekeluargaan Daerah Masisir". Patches title_field on existing rows so new
+ * submissions get it right without losing the templates already in the DB.
+ */
+async function backfillMissionTitleFields(supabase) {
+  const withField = MISSION_TEMPLATES.filter(t => t.titleField);
+  for (const t of withField) {
+    try {
+      await supabase.from("mission_templates")
+        .update({ title_field: t.titleField })
+        .eq("title", t.title)
+        .is("title_field", null);
+    } catch { /* column may not exist yet on an old deploy — next boot retries */ }
   }
 }
 
@@ -11642,8 +11674,15 @@ app.patch("/api/admin/missions/submissions/:id/approve", async (req, res) => {
   // 1. Create KB article
   const content = buildKBContentFromSubmission(template, sub.form_data);
   // A gap mission's article is titled with the question it answers, so the next
-  // person asking it matches the article that was written for them.
-  const titleBase = (gapQuery || sub.form_data.name || sub.form_data.location || template.title).slice(0, 180);
+  // person asking it matches the article that was written for them. Otherwise use
+  // the template's declared identifying field (org_name, pharmacy_name, ...) when
+  // it has one — guessing name/location for every template silently collapsed
+  // several templates' articles to one identical, generic title (every regional
+  // kekeluargaan submitted came out titled "Profil Kekeluargaan Daerah Masisir").
+  const identifyingValue = template.title_field
+    ? sub.form_data[template.title_field]
+    : (sub.form_data.name || sub.form_data.location);
+  const titleBase = (gapQuery || identifyingValue || template.title).slice(0, 180);
   const articleTitle = titleBase.length >= 10 ? titleBase : `${template.title} — ${titleBase}`;
 
   let kbArticleId = null;
@@ -11800,15 +11839,22 @@ app.post("/api/admin/missions/templates", async (req, res) => {
   const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
   if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
 
-  const { title, description, difficulty, base_points, kb_category, category, form_schema } = req.body;
+  const { title, description, difficulty, base_points, kb_category, category, form_schema, title_field } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: "title wajib diisi" });
   if (!form_schema?.fields?.length) return res.status(400).json({ error: "Minimal 1 field di form_schema" });
+  // If given, must actually be a field on this form — otherwise every submission
+  // silently falls back to the generic template title (the bug this column exists
+  // to prevent).
+  if (title_field && !form_schema.fields.some(f => f.name === title_field)) {
+    return res.status(400).json({ error: `title_field "${title_field}" bukan nama field yang ada di form_schema` });
+  }
 
   const pointsMap = { easy: 30, medium: 50, hard: 80 };
   const diff = ["easy","medium","hard"].includes(difficulty) ? difficulty : "medium";
 
   const { data, error } = await supabase.from("mission_templates").insert({
     title: title.trim(),
+    title_field: title_field?.trim() || null,
     description: description?.trim() || "",
     difficulty: diff,
     base_points: base_points ?? pointsMap[diff],
@@ -12053,7 +12099,7 @@ app.patch("/api/admin/missions/templates/:id", async (req, res) => {
   if (!(roles || []).some(r => r.role === "admin")) return res.status(403).json({ error: "Admin only" });
 
   const { id } = req.params;
-  const allowed = ["title", "description", "difficulty", "base_points", "is_active", "kb_category", "category"];
+  const allowed = ["title", "title_field", "description", "difficulty", "base_points", "is_active", "kb_category", "category"];
   const updates = {};
   for (const k of allowed) if (req.body[k] !== undefined) updates[k] = req.body[k];
 
@@ -16163,6 +16209,11 @@ async function runColumnMigrations() {
     `ALTER TABLE public.mission_templates ADD COLUMN IF NOT EXISTS point_multiplier INTEGER DEFAULT 1;`,
     // The actual unanswered question a gap mission asks the contributor to answer.
     `ALTER TABLE public.daily_missions ADD COLUMN IF NOT EXISTS gap_query TEXT;`,
+    // Which form_schema field holds the specific name/place a submission is about
+    // (e.g. org_name for Kekeluargaan, pharmacy_name for Apotek) — used as the
+    // published article's title instead of the template's generic title, so two
+    // submissions to the same template don't collide on an identical title.
+    `ALTER TABLE public.mission_templates ADD COLUMN IF NOT EXISTS title_field TEXT;`,
     // Enforce: at most one mission can be is_flash_mission=true at a time
     `CREATE UNIQUE INDEX IF NOT EXISTS uniq_flash_mission_active ON public.mission_templates ((is_flash_mission)) WHERE is_flash_mission = true;`,
   ];

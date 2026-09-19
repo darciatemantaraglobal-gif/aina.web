@@ -88,20 +88,39 @@ export function buildKnowledgeContext(articles) {
       text.toLowerCase().split(/\W+/).filter(w => w.length > 4 && !stopWords.has(w)).slice(0, 80)
     );
   }
+  // Community-org vocabulary where a Masisir user belongs to exactly ONE
+  // instance (their own region's kekeluargaan, their own dorm) — never several
+  // at once. Two articles matching this are describing DIFFERENT organisations
+  // that happen to share a category and generic vocabulary (ketua, sekretariat,
+  // kegiatan), not the same organisation described two ways. Blending their
+  // leadership/contact details into "one flowing answer" — the instruction below
+  // for a genuine same-subtopic conflict — would silently hand the user another
+  // region's org as if it were theirs.
+  const MULTI_INSTANCE_PATTERN = /\b(kekeluargaan|forkom|ikpm|kma|pmbm|asrama|wisma)\b/i;
+  const isMultiInstance = a => MULTI_INSTANCE_PATTERN.test(a.title || "");
+
   let hasConflict = false;
+  let hasDistinctEntities = false;
   // Check each pair of articles from the same category for keyword overlap
-  for (let i = 0; i < articles.length && !hasConflict; i++) {
-    for (let j = i + 1; j < articles.length && !hasConflict; j++) {
+  for (let i = 0; i < articles.length; i++) {
+    for (let j = i + 1; j < articles.length; j++) {
       const catA = (articles[i].category || "Umum").toLowerCase();
       const catB = (articles[j].category || "Umum").toLowerCase();
       if (catA !== catB) continue; // Only flag same-category pairs
       const kwA = extractContentKeywords(articles[i].content || "");
       const kwB = extractContentKeywords(articles[j].content || "");
       const overlap = [...kwA].filter(k => kwB.has(k)).length;
-      if (overlap >= 3) hasConflict = true; // 3+ shared keywords → same subtopic → potential conflict
+      if (overlap < 3) continue; // not similar enough to be either case below
+      if (isMultiInstance(articles[i]) && isMultiInstance(articles[j])) {
+        hasDistinctEntities = true;
+      } else {
+        hasConflict = true; // 3+ shared keywords, same subtopic → potential conflict
+      }
     }
   }
-  const conflictInstruction = hasConflict
+  const conflictInstruction = hasDistinctEntities
+    ? "\n\n⚠️ INSTRUKSI ENTITAS BERBEDA: Artikel-artikel di atas membahas ORGANISASI/INSTANSI YANG BERBEDA (misalnya kekeluargaan daerah, asrama, atau cabang yang berbeda-beda), bukan subtopik yang sama. JANGAN gabungkan jadi satu jawaban campur — itu berisiko menyodorkan data organisasi yang salah ke user. Sebutkan tiap organisasi terpisah dengan namanya. Jika pertanyaan user tidak menyebutkan yang mana (misalnya cuma 'kekeluargaan' tanpa nama daerah), WAJIB tanya balik singkat organisasi/daerah mana yang dimaksud sebelum memberi detail kontak atau nama pengurus."
+    : hasConflict
     ? "\n\n⚠️ INSTRUKSI KONFLIK: Terdapat beberapa artikel yang membahas subtopik yang sama. Gabungkan semua informasi menjadi SATU jawaban terpadu yang mengalir — jangan pisah-pisahkan sebagai 'Opsi 1', 'Opsi 2', atau format pilihan apapun. Jika ada perbedaan detail antar sumber, sebutkan variasi itu secara natural dalam satu paragraf (contoh: 'tergantung kondisinya, bisa X atau Y')."
     : "";
 

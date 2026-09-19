@@ -28,6 +28,7 @@ import {
   pickTopGap,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
+import { buildKnowledgeContext } from "./engine/promptBuilder.js";
 
 // ── resolveEntitlement ──────────────────────────────────────────────────────
 // The actual bug (Fase 1): a Midtrans-paid or admin-granted Pro user with
@@ -621,5 +622,72 @@ describe("pickTopGap", () => {
   it("never throws when the table is unavailable", async () => {
     const broken = { from() { throw new Error("relation does not exist"); } };
     expect(await pickTopGap(broken)).toBeNull();
+  });
+});
+
+// ── buildKnowledgeContext — distinct-entity disambiguation ─────────────────
+// The KB may hold several articles about DIFFERENT named community orgs
+// (regional kekeluargaan, dorms) that share a category and generic vocabulary
+// ("ketua", "sekretariat", "kegiatan"). The conflict-detection used to treat
+// any same-category, keyword-overlapping pair as "same subtopic, different
+// angle" and told the model to blend them into one flowing answer — which for
+// two DIFFERENT organisations risks handing the user another region's leader
+// or contact as if it were their own.
+
+function fakeArticle(title, category, content) {
+  return { title, category, content, article_type: "narrative" };
+}
+
+const KEKELUARGAAN_A = fakeArticle(
+  "IKPM Jawa Tengah",
+  "Komunitas",
+  "Kekeluargaan IKPM Jawa Tengah menaungi mahasiswa asal Jawa Tengah. " +
+  "Sekretariat berada di Hay Asyir. Kegiatan rutin: pengajian bulanan dan buka bersama. " +
+  "Pengurus inti terdiri dari ketua, wakil, dan bendahara."
+);
+const KEKELUARGAAN_B = fakeArticle(
+  "PMBM Sumatra Barat",
+  "Komunitas",
+  "Kekeluargaan PMBM menaungi mahasiswa asal Sumatra Barat di Mesir. " +
+  "Sekretariat berada di Hay Tsamin. Kegiatan rutin meliputi arisan dan olahraga. " +
+  "Pengurus inti terdiri dari ketua, wakil, dan bendahara."
+);
+const PROCEDURE_A = fakeArticle(
+  "Cara Perpanjang Iqomah untuk Mahasiswa Baru",
+  "Administrasi",
+  "Perpanjangan iqomah membutuhkan dokumen paspor dan surat keterangan kuliah. " +
+  "Persyaratan diserahkan ke kantor imigrasi terdekat."
+);
+const PROCEDURE_B = fakeArticle(
+  "Panduan Mengurus Izin Tinggal di Mesir",
+  "Administrasi",
+  "Dokumen yang dibutuhkan untuk perpanjangan meliputi paspor dan bukti kuliah. " +
+  "Persyaratan ini diserahkan langsung ke kantor terkait."
+);
+
+describe("buildKnowledgeContext — distinct-entity disambiguation", () => {
+  it("REGRESSION: two different regional kekeluargaan orgs are never told to merge into one answer", () => {
+    const ctx = buildKnowledgeContext([KEKELUARGAAN_A, KEKELUARGAAN_B]);
+    expect(ctx).toMatch(/ENTITAS BERBEDA/i);
+    expect(ctx).not.toMatch(/INSTRUKSI KONFLIK/i);
+    expect(ctx).toMatch(/tanya balik/i);
+  });
+
+  it("still merges two articles that genuinely cover the same procedure", () => {
+    const ctx = buildKnowledgeContext([PROCEDURE_A, PROCEDURE_B]);
+    expect(ctx).toMatch(/INSTRUKSI KONFLIK/i);
+    expect(ctx).not.toMatch(/ENTITAS BERBEDA/i);
+  });
+
+  it("does not flag a single article either way", () => {
+    const ctx = buildKnowledgeContext([KEKELUARGAAN_A]);
+    expect(ctx).not.toMatch(/ENTITAS BERBEDA/i);
+    expect(ctx).not.toMatch(/INSTRUKSI KONFLIK/i);
+  });
+
+  it("does not flag a kekeluargaan article alongside an unrelated procedure article", () => {
+    const ctx = buildKnowledgeContext([KEKELUARGAAN_A, PROCEDURE_A]);
+    expect(ctx).not.toMatch(/ENTITAS BERBEDA/i);
+    expect(ctx).not.toMatch(/INSTRUKSI KONFLIK/i);
   });
 });
