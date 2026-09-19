@@ -4918,14 +4918,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
   const masisirCtx = detectMasisirContext(retrievalQuery);
   const { kbQuery, strategy: retrievalStrategy, changed: queryExpanded } = expandQuery(retrievalQuery, masisirCtx);
 
-  // Content moderation — screen for harmful content before any processing (free OpenAI API)
-  if (lastUserMessage.length > 5) {
-    const modResult = await checkModeration(lastUserMessage);
-    if (modResult.flagged) {
-      _sseError({ error: "Pesan mengandung konten yang tidak sesuai. Tolong ubah pertanyaanmu agar AINA bisa membantu." });
-      return;
-    }
-  }
+  // Content moderation — fired here but NOT awaited yet. This used to block
+  // everything below it for its own ~0.5–2s round trip even though nothing
+  // downstream needs the result until we're actually about to use the
+  // retrieved context. It now runs concurrently with intent detection +
+  // Wave 1 retrieval and is checked right after Wave 1 resolves (see below)
+  // — a flagged message is still stopped before anything reaches the user,
+  // it just no longer adds its own separate wait on top of everything else.
+  const moderationPromise = lastUserMessage.length > 5
+    ? checkModeration(lastUserMessage)
+    : Promise.resolve({ flagged: false });
 
   // Extract previous assistant message (needed for clarification detection + extraction)
   const prevAiContent = [...messages].reverse().find(m => m.role === "assistant")?.content ?? null;
@@ -5109,6 +5111,15 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       ? getMuqarrarSvc().retrieve(retrievalQuery, { kitabId, kitabFilter })
       : Promise.resolve([]),
   ]);
+
+  // Moderation was fired before Wave 1 started (see above) and has been
+  // running the whole time Wave 1 was in flight — check it now, before any
+  // of this context is used to build a response.
+  const modResult = await moderationPromise;
+  if (modResult.flagged) {
+    _sseError({ error: "Pesan mengandung konten yang tidak sesuai. Tolong ubah pertanyaanmu agar AINA bisa membantu." });
+    return;
+  }
 
   // ── City-based KB boost — re-rank articles that match user's city ─────────
   // Extract user's city from profile and memories, then boost articles that
