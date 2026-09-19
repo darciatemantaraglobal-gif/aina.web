@@ -19,6 +19,7 @@ import {
   assessKBStrength,
   detectIntent,
   MASISIR_ALIASES_SEED,
+  classifyConfidence,
 } from "./server.js";
 
 // ── resolveEntitlement ──────────────────────────────────────────────────────
@@ -333,5 +334,45 @@ describe("MASISIR_ALIASES_SEED", () => {
       expect(aliases.length, `${term} must have aliases`).toBeGreaterThan(0);
       for (const a of aliases) expect(typeof a).toBe("string");
     }
+  });
+});
+
+// ── classifyConfidence — weak-KB hint must not license silent fabrication ──
+// The actual bug: the weak-KB hint said "jangan tambahkan disclaimer... jawab
+// dari pengetahuan model dengan natural" — telling the model to blend
+// fabricated details into a KB-grounded answer with no way for the user to
+// tell which parts were real. That directly contradicted the base prompt's
+// own rule (promptBuilder.js: "JANGAN mengarang... lebih baik jujur tidak
+// tahu daripada salah"), and being the more specific instruction, it won.
+
+describe("classifyConfidence — weak KB hint", () => {
+  it("REGRESSION: no longer bans disclaimers or licenses silent gap-filling", () => {
+    const { hint } = classifyConfidence({
+      hasKB: true,
+      kbStrength: "weak",
+      hasPinned: false,
+      hasWiki: false,
+      hasDDG: false,
+      intent: { primary: "factual" },
+      query: "berapa biaya wafidin di al-azhar",
+    });
+    expect(hint).not.toMatch(/jangan tambahkan disclaimer/i);
+    expect(hint).not.toMatch(/dengan natural/i);
+    // Must instead require flagging ungrounded specifics rather than blending them in.
+    expect(hint).toMatch(/tandai/i);
+    expect(hint).toMatch(/jangan ditebak|jangan mengarang/i);
+  });
+
+  it("still lets the model answer confidently on what the KB actually covers", () => {
+    const { hint } = classifyConfidence({
+      hasKB: true,
+      kbStrength: "weak",
+      hasPinned: false,
+      hasWiki: false,
+      hasDDG: false,
+      intent: { primary: "factual" },
+      query: "berapa biaya wafidin di al-azhar",
+    });
+    expect(hint).toMatch(/percaya diri/i);
   });
 });

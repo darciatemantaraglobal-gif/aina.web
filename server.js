@@ -4403,7 +4403,7 @@ function trimToSentence(text, maxLen) {
 
 /* ── Confidence / trust layer ────────────────────────── */
 // Rule-based, no LLM call. Returns a hint injected into the system prompt.
-function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, hasPerplexity = false, externalTrustTier = null, intent, query }) {
+export function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, hasDDG, hasPerplexity = false, externalTrustTier = null, intent, query }) {
   const timeSensitive = /\b(sekarang|terbaru|terkini|saat ini|hari ini|bulan ini|tahun ini|2024|2025|2026|berubah|update|baru-baru|perubahan|kebijakan baru|berita|harga|nilai tukar|kurs|tarif|rate|hasil|pemenang|juara|menang|kalah|terpilih|dilantik|pemilu|piala dunia|olimpiade|klasemen|peringkat)\b/i.test(query);
 
   // Current role / office-holder: use shared helper (consistent with classifyQueryType + needsPerplexity)
@@ -4491,10 +4491,19 @@ function classifyConfidence({ hasKB, kbStrength = "absent", hasPinned, hasWiki, 
   }
 
   // ── WEAK KB only (no Perplexity, not currentRoleQuery) ───────────────────
+  // Used to say "jangan tambahkan disclaimer... jawab dari pengetahuan model
+  // dengan natural" for whatever the KB didn't cover — i.e. it explicitly
+  // told the model to blend fabricated details into a KB-grounded answer
+  // with no way for the user to tell which parts were real. That's a direct
+  // contradiction of the base prompt's own hard rule ("JANGAN mengarang...
+  // lebih baik jujur tidak tahu daripada salah" — promptBuilder.js §5), and
+  // being the more specific, later-appended instruction, this one was
+  // winning. Confident tone stays for what the KB actually supports; gaps
+  // now have to be flagged instead of blended in invisibly.
   if (hasKB && kbStrength === "weak") {
     return {
       level: "medium_confidence",
-      hint: "\n\n**[KB PARSIAL]** Knowledge Base memiliki cakupan sebagian untuk topik ini. Jawab berdasarkan info KB yang tersedia dengan percaya diri — jangan tambahkan disclaimer atau saran konfirmasi ke sumber lain. Jika ada aspek yang tidak tercakup KB, jawab dari pengetahuan model dengan natural.",
+      hint: "\n\n**[KB PARSIAL]** Knowledge Base memiliki cakupan sebagian untuk topik ini. Bagian yang DIDUKUNG oleh KB di atas: jawab dengan percaya diri, tidak perlu disclaimer. Bagian yang TIDAK tercakup KB: boleh lengkapi dengan pengetahuan umum HANYA jika kamu genuinely yakin — tandai dengan jelas bahwa itu bukan dari KB (jangan dicampur seolah fakta terverifikasi). Untuk detail spesifik (angka, syarat, kontak, nama, prosedur resmi) yang kamu TIDAK yakin — jangan ditebak, akui belum ada datanya dan sarankan konfirmasi ke sumber terkait.",
     };
   }
 
@@ -5390,9 +5399,16 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       // → answer what you can, but strongly advise direct verification
       finalSystemPrompt += `\n\n---\n## 📌 PANDUAN SUMBER — TOPIK KOMUNITAS MASISIR\n\nTopik ini menyangkut hal yang SANGAT SPESIFIK komunitas Indonesia di Mesir (organisasi, kekeluargaan, acara, kontak pengurus, dll.).\n\n**Prioritas sumber:**\n1. Knowledge Base AINA (gunakan jika tersedia di atas)\n2. Pengetahuan umum tentang komunitas Masisir yang kamu miliki — boleh digunakan, tapi...\n3. Selalu akhiri dengan: "Untuk info yang paling akurat dan terkini, cek langsung ke grup komunitas atau senior Masisir ya."\n\n**JANGAN** memberikan nama, kontak, atau data spesifik yang kamu tidak yakin akurat — lebih baik jawab dengan gambaran umum lalu arahkan ke sumber primer.\n---`;
     } else {
-      // Procedural / admin / academic Masisir topics — model has reasonable general knowledge
-      // → answer from general knowledge + mark as needs-verification
-      finalSystemPrompt += `\n\n---\n## 📌 PANDUAN RETRIEVAL — TOPIK MASISIR\n\nPertanyaan ini tentang topik Masisir yang belum atau tidak lengkap di Knowledge Base.\n\n**Strategi jawaban:**\n1. Gunakan konteks KB yang tersedia (jika ada) sebagai dasar utama\n2. Lengkapi dengan pengetahuan umummu tentang prosedur/kondisi di Mesir\n3. Prioritaskan jawaban yang PRAKTIS dan langsung bisa ditindaklanjuti\n4. Jika ada detail yang bisa berubah (harga, tanggal, kebijakan), tambahkan catatan singkat: *"Angka/info ini bisa berubah — konfirmasi ke KBRI/Al-Azhar/senior setempat untuk kepastian."*\n\n**JANGAN** bilang "tidak ada info" atau "saya tidak tahu" — selalu jawab dengan yang kamu bisa, lalu arahkan ke sumber terpercaya jika perlu konfirmasi.\n---`;
+      // Procedural / admin / academic Masisir topics — highest real-world stakes:
+      // this is visa/iqomah/university-admin territory, where a confidently
+      // wrong step (wrong office, wrong document, wrong fee) costs the user a
+      // wasted trip or worse. Used to hard-ban "tidak tahu"/"tidak ada info"
+      // and demand the model "always answer with what you can" — which meant
+      // inventing specific procedural details whenever the KB fell short,
+      // exactly the kind of confident-but-wrong answer this domain can't
+      // afford. Model may still complete genuinely stable general knowledge,
+      // but specific facts it isn't sure of must be admitted, not guessed.
+      finalSystemPrompt += `\n\n---\n## 📌 PANDUAN RETRIEVAL — TOPIK MASISIR\n\nPertanyaan ini tentang topik Masisir yang belum atau tidak lengkap di Knowledge Base.\n\n**Strategi jawaban:**\n1. Gunakan konteks KB yang tersedia (jika ada) sebagai dasar utama.\n2. Untuk bagian yang KB-nya tidak nyampe: kalau itu prosedur umum yang stabil dan kamu genuinely yakin, boleh lengkapi dari pengetahuan umum — tandai bagian itu sebagai pengetahuan umum, jangan campur seolah dari KB.\n3. Untuk detail spesifik yang kamu TIDAK yakin (alamat kantor, syarat dokumen persis, biaya pasti, jadwal, nomor kontak) — JANGAN DITEBAK. Akui bagian itu belum ada di KB AINA, arahkan ke senior Masisir/PPMI/KBRI/Al-Azhar untuk kepastian.\n4. Jika ada detail yang bisa berubah (harga, tanggal, kebijakan), tambahkan catatan singkat: *"Angka/info ini bisa berubah — konfirmasi ke KBRI/Al-Azhar/senior setempat untuk kepastian."*\n\nPrioritaskan jawaban yang PRAKTIS dan JUJUR soal batasannya — salah langkah dalam urusan visa/iqomah/administrasi punya konsekuensi nyata buat user, bukan cuma info yang kadaluarsa.\n---`;
     }
     console.log(`[LocalMasisir] KB ${kbStrength} | hyperLocal:${isHyperLocal} | conf:${masisirCtx.confidence} → injected retrieval guidance`);
   }
