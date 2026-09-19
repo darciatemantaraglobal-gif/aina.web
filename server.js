@@ -8370,8 +8370,14 @@ async function checkAndArchiveDuplicate(supabase, newArticleId, newTitle, catego
 
     if (bestScore < 0.55 || !best) return null;
 
-    // Archive the older article
-    await supabase.from("knowledge_base").update({ hidden: true }).eq("id", best.id);
+    // Archive the older article.
+    // This used to set hidden=true, but `hidden` means something else on the
+    // retrieval side: a hidden article is still read by the AI, just with its
+    // title masked as "Referensi Internal". So the superseded version kept
+    // feeding the model alongside the one that replaced it. A separate status
+    // retires it properly — both retrieval paths already filter on
+    // status='approved', and the admin panel's "Diarsipkan" tab can restore it.
+    await supabase.from("knowledge_base").update({ status: "archived" }).eq("id", best.id);
 
     // Notify all master admins
     const masterIds = [...MASTER_ADMIN_IDS];
@@ -8458,6 +8464,38 @@ app.post("/api/admin/articles/bulk-import", strictLimiter, async (req, res) => {
   }
 
   res.json({ imported, total: articles.length, errors });
+});
+
+/* POST /api/admin/articles/restore — bring auto-archived articles back.
+ *
+ * Deliberately NOT routed through the review endpoints: approving runs the
+ * duplicate check, which would find the very article that superseded this one
+ * and archive THAT — restoring A would retire B, and restoring B would retire A
+ * again. Approval also awards contribution points and notifies the author,
+ * neither of which should fire a second time for an article that was already
+ * approved once. Restoring is just putting it back.
+ */
+app.post("/api/admin/articles/restore", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
+
+  const supabase = getAdminClient();
+  const { data: articles } = await supabase
+    .from("knowledge_base").select("id, title, status").in("id", ids);
+  const archived = (articles ?? []).filter(a => a.status === "archived");
+  if (archived.length === 0) return res.json({ restored: 0 });
+
+  const archivedIds = archived.map(a => a.id);
+  const { error } = await supabase
+    .from("knowledge_base").update({ status: "approved" }).in("id", archivedIds);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  invalidateKBCache(); invalidateAICache();
+  console.log(`[Restore] ${archivedIds.length} article(s) restored by ${admin.email}`);
+  res.json({ restored: archivedIds.length });
 });
 
 app.post("/api/admin/articles/bulk-review", async (req, res) => {

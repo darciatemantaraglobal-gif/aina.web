@@ -2391,7 +2391,7 @@ function ArticleFormDialog({
 function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
+  const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "archived">("pending");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [editArticle, setEditArticle] = useState<Article | null>(null);
@@ -2475,6 +2475,24 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
       toast.success(status === "approved" ? "Artikel disetujui dan dipublikasikan" : "Artikel ditolak");
       load();
     } catch (e: any) { toast.error(e.message); }
+  };
+
+  // Restore has its own endpoint: re-approving would re-run the duplicate check
+  // and archive the article that replaced this one, flipping the pair back and
+  // forth, and would award the author contribution points a second time.
+  const handleRestore = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setBulkLoading(true);
+    try {
+      const { restored } = await adminFetch("/api/admin/articles/restore", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      });
+      toast.success(`${restored} artikel dipulihkan ke Knowledge Base`);
+      setSelected(new Set());
+      load();
+    } catch (e: any) { toast.error(e.message); }
+    setBulkLoading(false);
   };
 
   const handleBulkReview = async (status: "approved" | "rejected") => {
@@ -2822,7 +2840,9 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
     });
   };
 
-  const tabs: Array<"pending" | "approved" | "rejected"> = ["pending", "approved", "rejected"];
+  // "archived" is what auto-dedup sets on a superseded article. It has to be
+  // reachable here — the notification admins get promises they can restore it.
+  const tabs: Array<"pending" | "approved" | "rejected" | "archived"> = ["pending", "approved", "rejected", "archived"];
 
   const filtered = articles.filter(a => {
     const matchSearch = !searchQuery ||
@@ -3099,7 +3119,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
         {tabs.map(t => (
           <button key={t} onClick={() => setFilter(t)}
             className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors ${filter === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-            {t === "pending" ? "Menunggu" : t === "approved" ? "Disetujui" : "Ditolak"}
+            {t === "pending" ? "Menunggu" : t === "approved" ? "Disetujui" : t === "rejected" ? "Ditolak" : "Diarsipkan"}
           </button>
         ))}
       </div>
@@ -3155,25 +3175,35 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
           {selected.size > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               {/* Standard admin actions */}
+              {filter === "archived" && (
+                <Button
+                  size="sm" disabled={bulkLoading}
+                  className="h-7 gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 text-xs"
+                  variant="outline"
+                  onClick={() => handleRestore(Array.from(selected))}
+                >
+                  <Check className="h-3 w-3" /> Pulihkan {selected.size}
+                </Button>
+              )}
               {filter === "pending" && (
-                <>
-                  <Button
-                    size="sm" disabled={bulkLoading}
-                    className="h-7 gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 text-xs"
-                    variant="outline"
-                    onClick={() => handleBulkReview("approved")}
-                  >
-                    <Check className="h-3 w-3" /> Setujui {selected.size}
-                  </Button>
-                  <Button
-                    size="sm" disabled={bulkLoading}
-                    className="h-7 gap-1.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 text-xs"
-                    variant="outline"
-                    onClick={() => handleBulkReview("rejected")}
-                  >
-                    <X className="h-3 w-3" /> Tolak {selected.size}
-                  </Button>
-                </>
+                <Button
+                  size="sm" disabled={bulkLoading}
+                  className="h-7 gap-1.5 bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 text-xs"
+                  variant="outline"
+                  onClick={() => handleBulkReview("approved")}
+                >
+                  <Check className="h-3 w-3" /> Setujui {selected.size}
+                </Button>
+              )}
+              {filter === "pending" && (
+                <Button
+                  size="sm" disabled={bulkLoading}
+                  className="h-7 gap-1.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 text-xs"
+                  variant="outline"
+                  onClick={() => handleBulkReview("rejected")}
+                >
+                  <X className="h-3 w-3" /> Tolak {selected.size}
+                </Button>
               )}
               {(filter !== "approved" || isMasterAdmin) && (
                 <Button
@@ -3262,7 +3292,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
           <p className="text-sm text-muted-foreground">
             {searchQuery || categoryFilter !== "all" || dateFilter !== "all"
               ? "Tidak ada artikel yang cocok dengan filter."
-              : `Tidak ada artikel ${filter === "pending" ? "menunggu review" : filter === "approved" ? "yang disetujui" : "yang ditolak"}.`}
+              : `Tidak ada artikel ${filter === "pending" ? "menunggu review" : filter === "approved" ? "yang disetujui" : filter === "rejected" ? "yang ditolak" : "yang diarsipkan"}.`}
           </p>
         </div>
       ) : (
@@ -3375,6 +3405,13 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       </>
+                    )}
+                    {art.status === "archived" && (
+                      <Button size="sm" variant="outline" title="Pulihkan artikel ini"
+                        className="h-8 gap-1 border-green-500/30 text-green-400 hover:bg-green-500/10"
+                        onClick={() => handleRestore([art.id])}>
+                        <Check className="h-3.5 w-3.5" /> Pulihkan
+                      </Button>
                     )}
                     {isMasterAdmin && art.status === "approved" && (
                       <Button
