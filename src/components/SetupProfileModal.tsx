@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesUpdate } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { User, MapPin, GraduationCap, BookOpen, Calendar, ChevronRight, Loader2, Sparkles, Camera } from "lucide-react";
 import ainaLogo from "@/assets/aina-logo.png";
@@ -93,7 +94,7 @@ export default function SetupProfileModal({ userId, onComplete, initialValues }:
       }
 
       const year = arrivalYear ? parseInt(arrivalYear) : null;
-      const updates: Record<string, any> = {
+      const updates: TablesUpdate<"profiles"> = {
         full_name: fullName.trim(),
         origin_city: originCity.trim() || null,
         faculty: faculty || null,

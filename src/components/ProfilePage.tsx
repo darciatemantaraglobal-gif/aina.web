@@ -4,6 +4,7 @@ import BadgeCelebrationModal from "@/components/BadgeCelebrationModal";
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesUpdate } from "@/integrations/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -273,7 +274,7 @@ const ProfilePage = ({ userId: userIdProp }: { userId?: string }) => {
         return;
       }
 
-      const updates: Record<string, any> = {
+      const updates: TablesUpdate<"profiles"> = {
         faculty: editFaculty.trim() || null,
         study_field: editStudyField.trim() || null,
         arrival_year: year,
