@@ -4202,11 +4202,18 @@ const VALID_RESPONSE_STYLES = new Set([
 function detectResponseStyle(intentPrimary) {
   switch (intentPrimary) {
     case "procedural":     return "step_by_step";
+    case "confused_procedural": return "step_by_step"; // had no case → fell to "balanced", despite its own
+                                                         // intentHint explicitly asking for numbered steps
     case "fiqh":           return "detailed_complete";
     case "recommendation": return "practical_ready_to_use";
     case "brainstorming":  return "casual_easy_to_understand";
-    case "arabic_writing":  return "step_by_step";
-    case "arabic_analysis": return "step_by_step";
+    // arabic_writing/arabic_analysis used to get "step_by_step" — a "numbered
+    // action list" framing that doesn't fit generating Arabic prose or a
+    // mufradat table. Harmless in practice (their own intentHint entries are
+    // specific enough to dominate), but "balanced" doesn't fight them with an
+    // irrelevant structural nudge the way step_by_step's content does.
+    case "arabic_writing":  return "balanced";
+    case "arabic_analysis": return "balanced";
     case "factual":        return "short_direct";
     case "casual":         return "casual_easy_to_understand";
     case "confused":       return "short_direct";
@@ -4239,13 +4246,15 @@ Ini bukan basa-basi — ini yang membuat jawaban terasa dari orang, bukan robot.
 - **Sudut pandang ringan** (opsional) → "Yang menarik, banyak orang salah kaprah soal ini karena..." / "Jujur, ini sering jadi poin yang underrated."
 
 **Contoh BENAR:**
-> "Nah, Presiden Amerika Serikat saat ini adalah Donald Trump — ia menjabat lagi sejak Januari 2025.
-> Ini bukan debut pertamanya; ia sudah pernah jadi presiden ke-45 (2017–2021), menjadikannya satu dari dua presiden AS yang menjabat dua periode tidak berurutan.
-> Kalau kamu penasaran, kebijakannya periode ini ada yang cukup berbeda dari sebelumnya — mau aku ceritain highlight-nya?"
+> "Nah, Al-Azhar itu didirikan tahun 970 M oleh Dinasti Fatimiyah — jadi udah lebih dari seribu tahun jadi pusat keilmuan Islam.
+> Awalnya dibangun sebagai masjid, baru berkembang jadi universitas resmi sekitar abad ke-10, dan sampai sekarang jadi rujukan utama pelajar Islam dari seluruh dunia, termasuk ribuan Masisir.
+> Menarik ya kebayang gedung yang sama udah dipake belajar dari generasi ke generasi — mau aku ceritain sejarah singkat perkembangannya?"
 
 **Contoh SALAH:**
-> "Donald Trump adalah Presiden Amerika Serikat." ← kering, tanpa konteks, tanpa penutup.
+> "Al-Azhar didirikan tahun 970 M." ← kering, tanpa konteks, tanpa penutup.
 > "Semoga bermanfaat!" ← menutup percakapan, bukan membukanya.
+
+**Catatan penting untuk fakta yang BISA berubah (jabatan, pejabat, kebijakan terkini):** jangan pakai pola contoh di atas untuk hal semacam ini walau strukturnya cocok — ikuti instruksi confidence/hint terkait (lihat bagian lain di prompt ini) yang bisa mewajibkan hedging atau blokir total. Contoh di atas sengaja pakai fakta sejarah yang permanen, bukan fakta yang bisa basi, supaya pola "jawab percaya diri" ini tidak ketiban dipakai untuk hal yang justru harus hati-hati.
 
 **Konektor:** "Jadi...", "Nah...", "Intinya...", "Yang menarik...", "Oh iya..."
 **Larangan:** JANGAN buka dengan "Berikut adalah...", "Tentu!", "Baik!". JANGAN selesai tanpa penutup diskusi.`,

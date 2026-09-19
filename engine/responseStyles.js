@@ -115,10 +115,15 @@ JANGAN langsung buka dengan "Berikut adalah..." tanpa kalimat pembuka yang manus
 export function autoDetectResponseStyle(intentPrimary) {
   switch (intentPrimary) {
     case "procedural":     return "step_by_step";
+    case "confused_procedural": return "step_by_step";
     case "fiqh":           return "detailed_complete";
     case "recommendation": return "practical_ready_to_use";
     case "brainstorming":  return "casual_easy_to_understand";
-    case "arabic_writing": return "step_by_step";
+    // arabic_writing/arabic_analysis: "step_by_step" doesn't fit generating
+    // Arabic prose or a mufradat table — "balanced" doesn't fight their own
+    // (much more specific) intentHint entries with an irrelevant nudge.
+    case "arabic_writing":  return "balanced";
+    case "arabic_analysis": return "balanced";
     case "factual":        return "short_direct";
     case "casual":         return "casual_easy_to_understand";
     case "confused":       return "short_direct";
