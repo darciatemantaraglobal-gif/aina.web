@@ -15,6 +15,9 @@ import {
   consumeRateWindow,
   checkChatUserRate,
   isAllowedOrigin,
+  fuseByReciprocalRank,
+  assessKBStrength,
+  detectIntent,
 } from "./server.js";
 
 // ── resolveEntitlement ──────────────────────────────────────────────────────
@@ -172,5 +175,133 @@ describe("isAllowedOrigin", () => {
 
   it("rejects a malformed origin instead of throwing", () => {
     expect(isAllowedOrigin("not-a-valid-url")).toBe(false);
+  });
+});
+
+// ── fuseByReciprocalRank ────────────────────────────────────────────────────
+// The actual bug: fetchRelevantArticles returned early on ANY vector hit, so
+// the keyword path never ran. At the 0.40 similarity floor that meant five
+// loosely-related neighbours could shut out the article whose title answered
+// the question word-for-word.
+
+describe("fuseByReciprocalRank", () => {
+  it("ranks an article found by BOTH retrievers above one found by only one", () => {
+    const keyword = [{ title: "Cara Perpanjang Iqomah" }, { title: "Biaya Hidup Kairo" }];
+    const vector  = [{ title: "Visa Pelajar Mesir" }, { title: "Cara Perpanjang Iqomah" }];
+
+    const fused = fuseByReciprocalRank(keyword, vector);
+
+    // Present in both lists → accumulates from both → must come first.
+    expect(fused[0].title).toBe("Cara Perpanjang Iqomah");
+  });
+
+  it("REGRESSION: a top keyword match survives even when vector returns a full page of others", () => {
+    const keyword = [{ title: "Syarat Qaid Al-Azhar" }];
+    const vector = [
+      { title: "Sejarah Al-Azhar" },
+      { title: "Fakultas di Al-Azhar" },
+      { title: "Asrama Mahasiswa" },
+      { title: "Beasiswa Al-Azhar" },
+      { title: "Kalender Akademik" },
+    ];
+
+    const fused = fuseByReciprocalRank(keyword, vector);
+
+    // Under the old short-circuit this article was never even fetched.
+    expect(fused.map(a => a.title)).toContain("Syarat Qaid Al-Azhar");
+    expect(fused[0].title).toBe("Syarat Qaid Al-Azhar");
+  });
+
+  it("merges fields across retrievers — keyword rows carry last_updated, vector rows carry similarity", () => {
+    const keyword = [{ title: "Iqomah", last_updated: "2026-01-01", content: "full" }];
+    const vector  = [{ title: "Iqomah", similarity: 0.82, content: "full" }];
+
+    const [merged] = fuseByReciprocalRank(keyword, vector);
+
+    expect(merged.last_updated).toBe("2026-01-01");
+    expect(merged.similarity).toBe(0.82);
+  });
+
+  it("handles either side being empty", () => {
+    expect(fuseByReciprocalRank([], [{ title: "A" }])).toHaveLength(1);
+    expect(fuseByReciprocalRank([{ title: "A" }], [])).toHaveLength(1);
+    expect(fuseByReciprocalRank([], [])).toHaveLength(0);
+  });
+
+  it("does not collapse distinct untitled articles into one", () => {
+    const fused = fuseByReciprocalRank([{ content: "a" }, { content: "b" }], []);
+    expect(fused).toHaveLength(2);
+  });
+});
+
+// ── assessKBStrength ────────────────────────────────────────────────────────
+// The actual bug: _topScore was only ever set on the keyword path. A
+// vector-only result therefore hit the `articles.length >= 2 → "strong"`
+// fallback, and "strong" makes the pipeline skip external sources, drop to the
+// cheap model tier, and answer confidently — all on its weakest evidence.
+
+function withSignals(articles, { topScore, topSimilarity } = {}) {
+  const arr = [...articles];
+  if (topScore !== undefined) arr._topScore = topScore;
+  if (topSimilarity !== undefined) arr._topSimilarity = topSimilarity;
+  return arr;
+}
+
+const article = (chars = 100) => ({ content: "x".repeat(chars) });
+
+describe("assessKBStrength", () => {
+  it("returns absent for no articles", () => {
+    expect(assessKBStrength([])).toBe("absent");
+    expect(assessKBStrength(null)).toBe("absent");
+  });
+
+  it("trusts a single article when keyword relevance is very high", () => {
+    expect(assessKBStrength(withSignals([article()], { topScore: 8 }))).toBe("strong");
+  });
+
+  it("treats a low keyword score as weak regardless of article count", () => {
+    expect(assessKBStrength(withSignals([article(), article()], { topScore: 2 }))).toBe("weak");
+  });
+
+  it("REGRESSION: two loosely-related vector hits are NOT strong", () => {
+    // 0.45 similarity clears the 0.40 retrieval floor but is nowhere near
+    // close enough to justify skipping external sources and the better model.
+    const articles = withSignals([article(1000), article(1000)], { topSimilarity: 0.45 });
+    expect(assessKBStrength(articles)).toBe("weak");
+  });
+
+  it("accepts vector-only evidence once similarity is genuinely close", () => {
+    const articles = withSignals([article(1000), article(1000)], { topSimilarity: 0.75 });
+    expect(assessKBStrength(articles)).toBe("strong");
+  });
+
+  it("still requires coverage even at high similarity", () => {
+    const articles = withSignals([article(100)], { topSimilarity: 0.9 });
+    expect(assessKBStrength(articles)).toBe("weak");
+  });
+});
+
+// ── detectIntent.unmatched ──────────────────────────────────────────────────
+// `unmatched` gates the (paid) LLM intent fallback. It must fire ONLY when no
+// pattern matched at all — if it fired on every "factual" query we'd be paying
+// for a classification call on a large share of normal traffic.
+
+describe("detectIntent unmatched flag", () => {
+  it("is false when a keyword pattern actually matched", () => {
+    expect(detectIntent("gimana cara perpanjang iqomah").unmatched).toBe(false);
+    expect(detectIntent("rekomendasi kost murah di Hay Asyir").unmatched).toBe(false);
+    expect(detectIntent("aku bingung harus mulai dari mana").unmatched).toBe(false);
+  });
+
+  it("is true only for phrasings no pattern covers", () => {
+    // Nothing in the procedural/recommend/brainstorm/confused keyword sets
+    // covers this, so it silently became "factual" — the case worth an LLM call.
+    const intent = detectIntent("iqomah gue tinggal seminggu lagi, aman gak");
+    expect(intent.primary).toBe("factual");
+    expect(intent.unmatched).toBe(true);
+  });
+
+  it("does not mark specialised intents as unmatched", () => {
+    expect(detectIntent("tulisin surat ghaib bahasa arab").unmatched).toBe(false);
   });
 });

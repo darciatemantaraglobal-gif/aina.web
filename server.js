@@ -1515,6 +1515,63 @@ function getJobs() {
   return _jobs;
 }
 
+/* ── Retrieval tunables ─────────────────────────────────────────────────────
+ * Kept as env-overridable constants because the right values depend on the
+ * live KB's size and writing style — they can't be settled from code alone.
+ * Re-tune with the eval benchmark (/api/admin/eval) after KB growth spurts.
+ */
+// Floor passed to the match_knowledge_base RPC — below this, a neighbour is noise.
+const KB_VECTOR_MATCH_THRESHOLD = Number(process.env.KB_VECTOR_MATCH_THRESHOLD ?? 0.40);
+// Similarity a vector-only match must clear before it can count as "strong"
+// coverage. Between MATCH and STRONG the article is still shown to the model,
+// but the answer is treated as weakly grounded (external sources stay on, and
+// the stronger model tier is kept).
+const KB_VECTOR_STRONG_THRESHOLD = Number(process.env.KB_VECTOR_STRONG_THRESHOLD ?? 0.60);
+// RRF damping constant. 60 is the value from the original Cormack et al. paper
+// and is deliberately large: it flattens the gap between ranks so neither
+// retriever can dominate purely by being more confident in its own scale.
+const KB_RRF_K = Number(process.env.KB_RRF_K ?? 60);
+
+/**
+ * Reciprocal Rank Fusion of two ranked article lists.
+ * Each list contributes 1/(k + rank) per article; a title present in both
+ * lists accumulates from both, which is exactly the "agreed by keyword AND
+ * semantics" signal we want at the top.
+ *
+ * @param {Array<{title?: string}>} keywordRanked - ranked best-first
+ * @param {Array<{title?: string}>} vectorRanked  - ranked best-first
+ * @returns {Array<object>} fused, ranked best-first
+ */
+export function fuseByReciprocalRank(keywordRanked, vectorRanked) {
+  const byTitle = new Map(); // normalized title → { article, score }
+
+  const absorb = (list) => {
+    list.forEach((article, i) => {
+      const key = (article.title ?? "").toLowerCase().trim() || `__untitled_${i}`;
+      const contribution = 1 / (KB_RRF_K + i + 1);
+      const existing = byTitle.get(key);
+      if (existing) {
+        existing.score += contribution;
+        // Merge: keyword rows carry last_updated/image_url the RPC doesn't return,
+        // vector rows carry similarity. Neither side is complete on its own.
+        existing.article = { ...article, ...existing.article };
+        if (article.similarity !== undefined && existing.article.similarity === undefined) {
+          existing.article.similarity = article.similarity;
+        }
+      } else {
+        byTitle.set(key, { article: { ...article }, score: contribution });
+      }
+    });
+  };
+
+  absorb(keywordRanked);
+  absorb(vectorRanked);
+
+  return [...byTitle.values()]
+    .sort((a, b) => b.score - a.score)
+    .map(e => e.article);
+}
+
 /* ── Fetch relevant knowledge base articles ──────────── */
 async function fetchRelevantArticles(userQuestion, intentType) {
   const supabase = getAdminClient();
@@ -1674,62 +1731,65 @@ async function fetchRelevantArticles(userQuestion, intentType) {
 
   console.log(`[KB] keywords extracted: [${keywords.join(", ")}] from "${userQuestion.slice(0, 60)}"`);
 
-  // ── Vector (semantic) search — try first if OpenAI key is available ─────────
-  let vectorResults = [];
-  if (process.env.VOYAGE_API_KEY && !vectorSearchDisabled) {
+  // ── Vector (semantic) search ────────────────────────────────────────────────
+  // Runs in PARALLEL with the keyword search below and is fused by reciprocal
+  // rank. It used to short-circuit — any hit at all returned immediately and
+  // the keyword path never ran — so an article whose title matched the question
+  // word-for-word could lose to five loosely-related semantic neighbours
+  // sitting just above the 0.40 floor. Both signals now have to agree for an
+  // article to reach the top.
+  const vectorSearch = async () => {
+    if (!process.env.VOYAGE_API_KEY || vectorSearchDisabled) return [];
     try {
       const queryEmbedding = await generateEmbedding(userQuestion);
       const { data: vecData, error: vecErr } = await supabase.rpc("match_knowledge_base", {
         query_embedding: queryEmbedding,
-        match_threshold: 0.40,
+        match_threshold: KB_VECTOR_MATCH_THRESHOLD,
         match_count: 5,
       });
       if (!vecErr && vecData && vecData.length > 0) {
-        vectorResults = vecData;
-        console.log(`[RAG] ✓ vector search: ${vectorResults.length} results (top similarity=${vecData[0]?.similarity?.toFixed(3)})`);
+        console.log(`[RAG] ✓ vector search: ${vecData.length} results (top similarity=${vecData[0]?.similarity?.toFixed(3)})`);
+        return vecData;
       }
     } catch (vecE) {
       if (vecE.message?.includes("429") || vecE.message?.includes("quota")) {
         vectorSearchDisabled = true;
-        console.warn("[RAG] ⚠️  Vector search disabled — OpenAI quota exceeded. Falling back to keyword search.");
+        console.warn("[RAG] ⚠️  Vector search disabled — embedding quota exceeded. Falling back to keyword search.");
       } else {
         console.warn(`[RAG] vector search failed, falling back to keyword: ${vecE.message}`);
       }
     }
-  }
-
-  // If vector search found solid results, use them directly
-  if (vectorResults.length > 0) {
-    const vecTop = vectorResults.slice(0, 5).map(({ similarity: _, ...a }) => a);
-    _kbCacheSet(userQuestion, intentType, vecTop);
-    return vecTop;
-  }
-
-  // ── Keyword (ILIKE) search — fallback when vector unavailable/empty ──────────
-  if (keywords.length === 0) {
-    logMissingTopic(userQuestion, intentType);
     return [];
-  }
+  };
 
-  // Server-side OR filter across keywords — also matches contributor-defined keywords column
-  const orFilter = keywords
-    .flatMap(kw => [
-      `title.ilike.%${kw}%`,
-      `content.ilike.%${kw}%`,
-      ...(hasKwCol ? [`keywords.ilike.%${kw}%`] : []),
-      ...(hasSummaryCol ? [`summary.ilike.%${kw}%`] : []),
-    ])
-    .join(",");
+  // ── Keyword (ILIKE) search ──────────────────────────────────────────────────
+  const keywordSearch = async () => {
+    if (keywords.length === 0) return [];
 
-  const { data: matched } = await supabase
-    .from("knowledge_base")
-    .select(selectCols)
-    .eq("status", "approved")
-    .or(orFilter)
-    .order("last_updated", { ascending: false })
-    .limit(50);   // fetch generous pool for client-side ranking (large KB needs more candidates)
+    // Server-side OR filter across keywords — also matches contributor-defined keywords column
+    const orFilter = keywords
+      .flatMap(kw => [
+        `title.ilike.%${kw}%`,
+        `content.ilike.%${kw}%`,
+        ...(hasKwCol ? [`keywords.ilike.%${kw}%`] : []),
+        ...(hasSummaryCol ? [`summary.ilike.%${kw}%`] : []),
+      ])
+      .join(",");
 
-  if (!matched || matched.length === 0) {
+    const { data } = await supabase
+      .from("knowledge_base")
+      .select(selectCols)
+      .eq("status", "approved")
+      .or(orFilter)
+      .order("last_updated", { ascending: false })
+      .limit(50);   // fetch generous pool for client-side ranking (large KB needs more candidates)
+
+    return data ?? [];
+  };
+
+  const [vectorResults, matched] = await Promise.all([vectorSearch(), keywordSearch()]);
+
+  if (matched.length === 0 && vectorResults.length === 0) {
     // Log this query as a missing topic so admins can identify coverage gaps
     logMissingTopic(userQuestion, intentType);
     return [];
@@ -1784,20 +1844,34 @@ async function fetchRelevantArticles(userQuestion, intentType) {
   const MIN_SCORE = rawWords.length <= 1 ? 1 : rawWords.length <= 3 ? 2 : 3;
   const relevant = scored.filter(a => a._relevanceScore >= MIN_SCORE);
 
-  if (relevant.length === 0) {
+  if (relevant.length === 0 && vectorResults.length === 0) {
     console.log(`[KB] query="${userQuestion.slice(0, 60)}" → ${scored.length} candidates but all below relevance threshold (min=${MIN_SCORE}, top=${scored[0]?._relevanceScore ?? 0}) → treating as absent`);
     logMissingTopic(userQuestion, intentType);
     return [];
   }
 
-  const top = relevant.slice(0, 5).map(({ _relevanceScore, ...a }) => a);
-  // Attach top keyword-match score to the array for assessKBStrength to consume.
-  // This lets strength assessment factor in actual relevance, not just article count/length.
-  top._topScore = scored[0]._relevanceScore;
+  // ── Fuse both rankings ──────────────────────────────────────────────────────
+  const fused = fuseByReciprocalRank(relevant, vectorResults);
+  const top = fused.slice(0, 5).map(({ similarity: _sim, ...a }) => a);
 
-  console.log(`[KB] query="${userQuestion.slice(0, 60)}" → ${matched.length} candidates → ${relevant.length} above threshold → top ${top.length} returned (topScore=${scored[0]._relevanceScore})`);
+  // Strength signals for assessKBStrength. Two separate numbers on purpose:
+  // they are not the same scale and collapsing them would hide which retriever
+  // actually found the evidence.
+  //   _topScore      — best keyword relevance (undefined when keywords missed entirely)
+  //   _topSimilarity — best cosine similarity (undefined when vector search is off/empty)
+  // Before this existed, a vector-only result had NO strength signal at all, so
+  // assessKBStrength fell through to "2 articles = strong" and the pipeline
+  // downgraded to the cheap model and skipped external sources on what may have
+  // been two barely-related neighbours.
+  if (relevant.length > 0) top._topScore = relevant[0]._relevanceScore;
+  if (vectorResults.length > 0) top._topSimilarity = vectorResults[0].similarity;
+
+  console.log(
+    `[KB] query="${userQuestion.slice(0, 60)}" → keyword=${relevant.length} vector=${vectorResults.length}` +
+    ` → fused top ${top.length} (topScore=${top._topScore ?? "n/a"}, topSim=${top._topSimilarity?.toFixed(3) ?? "n/a"})`
+  );
   if (top.length > 0) {
-    console.log(`[KB] top article: "${top[0].title}" (score=${scored[0]._relevanceScore})`);
+    console.log(`[KB] top article: "${top[0].title}"`);
   }
 
   _kbCacheSet(userQuestion, intentType, top);
@@ -1969,10 +2043,11 @@ async function fetchPinnedUpdates() {
  *             Perplexity should still supplement
  * 'absent'  → no articles at all
  */
-function assessKBStrength(articles) {
+export function assessKBStrength(articles) {
   if (!articles || articles.length === 0) return "absent";
 
-  const topScore = articles._topScore; // set by fetchRelevantArticles (keyword path); undefined for vector
+  const topScore = articles._topScore;           // best keyword relevance, if keywords matched
+  const topSimilarity = articles._topSimilarity; // best cosine similarity, if vector search ran
   const totalChars = articles.reduce((sum, a) => sum + (a.content?.length ?? 0), 0);
 
   if (topScore !== undefined) {
@@ -1996,7 +2071,22 @@ function assessKBStrength(articles) {
     return "weak";
   }
 
-  // Vector search path (no topScore) — use coverage metrics only
+  // ── Vector-only path (keyword search matched nothing) ──────────────────────
+  // Coverage alone is NOT evidence here. The RPC returns anything above the
+  // 0.40 floor, so "2 articles" can mean two vaguely-adjacent neighbours — and
+  // calling that "strong" makes the pipeline skip external sources AND drop to
+  // the cheap model tier AND speak confidently, all at once, on its weakest
+  // evidence. Require the semantics to actually be close before trusting it.
+  if (topSimilarity !== undefined) {
+    if (topSimilarity >= KB_VECTOR_STRONG_THRESHOLD && (articles.length >= 2 || totalChars >= 1500)) {
+      console.log(`[KB] strength=strong — vector-only, topSim=${topSimilarity.toFixed(3)} + coverage=${articles.length} art / ${totalChars} chars`);
+      return "strong";
+    }
+    console.log(`[KB] strength=weak — vector-only, topSim=${topSimilarity.toFixed(3)} below ${KB_VECTOR_STRONG_THRESHOLD} or thin coverage`);
+    return "weak";
+  }
+
+  // No score signals at all (e.g. cached legacy entry) — fall back to coverage.
   if (articles.length >= 2 || totalChars >= 1500) return "strong";
   return "weak";
 }
@@ -3692,7 +3782,7 @@ Nasr City terbagi menjadi hay (distrik) bernomor. Urutan dari barat ke timur kur
 }
 
 /* ── Intent detection (rule-based, no LLM call) ─────── */
-function detectIntent(text) {
+export function detectIntent(text) {
   const t = text.toLowerCase().trim();
 
   // Casual tone flag — keyword-based only, no length check
@@ -3713,7 +3803,11 @@ function detectIntent(text) {
   const hasArabicWritingKw = /(إنشاء|اكتب|كتابة|تلخيص|لخّص|لخص|خلاصة|شرح|اشرح|فسّر|فسر|قواعد|نحو|صرف|ترجم|ترجمة|تحليل|صياغة|مقالة|بحث|ملخص|وضّح|وضح|عرّف|عرف|اذكر|مقدمة|خاتمة|تعبير|تعريف)/.test(text);
 
   // Path B: user types in Indonesian but requests Arabic text output
-  const hasGenVerb    = /\b(tulis(kan)?|buat(kan|in)?|bikin|buatin|bikinin|terjemah(kan|in)?|nulis(kan)?|cariin contoh|kasih contoh|berikan contoh)\b/.test(t);
+  // The colloquial "-in" suffix was covered for buat/bikin/terjemah but not for
+  // tulis/nulis, so "tulisin surat ghaib bahasa arab" — an unmistakable Arabic
+  // writing request — fell through to plain factual and got answered in the
+  // wrong shape.
+  const hasGenVerb    = /\b(tulis(kan|in)?|buat(kan|in)?|bikin|buatin|bikinin|terjemah(kan|in)?|nulis(kan|in)?|cariin contoh|kasih contoh|berikan contoh)\b/.test(t);
   const hasBahasaArab = /\bbahasa arab(ku|nya|mu|kita|kami)?\b/.test(t);
   // Specific Arabic letter request (surat ghaib / i'tidzar)
   const hasArabicLetterReq = hasGenVerb && /\bsurat\b/.test(t) && /\b(ghaib|i.?tidzar|itidzar|ta.?hidzar)\b/.test(t);
@@ -3749,7 +3843,79 @@ function detectIntent(text) {
   else if (isBrainstorm)          primary = "brainstorming";
   else                            primary = "factual";
 
-  return { primary, casual: isCasual };
+  // `unmatched` marks the case where NO pattern fired and we fell through to
+  // the "factual" default. That is different from a query that genuinely IS
+  // factual ("berapa biaya hidup di Kairo") — there the keywords matched
+  // nothing simply because factual has no keywords of its own. Only the
+  // unmatched tail is worth spending an LLM call on (see refineIntentWithLLM).
+  const unmatched = !isArabicAnalysis && !isArabicWriting && !isFiqhIntent &&
+    !isConfused && !isProcedural && !isRecommend && !isBrainstorm;
+
+  return { primary, casual: isCasual, unmatched };
+}
+
+/* ── LLM intent fallback ─────────────────────────────────
+ * detectIntent is regex-only: fast and free, and it handles the bulk of real
+ * traffic. What it cannot do is recognise a phrasing nobody thought to add a
+ * keyword for — those silently become "factual" and get answered in the wrong
+ * SHAPE (a step-by-step question answered as a flat paragraph, a request for
+ * options answered as one recommendation).
+ *
+ * So: regex stays the fast path, and only queries it could not place at all
+ * get one cheap Flash-Lite classification. Fails open to the regex answer —
+ * a wrong-but-fast intent beats a hung request.
+ */
+const INTENT_LLM_FALLBACK_ENABLED = process.env.INTENT_LLM_FALLBACK !== "false";
+// Only intents the classifier is allowed to return. arabic_* and fiqh are
+// deliberately excluded: those have dedicated detectors with domain rules
+// (isFiqhQuery, Arabic script checks) that outrank a generic classifier.
+const LLM_INTENT_CHOICES = ["procedural", "recommendation", "brainstorming", "confused", "factual", "casual"];
+
+async function refineIntentWithLLM(text) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey || !INTENT_LLM_FALLBACK_ENABLED) return null;
+
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(3000),
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://ainalabs.pro",
+        "X-Title": "AINA Intent Classifier",
+      },
+      body: JSON.stringify({
+        model: MODEL_TIERS.lightweight.primary,
+        temperature: 0,
+        max_tokens: 8,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Klasifikasikan pertanyaan mahasiswa Indonesia di Mesir ke SATU kategori. " +
+              "Jawab HANYA dengan satu kata dari daftar ini, tanpa penjelasan:\n" +
+              "procedural = menanyakan cara/langkah mengurus sesuatu\n" +
+              "recommendation = minta saran pilihan terbaik\n" +
+              "brainstorming = minta daftar ide/opsi/kemungkinan\n" +
+              "confused = bingung atau butuh diarahkan, bukan tanya fakta spesifik\n" +
+              "factual = menanyakan informasi/fakta\n" +
+              "casual = obrolan ringan, sapaan, bukan pertanyaan informasi",
+          },
+          { role: "user", content: text.slice(0, 400) },
+        ],
+      }),
+    });
+
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const raw = (data?.choices?.[0]?.message?.content ?? "").trim().toLowerCase();
+    const match = LLM_INTENT_CHOICES.find(c => raw === c || raw.startsWith(c));
+    return match ?? null;
+  } catch (e) {
+    console.warn(`[Intent] LLM fallback failed (keeping regex result): ${e.message}`);
+    return null;
+  }
 }
 
 /* ── Partner Promo Detection ─────────────────────────────
@@ -4637,9 +4803,19 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     console.log(`[Clarif] ✓ correction detected from user ${user.id} — "${lastUserMessage.slice(0, 60)}"`);
   }
 
-  // Intent detection is synchronous — compute before parallel fetches so memory retrieval is query-aware
+  // Intent detection is regex-first — compute before parallel fetches so memory retrieval is query-aware
   _chatDebugStep = "intent-detection";
   const intent = detectIntent(retrievalQuery);
+  // Only the unmatched tail pays for an LLM call; everything the regex placed
+  // confidently goes straight through. Keeps the common path free and fast.
+  if (intent.unmatched) {
+    const refined = await refineIntentWithLLM(retrievalQuery);
+    if (refined && refined !== intent.primary) {
+      console.log(`[Intent] regex=factual(unmatched) → LLM=${refined}`);
+      intent.primary = refined;
+      if (refined === "casual") intent.casual = true;
+    }
+  }
   const intentHint = buildIntentHint(intent);
   console.log(`[Intent] ${intent.primary}${intent.casual ? "+casual" : ""} — "${lastUserMessage.slice(0, 60)}"`);
 
