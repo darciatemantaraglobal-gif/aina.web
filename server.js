@@ -61,7 +61,7 @@ function rateLimit({ windowMs, max, message, keyGenerator, validate } = {}) {
 import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import multer from "multer";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
@@ -14696,6 +14696,206 @@ app.post("/api/admin/eval/results", strictLimiter, async (req, res) => {
   }).select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ result: data, total_score });
+});
+
+/* ── Retrieval eval runner ───────────────────────────────
+ * The eval tables and the compare/summary endpoints already existed, but the
+ * only way to get a row INTO them was to run a question by hand and type in
+ * five scores. That is why the benchmark set was decoration: nobody scores 50
+ * questions manually twice in a row, so no retrieval change was ever measured.
+ *
+ * This runs the benchmark set through the real retrieval path automatically.
+ * It deliberately scores RETRIEVAL ONLY — did we find the right articles —
+ * not answer prose:
+ *   - it is deterministic, so two runs of the same code give the same number
+ *     and a diff means the code actually changed something;
+ *   - it costs one embedding call per question, not one LLM answer + one LLM
+ *     judge per question;
+ *   - retrieval is where the tunables live (KB_VECTOR_STRONG_THRESHOLD,
+ *     KB_RRF_K), so it measures exactly the knobs you'd turn.
+ *
+ * Prose quality still needs the manual path (POST /eval/results) or human
+ * review. score_structure / score_human_feel / score_trustworthiness are left
+ * null here rather than filled with invented numbers.
+ */
+let _evalRunState = { running: false, total: 0, done: 0, runId: null, versionTag: null, startedAt: null, completedAt: null, error: null };
+
+/* GET /api/admin/eval/suggest-benchmarks — propose benchmark questions from REAL traffic
+ * A benchmark set invented by whoever wrote the code tests the questions that
+ * person thought of. The queries that actually matter are the ones users typed
+ * and AINA handled badly — and those are already being recorded in
+ * missing_topics (logged on every KB miss) and query_log.
+ * Returns candidates only; adding them is a deliberate POST /eval/benchmarks.
+ */
+app.get("/api/admin/eval/suggest-benchmarks", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server not configured" });
+  const days = Math.min(Number(req.query.days) || 30, 365);
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+
+  try {
+    const [missingRes, logRes, existingRes] = await Promise.all([
+      supabase.from("missing_topics").select("query, intent_type, created_at").gte("created_at", since).limit(500),
+      supabase.from("query_log").select("query_text, intent_type, has_kb_result, rating, created_at").gte("created_at", since).limit(500),
+      supabase.from("eval_benchmarks").select("question"),
+    ]);
+
+    const alreadyBenchmarked = new Set(
+      (existingRes.data ?? []).map(b => b.question.toLowerCase().trim())
+    );
+
+    // Count repeats — a question asked 12 times is worth more as a benchmark
+    // than a one-off, regardless of how interesting it looks.
+    const tally = new Map(); // normalized → { question, intent, count, reasons:Set }
+    const add = (question, intent, reason) => {
+      const text = String(question ?? "").trim();
+      if (text.length < 8 || text.length > 300) return;
+      const key = text.toLowerCase().replace(/\s+/g, " ");
+      if (alreadyBenchmarked.has(key)) return;
+      const entry = tally.get(key) ?? { question: text, intent_type: intent ?? null, count: 0, reasons: new Set() };
+      entry.count += 1;
+      entry.reasons.add(reason);
+      tally.set(key, entry);
+    };
+
+    for (const m of missingRes.data ?? []) add(m.query, m.intent_type, "kb_miss");
+    for (const l of logRes.data ?? []) {
+      if (l.has_kb_result === false) add(l.query_text, l.intent_type, "no_kb_result");
+      if (l.rating != null && l.rating <= 2) add(l.query_text, l.intent_type, "low_rating");
+    }
+
+    const candidates = [...tally.values()]
+      .map(e => ({ ...e, reasons: [...e.reasons] }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, Math.min(Number(req.query.limit) || 50, 200));
+
+    res.json({
+      window_days: days,
+      already_benchmarked: alreadyBenchmarked.size,
+      candidates,
+      hint: "Tambahkan yang relevan lewat POST /api/admin/eval/benchmarks, lalu jalankan POST /api/admin/eval/run-retrieval.",
+    });
+  } catch (e) {
+    res.status(500).json({ error: sanitizeErr(e) });
+  }
+});
+
+/* GET /api/admin/eval/run-retrieval/status — progress of the current/last run */
+app.get("/api/admin/eval/run-retrieval/status", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  res.json(_evalRunState);
+});
+
+/* POST /api/admin/eval/run-retrieval — score the benchmark set against live retrieval
+   Body: { version_tag: string, category?: string, limit?: number } */
+app.post("/api/admin/eval/run-retrieval", strictLimiter, async (req, res) => {
+  const admin = await verifyMasterAdmin(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+
+  const versionTag = String(req.body?.version_tag ?? "").trim();
+  if (!versionTag) return res.status(400).json({ error: "version_tag wajib diisi (misal: 'rrf-fusion' atau 'before-rrf')" });
+  if (_evalRunState.running) return res.json({ alreadyRunning: true, ..._evalRunState });
+
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(500).json({ error: "Server not configured" });
+
+  let q = supabase.from("eval_benchmarks").select("id, question, category").eq("active", true);
+  if (req.body?.category) q = q.eq("category", req.body.category);
+  const { data: benchmarks, error: bErr } = await q.limit(Math.min(Number(req.body?.limit) || 100, 200));
+  if (bErr) return res.status(500).json({ error: sanitizeErr(bErr) });
+  if (!benchmarks?.length) {
+    return res.status(400).json({ error: "Belum ada soal benchmark aktif. Jalankan POST /api/admin/eval/benchmarks/seed dulu." });
+  }
+
+  const runId = randomUUID();
+  _evalRunState = {
+    running: true, total: benchmarks.length, done: 0,
+    runId, versionTag, startedAt: new Date().toISOString(), completedAt: null, error: null,
+  };
+
+  // Respond immediately — a 100-question run takes longer than a sane HTTP timeout.
+  res.json({ started: true, run_id: runId, version_tag: versionTag, total: benchmarks.length });
+
+  (async () => {
+    const rows = [];
+    try {
+      for (const b of benchmarks) {
+        const intent = detectIntent(b.question);
+        let articles = [];
+        try {
+          articles = await fetchRelevantArticles(b.question, intent.primary);
+        } catch (e) {
+          console.warn(`[Eval] retrieval failed for "${b.question.slice(0, 40)}": ${e.message}`);
+        }
+        const strength = assessKBStrength(articles);
+
+        // score_relevance — did retrieval produce usable grounding at all?
+        const scoreRelevance = strength === "strong" ? 5 : strength === "weak" ? 3 : 0;
+
+        // score_accuracy — did the TOP article look like it is about the thing
+        // asked? Objective proxy: any content word from the question appearing
+        // in the top article's title. Crude, but it is the same crude measure
+        // across runs, which is what makes a delta meaningful.
+        const qWords = b.question.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(w => w.length >= 4);
+        const topTitle = (articles[0]?.title ?? "").toLowerCase();
+        const titleHit = qWords.some(w => topTitle.includes(w));
+        const scoreAccuracy = articles.length === 0 ? 0 : titleHit ? 5 : 2;
+
+        // Scale the two measured dimensions to the same 0–100 total_score the
+        // manual path produces, so /eval/summary and /eval/compare can put
+        // retrieval runs and manual runs on the same axis.
+        const totalScore = parseFloat((((scoreRelevance + scoreAccuracy) / 10) * 100).toFixed(2));
+
+        rows.push({
+          benchmark_id: b.id,
+          run_id: runId,
+          question: b.question,
+          category: b.category,
+          answer: articles.length
+            ? `[retrieval] ${articles.length} artikel: ${articles.map(a => a.title).filter(Boolean).slice(0, 5).join(" | ")}`
+            : "[retrieval] tidak ada artikel yang cocok",
+          score_accuracy: scoreAccuracy,
+          score_relevance: scoreRelevance,
+          score_structure: null,
+          score_human_feel: null,
+          score_trustworthiness: null,
+          total_score: totalScore,
+          notes: JSON.stringify({
+            intent: intent.primary,
+            unmatched_intent: intent.unmatched ?? false,
+            kb_strength: strength,
+            article_count: articles.length,
+            top_score: articles._topScore ?? null,
+            top_similarity: articles._topSimilarity ?? null,
+            top_title: articles[0]?.title ?? null,
+          }),
+          version_tag: versionTag,
+          eval_mode: "retrieval",
+        });
+
+        _evalRunState.done += 1;
+      }
+
+      // Chunked insert — one 100-row insert can exceed statement limits.
+      for (let i = 0; i < rows.length; i += 25) {
+        const { error } = await supabase.from("eval_results").insert(rows.slice(i, i + 25));
+        if (error) throw error;
+      }
+
+      const avg = rows.reduce((s, r) => s + r.total_score, 0) / rows.length;
+      console.log(`[Eval] run ${runId} (${versionTag}) done — ${rows.length} soal, rata-rata ${avg.toFixed(1)}/100`);
+    } catch (e) {
+      _evalRunState.error = e.message;
+      console.error(`[Eval] run ${runId} failed: ${e.message}`);
+    } finally {
+      _evalRunState.running = false;
+      _evalRunState.completedAt = new Date().toISOString();
+    }
+  })();
 });
 
 /* GET /api/admin/eval/runs — list all evaluation runs grouped by run_id + version_tag */
