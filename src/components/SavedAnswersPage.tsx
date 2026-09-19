@@ -55,7 +55,7 @@ function SavedAnswerCard({ item, onDelete }: { item: SavedAnswer; onDelete: (id:
   });
 
   const safeContent = item.content ?? "";
-  const preview = safeContent.slice(0, 180).replace(/[#*`>\-]/g, "").trim();
+  const preview = safeContent.slice(0, 180).replace(/[#*`>-]/g, "").trim();
   const needsExpand = safeContent.length > 180;
 
   const handleDelete = async () => {

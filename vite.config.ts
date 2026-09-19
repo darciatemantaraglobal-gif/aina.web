@@ -2,6 +2,15 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
+// Loads .env into process.env for THIS config file's own evaluation only —
+// the `define` block below reads process.env.VITE_SUPABASE_* directly
+// (not Vite's separate import.meta.env loading), so without this, a local
+// `.env` file with real values was silently ignored unless those vars were
+// ALSO exported into the shell — `npm run dev` would then crash with
+// "supabaseUrl is required" on a perfectly correctly filled-in .env.
+// No-op on Vercel/Railway (no .env file is ever deployed there; secrets
+// come from the platform's own env injection, already real process.env).
+import "dotenv/config";
 
 export default defineConfig({
   server: {

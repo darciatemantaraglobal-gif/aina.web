@@ -48,6 +48,7 @@ const BreakingUpdatesBanner = () => {
       setIndex(0);
       setVisible(undismissed.length > 0);
     } catch {
+      // ignore — non-critical
     }
   }, []);
 

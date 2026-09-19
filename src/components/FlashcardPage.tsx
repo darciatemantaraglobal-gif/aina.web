@@ -280,7 +280,7 @@ export default function FlashcardPage() {
 
     setLoading(true);
     try {
-      let body: Record<string, unknown> = { count };
+      const body: Record<string, unknown> = { count };
       let textForDetection = "";
       let source = "";
 

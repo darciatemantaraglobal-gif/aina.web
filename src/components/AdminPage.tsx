@@ -760,7 +760,7 @@ function UsersTab() {
   const toggleSelect = (userId: string) => {
     setSelected(prev => {
       const next = new Set(prev);
-      next.has(userId) ? next.delete(userId) : next.add(userId);
+      if (next.has(userId)) next.delete(userId); else next.add(userId);
       return next;
     });
   };
@@ -1384,7 +1384,7 @@ function TelegramScraperDialog({ open, onClose, onDone }: { open: boolean; onClo
   };
 
   const toggleMsg = (i: number) =>
-    setSelectedIdx(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
+    setSelectedIdx(prev => { const s = new Set(prev); if (s.has(i)) s.delete(i); else s.add(i); return s; });
   const toggleAllMsgs = () =>
     setSelectedIdx(prev => prev.size === scraped.length ? new Set() : new Set(scraped.map((_, i) => i)));
   const removeArticle = (i: number) => setArticles(prev => prev.filter((_, j) => j !== i));
@@ -2817,7 +2817,7 @@ function KnowledgeBaseTab({ isMasterAdmin }: { isMasterAdmin: boolean }) {
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -3515,7 +3515,7 @@ function ArabicBlockCardMonitor({ arabic, reading, meaning }: { arabic: string; 
   );
 }
 
-const MONITOR_ARABIC_RE = /[\[<]ARABIC_BLOCK[\]>]([\s\S]*?)[\[<]\/ARABIC_BLOCK[\]>]/g;
+const MONITOR_ARABIC_RE = /[[<]ARABIC_BLOCK[\]>]([\s\S]*?)[[<]\/ARABIC_BLOCK[\]>]/g;
 
 function renderMonitorContent(content: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
@@ -3662,7 +3662,7 @@ function ChatMonitorTab() {
     e.stopPropagation();
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -5889,7 +5889,7 @@ function FeedbackSignalsTab() {
                   </div>
                 </div>
                 <p className="text-xs text-foreground/80 leading-relaxed line-clamp-3">
-                  {(item.content ?? "").replace(/[#*`>\-]/g, "").trim()}
+                  {(item.content ?? "").replace(/[#*`>-]/g, "").trim()}
                 </p>
                 {(item.sources ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1">
@@ -5920,7 +5920,7 @@ function FeedbackSignalsTab() {
 
             <div className="rounded-xl border border-border bg-secondary/30 p-3 max-h-32 overflow-y-auto">
               <p className="text-xs text-muted-foreground leading-relaxed line-clamp-5">
-                {(promoteDialog.content ?? "").slice(0, 300).replace(/[#*`>\-]/g, "").trim()}…
+                {(promoteDialog.content ?? "").slice(0, 300).replace(/[#*`>-]/g, "").trim()}…
               </p>
             </div>
 
@@ -6118,7 +6118,7 @@ function NewsManagementTab() {
   }
 
   function toggleSelect(id: string) {
-    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
   function selectAll() { setSelected(new Set(news.map(n => n.id))); }
   function clearAll()  { setSelected(new Set()); }
@@ -7940,7 +7940,7 @@ function MissionsTab() {
     finally { setTrendingLoading(false); }
   }, []);
 
-  const useTopicAsMission = (keyword: string, samples: string[]) => {
+  const applyTopicAsMission = (keyword: string, samples: string[]) => {
     const titleized = keyword.charAt(0).toUpperCase() + keyword.slice(1);
     setNewTpl(p => ({
       ...p,
@@ -8218,7 +8218,7 @@ function MissionsTab() {
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-semibold text-foreground">#{topic.keyword} — {topic.count} pertanyaan</p>
                         <button
-                          onClick={() => useTopicAsMission(topic.keyword, topic.samples)}
+                          onClick={() => applyTopicAsMission(topic.keyword, topic.samples)}
                           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
                           <Plus className="h-3 w-3" />Buat Template dari Topik Ini
                         </button>

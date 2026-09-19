@@ -82,7 +82,7 @@ function GamificationBar({
         const todayDone  = (todayItems ?? []).filter((i: any) => i.status === "done").length;
         const todayTotal = (todayItems ?? []).length;
         setStats({ streak: calcStreak(doneDates), totalDone: (allDone ?? []).length, todayDone, todayTotal });
-      } catch {}
+      } catch { /* ignore — non-critical */ }
     })();
   }, [userId, refreshKey]);
 
@@ -1529,7 +1529,7 @@ const FALLBACK_PROCEDURES: Procedure[] = [
 ];
 
 function getProcProgress(userId: string, procId: string) {
-  try { const r = localStorage.getItem(`aina_proc_${userId}_${procId}`); if (r) return new Set(JSON.parse(r) as number[]); } catch {}
+  try { const r = localStorage.getItem(`aina_proc_${userId}_${procId}`); if (r) return new Set(JSON.parse(r) as number[]); } catch { /* localStorage unavailable — fall through to empty */ }
   return new Set<number>();
 }
 function saveProcProgress(userId: string, procId: string, done: Set<number>) {
@@ -1558,7 +1558,7 @@ function ProcedureTab({ userId }: { userId: string }) {
   const toggleStep = (idx: number) => {
     if (!selected) return;
     const next = new Set(progress);
-    next.has(idx) ? next.delete(idx) : next.add(idx);
+    if (next.has(idx)) next.delete(idx); else next.add(idx);
     setProgress(next);
     saveProcProgress(userId, selected.id, next);
   };

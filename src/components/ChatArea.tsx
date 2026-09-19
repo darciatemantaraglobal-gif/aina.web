@@ -392,7 +392,7 @@ function ArabicBlockCard({ arabic, reading, meaning }: ArabicBlockData) {
 }
 
 // Tolerant to both [ARABIC_BLOCK]…[/ARABIC_BLOCK] and <ARABIC_BLOCK>…</ARABIC_BLOCK>
-const ARABIC_BLOCK_RE = /[\[<]ARABIC_BLOCK[\]>]([\s\S]*?)[\[<]\/ARABIC_BLOCK[\]>]/g;
+const ARABIC_BLOCK_RE = /[[<]ARABIC_BLOCK[\]>]([\s\S]*?)[[<]\/ARABIC_BLOCK[\]>]/g;
 
 function renderWithArabicBlocks(content: string | null | undefined, applyClean = true): React.ReactNode {
   if (!content) return null;
@@ -543,7 +543,11 @@ function isMajorityArabic(node: any): boolean {
 
 // ── Inline Arabic wrapper ─────────────────────────────────────────────────────
 // Matches contiguous Arabic character sequences (incl. harakat + spaces between words)
-const AR_RUN_RE = /([\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF][\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF\s]*[\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF]|[\u0600-\u06FF\u064B-\u065F\uFB50-\uFDFF\uFE70-\uFEFF]+)/g;
+// \u064B-\u065F (harakat) is already a subset of \u0600-\u06FF, so it was
+// redundant in the character classes below (verified: removing it doesn't
+// change matches, including on fully-voweled text) \u2014 dropped to fix
+// no-misleading-character-class without touching matching behavior.
+const AR_RUN_RE = /([\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF][\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF\s]*[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]|[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]+)/g;
 
 /**
  * Split a plain string into alternating Latin and Arabic segments.
@@ -636,6 +640,49 @@ function renderMdastInline(node: any, key: number): React.ReactNode {
   return <span key={key}>{kids()}</span>;
 }
 
+// Named as a component (not inlined in MD_COMPONENTS below) so it can call
+// useContext — a lowercase key like `li: ({children}) => {...}` inside an
+// object literal isn't recognized by React/ESLint's hook-naming heuristic
+// as a component, even though react-markdown does render it as one.
+const MdListItem = ({ children }: any) => {
+  const listType = useContext(ListTypeContext);
+  const isOrdered = listType === "ol";
+  const liText = extractMdText(children);
+  const majorityArabic = isArabicText(liText);
+  const hasInlineArabic = !majorityArabic && /[\u0600-\u06FF]/.test(liText);
+
+  if (isOrdered) {
+    return (
+      <li className="leading-[1.75] break-words pl-1">
+        {majorityArabic
+          ? <span dir="rtl" className="block text-right" style={{ lineHeight: "2.0" }}>{children}</span>
+          : hasInlineArabic
+            ? wrapChildrenArabic(children)
+            : children}
+      </li>
+    );
+  }
+
+  // Unordered: bullet on RIGHT for Arabic-majority items, LEFT for Latin/Indonesian items
+  if (majorityArabic) {
+    return (
+      <li className="flex flex-row-reverse gap-3 items-start" style={{ lineHeight: "2.0" }}>
+        <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
+        <span className="flex-1 min-w-0 break-words text-right" dir="rtl">{children}</span>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex gap-3 items-start leading-[1.75]">
+      <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
+      <span className="flex-1 min-w-0 break-words">
+        {hasInlineArabic ? wrapChildrenArabic(children) : children}
+      </span>
+    </li>
+  );
+};
+
 const MD_COMPONENTS = {
   br: () => <br />,
   p: ({ children }: any) => {
@@ -699,44 +746,7 @@ const MD_COMPONENTS = {
       <ol start={start ?? 1} className="mb-5 last:mb-0 ml-5 list-decimal space-y-2 text-foreground/90">{children}</ol>
     </ListTypeContext.Provider>
   ),
-  li: ({ children }: any) => {
-    const listType = useContext(ListTypeContext);
-    const isOrdered = listType === "ol";
-    const liText = extractMdText(children);
-    const majorityArabic = isArabicText(liText);
-    const hasInlineArabic = !majorityArabic && /[\u0600-\u06FF]/.test(liText);
-
-    if (isOrdered) {
-      return (
-        <li className="leading-[1.75] break-words pl-1">
-          {majorityArabic
-            ? <span dir="rtl" className="block text-right" style={{ lineHeight: "2.0" }}>{children}</span>
-            : hasInlineArabic
-              ? wrapChildrenArabic(children)
-              : children}
-        </li>
-      );
-    }
-
-    // Unordered: bullet on RIGHT for Arabic-majority items, LEFT for Latin/Indonesian items
-    if (majorityArabic) {
-      return (
-        <li className="flex flex-row-reverse gap-3 items-start" style={{ lineHeight: "2.0" }}>
-          <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
-          <span className="flex-1 min-w-0 break-words text-right" dir="rtl">{children}</span>
-        </li>
-      );
-    }
-
-    return (
-      <li className="flex gap-3 items-start leading-[1.75]">
-        <span className="shrink-0 mt-[0.5em] h-[5px] w-[5px] rounded-full bg-primary/60" aria-hidden />
-        <span className="flex-1 min-w-0 break-words">
-          {hasInlineArabic ? wrapChildrenArabic(children) : children}
-        </span>
-      </li>
-    );
-  },
+  li: MdListItem,
   h1: ({ children }: any) => {
     const ar = containsArabic(children);
     return (
@@ -1188,7 +1198,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
     if (!session?.access_token) return;
 
     const isSaved = savedIds.has(msgId);
-    setSavedIds(prev => { const n = new Set(prev); isSaved ? n.delete(msgId) : n.add(msgId); return n; });
+    setSavedIds(prev => { const n = new Set(prev); if (isSaved) n.delete(msgId); else n.add(msgId); return n; });
 
     if (isSaved) {
       fetch(`/api/saved-answers/${msgId}`, {
@@ -1354,7 +1364,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
       }
     };
     fetchDailyUsage();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const PAGE_SIZE = 50;
 
@@ -2297,7 +2307,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                             <div className="flex flex-col gap-0.5 mt-0.5">
                               {msg.citation_urls.slice(0, 4).map((url, ci) => {
                                 let hostname = url;
-                                try { hostname = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+                                try { hostname = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw url as fallback */ }
                                 return (
                                   <a
                                     key={ci}
@@ -2605,7 +2615,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                   <p className="text-sm text-foreground/80">
                     Kamu hampir mencapai batas harian ({dailyCount}/{DAILY_LIMIT}).{" "}
                     <button
-                      onClick={() => { setNudgeDismissed(false); onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor"); }}
+                      onClick={() => { setNudgeDismissed(false); if (onGoContributor) onGoContributor(); else navigate("/dashboard?tab=contributor"); }}
                       className="font-semibold text-violet-400 hover:text-violet-300 underline-offset-2 hover:underline"
                     >
                       Jadi Kontributor
@@ -2694,7 +2704,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
 
               {/* Contributor CTA — primary */}
               <button
-                onClick={() => { setLimitReached(false); onGoContributor ? onGoContributor() : navigate("/dashboard?tab=contributor"); }}
+                onClick={() => { setLimitReached(false); if (onGoContributor) onGoContributor(); else navigate("/dashboard?tab=contributor"); }}
                 className="group w-full rounded-2xl border border-purple-500/40 bg-gradient-to-br from-violet-600/15 to-purple-700/15 p-4 text-left transition-all hover:border-purple-500/70 hover:from-violet-600/25 hover:to-purple-700/25"
               >
                 <div className="flex items-center gap-3">

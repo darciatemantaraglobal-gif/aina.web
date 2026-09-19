@@ -48,6 +48,7 @@ const ContributorChallengeModal = () => {
           roles.includes("admin")
         );
       } catch {
+        // ignore — non-critical
       }
     })();
     return () => { alive = false; };

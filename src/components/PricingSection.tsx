@@ -1,4 +1,4 @@
-import { Check, Zap, MessageSquare, LayoutDashboard, BookOpen, Star, Users, Shield, Lock, Upload, Infinity, Clock, Sparkles } from "lucide-react";
+import { Check, Zap, MessageSquare, LayoutDashboard, BookOpen, Star, Users, Shield, Lock, Upload, Infinity as InfinityIcon, Clock, Sparkles } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useCallback } from "react";
 import PaymentModal from "./PaymentModal";
@@ -14,7 +14,7 @@ const FREE_FEATURES = [
 ];
 
 const PRO_FEATURES = [
-  { icon: Infinity, text: "Chat unlimited dengan AINA" },
+  { icon: InfinityIcon, text: "Chat unlimited dengan AINA" },
   { icon: Upload, text: "Upload & analisis dokumen (PDF, Word)" },
   { icon: Clock, text: "Riwayat chat penuh tanpa batas" },
   { icon: Sparkles, text: "Prioritas respons AI" },

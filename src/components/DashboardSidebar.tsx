@@ -94,7 +94,7 @@ export function getPersonalization(): AinaPersonalization {
         userName: parsed.userName ?? "",
       };
     }
-  } catch {}
+  } catch { /* localStorage unavailable — use defaults */ }
   return { chatStyle: "santai", responseLength: "detail", responseStyle: DEFAULT_RESPONSE_STYLE, userName: "" };
 }
 
@@ -936,7 +936,7 @@ const DashboardSidebar = ({
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-    } catch {}
+    } catch { /* sign-out already invalid client-side — proceed anyway */ }
     toast.success("Berhasil logout");
     navigate("/login");
   };

@@ -30,7 +30,7 @@ function getDismissed(): string[] {
 }
 
 function saveDismissed(ids: string[]) {
-  try { localStorage.setItem(DISMISSED_KEY, JSON.stringify([...new Set([...getDismissed(), ...ids])])); } catch {}
+  try { localStorage.setItem(DISMISSED_KEY, JSON.stringify([...new Set([...getDismissed(), ...ids])])); } catch { /* localStorage unavailable — ignore */ }
 }
 
 async function serverDismiss(ids: string[], auth: string) {
@@ -267,7 +267,7 @@ const AnnouncementPopup = () => {
       if (firstChat.length > 0) {
         setFirstChatItems(firstChat);
       }
-    } catch {}
+    } catch { /* ignore — non-critical */ }
   }, []);
 
   // Trigger fetch after login

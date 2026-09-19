@@ -4,13 +4,29 @@ import helmet from "helmet";
 import compression from "compression";
 // express-rate-limit replaced with inline implementation (no external dep)
 //
+// IMPORTANT — in-memory only: every counter below (chatLimiter's `hits`,
+// chatUserRateStore, and every other rl()-based limiter) lives in this
+// process's memory, not in a shared store like Redis. That means:
+//   1. A restart resets every limiter to zero (acceptable — a launch is
+//      also a reset point for these).
+//   2. Running MORE THAN ONE REPLICA of this service would let each
+//      instance enforce its own separate limit — e.g. 2 replicas behind a
+//      load balancer would let a user actually get 2x DAILY_FREE_LIMIT /
+//      2x the chat rate limit, split across whichever instance handled
+//      each request. railway.json pins `numReplicas: 1` for exactly this
+//      reason — do not raise it without first moving these counters to a
+//      shared store (Redis, or the chat_usage/increment_chat_usage
+//      Postgres RPC pattern used for the DAILY_FREE_LIMIT chat quota,
+//      which already IS safe under multiple replicas since it lives in
+//      the database, not here).
+//
 // consumeRateWindow is the shared fixed-window counter core, usable both as
 // the guts of the Express middleware below AND called imperatively inside a
 // route handler — needed for limits that can only be keyed by something
 // that isn't known/trustworthy until AFTER other work runs (e.g. a verified
 // user id, which requires an awaited auth.getUser() call and so can't live
 // in a synchronous Express keyGenerator). See chatUserRateStore below.
-function consumeRateWindow(store, key, windowMs, max) {
+export function consumeRateWindow(store, key, windowMs, max) {
   const now = Date.now();
   let entry = store.get(key);
   if (!entry || now > entry.reset) {
@@ -229,7 +245,7 @@ const allowedOrigins = new Set([
 // Turn it on temporarily on Replit/staging, or while testing Vercel preview
 // deployments; the real production CLIENT_URL is always allowed regardless.
 const ALLOW_PREVIEW_ORIGINS = process.env.ALLOW_PREVIEW_ORIGINS === "true";
-function isAllowedOrigin(origin) {
+export function isAllowedOrigin(origin) {
   if (!origin) return true; // same-origin / non-browser requests
   if (allowedOrigins.has(origin)) return true;
   if (!ALLOW_PREVIEW_ORIGINS) return false;
@@ -311,7 +327,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, v] of chatUserRateStore) if (now > v.reset) chatUserRateStore.delete(k);
 }, 60_000).unref?.();
-function checkChatUserRate(userId) {
+export function checkChatUserRate(userId) {
   return consumeRateWindow(chatUserRateStore, userId, 60_000, 20);
 }
 const uploadLimiter   = rl(60_000,   5, "Terlalu banyak upload, tunggu sebentar.");
@@ -1802,7 +1818,7 @@ const UNLIMITED_ROLES = ["contributor", "senior_contributor", "admin"];
  * @param {Array<{role:string}>|null} [rolesData] - pass already-fetched roles to skip a query
  * @returns {Promise<{ isPaid: boolean, source: "role"|"subscription"|null }>}
  */
-async function resolveEntitlement(supabase, userId, rolesData) {
+export async function resolveEntitlement(supabase, userId, rolesData) {
   let roles = rolesData;
   if (roles === undefined) {
     const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
@@ -2690,7 +2706,6 @@ async function fetchPerplexityContext(query) {
   // When Perplexity is unavailable, the main Gemini model answers from its
   // own training knowledge — fast is better than a slow supplemental context.
   return null;
-  // eslint-disable-next-line no-unreachable
   const systemMsgOpenAI = isFiqhCtx
     ? `Kamu adalah asisten yang paham fiqh Islam dan bahasa Arab. Berikan penjelasan hukum Islam yang singkat, akurat dalam 3–5 kalimat. Sebutkan dasar hukumnya jika memungkinkan. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`
     : `Kamu adalah asisten untuk komunitas mahasiswa Indonesia di Mesir (Masisir). Hari ini ${todayStr} (waktu Kairo). Berikan jawaban faktual yang jelas dalam 3–5 kalimat atau daftar singkat. Jawab dalam Bahasa Indonesia tanpa salam atau disclaimer.`;
@@ -15836,7 +15851,6 @@ app.get("/api/cron/weekly", async (req, res) => {
 
 /* ── Global error handler (must be last middleware) ─── */
 // Catches any unhandled errors — never exposes stack traces or tech info.
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error("[UNHANDLED]", req.method, req.path, err?.message || err);
   if (res.headersSent) return;
@@ -16302,7 +16316,12 @@ app.get("/api/admin/demo-access-requests", async (req, res) => {
 });
 
 // On Vercel (serverless) we export the app; listen() is only called in local dev.
-if (!process.env.VERCEL) {
+// Also skipped under Vitest (process.env.VITEST, set automatically by the
+// test runner) — unit tests import named exports (resolveEntitlement,
+// consumeRateWindow, etc.) from this file for their pure logic, and
+// binding a real port / kicking off DB bootstrap calls on import would
+// make `npm test` flaky and slow for no benefit to those tests.
+if (!process.env.VERCEL && !process.env.VITEST) {
   initLibraryTable();
   checkRequiredTables();
   runColumnMigrations().then(() => {

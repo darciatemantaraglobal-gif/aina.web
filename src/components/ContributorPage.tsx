@@ -83,7 +83,7 @@ function WelcomeChat({ name }: { name: string }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let timeouts: ReturnType<typeof setTimeout>[] = [];
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
     WELCOME_MESSAGES.forEach((msg, i) => {
       const showTyping = setTimeout(() => setTyping(true), msg.delay - 200 < 0 ? 0 : msg.delay - 200);
       const showMsg = setTimeout(() => {
@@ -602,7 +602,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         article_image_url: regImageUrl || null,
         portfolio_link: regPortfolio.trim() || null,
       };
-      let { error } = await supabase.from("contributor_requests").insert(payload);
+      const { error } = await supabase.from("contributor_requests").insert(payload);
       if (error?.message?.includes("column")) {
         // Fallback: new columns might not exist yet, send base fields only
         const base = { user_id: uid, full_name: regName.trim(), education: regEdu.trim(), enrollment_year: year, expertise: regExpertise.trim() };
@@ -732,6 +732,7 @@ const ContributorPage = ({ userId: userIdProp }: { userId?: string }) => {
         setAutoCategoryReason(json.reason ?? "");
       }
     } catch {
+      // ignore — non-critical
     } finally {
       setAutoCategorizing(false);
     }
