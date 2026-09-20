@@ -8156,7 +8156,12 @@ type TrainerContribution = {
   question: string; answer: string; source_text: string | null; source_date: string | null;
   status: string; possible_duplicate_of: string | null; possible_duplicate_title: string | null;
   flagged_irrelevant: boolean;
+  challenge_id: string | null; challenge_difficulty: string | null;
   submitted_at: string;
+};
+
+const DIFFICULTY_LE: Record<string, string> = {
+  sederhana: "2 LE", standar: "3 LE", kompleks: "5-8 LE",
 };
 type TrainerClaim = {
   id: string; contributor_id: string; requested_le: number; status: string; requested_at: string;
@@ -8193,8 +8198,17 @@ function TrainerAdminTab() {
     try {
       if (tab === "contributions") {
         const d = await adminFetch("/api/admin/trainer/contributions?status=pending");
-        setContributions(d.contributions ?? []);
+        const list: TrainerContribution[] = d.contributions ?? [];
+        setContributions(list);
         setCategories(d.categories ?? {});
+        // Answers to a challenge arrive pre-weighted — start the dropdown at
+        // the weight the trainer was shown, so approving without touching it
+        // pays exactly what was advertised.
+        setDifficultyChoice(prev => {
+          const next = { ...prev };
+          for (const c of list) if (c.challenge_difficulty && !next[c.id]) next[c.id] = c.challenge_difficulty;
+          return next;
+        });
       } else if (tab === "claims") {
         const d = await adminFetch("/api/admin/trainer/claims?status=pending");
         setClaims(d.claims ?? []);
@@ -8316,6 +8330,13 @@ function TrainerAdminTab() {
                 {c.flagged_irrelevant && (
                   <p className="rounded-lg bg-red-500/10 px-2 py-1 text-xs text-red-500">
                     🚩 Tidak ditemukan kata kunci terkait Masisir — cek relevansinya sebelum menerima.
+                  </p>
+                )}
+                {c.challenge_difficulty && (
+                  <p className="rounded-lg bg-primary/10 px-2 py-1 text-xs text-primary">
+                    🎯 Jawaban challenge — bobot yang dijanjikan ke trainer:{" "}
+                    <span className="font-semibold">{c.challenge_difficulty} ({DIFFICULTY_LE[c.challenge_difficulty] ?? "—"})</span>.
+                    Turunkan hanya kalau jawabannya memang tidak sepadan.
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-2 pt-1">

@@ -34,6 +34,7 @@ import {
   resolveBalanceAdjustment,
   resolveTrainerTier,
   TRAINER_TIERS,
+  resolveEffectiveDifficulty,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
@@ -762,6 +763,34 @@ describe("resolveTrainerReward", () => {
 describe("TRAINER_CATEGORIES", () => {
   it("covers all 6 categories from the program blueprint", () => {
     expect(Object.keys(TRAINER_CATEGORIES)).toHaveLength(6);
+  });
+});
+
+// ── resolveEffectiveDifficulty — the challenge's advertised LE weight ─────
+// A challenge card tells the trainer "Kompleks · 5-8 LE" up front. If the
+// reviewer then approves without touching the difficulty dropdown, the payout
+// must still honour that, not fall through to null and get rejected — or
+// worse, quietly pay a lower tier than was promised.
+
+describe("resolveEffectiveDifficulty", () => {
+  it("REGRESSION: falls back to the challenge's advertised weight when the reviewer picks nothing", () => {
+    expect(resolveEffectiveDifficulty(null, "kompleks")).toBe("kompleks");
+    expect(resolveEffectiveDifficulty(undefined, "standar")).toBe("standar");
+    expect(resolveEffectiveDifficulty("", "sederhana")).toBe("sederhana");
+  });
+
+  it("lets a deliberate reviewer choice override the advertised weight", () => {
+    expect(resolveEffectiveDifficulty("sederhana", "kompleks")).toBe("sederhana");
+  });
+
+  it("returns null for a free-form contribution with no reviewer choice, so the caller rejects it", () => {
+    expect(resolveEffectiveDifficulty(null, null)).toBeNull();
+    expect(resolveTrainerReward(resolveEffectiveDifficulty(null, null), null)).toBeNull();
+  });
+
+  it("pays the advertised amount end to end for an untouched challenge answer", () => {
+    expect(resolveTrainerReward(resolveEffectiveDifficulty(null, "standar"), null)).toBe(3);
+    expect(resolveTrainerReward(resolveEffectiveDifficulty(null, "kompleks"), null)).toBe(5);
   });
 });
 

@@ -12363,6 +12363,18 @@ export function resolveTrainerReward(difficulty, requestedLe) {
 }
 
 /**
+ * Which difficulty actually decides the payout for a reviewed contribution.
+ * A challenge card advertises its LE weight to the trainer before they spend
+ * an evening answering it, so that weight is the floor-by-default: a reviewer
+ * who approves without touching the dropdown pays exactly what was promised,
+ * never silently less. An explicit reviewer choice still wins, because a
+ * two-line answer to a kompleks question shouldn't earn kompleks money.
+ */
+export function resolveEffectiveDifficulty(reviewerChoice, challengeDifficulty) {
+  return reviewerChoice || challengeDifficulty || null;
+}
+
+/**
  * Resolve how much LE a manual admin balance adjustment should deduct.
  * "reset" always takes the whole balance; "subtract" takes a specific
  * amount, bounded to (0, balance] so an admin typo can't push a trainer's
@@ -12622,17 +12634,22 @@ app.get("/api/admin/trainer/contributions", async (req, res) => {
 
   const userIds = [...new Set((data ?? []).map(c => c.contributor_id))];
   const dupIds = [...new Set((data ?? []).map(c => c.possible_duplicate_of).filter(Boolean))];
-  const [{ data: profiles }, { data: dupArticles }] = await Promise.all([
+  const challengeIds = [...new Set((data ?? []).map(c => c.challenge_id).filter(Boolean))];
+  const [{ data: profiles }, { data: dupArticles }, { data: challenges }] = await Promise.all([
     userIds.length ? supabase.from("profiles").select("user_id, full_name").in("user_id", userIds) : Promise.resolve({ data: [] }),
     dupIds.length  ? supabase.from("knowledge_base").select("id, title").in("id", dupIds) : Promise.resolve({ data: [] }),
+    challengeIds.length ? supabase.from("trainer_challenges").select("id, difficulty").in("id", challengeIds) : Promise.resolve({ data: [] }),
   ]);
   const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.user_id, p.full_name]));
   const dupTitleMap = Object.fromEntries((dupArticles ?? []).map(a => [a.id, a.title]));
+  const challengeMap = Object.fromEntries((challenges ?? []).map(c => [c.id, c.difficulty]));
   res.json({
     contributions: (data ?? []).map(c => ({
       ...c,
       contributor_name: profileMap[c.contributor_id] ?? "—",
       possible_duplicate_title: c.possible_duplicate_of ? (dupTitleMap[c.possible_duplicate_of] ?? null) : null,
+      // The weight this answer was advertised at — reviewer sees it before picking.
+      challenge_difficulty: c.challenge_id ? (challengeMap[c.challenge_id] ?? null) : null,
     })),
     categories: TRAINER_CATEGORIES,
   });
@@ -12651,9 +12668,22 @@ app.post("/api/admin/trainer/contributions/:id/review", writeLimiter, async (req
   if (!contribution) return res.status(404).json({ error: "Kontribusi tidak ditemukan" });
   if (contribution.status !== "pending") return res.status(409).json({ error: "Kontribusi ini sudah direview" });
 
+  // A challenge card advertises its LE weight to the trainer before they
+  // spend an evening answering it, so that weight is what gets paid by
+  // default. The reviewer can still override it deliberately (a two-line
+  // answer to a kompleks question shouldn't earn 8 LE) — the admin UI shows
+  // the advertised weight so downgrading is a choice, never an accident.
+  let challengeDifficulty = null;
+  if (status === "approved" && !difficulty && contribution.challenge_id) {
+    const { data: ch } = await supabase.from("trainer_challenges")
+      .select("difficulty").eq("id", contribution.challenge_id).maybeSingle();
+    challengeDifficulty = ch?.difficulty ?? null;
+  }
+  const effectiveDifficulty = resolveEffectiveDifficulty(difficulty, challengeDifficulty);
+
   let rewardLe = null, kbArticleId = null;
   if (status === "approved") {
-    rewardLe = resolveTrainerReward(difficulty, requested_le);
+    rewardLe = resolveTrainerReward(effectiveDifficulty, requested_le);
     if (rewardLe === null) return res.status(400).json({ error: "difficulty harus sederhana, standar, atau kompleks" });
 
     const content = `${contribution.answer}${contribution.source_text ? `\n\n**Sumber:** ${contribution.source_text}` : ""}`;
@@ -12675,7 +12705,7 @@ app.post("/api/admin/trainer/contributions/:id/review", writeLimiter, async (req
 
   await supabase.from("trainer_contributions").update({
     status,
-    difficulty: status === "approved" ? difficulty : null,
+    difficulty: status === "approved" ? effectiveDifficulty : null,
     reward_le: rewardLe,
     review_note: review_note ?? null,
     reviewer_id: admin.id,
