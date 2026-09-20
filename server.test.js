@@ -32,6 +32,8 @@ import {
   isLikelyMasisirRelevant,
   TRAINER_CLAIM_TIERS,
   resolveBalanceAdjustment,
+  resolveTrainerTier,
+  TRAINER_TIERS,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
@@ -765,6 +767,38 @@ describe("TRAINER_CATEGORIES", () => {
 describe("TRAINER_CLAIM_TIERS", () => {
   it("is the fixed set of redeemable amounts, ascending", () => {
     expect(TRAINER_CLAIM_TIERS).toEqual([30, 50, 100, 200]);
+  });
+});
+
+// ── resolveTrainerTier — status badge from lifetime LE earned ─────────────
+// Deliberately based on lifetime earned, never the spendable balance, so
+// claiming a reward (which drains the balance) can never demote a trainer.
+
+describe("resolveTrainerTier", () => {
+  it("floors at T1 for 0 or negative lifetime earnings", () => {
+    expect(resolveTrainerTier(0).id).toBe("T1");
+    expect(resolveTrainerTier(-5).id).toBe("T1");
+    expect(resolveTrainerTier(undefined).id).toBe("T1");
+  });
+
+  it("REGRESSION: sits exactly on a tier boundary, not the tier below it", () => {
+    expect(resolveTrainerTier(30).id).toBe("T2");
+    expect(resolveTrainerTier(29.99).id).toBe("T1");
+    expect(resolveTrainerTier(700).id).toBe("T5");
+  });
+
+  it("reports the next tier and how much LE is left to reach it", () => {
+    const tier = resolveTrainerTier(80);
+    expect(tier.id).toBe("T2");
+    expect(tier.next).toEqual({ id: "T3", label: "Terpercaya", min: 100, remaining_le: 20 });
+  });
+
+  it("has no next tier once at the top", () => {
+    expect(resolveTrainerTier(5000).next).toBeNull();
+  });
+
+  it("covers exactly the 5 documented tiers", () => {
+    expect(TRAINER_TIERS.map(t => t.id)).toEqual(["T1", "T2", "T3", "T4", "T5"]);
   });
 });
 

@@ -12305,6 +12305,40 @@ export const TRAINER_CATEGORIES = {
 export const TRAINER_CLAIM_TIERS = [30, 50, 100, 200];
 export const TRAINER_CLAIM_CONTACT_WHATSAPP = "081311506025";
 
+// Status tiers, purely a recognition badge — reaching a higher tier changes
+// no reward rate or review priority (yet). Based on LIFETIME LE earned (the
+// sum of every positive ledger row, i.e. every approved contribution ever
+// rewarded), never the current spendable balance, so claiming a reward can't
+// demote a trainer's tier.
+export const TRAINER_TIERS = [
+  { id: "T1", label: "Pemula",     min: 0 },
+  { id: "T2", label: "Aktif",      min: 30 },
+  { id: "T3", label: "Terpercaya", min: 100 },
+  { id: "T4", label: "Ahli",       min: 300 },
+  { id: "T5", label: "Master",     min: 700 },
+];
+
+/**
+ * Resolve a trainer's current tier and progress toward the next one from
+ * their lifetime LE earned. Always returns a tier (T1 floor for 0 or
+ * negative input) — never null, since every trainer has some tier.
+ */
+export function resolveTrainerTier(lifetimeEarnedLe) {
+  const le = Number.isFinite(lifetimeEarnedLe) ? lifetimeEarnedLe : 0;
+  let currentIndex = 0;
+  for (let i = 0; i < TRAINER_TIERS.length; i++) {
+    if (le >= TRAINER_TIERS[i].min) currentIndex = i;
+  }
+  const current = TRAINER_TIERS[currentIndex];
+  const next = TRAINER_TIERS[currentIndex + 1] ?? null;
+  return {
+    id: current.id,
+    label: current.label,
+    min: current.min,
+    next: next ? { id: next.id, label: next.label, min: next.min, remaining_le: Math.round((next.min - le) * 100) / 100 } : null,
+  };
+}
+
 const TRAINER_REWARD_RATES = { sederhana: 2, standar: 3, kompleks_min: 5, kompleks_max: 8 };
 
 /**
@@ -12410,17 +12444,23 @@ app.get("/api/trainer/status", async (req, res) => {
   const [{ data: contributions }, { data: ledger }, { data: profile }] = await Promise.all([
     supabase.from("trainer_contributions").select("status").eq("contributor_id", user.id),
     supabase.from("trainer_ledger").select("amount_le").eq("contributor_id", user.id),
-    supabase.from("profiles").select("trainer_whatsapp, trainer_payment_method, trainer_payment_detail").eq("user_id", user.id).maybeSingle(),
+    supabase.from("profiles").select("full_name, avatar_url, trainer_whatsapp, trainer_payment_method, trainer_payment_detail").eq("user_id", user.id).maybeSingle(),
   ]);
   const balance = (ledger ?? []).reduce((s, r) => s + Number(r.amount_le), 0);
+  const lifetimeEarned = (ledger ?? []).reduce((s, r) => s + Math.max(Number(r.amount_le), 0), 0);
 
   res.json({
     role: "trainer",
+    full_name: profile?.full_name ?? null,
+    avatar_url: profile?.avatar_url ?? null,
     stats: {
       submitted: contributions?.length ?? 0,
       approved:  (contributions ?? []).filter(c => c.status === "approved").length,
       balance_le: Math.round(balance * 100) / 100,
+      lifetime_earned_le: Math.round(lifetimeEarned * 100) / 100,
     },
+    tier: resolveTrainerTier(lifetimeEarned),
+    tiers: TRAINER_TIERS,
     categories: TRAINER_CATEGORIES,
     payout: {
       whatsapp: profile?.trainer_whatsapp ?? null,

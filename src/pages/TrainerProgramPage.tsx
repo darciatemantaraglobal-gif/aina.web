@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   GraduationCap, Coins, CheckCircle2, Send, Wallet, LogIn,
   LayoutDashboard, PenLine, History, Menu, X, Home, LogOut,
+  Gem, FileText, MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,13 +29,29 @@ async function authedFetch(path: string, options: RequestInit = {}) {
   return body;
 }
 
+type TrainerTier = {
+  id: string; label: string; min: number;
+  next: { id: string; label: string; min: number; remaining_le: number } | null;
+};
 type TrainerStatus = {
   role: "trainer";
-  stats: { submitted: number; approved: number; balance_le: number };
+  full_name: string | null;
+  avatar_url: string | null;
+  stats: { submitted: number; approved: number; balance_le: number; lifetime_earned_le: number };
+  tier: TrainerTier;
+  tiers: { id: string; label: string; min: number }[];
   categories: Record<string, string>;
   payout: { whatsapp: string | null; payment_method: string | null; payment_detail: string | null };
   claim_tiers: number[];
   claim_contact_whatsapp: string;
+};
+
+const TIER_GRADIENTS: Record<string, string> = {
+  T1: "from-slate-400 to-slate-500",
+  T2: "from-emerald-400 to-teal-500",
+  T3: "from-sky-400 to-blue-500",
+  T4: "from-violet-400 to-purple-500",
+  T5: "from-amber-400 to-yellow-500",
 };
 type Contribution = {
   id: string; category: string; question: string; status: string;
@@ -362,7 +379,7 @@ export default function TrainerProgramPage() {
           </span>
         </header>
 
-        <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 sm:py-10">
+        <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6 sm:py-10 md:max-w-3xl md:px-8">
           {statusLoading && !status ? (
             <div className="flex justify-center py-10">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
@@ -371,11 +388,73 @@ export default function TrainerProgramPage() {
             <>
               {activeSection === "overview" && (
                 <div className="space-y-6">
+                  {(() => {
+                    const gradient = TIER_GRADIENTS[status.tier.id] ?? TIER_GRADIENTS.T1;
+                    const progressPct = status.tier.next
+                      ? Math.min(100, Math.max(0,
+                          ((status.stats.lifetime_earned_le - status.tier.min) / (status.tier.next.min - status.tier.min)) * 100
+                        ))
+                      : 100;
+                    return (
+                      <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/15 via-card to-card p-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="truncate text-lg font-bold text-foreground">{status.full_name ?? "Trainer"}</p>
+                            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Coins className="h-3.5 w-3.5 text-primary" /> {status.stats.lifetime_earned_le} LE total · {status.tier.label}
+                            </p>
+                          </div>
+                          <div className="relative shrink-0">
+                            <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${gradient} opacity-50 blur-lg`} />
+                            <div className={`relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${gradient} shadow-lg`}>
+                              <Gem className="h-7 w-7 text-white" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 space-y-1.5">
+                          {status.tier.next ? (
+                            <>
+                              <p className="text-xs text-muted-foreground">
+                                Kurang <span className="font-medium text-foreground">{status.tier.next.remaining_le} LE</span> lagi ke {status.tier.next.label}
+                              </p>
+                              <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                                <div className={`h-full rounded-full bg-gradient-to-r ${gradient} transition-all`} style={{ width: `${progressPct}%` }} />
+                              </div>
+                              <div className="flex justify-between text-[10px] text-muted-foreground/70">
+                                <span>{status.tier.label}</span>
+                                <span>{status.tier.next.label}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-xs font-medium text-primary">🎉 Tier tertinggi tercapai — Master!</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { icon: PenLine, label: "Kirim Q&A", onClick: () => { setContentMode("qa"); setActiveSection("submit"); } },
+                      { icon: FileText, label: "Kirim Artikel", onClick: () => { setContentMode("artikel"); setActiveSection("submit"); } },
+                      { icon: History, label: "Riwayat", onClick: () => setActiveSection("history") },
+                      { icon: MessageCircle, label: "Kontak Admin", onClick: () => window.open(waLink(status.claim_contact_whatsapp), "_blank") },
+                    ].map((qa) => (
+                      <button key={qa.label} onClick={qa.onClick} className="flex flex-col items-center gap-1.5">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-foreground transition-colors hover:bg-secondary/70">
+                          <qa.icon className="h-[18px] w-[18px]" />
+                        </span>
+                        <span className="text-center text-[10px] leading-tight text-muted-foreground">{qa.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 text-center">
                       <Coins className="mx-auto mb-1 h-5 w-5 text-primary" />
                       <p className="text-xl font-bold text-foreground">{status.stats.balance_le}</p>
-                      <p className="text-[11px] text-muted-foreground">Saldo (LE)</p>
+                      <p className="text-[11px] text-muted-foreground">Saldo Aktif (LE)</p>
                     </div>
                     <div className="rounded-2xl border border-border bg-card p-4 text-center">
                       <Send className="mx-auto mb-1 h-5 w-5 text-muted-foreground" />
@@ -432,13 +511,6 @@ export default function TrainerProgramPage() {
                       </form>
                     )}
                   </div>
-
-                  <button
-                    onClick={() => setActiveSection("submit")}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-4 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
-                  >
-                    <PenLine className="h-4 w-4" /> Kirim Kontribusi Baru
-                  </button>
                 </div>
               )}
 
