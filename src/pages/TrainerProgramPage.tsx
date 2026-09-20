@@ -29,6 +29,7 @@ type TrainerStatus = {
   role: "trainer";
   stats: { submitted: number; approved: number; balance_le: number };
   categories: Record<string, string>;
+  payout: { whatsapp: string | null; payment_method: string | null; payment_detail: string | null };
 };
 type Contribution = {
   id: string; category: string; question: string; status: string;
@@ -56,6 +57,10 @@ export default function TrainerProgramPage() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
+  const [showPayoutForm, setShowPayoutForm] = useState(false);
+  const [whatsapp, setWhatsapp] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentDetail, setPaymentDetail] = useState("");
 
   const [category, setCategory] = useState("");
   const [question, setQuestion] = useState("");
@@ -133,11 +138,32 @@ export default function TrainerProgramPage() {
     }
   };
 
-  const handleClaim = async () => {
+  const handleClaimClick = () => {
+    if (status?.payout.whatsapp) {
+      handleClaim();
+    } else {
+      setShowPayoutForm(true);
+    }
+  };
+
+  const handleClaim = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!status?.payout.whatsapp && !whatsapp.trim()) {
+      return toast.error("Nomor WhatsApp wajib diisi untuk klaim pertama kali");
+    }
     setClaiming(true);
     try {
-      const data = await authedFetch("/api/trainer/claims", { method: "POST" });
+      const data = await authedFetch("/api/trainer/claims", {
+        method: "POST",
+        body: JSON.stringify({
+          whatsapp: whatsapp.trim() || undefined,
+          payment_method: paymentMethod.trim() || undefined,
+          payment_detail: paymentDetail.trim() || undefined,
+        }),
+      });
       toast.success(`Klaim ${data.claim.requested_le} LE terkirim. Admin akan proses dan hubungi kamu.`);
+      setShowPayoutForm(false);
+      loadStatus();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -221,9 +247,25 @@ export default function TrainerProgramPage() {
               </div>
             </div>
 
-            <Button onClick={handleClaim} disabled={claiming || status.stats.balance_le <= 0} variant="outline" className="w-full gap-2">
-              <Wallet className="h-4 w-4" /> {claiming ? "Mengirim..." : "Klaim Hadiah"}
-            </Button>
+            {!showPayoutForm ? (
+              <Button onClick={handleClaimClick} disabled={claiming || status.stats.balance_le <= 0} variant="outline" className="w-full gap-2">
+                <Wallet className="h-4 w-4" /> {claiming ? "Mengirim..." : "Klaim Hadiah"}
+              </Button>
+            ) : (
+              <form onSubmit={handleClaim} className="space-y-2 rounded-2xl border border-border bg-card p-4">
+                <p className="text-sm font-semibold text-foreground">Info Kontak untuk Pembayaran</p>
+                <p className="text-xs text-muted-foreground">Diminta sekali aja — dipakai admin untuk menghubungi dan memproses klaim kamu.</p>
+                <Input placeholder="Nomor WhatsApp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} required />
+                <Input placeholder="Metode pembayaran (opsional, mis. Bank BCA, GoPay, Vodafone Cash)" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} />
+                <Input placeholder="Nomor rekening/e-wallet (opsional)" value={paymentDetail} onChange={e => setPaymentDetail(e.target.value)} />
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={claiming} className="flex-1">
+                    {claiming ? "Mengirim..." : "Kirim Klaim"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setShowPayoutForm(false)}>Batal</Button>
+                </div>
+              </form>
+            )}
 
             {/* Form kontribusi */}
             <form onSubmit={handleSubmitContribution} className="space-y-3 rounded-2xl border border-border bg-card p-4">

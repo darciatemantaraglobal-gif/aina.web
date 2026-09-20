@@ -12380,9 +12380,10 @@ app.get("/api/trainer/status", async (req, res) => {
 
   await ensureTrainerRole(supabase, user.id);
 
-  const [{ data: contributions }, { data: ledger }] = await Promise.all([
+  const [{ data: contributions }, { data: ledger }, { data: profile }] = await Promise.all([
     supabase.from("trainer_contributions").select("status").eq("contributor_id", user.id),
     supabase.from("trainer_ledger").select("amount_le").eq("contributor_id", user.id),
+    supabase.from("profiles").select("trainer_whatsapp, trainer_payment_method, trainer_payment_detail").eq("user_id", user.id).maybeSingle(),
   ]);
   const balance = (ledger ?? []).reduce((s, r) => s + Number(r.amount_le), 0);
 
@@ -12394,6 +12395,11 @@ app.get("/api/trainer/status", async (req, res) => {
       balance_le: Math.round(balance * 100) / 100,
     },
     categories: TRAINER_CATEGORIES,
+    payout: {
+      whatsapp: profile?.trainer_whatsapp ?? null,
+      payment_method: profile?.trainer_payment_method ?? null,
+      payment_detail: profile?.trainer_payment_detail ?? null,
+    },
   });
 });
 
@@ -12449,6 +12455,12 @@ app.get("/api/trainer/contributions/mine", async (req, res) => {
 // blueprint's pre-launch checklist); this only records the request. An admin
 // fulfils it out of band and marks it done, which writes the offsetting
 // ledger row.
+//
+// Payout contact (WhatsApp + optional payment method/detail) is asked once,
+// on a trainer's first claim, then remembered on their profile so later
+// claims don't ask again. Each claim still snapshots whatever contact was
+// current at that moment, so a later profile edit can't retroactively change
+// the record of a claim an admin already fulfilled.
 app.post("/api/trainer/claims", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -12462,9 +12474,29 @@ app.post("/api/trainer/claims", writeLimiter, async (req, res) => {
   const { data: pending } = await supabase.from("trainer_claims").select("id").eq("contributor_id", user.id).eq("status", "pending").maybeSingle();
   if (pending) return res.status(409).json({ error: "Kamu sudah punya klaim yang masih menunggu diproses" });
 
+  const { data: profile } = await supabase.from("profiles")
+    .select("trainer_whatsapp, trainer_payment_method, trainer_payment_detail")
+    .eq("user_id", user.id).maybeSingle();
+
+  const whatsapp = req.body.whatsapp?.trim().slice(0, 30) || profile?.trainer_whatsapp || null;
+  if (!whatsapp) return res.status(400).json({ error: "Nomor WhatsApp wajib diisi untuk klaim pertama kali" });
+  const paymentMethod = req.body.payment_method?.trim().slice(0, 100) || profile?.trainer_payment_method || null;
+  const paymentDetail = req.body.payment_detail?.trim().slice(0, 200) || profile?.trainer_payment_detail || null;
+
+  if (req.body.whatsapp || req.body.payment_method || req.body.payment_detail) {
+    await supabase.from("profiles").update({
+      trainer_whatsapp: whatsapp,
+      trainer_payment_method: paymentMethod,
+      trainer_payment_detail: paymentDetail,
+    }).eq("user_id", user.id);
+  }
+
   const { data, error } = await supabase.from("trainer_claims").insert({
     contributor_id: user.id,
     requested_le: Math.round(balance * 100) / 100,
+    whatsapp,
+    payment_method: paymentMethod,
+    payment_detail: paymentDetail,
   }).select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ claim: data });
@@ -16728,17 +16760,35 @@ async function runColumnMigrations() {
     // this only records the request; an admin fulfils it out of band (cash,
     // transfer, whatever the program settles on) and marks it done, which
     // writes the offsetting trainer_ledger row.
+    //
+    // whatsapp/payment_method/payment_detail are a snapshot of the trainer's
+    // payout contact at claim time (see profiles.trainer_whatsapp etc. below)
+    // so an admin can actually reach them to pay out, without a separate
+    // registration step — asked once, on the first claim.
     `CREATE TABLE IF NOT EXISTS public.trainer_claims (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       contributor_id UUID NOT NULL,
       requested_le NUMERIC(10,2) NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending', -- pending | fulfilled | cancelled
+      whatsapp TEXT,
+      payment_method TEXT,
+      payment_detail TEXT,
       note TEXT,
       requested_at TIMESTAMPTZ DEFAULT NOW(),
       fulfilled_at TIMESTAMPTZ,
       fulfilled_by UUID
     );`,
     `CREATE INDEX IF NOT EXISTS idx_trainer_claims_status ON public.trainer_claims(status);`,
+    // Backfill for deployments where trainer_claims already existed before
+    // payout contact fields were added.
+    `ALTER TABLE public.trainer_claims ADD COLUMN IF NOT EXISTS whatsapp TEXT;`,
+    `ALTER TABLE public.trainer_claims ADD COLUMN IF NOT EXISTS payment_method TEXT;`,
+    `ALTER TABLE public.trainer_claims ADD COLUMN IF NOT EXISTS payment_detail TEXT;`,
+    // Remembered on the trainer's profile so returning trainers aren't asked
+    // for their WhatsApp/payment info again on every claim.
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS trainer_whatsapp TEXT;`,
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS trainer_payment_method TEXT;`,
+    `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS trainer_payment_detail TEXT;`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {

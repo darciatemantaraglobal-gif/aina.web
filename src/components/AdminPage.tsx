@@ -8160,6 +8160,7 @@ type TrainerContribution = {
 };
 type TrainerClaim = {
   id: string; contributor_id: string; requested_le: number; status: string; requested_at: string;
+  whatsapp: string | null; payment_method: string | null; payment_detail: string | null;
   profile: { full_name: string; email: string } | null;
 };
 
@@ -8300,14 +8301,22 @@ function TrainerAdminTab() {
         ) : (
           <div className="space-y-2">
             {claims.map(c => (
-              <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">{c.profile?.full_name ?? c.contributor_id}</p>
-                  <p className="text-xs text-muted-foreground">{c.profile?.email}</p>
+              <div key={c.id} className="rounded-xl border border-border bg-card p-3 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{c.profile?.full_name ?? c.contributor_id}</p>
+                    <p className="text-xs text-muted-foreground">{c.profile?.email}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="text-sm font-bold text-primary">{c.requested_le} LE</span>
+                    <Button size="sm" disabled={reviewing === c.id} onClick={() => fulfillClaim(c.id)}>Tandai Selesai</Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="text-sm font-bold text-primary">{c.requested_le} LE</span>
-                  <Button size="sm" disabled={reviewing === c.id} onClick={() => fulfillClaim(c.id)}>Tandai Selesai</Button>
+                <div className="rounded-lg bg-secondary/50 px-2 py-1.5 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">WA: {c.whatsapp ?? "—"}</span>
+                  {(c.payment_method || c.payment_detail) && (
+                    <span> · {c.payment_method ?? ""}{c.payment_method && c.payment_detail ? " – " : ""}{c.payment_detail ?? ""}</span>
+                  )}
                 </div>
               </div>
             ))}
