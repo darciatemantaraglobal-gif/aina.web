@@ -12327,6 +12327,25 @@ export function resolveTrainerReward(difficulty, requestedLe) {
   return null;
 }
 
+/**
+ * Resolve how much LE a manual admin balance adjustment should deduct.
+ * "reset" always takes the whole balance; "subtract" takes a specific
+ * amount, bounded to (0, balance] so an admin typo can't push a trainer's
+ * balance negative. Returns an error string instead of throwing — the
+ * caller decides the HTTP status, this just validates the arithmetic.
+ */
+export function resolveBalanceAdjustment(mode, amountLe, balance) {
+  if (balance <= 0) return { error: "Saldo trainer ini sudah 0" };
+  if (mode === "reset") return { deduction: balance };
+  if (mode === "subtract") {
+    const amt = Number(amountLe);
+    if (!Number.isFinite(amt) || amt <= 0) return { error: "Jumlah harus lebih dari 0" };
+    if (amt > balance) return { error: "Jumlah melebihi saldo trainer" };
+    return { deduction: amt };
+  }
+  return { error: "mode harus reset atau subtract" };
+}
+
 function _trainerJaccard(a, b) {
   const words = s => new Set(String(s ?? "").toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(w => w.length > 2));
   const setA = words(a), setB = words(b);
@@ -12655,6 +12674,83 @@ app.post("/api/admin/trainer/claims/:id/fulfill", writeLimiter, async (req, res)
   }).then(undefined, () => {});
 
   res.json({ success: true });
+});
+
+/* ── Admin: manual balance adjustment ──────────────────────────────────────
+ * A trainer can cash out over WhatsApp without ever pressing the in-app
+ * claim button — the admin still needs a way to zero out (or partially
+ * deduct) their LE balance the moment that happens, independent of whatever
+ * trainer_claims rows exist. Uses the same append-only trainer_ledger as
+ * every other balance change (reason: "adjustment"), so this is still fully
+ * auditable, never an in-place edit to a stored total.
+ */
+app.get("/api/admin/trainer/balances", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+
+  const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "trainer");
+  const trainerIds = [...new Set((roles ?? []).map(r => r.user_id))];
+  if (trainerIds.length === 0) return res.json({ trainers: [] });
+
+  const [{ data: profiles }, { data: ledger }] = await Promise.all([
+    supabase.from("profiles").select("user_id, full_name, email").in("user_id", trainerIds),
+    supabase.from("trainer_ledger").select("contributor_id, amount_le").in("contributor_id", trainerIds),
+  ]);
+  const balanceMap = {};
+  for (const row of ledger ?? []) {
+    balanceMap[row.contributor_id] = (balanceMap[row.contributor_id] ?? 0) + Number(row.amount_le);
+  }
+
+  const search = (req.query.search ?? "").trim().toLowerCase();
+  let trainers = (profiles ?? []).map(p => ({
+    contributor_id: p.user_id,
+    full_name: p.full_name,
+    email: p.email,
+    balance_le: Math.round((balanceMap[p.user_id] ?? 0) * 100) / 100,
+  }));
+  if (search) {
+    trainers = trainers.filter(t =>
+      (t.full_name ?? "").toLowerCase().includes(search) || (t.email ?? "").toLowerCase().includes(search)
+    );
+  }
+  trainers.sort((a, b) => b.balance_le - a.balance_le);
+  res.json({ trainers });
+});
+
+app.post("/api/admin/trainer/balances/:contributorId/adjust", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { contributorId } = req.params;
+  const { mode, amount_le, note } = req.body;
+
+  const { data: ledger } = await supabase.from("trainer_ledger").select("amount_le").eq("contributor_id", contributorId);
+  const balance = (ledger ?? []).reduce((s, r) => s + Number(r.amount_le), 0);
+
+  const { deduction, error: validationError } = resolveBalanceAdjustment(mode, amount_le, balance);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  await supabase.from("trainer_ledger").insert({
+    contributor_id: contributorId,
+    amount_le: -deduction,
+    reason: "adjustment",
+    actor_id: admin.id,
+    note: note?.trim().slice(0, 300) || null,
+  });
+
+  // A pending in-app claim for this trainer is now moot — clear it so they
+  // aren't stuck unable to file a new claim behind a claim that was really
+  // settled over WhatsApp.
+  await supabase.from("trainer_claims").update({
+    status: "fulfilled", fulfilled_at: new Date().toISOString(), fulfilled_by: admin.id,
+  }).eq("contributor_id", contributorId).eq("status", "pending");
+
+  res.json({
+    success: true,
+    deducted_le: Math.round(deduction * 100) / 100,
+    new_balance_le: Math.round((balance - deduction) * 100) / 100,
+  });
 });
 
 /* ── Beta Feedback (stored in Supabase, not local files) ─ */

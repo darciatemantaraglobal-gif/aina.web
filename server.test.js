@@ -31,6 +31,7 @@ import {
   TRAINER_CATEGORIES,
   isLikelyMasisirRelevant,
   TRAINER_CLAIM_TIERS,
+  resolveBalanceAdjustment,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
@@ -764,6 +765,41 @@ describe("TRAINER_CATEGORIES", () => {
 describe("TRAINER_CLAIM_TIERS", () => {
   it("is the fixed set of redeemable amounts, ascending", () => {
     expect(TRAINER_CLAIM_TIERS).toEqual([30, 50, 100, 200]);
+  });
+});
+
+// ── resolveBalanceAdjustment — admin manual balance reset/deduct ──────────
+// Used when a trainer cashes out over WhatsApp instead of the in-app claim
+// flow, so the admin needs to zero out or partially deduct their balance
+// directly. Real money moving through here, so it must never let a typo or
+// a "subtract" larger than the balance push a trainer negative.
+
+describe("resolveBalanceAdjustment", () => {
+  it("rejects any adjustment when the balance is already 0 or less", () => {
+    expect(resolveBalanceAdjustment("reset", undefined, 0)).toEqual({ error: expect.any(String) });
+    expect(resolveBalanceAdjustment("subtract", 10, -5)).toEqual({ error: expect.any(String) });
+  });
+
+  it("reset takes the whole balance", () => {
+    expect(resolveBalanceAdjustment("reset", undefined, 137.5)).toEqual({ deduction: 137.5 });
+  });
+
+  it("subtract takes exactly the requested amount when it fits within balance", () => {
+    expect(resolveBalanceAdjustment("subtract", 30, 100)).toEqual({ deduction: 30 });
+  });
+
+  it("REGRESSION: subtract never exceeds the trainer's actual balance", () => {
+    expect(resolveBalanceAdjustment("subtract", 500, 100)).toEqual({ error: expect.any(String) });
+  });
+
+  it("subtract rejects zero, negative, or non-numeric amounts", () => {
+    expect(resolveBalanceAdjustment("subtract", 0, 100)).toEqual({ error: expect.any(String) });
+    expect(resolveBalanceAdjustment("subtract", -10, 100)).toEqual({ error: expect.any(String) });
+    expect(resolveBalanceAdjustment("subtract", "not-a-number", 100)).toEqual({ error: expect.any(String) });
+  });
+
+  it("rejects an unrecognised mode", () => {
+    expect(resolveBalanceAdjustment("delete-everything", 10, 100)).toEqual({ error: expect.any(String) });
   });
 });
 

@@ -8149,7 +8149,7 @@ function QueryAnalyticsTab() {
 }
 
 /* ─── TrainerAdminTab — AINA AI Trainer Program review queue ────────────── */
-type TrainerInnerTab = "contributions" | "claims";
+type TrainerInnerTab = "contributions" | "claims" | "balances";
 
 type TrainerContribution = {
   id: string; contributor_id: string; contributor_name: string; category: string;
@@ -8163,18 +8163,25 @@ type TrainerClaim = {
   whatsapp: string | null; payment_method: string | null; payment_detail: string | null;
   profile: { full_name: string; email: string } | null;
 };
+type TrainerBalance = {
+  contributor_id: string; full_name: string | null; email: string | null; balance_le: number;
+};
 
 function TrainerAdminTab() {
   const [inner, setInner] = useState<TrainerInnerTab>("contributions");
   const [loading, setLoading] = useState(false);
   const [contributions, setContributions] = useState<TrainerContribution[]>([]);
   const [claims, setClaims] = useState<TrainerClaim[]>([]);
+  const [balances, setBalances] = useState<TrainerBalance[]>([]);
+  const [balanceSearch, setBalanceSearch] = useState("");
+  const [subtractAmount, setSubtractAmount] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<Record<string, string>>({});
   const [reviewing, setReviewing] = useState<string | null>(null);
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
   const [difficultyChoice, setDifficultyChoice] = useState<Record<string, string>>({});
   const [kompleksLe, setKompleksLe] = useState<Record<string, string>>({});
 
-  const load = useCallback(async (tab: TrainerInnerTab) => {
+  const load = useCallback(async (tab: TrainerInnerTab, search?: string) => {
     setLoading(true);
     try {
       if (tab === "contributions") {
@@ -8184,12 +8191,29 @@ function TrainerAdminTab() {
       } else if (tab === "claims") {
         const d = await adminFetch("/api/admin/trainer/claims?status=pending");
         setClaims(d.claims ?? []);
+      } else if (tab === "balances") {
+        const d = await adminFetch(`/api/admin/trainer/balances?search=${encodeURIComponent(search ?? "")}`);
+        setBalances(d.trainers ?? []);
       }
     } catch (e: any) { toast.error(e.message); }
     setLoading(false);
   }, []);
 
   useEffect(() => { load(inner); }, [inner, load]);
+
+  const adjustBalance = async (contributorId: string, mode: "reset" | "subtract", amount?: number) => {
+    setAdjustingId(contributorId);
+    try {
+      const data = await adminFetch(`/api/admin/trainer/balances/${contributorId}/adjust`, {
+        method: "POST",
+        body: JSON.stringify({ mode, amount_le: amount }),
+      });
+      setBalances(prev => prev.map(t => t.contributor_id === contributorId ? { ...t, balance_le: data.new_balance_le } : t));
+      setSubtractAmount(prev => ({ ...prev, [contributorId]: "" }));
+      toast.success(`Saldo dipotong ${data.deducted_le} LE`);
+    } catch (e: any) { toast.error(e.message); }
+    finally { setAdjustingId(null); }
+  };
 
   const reviewContribution = async (id: string, status: "approved" | "needs_revision" | "rejected") => {
     if (status === "approved" && !difficultyChoice[id]) {
@@ -8225,13 +8249,14 @@ function TrainerAdminTab() {
   const tabs: { id: TrainerInnerTab; label: string }[] = [
     { id: "contributions", label: "Kontribusi" },
     { id: "claims",        label: "Klaim Hadiah" },
+    { id: "balances",      label: "Saldo Trainer" },
   ];
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="font-display text-lg font-semibold text-foreground">AI Trainer Program</h2>
-        <p className="text-xs text-muted-foreground">Review kontribusi Q&amp;A berbayar dan klaim hadiah trainer.</p>
+        <p className="text-xs text-muted-foreground">Review kontribusi Q&amp;A berbayar, klaim hadiah, dan kelola saldo trainer.</p>
       </div>
 
       <div className="flex gap-1 rounded-xl bg-secondary/50 p-1">
@@ -8322,6 +8347,59 @@ function TrainerAdminTab() {
             ))}
           </div>
         )
+      )}
+
+      {!loading && inner === "balances" && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Cari nama/email trainer..."
+              value={balanceSearch}
+              onChange={e => setBalanceSearch(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") load("balances", balanceSearch); }}
+            />
+            <Button variant="outline" onClick={() => load("balances", balanceSearch)}>Cari</Button>
+          </div>
+
+          {balances.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada trainer ditemukan.</p>
+          ) : (
+            <div className="space-y-2">
+              {balances.map(t => (
+                <div key={t.contributor_id} className="rounded-xl border border-border bg-card p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{t.full_name ?? t.contributor_id}</p>
+                      <p className="text-xs text-muted-foreground">{t.email ?? "—"}</p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold text-primary">{t.balance_le} LE</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      type="number" min={0.01} step="0.01" placeholder="Jumlah potong (LE)" className="h-8 w-36 text-xs"
+                      value={subtractAmount[t.contributor_id] ?? ""}
+                      onChange={e => setSubtractAmount(prev => ({ ...prev, [t.contributor_id]: e.target.value }))}
+                    />
+                    <Button
+                      size="sm" variant="outline" className="h-8"
+                      disabled={adjustingId === t.contributor_id || !subtractAmount[t.contributor_id]}
+                      onClick={() => adjustBalance(t.contributor_id, "subtract", Number(subtractAmount[t.contributor_id]))}
+                    >
+                      Potong
+                    </Button>
+                    <Button
+                      size="sm" variant="outline" className="h-8 border-red-500/30 text-red-500 hover:bg-red-500/10"
+                      disabled={adjustingId === t.contributor_id || t.balance_le <= 0}
+                      onClick={() => { if (confirm(`Reset saldo ${t.full_name ?? t.contributor_id} ke 0?`)) adjustBalance(t.contributor_id, "reset"); }}
+                    >
+                      Reset ke 0
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
