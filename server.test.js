@@ -27,6 +27,8 @@ import {
   buildFollowUpQuery,
   pickTopGap,
   shouldLogAsKnowledgeGap,
+  resolveTrainerReward,
+  TRAINER_CATEGORIES,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
@@ -714,5 +716,45 @@ describe("shouldLogAsKnowledgeGap", () => {
   it("queues a gap when confidence is missing entirely", () => {
     expect(shouldLogAsKnowledgeGap(null)).toBe(true);
     expect(shouldLogAsKnowledgeGap(undefined)).toBe(true);
+  });
+});
+
+// ── resolveTrainerReward — AINA AI Trainer Program payout rate ────────────
+// Real money: sederhana/standar are fixed by the program's own rubric so
+// every trainer is paid the same for the same tier; kompleks is the one
+// reviewer-chosen number, and it must be clamped to the rubric's 5-8 LE
+// range so a typo or a generous reviewer can't create a payout the rubric
+// never approved.
+
+describe("resolveTrainerReward", () => {
+  it("pays the fixed rate for sederhana and standar regardless of requested_le", () => {
+    expect(resolveTrainerReward("sederhana", 999)).toBe(2);
+    expect(resolveTrainerReward("standar", 999)).toBe(3);
+  });
+
+  it("accepts a kompleks amount inside the rubric's 5-8 range", () => {
+    expect(resolveTrainerReward("kompleks", 6)).toBe(6);
+  });
+
+  it("REGRESSION: clamps a kompleks amount outside the rubric range instead of paying it", () => {
+    expect(resolveTrainerReward("kompleks", 50)).toBe(8);
+    expect(resolveTrainerReward("kompleks", 0)).toBe(5);
+    expect(resolveTrainerReward("kompleks", -100)).toBe(5);
+  });
+
+  it("falls back to the rubric floor for a kompleks submission with no number", () => {
+    expect(resolveTrainerReward("kompleks", undefined)).toBe(5);
+    expect(resolveTrainerReward("kompleks", "not-a-number")).toBe(5);
+  });
+
+  it("returns null for an unrecognised difficulty rather than guessing a rate", () => {
+    expect(resolveTrainerReward("super-hard", 10)).toBeNull();
+    expect(resolveTrainerReward(undefined, 10)).toBeNull();
+  });
+});
+
+describe("TRAINER_CATEGORIES", () => {
+  it("covers all 6 categories from the program blueprint", () => {
+    expect(Object.keys(TRAINER_CATEGORIES)).toHaveLength(6);
   });
 });

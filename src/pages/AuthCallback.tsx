@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { consumePostLoginRedirect } from "@/lib/postLoginRedirect";
 import ainaLogo from "@/assets/aina-logo.png";
 
 const AuthCallback = () => {
@@ -41,7 +42,7 @@ const AuthCallback = () => {
         navigated = true;
         clearTimeout(timeout);
         await syncGoogleAvatar(session);
-        navigate("/dashboard", { replace: true });
+        navigate(consumePostLoginRedirect(), { replace: true });
       } else if (event === "PASSWORD_RECOVERY") {
         navigated = true;
         clearTimeout(timeout);
@@ -61,7 +62,7 @@ const AuthCallback = () => {
         navigated = true;
         clearTimeout(timeout);
         await syncGoogleAvatar(session);
-        navigate("/dashboard", { replace: true });
+        navigate(consumePostLoginRedirect(), { replace: true });
       }
     });
 

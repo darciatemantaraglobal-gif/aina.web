@@ -25,6 +25,7 @@ const AboutPage = lazy(() => import("./pages/AboutPage.tsx"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage.tsx"));
 const BannedPage = lazy(() => import("./pages/BannedPage.tsx"));
 const DemoAccessPage = lazy(() => import("./pages/DemoAccessPage.tsx"));
+const TrainerProgramPage = lazy(() => import("./pages/TrainerProgramPage.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 const queryClient = new QueryClient({
@@ -94,6 +95,7 @@ function AnimatedRoutes() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/banned" element={<BannedPage />} />
           <Route path="/akses-demo" element={<DemoAccessPage />} />
+          <Route path="/trainer" element={<TrainerProgramPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

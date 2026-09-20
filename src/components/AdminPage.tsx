@@ -8148,6 +8148,214 @@ function QueryAnalyticsTab() {
   );
 }
 
+/* ─── TrainerAdminTab — AINA AI Trainer Program review queue ────────────── */
+type TrainerInnerTab = "applications" | "contributions" | "claims";
+
+type TrainerApplication = {
+  id: string; user_id: string; status: string; applied_at: string;
+  profile: { full_name: string; email: string } | null;
+};
+type TrainerContribution = {
+  id: string; contributor_id: string; contributor_name: string; category: string;
+  question: string; answer: string; source_text: string | null; source_date: string | null;
+  status: string; possible_duplicate_of: string | null; possible_duplicate_title: string | null;
+  submitted_at: string;
+};
+type TrainerClaim = {
+  id: string; contributor_id: string; requested_le: number; status: string; requested_at: string;
+  profile: { full_name: string; email: string } | null;
+};
+
+function TrainerAdminTab() {
+  const [inner, setInner] = useState<TrainerInnerTab>("applications");
+  const [loading, setLoading] = useState(false);
+  const [applications, setApplications] = useState<TrainerApplication[]>([]);
+  const [contributions, setContributions] = useState<TrainerContribution[]>([]);
+  const [claims, setClaims] = useState<TrainerClaim[]>([]);
+  const [categories, setCategories] = useState<Record<string, string>>({});
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  const [difficultyChoice, setDifficultyChoice] = useState<Record<string, string>>({});
+  const [kompleksLe, setKompleksLe] = useState<Record<string, string>>({});
+
+  const load = useCallback(async (tab: TrainerInnerTab) => {
+    setLoading(true);
+    try {
+      if (tab === "applications") {
+        const d = await adminFetch("/api/admin/trainer/applications?status=pending");
+        setApplications(d.applications ?? []);
+      } else if (tab === "contributions") {
+        const d = await adminFetch("/api/admin/trainer/contributions?status=pending");
+        setContributions(d.contributions ?? []);
+        setCategories(d.categories ?? {});
+      } else if (tab === "claims") {
+        const d = await adminFetch("/api/admin/trainer/claims?status=pending");
+        setClaims(d.claims ?? []);
+      }
+    } catch (e: any) { toast.error(e.message); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(inner); }, [inner, load]);
+
+  const reviewApplication = async (id: string, status: "approved" | "rejected") => {
+    setReviewing(id);
+    try {
+      await adminFetch(`/api/admin/trainer/applications/${id}/review`, { method: "POST", body: JSON.stringify({ status }) });
+      setApplications(prev => prev.filter(a => a.id !== id));
+      toast.success(status === "approved" ? "Trainer disetujui" : "Pendaftaran ditolak");
+    } catch (e: any) { toast.error(e.message); }
+    setReviewing(null);
+  };
+
+  const reviewContribution = async (id: string, status: "approved" | "needs_revision" | "rejected") => {
+    if (status === "approved" && !difficultyChoice[id]) {
+      toast.error("Pilih tingkat kesulitan dulu sebelum menyetujui");
+      return;
+    }
+    setReviewing(id);
+    try {
+      const data = await adminFetch(`/api/admin/trainer/contributions/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify({
+          status,
+          difficulty: difficultyChoice[id] || null,
+          requested_le: kompleksLe[id] ? Number(kompleksLe[id]) : null,
+        }),
+      });
+      setContributions(prev => prev.filter(c => c.id !== id));
+      toast.success(status === "approved" ? `Diterima — ${data.reward_le} LE dikreditkan` : "Status diperbarui");
+    } catch (e: any) { toast.error(e.message); }
+    setReviewing(null);
+  };
+
+  const fulfillClaim = async (id: string) => {
+    setReviewing(id);
+    try {
+      await adminFetch(`/api/admin/trainer/claims/${id}/fulfill`, { method: "POST" });
+      setClaims(prev => prev.filter(c => c.id !== id));
+      toast.success("Klaim ditandai selesai");
+    } catch (e: any) { toast.error(e.message); }
+    setReviewing(null);
+  };
+
+  const tabs: { id: TrainerInnerTab; label: string }[] = [
+    { id: "applications",  label: "Pendaftaran" },
+    { id: "contributions", label: "Kontribusi" },
+    { id: "claims",        label: "Klaim Hadiah" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-display text-lg font-semibold text-foreground">AI Trainer Program</h2>
+        <p className="text-xs text-muted-foreground">Review pendaftaran, kontribusi Q&amp;A berbayar, dan klaim hadiah trainer.</p>
+      </div>
+
+      <div className="flex gap-1 rounded-xl bg-secondary/50 p-1">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setInner(t.id)}
+            className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors ${inner === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="py-8 text-center text-sm text-muted-foreground">Memuat...</div>}
+
+      {!loading && inner === "applications" && (
+        applications.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada pendaftaran menunggu.</p>
+        ) : (
+          <div className="space-y-2">
+            {applications.map(a => (
+              <div key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{a.profile?.full_name ?? "—"}</p>
+                  <p className="text-xs text-muted-foreground">{a.profile?.email ?? a.user_id}</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="outline" disabled={reviewing === a.id}
+                    className="border-green-500/30 text-green-500 hover:bg-green-500/10"
+                    onClick={() => reviewApplication(a.id, "approved")}>Terima</Button>
+                  <Button size="sm" variant="outline" disabled={reviewing === a.id}
+                    className="border-red-500/30 text-red-500 hover:bg-red-500/10"
+                    onClick={() => reviewApplication(a.id, "rejected")}>Tolak</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {!loading && inner === "contributions" && (
+        contributions.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada kontribusi menunggu review.</p>
+        ) : (
+          <div className="space-y-3">
+            {contributions.map(c => (
+              <div key={c.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-primary">{categories[c.category] ?? c.category}</span>
+                  <span className="text-xs text-muted-foreground">{c.contributor_name}</span>
+                </div>
+                <p className="text-sm font-medium text-foreground">{c.question}</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{c.answer}</p>
+                {c.source_text && <p className="text-xs text-muted-foreground">Sumber: {c.source_text}{c.source_date ? ` (${c.source_date})` : ""}</p>}
+                {c.possible_duplicate_of && (
+                  <p className="rounded-lg bg-amber-500/10 px-2 py-1 text-xs text-amber-500">
+                    ⚠️ Mirip artikel KB yang sudah ada: "{c.possible_duplicate_title ?? c.possible_duplicate_of}"
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Select value={difficultyChoice[c.id] ?? ""} onValueChange={v => setDifficultyChoice(prev => ({ ...prev, [c.id]: v }))}>
+                    <SelectTrigger className="h-8 w-[160px] text-xs"><SelectValue placeholder="Tingkat kesulitan" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sederhana">Sederhana (2 LE)</SelectItem>
+                      <SelectItem value="standar">Standar (3 LE)</SelectItem>
+                      <SelectItem value="kompleks">Kompleks (5–8 LE)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {difficultyChoice[c.id] === "kompleks" && (
+                    <Input type="number" min={5} max={8} placeholder="LE (5-8)" className="h-8 w-24 text-xs"
+                      value={kompleksLe[c.id] ?? ""} onChange={e => setKompleksLe(prev => ({ ...prev, [c.id]: e.target.value }))} />
+                  )}
+                  <Button size="sm" disabled={reviewing === c.id} className="h-8 gap-1 bg-green-500/10 border border-green-500/30 text-green-500 hover:bg-green-500/20" variant="outline"
+                    onClick={() => reviewContribution(c.id, "approved")}>Terima</Button>
+                  <Button size="sm" disabled={reviewing === c.id} className="h-8 gap-1 border-orange-500/30 text-orange-500 hover:bg-orange-500/10" variant="outline"
+                    onClick={() => reviewContribution(c.id, "needs_revision")}>Perlu Revisi</Button>
+                  <Button size="sm" disabled={reviewing === c.id} className="h-8 gap-1 border-red-500/30 text-red-500 hover:bg-red-500/10" variant="outline"
+                    onClick={() => reviewContribution(c.id, "rejected")}>Tolak</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {!loading && inner === "claims" && (
+        claims.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada klaim menunggu.</p>
+        ) : (
+          <div className="space-y-2">
+            {claims.map(c => (
+              <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">{c.profile?.full_name ?? c.contributor_id}</p>
+                  <p className="text-xs text-muted-foreground">{c.profile?.email}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-sm font-bold text-primary">{c.requested_le} LE</span>
+                  <Button size="sm" disabled={reviewing === c.id} onClick={() => fulfillClaim(c.id)}>Tandai Selesai</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 /* ─── MissionsTab ─────────────────────────────────────── */
 type MissionInnerTab = "today" | "templates" | "submissions";
 
@@ -8899,7 +9107,7 @@ function MissionsTab() {
 }
 
 /* ─── Main AdminPage ─────────────────────────────────── */
-type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library" | "query-analytics" | "missions" | "kb-drafts";
+type Tab = "overview" | "users" | "monitor" | "requests" | "knowledge" | "updates" | "reports" | "security" | "waitlist" | "performance" | "announcements" | "signals" | "news" | "procedures" | "coverage" | "insights" | "library" | "query-analytics" | "missions" | "kb-drafts" | "trainer";
 
 interface NavItem { id: Tab; label: string; icon: React.ElementType; masterOnly?: boolean; badge?: number }
 interface NavGroup { label: string; masterOnly?: boolean; items: NavItem[] }
@@ -8959,6 +9167,7 @@ const AdminPage = () => {
       {activeTab === "library"         && <LibraryManagementTab />}
       {activeTab === "query-analytics" && isMasterAdmin && <QueryAnalyticsTab />}
       {activeTab === "missions"        && <MissionsTab />}
+      {activeTab === "trainer"         && <TrainerAdminTab />}
     </>
   ), [activeTab, isMasterAdmin, stats, statsLoading]);
 
@@ -8983,6 +9192,7 @@ const AdminPage = () => {
       items: [
         { id: "knowledge",  label: "Knowledge Base",   icon: FileText,  badge: stats.pendingArticles || undefined },
         { id: "missions",   label: "Misi Kontributor", icon: Target },
+        { id: "trainer",    label: "AI Trainer",       icon: GraduationCap },
         { id: "library",    label: "Library",          icon: BookOpen },
         { id: "updates",    label: "Breaking Updates", icon: Zap },
         { id: "news",       label: "Berita",           icon: Newspaper },

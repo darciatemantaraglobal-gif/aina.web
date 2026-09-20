@@ -12280,6 +12280,375 @@ app.post("/api/admin/missions/regenerate-today", async (req, res) => {
   res.json({ missions: fresh, date: missionDate });
 });
 
+/* ── AINA AI Trainer Program — paid Q&A contribution track ────────────────
+ * See trainer_applications / trainer_contributions / trainer_ledger /
+ * trainer_claims in the bootstrap SQL above for the data model and why this
+ * is separate from the points-based daily missions above it.
+ */
+export const TRAINER_CATEGORIES = {
+  akademik:      "Akademik & Al-Azhar",
+  administrasi:  "Administrasi & Keimigrasian",
+  kehidupan:     "Kehidupan Sehari-hari",
+  komunitas:     "Komunitas & Kehidupan Masisir",
+  bahasa:        "Bahasa Arab & Istilah Lokal",
+  keislaman:     "Keislaman & Studi Turats",
+};
+
+const TRAINER_REWARD_RATES = { sederhana: 2, standar: 3, kompleks_min: 5, kompleks_max: 8 };
+
+/**
+ * Resolve the LE reward for a reviewed contribution from its difficulty tier.
+ * Sederhana/standar are fixed by the program's own rubric so every trainer is
+ * paid the same for the same tier; kompleks is the one tier reviewers pick a
+ * number for, clamped to the rubric's 5–8 LE range so a typo or an
+ * over-generous reviewer can't create a payout the rubric never approved.
+ * Returns null for an unrecognised difficulty — the caller must reject, never
+ * silently default to a rate.
+ */
+export function resolveTrainerReward(difficulty, requestedLe) {
+  if (difficulty === "sederhana") return TRAINER_REWARD_RATES.sederhana;
+  if (difficulty === "standar") return TRAINER_REWARD_RATES.standar;
+  if (difficulty === "kompleks") {
+    const le = Number(requestedLe);
+    const base = Number.isFinite(le) ? le : TRAINER_REWARD_RATES.kompleks_min;
+    return Math.min(Math.max(base, TRAINER_REWARD_RATES.kompleks_min), TRAINER_REWARD_RATES.kompleks_max);
+  }
+  return null;
+}
+
+function _trainerJaccard(a, b) {
+  const words = s => new Set(String(s ?? "").toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(w => w.length > 2));
+  const setA = words(a), setB = words(b);
+  if (!setA.size || !setB.size) return 0;
+  let overlap = 0;
+  for (const w of setA) if (setB.has(w)) overlap++;
+  return overlap / new Set([...setA, ...setB]).size;
+}
+
+// Flag likely duplicates against the live KB at submission time, so both the
+// trainer and the reviewer see it immediately instead of finding out after
+// a KB article already exists for the same question twice.
+async function findPossibleDuplicateArticle(supabase, question) {
+  try {
+    const { data: candidates } = await supabase
+      .from("knowledge_base").select("id, title").eq("status", "approved").limit(500);
+    if (!candidates?.length) return null;
+    let best = null, bestScore = 0;
+    for (const c of candidates) {
+      const score = _trainerJaccard(question, c.title);
+      if (score > bestScore) { bestScore = score; best = c; }
+    }
+    return bestScore >= 0.5 ? best.id : null;
+  } catch {
+    return null;
+  }
+}
+
+app.get("/api/trainer/status", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const [{ data: roles }, { data: application }] = await Promise.all([
+    supabase.from("user_roles").select("role").eq("user_id", user.id),
+    supabase.from("trainer_applications").select("status, review_note").eq("user_id", user.id).maybeSingle(),
+  ]);
+  const isTrainer = (roles || []).some(r => r.role === "trainer" || r.role === "admin");
+  if (!isTrainer) return res.json({ role: application?.status ?? "none", review_note: application?.review_note ?? null });
+
+  const [{ data: contributions }, { data: ledger }] = await Promise.all([
+    supabase.from("trainer_contributions").select("status").eq("contributor_id", user.id),
+    supabase.from("trainer_ledger").select("amount_le").eq("contributor_id", user.id),
+  ]);
+  const balance = (ledger ?? []).reduce((s, r) => s + Number(r.amount_le), 0);
+
+  res.json({
+    role: "trainer",
+    stats: {
+      submitted: contributions?.length ?? 0,
+      approved:  (contributions ?? []).filter(c => c.status === "approved").length,
+      balance_le: Math.round(balance * 100) / 100,
+    },
+    categories: TRAINER_CATEGORIES,
+  });
+});
+
+app.post("/api/trainer/apply", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if ((roles || []).some(r => r.role === "trainer")) return res.json({ status: "approved" });
+
+  const { data: existing } = await supabase.from("trainer_applications").select("status").eq("user_id", user.id).maybeSingle();
+  if (existing) return res.json({ status: existing.status });
+
+  const { error } = await supabase.from("trainer_applications").insert({ user_id: user.id });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ status: "pending" });
+});
+
+app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  if (!(roles || []).some(r => r.role === "trainer" || r.role === "admin")) {
+    return res.status(403).json({ error: "Kamu belum jadi AI Trainer yang disetujui" });
+  }
+
+  const { category, question, answer, source_text, source_date } = req.body;
+  if (!TRAINER_CATEGORIES[category]) {
+    return res.status(400).json({ error: `category harus salah satu: ${Object.keys(TRAINER_CATEGORIES).join(", ")}` });
+  }
+  if (!question?.trim() || question.trim().length < 10) return res.status(400).json({ error: "Pertanyaan wajib diisi (min. 10 karakter)" });
+  if (!answer?.trim() || answer.trim().length < 20) return res.status(400).json({ error: "Jawaban wajib diisi (min. 20 karakter)" });
+
+  const possibleDuplicateOf = await findPossibleDuplicateArticle(supabase, question.trim());
+
+  const { data, error } = await supabase.from("trainer_contributions").insert({
+    contributor_id: user.id,
+    category,
+    question: question.trim().slice(0, 500),
+    answer: answer.trim().slice(0, 5000),
+    source_text: source_text?.trim().slice(0, 500) || null,
+    source_date: source_date || null,
+    possible_duplicate_of: possibleDuplicateOf,
+  }).select().single();
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ contribution: data, possible_duplicate: !!possibleDuplicateOf });
+});
+
+app.get("/api/trainer/contributions/mine", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+  const { data, error } = await supabase
+    .from("trainer_contributions")
+    .select("id, category, question, status, difficulty, reward_le, review_note, submitted_at, reviewed_at")
+    .eq("contributor_id", user.id)
+    .order("submitted_at", { ascending: false })
+    .limit(200);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ contributions: data ?? [] });
+});
+
+// A claim is "I want to redeem my balance" — not a payment integration. The
+// program's own payout method/schedule is still an open decision (see the
+// blueprint's pre-launch checklist); this only records the request. An admin
+// fulfils it out of band and marks it done, which writes the offsetting
+// ledger row.
+app.post("/api/trainer/claims", writeLimiter, async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  const { data: ledger } = await supabase.from("trainer_ledger").select("amount_le").eq("contributor_id", user.id);
+  const balance = (ledger ?? []).reduce((s, r) => s + Number(r.amount_le), 0);
+  if (balance <= 0) return res.status(400).json({ error: "Saldo kamu belum ada untuk diklaim" });
+
+  const { data: pending } = await supabase.from("trainer_claims").select("id").eq("contributor_id", user.id).eq("status", "pending").maybeSingle();
+  if (pending) return res.status(409).json({ error: "Kamu sudah punya klaim yang masih menunggu diproses" });
+
+  const { data, error } = await supabase.from("trainer_claims").insert({
+    contributor_id: user.id,
+    requested_le: Math.round(balance * 100) / 100,
+  }).select().single();
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+  res.json({ claim: data });
+});
+
+/* ── Admin: applications queue ── */
+app.get("/api/admin/trainer/applications", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const status = ["pending", "approved", "rejected"].includes(req.query.status) ? req.query.status : "pending";
+  const { data, error } = await supabase.from("trainer_applications").select("*").eq("status", status).order("applied_at");
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const userIds = [...new Set((data ?? []).map(a => a.user_id))];
+  const { data: profiles } = userIds.length
+    ? await supabase.from("profiles").select("user_id, full_name, email").in("user_id", userIds)
+    : { data: [] };
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.user_id, p]));
+  res.json({ applications: (data ?? []).map(a => ({ ...a, profile: profileMap[a.user_id] ?? null })) });
+});
+
+app.post("/api/admin/trainer/applications/:id/review", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { status, review_note } = req.body;
+  if (!["approved", "rejected"].includes(status)) return res.status(400).json({ error: "status harus approved atau rejected" });
+
+  const { data: application } = await supabase.from("trainer_applications").select("*").eq("id", req.params.id).single();
+  if (!application) return res.status(404).json({ error: "Aplikasi tidak ditemukan" });
+
+  await supabase.from("trainer_applications").update({
+    status, review_note: review_note ?? null, reviewer_id: admin.id, reviewed_at: new Date().toISOString(),
+  }).eq("id", req.params.id);
+
+  if (status === "approved") {
+    await supabase.from("user_roles").upsert({ user_id: application.user_id, role: "trainer" }, { onConflict: "user_id,role" });
+  }
+  await supabase.from("notifications").insert({
+    user_id: application.user_id,
+    ...(status === "approved"
+      ? { title: "Selamat! Kamu diterima jadi AINA AI Trainer 🎉", message: "Pendaftaran kamu di AINA AI Trainer Program disetujui. Yuk mulai kirim kontribusi pertamamu!", type: "success" }
+      : { title: "Pendaftaran AI Trainer belum bisa diterima", message: review_note?.trim() || "Untuk batch ini kuota sudah terpenuhi atau kriteria belum terpenuhi.", type: "info" }),
+  }).then(undefined, () => {});
+
+  res.json({ success: true });
+});
+
+/* ── Admin: contribution review queue ── */
+app.get("/api/admin/trainer/contributions", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const status = ["pending", "approved", "needs_revision", "rejected"].includes(req.query.status) ? req.query.status : "pending";
+  const { data, error } = await supabase.from("trainer_contributions").select("*").eq("status", status).order("submitted_at");
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const userIds = [...new Set((data ?? []).map(c => c.contributor_id))];
+  const dupIds = [...new Set((data ?? []).map(c => c.possible_duplicate_of).filter(Boolean))];
+  const [{ data: profiles }, { data: dupArticles }] = await Promise.all([
+    userIds.length ? supabase.from("profiles").select("user_id, full_name").in("user_id", userIds) : Promise.resolve({ data: [] }),
+    dupIds.length  ? supabase.from("knowledge_base").select("id, title").in("id", dupIds) : Promise.resolve({ data: [] }),
+  ]);
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.user_id, p.full_name]));
+  const dupTitleMap = Object.fromEntries((dupArticles ?? []).map(a => [a.id, a.title]));
+  res.json({
+    contributions: (data ?? []).map(c => ({
+      ...c,
+      contributor_name: profileMap[c.contributor_id] ?? "—",
+      possible_duplicate_title: c.possible_duplicate_of ? (dupTitleMap[c.possible_duplicate_of] ?? null) : null,
+    })),
+    categories: TRAINER_CATEGORIES,
+  });
+});
+
+app.post("/api/admin/trainer/contributions/:id/review", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const { status, review_note, difficulty, requested_le } = req.body;
+  if (!["approved", "needs_revision", "rejected"].includes(status)) {
+    return res.status(400).json({ error: "status harus approved, needs_revision, atau rejected" });
+  }
+
+  const { data: contribution } = await supabase.from("trainer_contributions").select("*").eq("id", req.params.id).single();
+  if (!contribution) return res.status(404).json({ error: "Kontribusi tidak ditemukan" });
+  if (contribution.status !== "pending") return res.status(409).json({ error: "Kontribusi ini sudah direview" });
+
+  let rewardLe = null, kbArticleId = null;
+  if (status === "approved") {
+    rewardLe = resolveTrainerReward(difficulty, requested_le);
+    if (rewardLe === null) return res.status(400).json({ error: "difficulty harus sederhana, standar, atau kompleks" });
+
+    const content = `${contribution.answer}${contribution.source_text ? `\n\n**Sumber:** ${contribution.source_text}` : ""}`;
+    const { data: article, error: artErr } = await supabase.from("knowledge_base").insert({
+      author_id: contribution.contributor_id,
+      title: contribution.question.slice(0, 200),
+      content,
+      category: TRAINER_CATEGORIES[contribution.category] ?? "Umum",
+      status: "approved",
+      article_type: "narrative",
+    }).select("id").single();
+    if (!artErr) {
+      kbArticleId = article.id;
+      getJobs().queueAllForArticle(kbArticleId);
+    } else {
+      console.warn("[Trainer] KB insert error:", artErr.message);
+    }
+  }
+
+  await supabase.from("trainer_contributions").update({
+    status,
+    difficulty: status === "approved" ? difficulty : null,
+    reward_le: rewardLe,
+    review_note: review_note ?? null,
+    reviewer_id: admin.id,
+    kb_article_id: kbArticleId,
+    reviewed_at: new Date().toISOString(),
+  }).eq("id", req.params.id);
+
+  if (status === "approved" && rewardLe) {
+    await supabase.from("trainer_ledger").insert({
+      contributor_id: contribution.contributor_id,
+      amount_le: rewardLe,
+      reason: "contribution_reward",
+      contribution_id: contribution.id,
+      actor_id: admin.id,
+    });
+  }
+
+  const notifCopy = status === "approved"
+    ? { title: `Kontribusi diterima! +${rewardLe} LE 🎉`, message: `Jawabanmu untuk "${contribution.question.slice(0, 60)}" diterima dan sudah masuk Knowledge Base AINA.`, type: "success" }
+    : status === "needs_revision"
+    ? { title: "Kontribusi perlu revisi", message: review_note?.trim() || "Reviewer minta kamu perbaiki kontribusi ini.", type: "info" }
+    : { title: "Kontribusi ditolak", message: review_note?.trim() || "Kontribusi ini tidak bisa diterima.", type: "info" };
+  await supabase.from("notifications").insert({ user_id: contribution.contributor_id, ...notifCopy }).then(undefined, () => {});
+
+  res.json({ success: true, reward_le: rewardLe, kb_article_id: kbArticleId });
+});
+
+/* ── Admin: claims queue ── */
+app.get("/api/admin/trainer/claims", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const status = ["pending", "fulfilled", "cancelled"].includes(req.query.status) ? req.query.status : "pending";
+  const { data, error } = await supabase.from("trainer_claims").select("*").eq("status", status).order("requested_at");
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const userIds = [...new Set((data ?? []).map(c => c.contributor_id))];
+  const { data: profiles } = userIds.length
+    ? await supabase.from("profiles").select("user_id, full_name, email").in("user_id", userIds)
+    : { data: [] };
+  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.user_id, p]));
+  res.json({ claims: (data ?? []).map(c => ({ ...c, profile: profileMap[c.contributor_id] ?? null })) });
+});
+
+app.post("/api/admin/trainer/claims/:id/fulfill", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+
+  const { data: claim } = await supabase.from("trainer_claims").select("*").eq("id", req.params.id).single();
+  if (!claim) return res.status(404).json({ error: "Klaim tidak ditemukan" });
+  if (claim.status !== "pending") return res.status(409).json({ error: "Klaim ini sudah diproses" });
+
+  await supabase.from("trainer_claims").update({
+    status: "fulfilled", fulfilled_at: new Date().toISOString(), fulfilled_by: admin.id,
+  }).eq("id", req.params.id);
+
+  await supabase.from("trainer_ledger").insert({
+    contributor_id: claim.contributor_id,
+    amount_le: -Number(claim.requested_le),
+    reason: "claim_fulfilled",
+    claim_id: claim.id,
+    actor_id: admin.id,
+  });
+
+  await supabase.from("notifications").insert({
+    user_id: claim.contributor_id,
+    title: "Klaim hadiah sudah diproses ✅",
+    message: `Klaim ${claim.requested_le} LE kamu sudah diproses admin.`,
+    type: "success",
+  }).then(undefined, () => {});
+
+  res.json({ success: true });
+});
+
 /* ── Beta Feedback (stored in Supabase, not local files) ─ */
 app.post("/api/feedback", feedbackLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -16340,6 +16709,77 @@ async function runColumnMigrations() {
     `ALTER TABLE public.mission_templates ADD COLUMN IF NOT EXISTS title_field TEXT;`,
     // Enforce: at most one mission can be is_flash_mission=true at a time
     `CREATE UNIQUE INDEX IF NOT EXISTS uniq_flash_mission_active ON public.mission_templates ((is_flash_mission)) WHERE is_flash_mission = true;`,
+
+    // ── AINA AI Trainer Program — paid Q&A contribution track ────────────────
+    // Deliberately separate from mission_submissions: a trainer submits a
+    // free-form Q&A pair they chose, not a fixed template's fields, and the
+    // reward is real currency (LE) with an auditable ledger, not points.
+    //
+    // Founding Batch is curated on purpose (blueprint: "Registrasi & seleksi"),
+    // so signing in with Google does not by itself grant submission access —
+    // an application row must be approved into a 'trainer' user_role first.
+    `CREATE TABLE IF NOT EXISTS public.trainer_applications (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
+      review_note TEXT,
+      reviewer_id UUID,
+      applied_at TIMESTAMPTZ DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ,
+      UNIQUE(user_id)
+    );`,
+    `CREATE TABLE IF NOT EXISTS public.trainer_contributions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      contributor_id UUID NOT NULL,
+      category TEXT NOT NULL,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      source_text TEXT,
+      source_date DATE,
+      status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | needs_revision | rejected
+      difficulty TEXT, -- sederhana | standar | kompleks — set by reviewer, drives reward_le
+      reward_le NUMERIC(10,2),
+      possible_duplicate_of UUID REFERENCES public.knowledge_base(id),
+      review_note TEXT,
+      reviewer_id UUID,
+      kb_article_id UUID,
+      submitted_at TIMESTAMPTZ DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_trainer_contrib_status ON public.trainer_contributions(status);`,
+    `CREATE INDEX IF NOT EXISTS idx_trainer_contrib_contributor ON public.trainer_contributions(contributor_id);`,
+    // Every balance change is a row here, never an in-place update to a stored
+    // total — the blueprint asks explicitly for a reviewable ledger ("Audit
+    // perubahan saldo... tidak diubah sembarangan"). A trainer's balance is
+    // always SUM(amount_le), computed on read, never cached.
+    `CREATE TABLE IF NOT EXISTS public.trainer_ledger (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      contributor_id UUID NOT NULL,
+      amount_le NUMERIC(10,2) NOT NULL, -- positive = reward credited, negative = claim fulfilled
+      reason TEXT NOT NULL, -- contribution_reward | claim_fulfilled | adjustment
+      contribution_id UUID REFERENCES public.trainer_contributions(id),
+      claim_id UUID,
+      actor_id UUID NOT NULL,
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_trainer_ledger_contributor ON public.trainer_ledger(contributor_id);`,
+    // A claim is "I want to redeem my balance" — not a payment integration.
+    // The blueprint's own reward method/schedule is still an open decision, so
+    // this only records the request; an admin fulfils it out of band (cash,
+    // transfer, whatever the program settles on) and marks it done, which
+    // writes the offsetting trainer_ledger row.
+    `CREATE TABLE IF NOT EXISTS public.trainer_claims (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      contributor_id UUID NOT NULL,
+      requested_le NUMERIC(10,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', -- pending | fulfilled | cancelled
+      note TEXT,
+      requested_at TIMESTAMPTZ DEFAULT NOW(),
+      fulfilled_at TIMESTAMPTZ,
+      fulfilled_by UUID
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_trainer_claims_status ON public.trainer_claims(status);`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {
