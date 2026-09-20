@@ -26,6 +26,7 @@ import {
   needsFollowUpContext,
   buildFollowUpQuery,
   pickTopGap,
+  shouldLogAsKnowledgeGap,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
@@ -689,5 +690,29 @@ describe("buildKnowledgeContext — distinct-entity disambiguation", () => {
     const ctx = buildKnowledgeContext([KEKELUARGAAN_A, PROCEDURE_A]);
     expect(ctx).not.toMatch(/ENTITAS BERBEDA/i);
     expect(ctx).not.toMatch(/INSTRUKSI KONFLIK/i);
+  });
+});
+
+// ── shouldLogAsKnowledgeGap ──────────────────────────────────────────────
+// A 👎 on an answer backed by a strong, admin-verified KB match is not a
+// coverage gap — writing another article for the same question would just
+// duplicate one that's already there. A 👎 on anything less certain
+// (fallback, web-sourced, or a weak/partial KB match) genuinely is a gap
+// worth turning into a contributor mission.
+
+describe("shouldLogAsKnowledgeGap", () => {
+  it("REGRESSION: does not queue a gap mission for a verified answer", () => {
+    expect(shouldLogAsKnowledgeGap("verified")).toBe(false);
+  });
+
+  it("queues a gap for everything less certain than verified", () => {
+    expect(shouldLogAsKnowledgeGap("community_based")).toBe(true);
+    expect(shouldLogAsKnowledgeGap("web_result")).toBe(true);
+    expect(shouldLogAsKnowledgeGap("fallback")).toBe(true);
+  });
+
+  it("queues a gap when confidence is missing entirely", () => {
+    expect(shouldLogAsKnowledgeGap(null)).toBe(true);
+    expect(shouldLogAsKnowledgeGap(undefined)).toBe(true);
   });
 });

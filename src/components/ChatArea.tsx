@@ -1598,6 +1598,11 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
               ...(vote === "down" ? {
                 query_text:  msg?.content   ?? null,
                 source_used: msg?.sourceMetadata?.source_used ?? null,
+                // Separate vocabulary from `confidence` above (verified/community_based/
+                // web_result/fallback, not high/medium/needs_verification) — the server
+                // uses this one to decide whether a bad rating is a real KB coverage gap
+                // or a complaint about an answer that was already strongly KB-backed.
+                source_confidence: msg?.sourceMetadata?.confidence ?? null,
               } : {}),
             }),
           }).catch(() => {});

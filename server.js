@@ -785,6 +785,26 @@ ensureMissingTopicsTable();
 /**
  * Fire-and-forget: log a query that returned no KB results (Supabase).
  */
+/**
+ * A 👎 doesn't always mean the same thing. Whether it should turn into a
+ * "write a KB article for this" gap mission depends on what actually backed
+ * the answer:
+ *   - fallback / web_result / community_based → nothing verified fully covered
+ *     it, so a better/more complete article is the right fix.
+ *   - verified → a strong KB or pinned match WAS used, and the user still
+ *     disliked the answer. Writing another article on the same topic would
+ *     just create a duplicate of one that's already there — the exact
+ *     "two articles, two answers" problem this session spent effort undoing
+ *     elsewhere. Something else is wrong (the article itself, the prose, an
+ *     unrelated complaint), which needs a human to look at the existing
+ *     answer, not a new one written blind.
+ * Either way the rating is still recorded in query_log for the "Respons
+ * Buruk" admin view — this only decides whether it ALSO becomes a mission.
+ */
+export function shouldLogAsKnowledgeGap(confidence) {
+  return confidence !== "verified";
+}
+
 function logMissingTopic(query, intentType) {
   const supabase = getAdminClient();
   if (!supabase || !query?.trim()) return;
@@ -5275,7 +5295,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       type: "done", reply: greetReply, model: "aina-hardcoded",
       intent: "casual", confidence: "high_confidence",
       source_used: "Model", sources: ["Pengetahuan Umum"],
-      sourceMetadata: { confidence: "high_confidence", primary_source: "Model",
+      sourceMetadata: { confidence: "verified", primary_source: "Model",
         sources_used: ["Pengetahuan Umum"], may_be_outdated: false, source_summary: null },
     })}\n\n`);
     res.end();
@@ -6320,7 +6340,15 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       source_used:  sourceUsed,
       sources:      responseSources,
       sourceMetadata: {
-        confidence:     normalizedConfidence,
+        // sourceResult.confidence ("verified"/"community_based"/"web_result"/
+        // "fallback") — NOT normalizedConfidence ("high"/"medium"/
+        // "needs_verification", a separate vocabulary that only ever drives the
+        // system-prompt hint). getConfidenceBadgeConfig() on the frontend only
+        // recognises the first vocabulary; sending the second here meant the
+        // confidence badge never matched anything and silently never rendered,
+        // for any user, admin included, regardless of the isAdmin gate that
+        // used to sit in front of it.
+        confidence:     sourceResult.confidence,
         primary_source: sourceResult.primary_source,
         sources_used:   sourceResult.sources_used,
         may_be_outdated:sourceResult.may_be_outdated,
@@ -6349,7 +6377,7 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
     clarification_pending: clarificationDetected || undefined,
     kb_images:   kbImages.length > 0 ? kbImages : undefined,
     sourceMetadata: {
-      confidence:      normalizedConfidence,
+      confidence:      sourceResult.confidence, // see note on the cache-set call above
       primary_source:  sourceResult.primary_source,
       sources_used:    sourceResult.sources_used,
       may_be_outdated: sourceResult.may_be_outdated,
@@ -15448,7 +15476,11 @@ app.get("/api/admin/eval/suggest-benchmarks", strictLimiter, async (req, res) =>
     for (const m of missingRes.data ?? []) add(m.query, m.intent_type, "kb_miss");
     for (const l of logRes.data ?? []) {
       if (l.has_kb_result === false) add(l.query_text, l.intent_type, "no_kb_result");
-      if (l.rating != null && l.rating <= 2) add(l.query_text, l.intent_type, "low_rating");
+      // query_log.rating is binary (1 or -1, see POST /api/chat/rate) — not a
+      // 1-5 scale. `rating <= 2` was true for BOTH values, so a thumbs-UP
+      // query was just as likely to get suggested as a "low rating" benchmark
+      // candidate as an actual thumbs-down one.
+      if (l.rating === -1) add(l.query_text, l.intent_type, "low_rating");
     }
 
     const candidates = [...tally.values()]
@@ -15729,8 +15761,14 @@ app.post("/api/chat/rate", writeLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
 
-  const { rating, intent, confidence, messageTs, query_text, source_used } = req.body;
+  const { rating, intent, confidence, source_confidence, messageTs, query_text, source_used } = req.body;
   if (![1, -1].includes(rating)) return res.status(400).json({ error: "rating must be 1 or -1" });
+  // `confidence` here is the query_log/prompt-tuning vocabulary (high/medium/
+  // needs_verification) and stays that way for consistency with the other
+  // logQuery() call site. `source_confidence` is the separate verified/
+  // community_based/web_result/fallback vocabulary the source badge and
+  // shouldLogAsKnowledgeGap actually reason about — see the sourceMetadata
+  // fix in the main chat handler for why these are not the same value.
 
   const supabase = getAdminClient();
   if (!supabase) return res.status(500).json({ error: "Server config error" });
@@ -15768,10 +15806,17 @@ app.post("/api/chat/rate", writeLimiter, async (req, res) => {
       rating:     -1,
     }).catch(() => {});
 
-    // A6: Feedback loop — negative feedback triggers KB gap detection
-    // This ensures poorly-answered queries surface in admin's missing-topics dashboard
-    logMissingTopic(query_text.trim(), intent ?? null);
-    console.log(`[A6/FeedbackLoop] 👎 negative rating → "${query_text.trim().slice(0, 60)}" logged to missing_topics for KB improvement`);
+    // A6: Feedback loop — negative feedback on an answer that wasn't strongly
+    // KB-backed surfaces as a gap for contributors to fill. A "verified" answer
+    // that still got rated down is a different problem (see
+    // shouldLogAsKnowledgeGap) and is left for a human to review in "Respons
+    // Buruk" instead of spawning a duplicate-writing mission.
+    if (shouldLogAsKnowledgeGap(source_confidence)) {
+      logMissingTopic(query_text.trim(), intent ?? null);
+      console.log(`[A6/FeedbackLoop] 👎 negative rating (source_confidence=${source_confidence ?? "?"}) → "${query_text.trim().slice(0, 60)}" logged to missing_topics for KB improvement`);
+    } else {
+      console.log(`[A6/FeedbackLoop] 👎 negative rating on a verified answer → "${query_text.trim().slice(0, 60)}" left for manual review, not queued as a gap`);
+    }
   }
 
   console.log(`[Intel/Rating] rating=${rating > 0 ? "+1" : "-1"} intent=${intent} conf=${confidence}`);
