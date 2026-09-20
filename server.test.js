@@ -30,6 +30,7 @@ import {
   resolveTrainerReward,
   TRAINER_CATEGORIES,
   isLikelyMasisirRelevant,
+  TRAINER_CLAIM_TIERS,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
@@ -757,6 +758,12 @@ describe("resolveTrainerReward", () => {
 describe("TRAINER_CATEGORIES", () => {
   it("covers all 6 categories from the program blueprint", () => {
     expect(Object.keys(TRAINER_CATEGORIES)).toHaveLength(6);
+  });
+});
+
+describe("TRAINER_CLAIM_TIERS", () => {
+  it("is the fixed set of redeemable amounts, ascending", () => {
+    expect(TRAINER_CLAIM_TIERS).toEqual([30, 50, 100, 200]);
   });
 });
 

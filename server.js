@@ -12297,6 +12297,14 @@ export const TRAINER_CATEGORIES = {
   keislaman:     "Keislaman & Studi Turats",
 };
 
+// A trainer doesn't claim "whatever balance they have" — they pick one of a
+// few fixed redemption amounts, same idea as gift-card denominations. This
+// keeps payouts predictable for whoever processes them out of band, and lets
+// a balance above the top tier just wait for the next claim instead of
+// forcing an odd amount every time.
+export const TRAINER_CLAIM_TIERS = [30, 50, 100, 200];
+export const TRAINER_CLAIM_CONTACT_WHATSAPP = "081311506025";
+
 const TRAINER_REWARD_RATES = { sederhana: 2, standar: 3, kompleks_min: 5, kompleks_max: 8 };
 
 /**
@@ -12400,6 +12408,8 @@ app.get("/api/trainer/status", async (req, res) => {
       payment_method: profile?.trainer_payment_method ?? null,
       payment_detail: profile?.trainer_payment_detail ?? null,
     },
+    claim_tiers: TRAINER_CLAIM_TIERS,
+    claim_contact_whatsapp: TRAINER_CLAIM_CONTACT_WHATSAPP,
   });
 });
 
@@ -12450,11 +12460,11 @@ app.get("/api/trainer/contributions/mine", async (req, res) => {
   res.json({ contributions: data ?? [] });
 });
 
-// A claim is "I want to redeem my balance" — not a payment integration. The
-// program's own payout method/schedule is still an open decision (see the
-// blueprint's pre-launch checklist); this only records the request. An admin
-// fulfils it out of band and marks it done, which writes the offsetting
-// ledger row.
+// A claim is "I want to redeem TRAINER_CLAIM_TIERS[i] LE from my balance" —
+// not a payment integration. The program's own payout method/schedule is
+// still an open decision (see the blueprint's pre-launch checklist); this
+// only records the request. An admin fulfils it out of band and marks it
+// done, which writes the offsetting ledger row.
 //
 // Payout contact (WhatsApp + optional payment method/detail) is asked once,
 // on a trainer's first claim, then remembered on their profile so later
@@ -12467,9 +12477,14 @@ app.post("/api/trainer/claims", writeLimiter, async (req, res) => {
   const supabase = getAdminClient();
   if (!supabase) return res.status(503).json({ error: "Service unavailable" });
 
+  const amountLe = Number(req.body.amount_le);
+  if (!TRAINER_CLAIM_TIERS.includes(amountLe)) {
+    return res.status(400).json({ error: `Jumlah klaim harus salah satu dari: ${TRAINER_CLAIM_TIERS.join(", ")} LE` });
+  }
+
   const { data: ledger } = await supabase.from("trainer_ledger").select("amount_le").eq("contributor_id", user.id);
   const balance = (ledger ?? []).reduce((s, r) => s + Number(r.amount_le), 0);
-  if (balance <= 0) return res.status(400).json({ error: "Saldo kamu belum ada untuk diklaim" });
+  if (balance < amountLe) return res.status(400).json({ error: `Saldo kamu belum cukup untuk klaim ${amountLe} LE` });
 
   const { data: pending } = await supabase.from("trainer_claims").select("id").eq("contributor_id", user.id).eq("status", "pending").maybeSingle();
   if (pending) return res.status(409).json({ error: "Kamu sudah punya klaim yang masih menunggu diproses" });
@@ -12493,13 +12508,13 @@ app.post("/api/trainer/claims", writeLimiter, async (req, res) => {
 
   const { data, error } = await supabase.from("trainer_claims").insert({
     contributor_id: user.id,
-    requested_le: Math.round(balance * 100) / 100,
+    requested_le: amountLe,
     whatsapp,
     payment_method: paymentMethod,
     payment_detail: paymentDetail,
   }).select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.json({ claim: data });
+  res.json({ claim: data, contact_whatsapp: TRAINER_CLAIM_CONTACT_WHATSAPP });
 });
 
 /* ── Admin: contribution review queue ── */
@@ -16755,11 +16770,12 @@ async function runColumnMigrations() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );`,
     `CREATE INDEX IF NOT EXISTS idx_trainer_ledger_contributor ON public.trainer_ledger(contributor_id);`,
-    // A claim is "I want to redeem my balance" — not a payment integration.
-    // The blueprint's own reward method/schedule is still an open decision, so
-    // this only records the request; an admin fulfils it out of band (cash,
-    // transfer, whatever the program settles on) and marks it done, which
-    // writes the offsetting trainer_ledger row.
+    // A claim redeems one of a few fixed amounts (TRAINER_CLAIM_TIERS) from
+    // the trainer's balance — not a payment integration. The blueprint's own
+    // reward method/schedule is still an open decision, so this only records
+    // the request; an admin fulfils it out of band (cash, transfer, whatever
+    // the program settles on) and marks it done, which writes the offsetting
+    // trainer_ledger row.
     //
     // whatsapp/payment_method/payment_detail are a snapshot of the trainer's
     // payout contact at claim time (see profiles.trainer_whatsapp etc. below)

@@ -33,6 +33,8 @@ type TrainerStatus = {
   stats: { submitted: number; approved: number; balance_le: number };
   categories: Record<string, string>;
   payout: { whatsapp: string | null; payment_method: string | null; payment_detail: string | null };
+  claim_tiers: number[];
+  claim_contact_whatsapp: string;
 };
 type Contribution = {
   id: string; category: string; question: string; status: string;
@@ -59,6 +61,10 @@ function StatusBadge({ status }: { status: string }) {
   };
   const c = cfg[status] ?? { label: status, className: "bg-secondary text-muted-foreground" };
   return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${c.className}`}>{c.label}</span>;
+}
+
+function waLink(phone: string) {
+  return `https://wa.me/${phone.replace(/^0/, "62").replace(/\D/g, "")}`;
 }
 
 function TrainerSidebar({
@@ -136,6 +142,7 @@ export default function TrainerProgramPage() {
   const [claiming, setClaiming] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [showPayoutForm, setShowPayoutForm] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<number | null>(null);
   const [whatsapp, setWhatsapp] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentDetail, setPaymentDetail] = useState("");
@@ -228,16 +235,19 @@ export default function TrainerProgramPage() {
     }
   };
 
-  const handleClaimClick = () => {
+  const handleTierClick = (tier: number) => {
+    setSelectedTier(tier);
     if (status?.payout.whatsapp) {
-      handleClaim();
+      handleClaim(undefined, tier);
     } else {
       setShowPayoutForm(true);
     }
   };
 
-  const handleClaim = async (e?: React.FormEvent) => {
+  const handleClaim = async (e?: React.FormEvent, tierOverride?: number) => {
     e?.preventDefault();
+    const tier = tierOverride ?? selectedTier;
+    if (!tier) return;
     if (!status?.payout.whatsapp && !whatsapp.trim()) {
       return toast.error("Nomor WhatsApp wajib diisi untuk klaim pertama kali");
     }
@@ -246,13 +256,18 @@ export default function TrainerProgramPage() {
       const data = await authedFetch("/api/trainer/claims", {
         method: "POST",
         body: JSON.stringify({
+          amount_le: tier,
           whatsapp: whatsapp.trim() || undefined,
           payment_method: paymentMethod.trim() || undefined,
           payment_detail: paymentDetail.trim() || undefined,
         }),
       });
-      toast.success(`Klaim ${data.claim.requested_le} LE terkirim. Admin akan proses dan hubungi kamu.`);
+      toast.success(
+        `Klaim ${data.claim.requested_le} LE terkirim! Chat admin di WhatsApp ${data.contact_whatsapp} untuk diproses.`,
+        { duration: 8000 },
+      );
       setShowPayoutForm(false);
+      setSelectedTier(null);
       loadStatus();
     } catch (e: any) {
       toast.error(e.message);
@@ -374,25 +389,49 @@ export default function TrainerProgramPage() {
                     </div>
                   </div>
 
-                  {!showPayoutForm ? (
-                    <Button onClick={handleClaimClick} disabled={claiming || status.stats.balance_le <= 0} variant="outline" className="w-full gap-2">
-                      <Wallet className="h-4 w-4" /> {claiming ? "Mengirim..." : "Klaim Hadiah"}
-                    </Button>
-                  ) : (
-                    <form onSubmit={handleClaim} className="space-y-2 rounded-2xl border border-border bg-card p-4">
-                      <p className="text-sm font-semibold text-foreground">Info Kontak untuk Pembayaran</p>
-                      <p className="text-xs text-muted-foreground">Diminta sekali aja — dipakai admin untuk menghubungi dan memproses klaim kamu.</p>
-                      <Input placeholder="Nomor WhatsApp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} required />
-                      <Input placeholder="Metode pembayaran (opsional, mis. Bank BCA, GoPay, Vodafone Cash)" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} />
-                      <Input placeholder="Nomor rekening/e-wallet (opsional)" value={paymentDetail} onChange={e => setPaymentDetail(e.target.value)} />
-                      <div className="flex gap-2">
-                        <Button type="submit" disabled={claiming} className="flex-1">
-                          {claiming ? "Mengirim..." : "Kirim Klaim"}
-                        </Button>
-                        <Button type="button" variant="outline" onClick={() => setShowPayoutForm(false)}>Batal</Button>
-                      </div>
-                    </form>
-                  )}
+                  <div className="space-y-2 rounded-2xl border border-border bg-card p-4">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Wallet className="h-4 w-4" /> Klaim Hadiah
+                    </p>
+                    <p className="text-xs text-muted-foreground">Pilih jumlah yang mau diklaim dari saldo kamu.</p>
+
+                    {!showPayoutForm ? (
+                      <>
+                        <div className="grid grid-cols-4 gap-2 pt-1">
+                          {status.claim_tiers.map((tier) => (
+                            <button
+                              key={tier}
+                              onClick={() => handleTierClick(tier)}
+                              disabled={claiming || status.stats.balance_le < tier}
+                              className="rounded-xl border border-primary/30 bg-primary/5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:border-border disabled:bg-secondary/40 disabled:text-muted-foreground/50"
+                            >
+                              {tier}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="pt-1 text-[11px] text-muted-foreground">
+                          Setelah klaim, langsung chat admin di WhatsApp{" "}
+                          <a href={waLink(status.claim_contact_whatsapp)} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
+                            {status.claim_contact_whatsapp}
+                          </a>{" "}
+                          untuk diproses.
+                        </p>
+                      </>
+                    ) : (
+                      <form onSubmit={handleClaim} className="space-y-2 pt-1">
+                        <p className="text-xs text-muted-foreground">Klaim {selectedTier} LE — isi kontak pembayaran dulu, cukup sekali aja.</p>
+                        <Input placeholder="Nomor WhatsApp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} required />
+                        <Input placeholder="Metode pembayaran (opsional, mis. Bank BCA, GoPay, Vodafone Cash)" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} />
+                        <Input placeholder="Nomor rekening/e-wallet (opsional)" value={paymentDetail} onChange={e => setPaymentDetail(e.target.value)} />
+                        <div className="flex gap-2">
+                          <Button type="submit" disabled={claiming} className="flex-1">
+                            {claiming ? "Mengirim..." : "Kirim Klaim"}
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => { setShowPayoutForm(false); setSelectedTier(null); }}>Batal</Button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
 
                   <button
                     onClick={() => setActiveSection("submit")}
