@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { GraduationCap, Coins, CheckCircle2, Clock, Send, Wallet, LogIn, ArrowRight } from "lucide-react";
+import { GraduationCap, Coins, CheckCircle2, Send, Wallet, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,12 +25,10 @@ async function authedFetch(path: string, options: RequestInit = {}) {
   return body;
 }
 
-type TrainerRole = "none" | "pending" | "approved" | "rejected" | "trainer";
 type TrainerStatus = {
-  role: TrainerRole;
-  review_note?: string | null;
-  stats?: { submitted: number; approved: number; balance_le: number };
-  categories?: Record<string, string>;
+  role: "trainer";
+  stats: { submitted: number; approved: number; balance_le: number };
+  categories: Record<string, string>;
 };
 type Contribution = {
   id: string; category: string; question: string; status: string;
@@ -56,7 +54,6 @@ export default function TrainerProgramPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [status, setStatus] = useState<TrainerStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
-  const [applying, setApplying] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
 
@@ -110,19 +107,6 @@ export default function TrainerProgramPage() {
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
     if (error) toast.error(error.message || "Gagal login dengan Google");
-  };
-
-  const handleApply = async () => {
-    setApplying(true);
-    try {
-      const data = await authedFetch("/api/trainer/apply", { method: "POST" });
-      toast.success(data.status === "pending" ? "Pendaftaran terkirim! Tunggu review admin ya." : "Kamu sudah terdaftar.");
-      loadStatus();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setApplying(false);
-    }
   };
 
   const handleSubmitContribution = async (e: React.FormEvent) => {
@@ -203,7 +187,7 @@ export default function TrainerProgramPage() {
 
         {!loggedIn && (
           <div className="mx-auto max-w-sm rounded-2xl border border-border bg-card p-6 text-center">
-            <p className="mb-4 text-sm text-muted-foreground">Masuk dengan akun Google kamu untuk mendaftar.</p>
+            <p className="mb-4 text-sm text-muted-foreground">Masuk dengan akun Google kamu untuk mulai berkontribusi.</p>
             <Button onClick={handleGoogleLogin} className="w-full gap-2" size="lg">
               <LogIn className="h-4 w-4" /> Masuk dengan Google
             </Button>
@@ -216,33 +200,7 @@ export default function TrainerProgramPage() {
           </div>
         )}
 
-        {loggedIn && status && status.role === "none" && (
-          <div className="mx-auto max-w-sm rounded-2xl border border-border bg-card p-6 text-center">
-            <p className="mb-4 text-sm text-muted-foreground">
-              Kamu belum terdaftar di batch ini. Daftar sekarang — kuota terbatas, seleksi oleh admin.
-            </p>
-            <Button onClick={handleApply} disabled={applying} className="w-full gap-2" size="lg">
-              {applying ? "Mengirim..." : <>Daftar Jadi AI Trainer <ArrowRight className="h-4 w-4" /></>}
-            </Button>
-          </div>
-        )}
-
-        {loggedIn && status?.role === "pending" && (
-          <div className="mx-auto max-w-sm rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-6 text-center">
-            <Clock className="mx-auto mb-3 h-8 w-8 text-yellow-500" />
-            <p className="text-sm font-medium text-foreground">Pendaftaran kamu sedang ditinjau</p>
-            <p className="mt-1 text-xs text-muted-foreground">Admin akan konfirmasi lewat notifikasi begitu batch dibuka.</p>
-          </div>
-        )}
-
-        {loggedIn && status?.role === "rejected" && (
-          <div className="mx-auto max-w-sm rounded-2xl border border-red-500/30 bg-red-500/5 p-6 text-center">
-            <p className="text-sm font-medium text-foreground">Pendaftaran belum bisa diterima untuk batch ini</p>
-            {status.review_note && <p className="mt-1 text-xs text-muted-foreground">{status.review_note}</p>}
-          </div>
-        )}
-
-        {loggedIn && status?.role === "trainer" && status.stats && (
+        {loggedIn && status && (
           <div className="space-y-6">
             {/* Kartu member */}
             <div className="grid grid-cols-3 gap-3">

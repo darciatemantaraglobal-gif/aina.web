@@ -8149,16 +8149,13 @@ function QueryAnalyticsTab() {
 }
 
 /* ─── TrainerAdminTab — AINA AI Trainer Program review queue ────────────── */
-type TrainerInnerTab = "applications" | "contributions" | "claims";
+type TrainerInnerTab = "contributions" | "claims";
 
-type TrainerApplication = {
-  id: string; user_id: string; status: string; applied_at: string;
-  profile: { full_name: string; email: string } | null;
-};
 type TrainerContribution = {
   id: string; contributor_id: string; contributor_name: string; category: string;
   question: string; answer: string; source_text: string | null; source_date: string | null;
   status: string; possible_duplicate_of: string | null; possible_duplicate_title: string | null;
+  flagged_irrelevant: boolean;
   submitted_at: string;
 };
 type TrainerClaim = {
@@ -8167,9 +8164,8 @@ type TrainerClaim = {
 };
 
 function TrainerAdminTab() {
-  const [inner, setInner] = useState<TrainerInnerTab>("applications");
+  const [inner, setInner] = useState<TrainerInnerTab>("contributions");
   const [loading, setLoading] = useState(false);
-  const [applications, setApplications] = useState<TrainerApplication[]>([]);
   const [contributions, setContributions] = useState<TrainerContribution[]>([]);
   const [claims, setClaims] = useState<TrainerClaim[]>([]);
   const [categories, setCategories] = useState<Record<string, string>>({});
@@ -8180,10 +8176,7 @@ function TrainerAdminTab() {
   const load = useCallback(async (tab: TrainerInnerTab) => {
     setLoading(true);
     try {
-      if (tab === "applications") {
-        const d = await adminFetch("/api/admin/trainer/applications?status=pending");
-        setApplications(d.applications ?? []);
-      } else if (tab === "contributions") {
+      if (tab === "contributions") {
         const d = await adminFetch("/api/admin/trainer/contributions?status=pending");
         setContributions(d.contributions ?? []);
         setCategories(d.categories ?? {});
@@ -8196,16 +8189,6 @@ function TrainerAdminTab() {
   }, []);
 
   useEffect(() => { load(inner); }, [inner, load]);
-
-  const reviewApplication = async (id: string, status: "approved" | "rejected") => {
-    setReviewing(id);
-    try {
-      await adminFetch(`/api/admin/trainer/applications/${id}/review`, { method: "POST", body: JSON.stringify({ status }) });
-      setApplications(prev => prev.filter(a => a.id !== id));
-      toast.success(status === "approved" ? "Trainer disetujui" : "Pendaftaran ditolak");
-    } catch (e: any) { toast.error(e.message); }
-    setReviewing(null);
-  };
 
   const reviewContribution = async (id: string, status: "approved" | "needs_revision" | "rejected") => {
     if (status === "approved" && !difficultyChoice[id]) {
@@ -8239,7 +8222,6 @@ function TrainerAdminTab() {
   };
 
   const tabs: { id: TrainerInnerTab; label: string }[] = [
-    { id: "applications",  label: "Pendaftaran" },
     { id: "contributions", label: "Kontribusi" },
     { id: "claims",        label: "Klaim Hadiah" },
   ];
@@ -8248,7 +8230,7 @@ function TrainerAdminTab() {
     <div className="space-y-4">
       <div>
         <h2 className="font-display text-lg font-semibold text-foreground">AI Trainer Program</h2>
-        <p className="text-xs text-muted-foreground">Review pendaftaran, kontribusi Q&amp;A berbayar, dan klaim hadiah trainer.</p>
+        <p className="text-xs text-muted-foreground">Review kontribusi Q&amp;A berbayar dan klaim hadiah trainer.</p>
       </div>
 
       <div className="flex gap-1 rounded-xl bg-secondary/50 p-1">
@@ -8261,31 +8243,6 @@ function TrainerAdminTab() {
       </div>
 
       {loading && <div className="py-8 text-center text-sm text-muted-foreground">Memuat...</div>}
-
-      {!loading && inner === "applications" && (
-        applications.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada pendaftaran menunggu.</p>
-        ) : (
-          <div className="space-y-2">
-            {applications.map(a => (
-              <div key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">{a.profile?.full_name ?? "—"}</p>
-                  <p className="text-xs text-muted-foreground">{a.profile?.email ?? a.user_id}</p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button size="sm" variant="outline" disabled={reviewing === a.id}
-                    className="border-green-500/30 text-green-500 hover:bg-green-500/10"
-                    onClick={() => reviewApplication(a.id, "approved")}>Terima</Button>
-                  <Button size="sm" variant="outline" disabled={reviewing === a.id}
-                    className="border-red-500/30 text-red-500 hover:bg-red-500/10"
-                    onClick={() => reviewApplication(a.id, "rejected")}>Tolak</Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      )}
 
       {!loading && inner === "contributions" && (
         contributions.length === 0 ? (
@@ -8304,6 +8261,11 @@ function TrainerAdminTab() {
                 {c.possible_duplicate_of && (
                   <p className="rounded-lg bg-amber-500/10 px-2 py-1 text-xs text-amber-500">
                     ⚠️ Mirip artikel KB yang sudah ada: "{c.possible_duplicate_title ?? c.possible_duplicate_of}"
+                  </p>
+                )}
+                {c.flagged_irrelevant && (
+                  <p className="rounded-lg bg-red-500/10 px-2 py-1 text-xs text-red-500">
+                    🚩 Tidak ditemukan kata kunci terkait Masisir — cek relevansinya sebelum menerima.
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-2 pt-1">

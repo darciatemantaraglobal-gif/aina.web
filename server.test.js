@@ -29,6 +29,7 @@ import {
   shouldLogAsKnowledgeGap,
   resolveTrainerReward,
   TRAINER_CATEGORIES,
+  isLikelyMasisirRelevant,
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
@@ -756,5 +757,35 @@ describe("resolveTrainerReward", () => {
 describe("TRAINER_CATEGORIES", () => {
   it("covers all 6 categories from the program blueprint", () => {
     expect(Object.keys(TRAINER_CATEGORIES)).toHaveLength(6);
+  });
+});
+
+// ── isLikelyMasisirRelevant — AI Trainer relevance flag ────────────────────
+// The trainer program has no admin approval gate: any logged-in user can
+// submit immediately. This heuristic is the actual quality control — it
+// doesn't block anything, it just flags submissions with no Masisir/Egypt
+// vocabulary at all so a reviewer looks at them first.
+
+describe("isLikelyMasisirRelevant", () => {
+  it("recognises a submission using core Masisir vocabulary", () => {
+    expect(isLikelyMasisirRelevant("Bagaimana cara mengurus iqomah?", "Datang ke kantor imigrasi Mesir")).toBe(true);
+  });
+
+  it("recognises a submission that only mentions Al-Azhar/Cairo terms", () => {
+    expect(isLikelyMasisirRelevant("Apa itu mustawa di Al-Azhar?", "Tingkatan kelas di kulliyah")).toBe(true);
+  });
+
+  it("flags a submission with no Masisir-related terms at all", () => {
+    expect(isLikelyMasisirRelevant("Resep membuat kue coklat", "Campur tepung dan gula lalu panggang")).toBe(false);
+  });
+
+  it("is case-insensitive", () => {
+    expect(isLikelyMasisirRelevant("APA ITU IQOMAH?", "")).toBe(true);
+  });
+
+  it("is null-safe for missing question or answer", () => {
+    expect(isLikelyMasisirRelevant(undefined, "informasi soal Masisir di Kairo")).toBe(true);
+    expect(isLikelyMasisirRelevant("pertanyaan biasa", undefined)).toBe(false);
+    expect(isLikelyMasisirRelevant(undefined, undefined)).toBe(false);
   });
 });

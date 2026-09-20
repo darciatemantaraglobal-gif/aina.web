@@ -12281,9 +12281,12 @@ app.post("/api/admin/missions/regenerate-today", async (req, res) => {
 });
 
 /* ── AINA AI Trainer Program — paid Q&A contribution track ────────────────
- * See trainer_applications / trainer_contributions / trainer_ledger /
- * trainer_claims in the bootstrap SQL above for the data model and why this
- * is separate from the points-based daily missions above it.
+ * See trainer_contributions / trainer_ledger / trainer_claims in the
+ * bootstrap SQL above for the data model and why this is separate from the
+ * points-based daily missions above it. Self-service: any authenticated
+ * user gets the trainer role on first status check (ensureTrainerRole) —
+ * no admin approval gate. Quality control is per-submission instead, via
+ * flagged_irrelevant on trainer_contributions.
  */
 export const TRAINER_CATEGORIES = {
   akademik:      "Akademik & Al-Azhar",
@@ -12344,18 +12347,38 @@ async function findPossibleDuplicateArticle(supabase, question) {
   }
 }
 
+// Deliberately permissive — the goal is not to reject anything automatically,
+// only to flag the minority of submissions that mention nothing Masisir/Egypt
+// related at all, so a reviewer's attention goes where it's actually needed.
+// Reuses the existing Masisir alias dictionary (iqomah, kekeluargaan, ...)
+// rather than a second hand-maintained list.
+const MASISIR_RELEVANCE_TERMS = [
+  ...Object.keys(MASISIR_ALIASES_SEED),
+  ...Object.values(MASISIR_ALIASES_SEED).flat(),
+  "mesir", "masisir", "cairo", "kairo", "azhar", "kulliyah", "kulliyyah",
+  "muqarrar", "mustawa", "tahdid", "wafidin", "amiyah", "ammiyah", "fushha",
+  "turats", "maddah", "mahasiswa indonesia",
+];
+
+export function isLikelyMasisirRelevant(question, answer) {
+  const text = `${question ?? ""} ${answer ?? ""}`.toLowerCase();
+  return MASISIR_RELEVANCE_TERMS.some(term => text.includes(term.toLowerCase()));
+}
+
+// Google sign-in on /trainer is meant to be the whole gate — no separate
+// admin approval step. Every authenticated user who reaches a trainer
+// endpoint is upserted into the 'trainer' role the first time, idempotently.
+async function ensureTrainerRole(supabase, userId) {
+  await supabase.from("user_roles").upsert({ user_id: userId, role: "trainer" }, { onConflict: "user_id,role" });
+}
+
 app.get("/api/trainer/status", async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   const supabase = getAdminClient();
   if (!supabase) return res.status(503).json({ error: "Service unavailable" });
 
-  const [{ data: roles }, { data: application }] = await Promise.all([
-    supabase.from("user_roles").select("role").eq("user_id", user.id),
-    supabase.from("trainer_applications").select("status, review_note").eq("user_id", user.id).maybeSingle(),
-  ]);
-  const isTrainer = (roles || []).some(r => r.role === "trainer" || r.role === "admin");
-  if (!isTrainer) return res.json({ role: application?.status ?? "none", review_note: application?.review_note ?? null });
+  await ensureTrainerRole(supabase, user.id);
 
   const [{ data: contributions }, { data: ledger }] = await Promise.all([
     supabase.from("trainer_contributions").select("status").eq("contributor_id", user.id),
@@ -12374,33 +12397,13 @@ app.get("/api/trainer/status", async (req, res) => {
   });
 });
 
-app.post("/api/trainer/apply", writeLimiter, async (req, res) => {
-  const user = await verifyAuth(req.headers.authorization);
-  if (!user) return res.status(401).json({ error: "Unauthorized" });
-  const supabase = getAdminClient();
-  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
-
-  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-  if ((roles || []).some(r => r.role === "trainer")) return res.json({ status: "approved" });
-
-  const { data: existing } = await supabase.from("trainer_applications").select("status").eq("user_id", user.id).maybeSingle();
-  if (existing) return res.json({ status: existing.status });
-
-  const { error } = await supabase.from("trainer_applications").insert({ user_id: user.id });
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.json({ status: "pending" });
-});
-
 app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   const supabase = getAdminClient();
   if (!supabase) return res.status(503).json({ error: "Service unavailable" });
 
-  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-  if (!(roles || []).some(r => r.role === "trainer" || r.role === "admin")) {
-    return res.status(403).json({ error: "Kamu belum jadi AI Trainer yang disetujui" });
-  }
+  await ensureTrainerRole(supabase, user.id);
 
   const { category, question, answer, source_text, source_date } = req.body;
   if (!TRAINER_CATEGORIES[category]) {
@@ -12410,6 +12413,7 @@ app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
   if (!answer?.trim() || answer.trim().length < 20) return res.status(400).json({ error: "Jawaban wajib diisi (min. 20 karakter)" });
 
   const possibleDuplicateOf = await findPossibleDuplicateArticle(supabase, question.trim());
+  const flaggedIrrelevant = !isLikelyMasisirRelevant(question, answer);
 
   const { data, error } = await supabase.from("trainer_contributions").insert({
     contributor_id: user.id,
@@ -12419,9 +12423,10 @@ app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
     source_text: source_text?.trim().slice(0, 500) || null,
     source_date: source_date || null,
     possible_duplicate_of: possibleDuplicateOf,
+    flagged_irrelevant: flaggedIrrelevant,
   }).select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
-  res.json({ contribution: data, possible_duplicate: !!possibleDuplicateOf });
+  res.json({ contribution: data, possible_duplicate: !!possibleDuplicateOf, flagged_irrelevant: flaggedIrrelevant });
 });
 
 app.get("/api/trainer/contributions/mine", async (req, res) => {
@@ -12463,50 +12468,6 @@ app.post("/api/trainer/claims", writeLimiter, async (req, res) => {
   }).select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ claim: data });
-});
-
-/* ── Admin: applications queue ── */
-app.get("/api/admin/trainer/applications", async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Unauthorized" });
-  const supabase = getAdminClient();
-  const status = ["pending", "approved", "rejected"].includes(req.query.status) ? req.query.status : "pending";
-  const { data, error } = await supabase.from("trainer_applications").select("*").eq("status", status).order("applied_at");
-  if (error) return res.status(500).json({ error: sanitizeErr(error) });
-
-  const userIds = [...new Set((data ?? []).map(a => a.user_id))];
-  const { data: profiles } = userIds.length
-    ? await supabase.from("profiles").select("user_id, full_name, email").in("user_id", userIds)
-    : { data: [] };
-  const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.user_id, p]));
-  res.json({ applications: (data ?? []).map(a => ({ ...a, profile: profileMap[a.user_id] ?? null })) });
-});
-
-app.post("/api/admin/trainer/applications/:id/review", writeLimiter, async (req, res) => {
-  const admin = await verifyAdminUser(req.headers.authorization);
-  if (!admin) return res.status(403).json({ error: "Unauthorized" });
-  const supabase = getAdminClient();
-  const { status, review_note } = req.body;
-  if (!["approved", "rejected"].includes(status)) return res.status(400).json({ error: "status harus approved atau rejected" });
-
-  const { data: application } = await supabase.from("trainer_applications").select("*").eq("id", req.params.id).single();
-  if (!application) return res.status(404).json({ error: "Aplikasi tidak ditemukan" });
-
-  await supabase.from("trainer_applications").update({
-    status, review_note: review_note ?? null, reviewer_id: admin.id, reviewed_at: new Date().toISOString(),
-  }).eq("id", req.params.id);
-
-  if (status === "approved") {
-    await supabase.from("user_roles").upsert({ user_id: application.user_id, role: "trainer" }, { onConflict: "user_id,role" });
-  }
-  await supabase.from("notifications").insert({
-    user_id: application.user_id,
-    ...(status === "approved"
-      ? { title: "Selamat! Kamu diterima jadi AINA AI Trainer 🎉", message: "Pendaftaran kamu di AINA AI Trainer Program disetujui. Yuk mulai kirim kontribusi pertamamu!", type: "success" }
-      : { title: "Pendaftaran AI Trainer belum bisa diterima", message: review_note?.trim() || "Untuk batch ini kuota sudah terpenuhi atau kriteria belum terpenuhi.", type: "info" }),
-  }).then(undefined, () => {});
-
-  res.json({ success: true });
 });
 
 /* ── Admin: contribution review queue ── */
@@ -16715,19 +16676,11 @@ async function runColumnMigrations() {
     // free-form Q&A pair they chose, not a fixed template's fields, and the
     // reward is real currency (LE) with an auditable ledger, not points.
     //
-    // Founding Batch is curated on purpose (blueprint: "Registrasi & seleksi"),
-    // so signing in with Google does not by itself grant submission access —
-    // an application row must be approved into a 'trainer' user_role first.
-    `CREATE TABLE IF NOT EXISTS public.trainer_applications (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
-      review_note TEXT,
-      reviewer_id UUID,
-      applied_at TIMESTAMPTZ DEFAULT NOW(),
-      reviewed_at TIMESTAMPTZ,
-      UNIQUE(user_id)
-    );`,
+    // Self-service on purpose: signing in with Google grants submission access
+    // immediately (see ensureTrainerRole) — there is no admin approval gate.
+    // Quality control instead happens per-submission via flagged_irrelevant
+    // (a cheap keyword check against Masisir vocabulary) which routes
+    // likely-unrelated content to the reviewer queue instead of blocking it.
     `CREATE TABLE IF NOT EXISTS public.trainer_contributions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       contributor_id UUID NOT NULL,
@@ -16740,6 +16693,7 @@ async function runColumnMigrations() {
       difficulty TEXT, -- sederhana | standar | kompleks — set by reviewer, drives reward_le
       reward_le NUMERIC(10,2),
       possible_duplicate_of UUID REFERENCES public.knowledge_base(id),
+      flagged_irrelevant BOOLEAN DEFAULT false,
       review_note TEXT,
       reviewer_id UUID,
       kb_article_id UUID,
@@ -16748,6 +16702,11 @@ async function runColumnMigrations() {
     );`,
     `CREATE INDEX IF NOT EXISTS idx_trainer_contrib_status ON public.trainer_contributions(status);`,
     `CREATE INDEX IF NOT EXISTS idx_trainer_contrib_contributor ON public.trainer_contributions(contributor_id);`,
+    // Backfill for deployments where trainer_contributions already existed
+    // before flagged_irrelevant and the approval gate were added. The old
+    // trainer_applications table (now unused — see comment above) is left
+    // in place rather than dropped, in case it holds real applicant rows.
+    `ALTER TABLE public.trainer_contributions ADD COLUMN IF NOT EXISTS flagged_irrelevant BOOLEAN DEFAULT false;`,
     // Every balance change is a row here, never an in-place update to a stored
     // total — the blueprint asks explicitly for a reviewable ledger ("Audit
     // perubahan saldo... tidak diubah sembarangan"). A trainer's balance is
