@@ -47,7 +47,6 @@ interface ChatAreaProps {
   onNewChat?: () => void;
   initialMessage?: string;
   onGoContributor?: () => void;
-  isAdmin?: boolean;
 }
 
 const API_URL = "/api/chat";
@@ -1060,7 +1059,7 @@ interface StreamingMsg {
 const STREAM_CHARS_PER_TICK = 6;
 const STREAM_INTERVAL_MS = 16;
 
-const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage, onGoContributor, isAdmin }: ChatAreaProps) => {
+const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessage, onGoContributor }: ChatAreaProps) => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -2271,7 +2270,14 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                     {(() => {
                       if (msg.intent === "casual") return null;
                       const sources = msg.sources?.length ? msg.sources : extractSources(msg.content ?? "");
-                      const confCfg = getConfidenceBadgeConfig(msg.sourceMetadata?.confidence);
+                      // "fallback" confidence already has its own source badge ("Pengetahuan
+                      // Umum", shown to everyone) carrying the same "no solid source" message —
+                      // stacking a second "Perlu Verifikasi" badge next to it would just repeat
+                      // that signal and make AINA read as less sure of itself than it actually is
+                      // on every other answer. The badge earns its place where it adds something
+                      // the source badge alone can't say: a KB hit that's strong vs. barely related.
+                      const showConfBadge = msg.sourceMetadata?.confidence && msg.sourceMetadata.confidence !== "fallback";
+                      const confCfg = showConfBadge ? getConfidenceBadgeConfig(msg.sourceMetadata?.confidence) : null;
                       const ConfIcon = confCfg?.icon;
                       return (sources.length > 0 || confCfg) ? (
                         <div className="mt-2 space-y-1 animate-action-in delay-150">
@@ -2289,7 +2295,7 @@ const ChatArea = ({ onMenuClick, chatId, onChatCreated, onNewChat, initialMessag
                                 </span>
                               );
                             })}
-                            {isAdmin && confCfg && ConfIcon && (
+                            {confCfg && ConfIcon && (
                               <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${confCfg.className}`}>
                                 <span className="text-muted-foreground/30">·</span>
                                 <ConfIcon className="h-2.5 w-2.5 shrink-0" />

@@ -647,7 +647,6 @@ const Dashboard = () => {
                 onNewChat={handleNewChat}
                 initialMessage={pendingMessage}
                 onGoContributor={handleGoContributor}
-                isAdmin={isAdmin}
               />
             </div>
           </TabErrorBoundary>
