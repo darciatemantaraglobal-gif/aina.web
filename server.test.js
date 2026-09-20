@@ -37,6 +37,7 @@ import {
 } from "./server.js";
 import { buildArticleEmbedText } from "./engine/embedder.js";
 import { buildKnowledgeContext } from "./engine/promptBuilder.js";
+import { DEFAULT_TRAINER_CHALLENGES, countChallengesByCategory } from "./server/services/trainerChallenges.js";
 
 // ── resolveEntitlement ──────────────────────────────────────────────────────
 // The actual bug (Fase 1): a Midtrans-paid or admin-granted Pro user with
@@ -767,6 +768,46 @@ describe("TRAINER_CATEGORIES", () => {
 describe("TRAINER_CLAIM_TIERS", () => {
   it("is the fixed set of redeemable amounts, ascending", () => {
     expect(TRAINER_CLAIM_TIERS).toEqual([30, 50, 100, 200]);
+  });
+});
+
+// ── DEFAULT_TRAINER_CHALLENGES — the curated question bank ────────────────
+// Seeding upserts on UNIQUE(question), so a duplicate in this list silently
+// seeds one fewer challenge than intended. Every category must also stay
+// populated — a trainer filtering to an empty category sees a dead end.
+
+describe("DEFAULT_TRAINER_CHALLENGES", () => {
+  it("has no duplicate questions (UNIQUE(question) would silently swallow them)", () => {
+    const questions = DEFAULT_TRAINER_CHALLENGES.map(c => c.question);
+    expect(new Set(questions).size).toBe(questions.length);
+  });
+
+  it("only uses categories the trainer program actually offers", () => {
+    const valid = Object.keys(TRAINER_CATEGORIES);
+    for (const c of DEFAULT_TRAINER_CHALLENGES) {
+      expect(valid).toContain(c.category);
+    }
+  });
+
+  it("gives every challenge a difficulty the reward rubric recognises", () => {
+    for (const c of DEFAULT_TRAINER_CHALLENGES) {
+      expect(resolveTrainerReward(c.difficulty, null)).not.toBeNull();
+    }
+  });
+
+  it("leaves no category empty", () => {
+    const counts = countChallengesByCategory();
+    for (const key of Object.keys(TRAINER_CATEGORIES)) {
+      expect(counts[key] ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it("phrases every challenge as a real question, long enough to pass submit validation", () => {
+    for (const c of DEFAULT_TRAINER_CHALLENGES) {
+      expect(c.question.length).toBeGreaterThanOrEqual(10);
+      expect(c.question.length).toBeLessThanOrEqual(500);
+      expect(c.question.endsWith("?")).toBe(true);
+    }
   });
 });
 

@@ -8149,7 +8149,7 @@ function QueryAnalyticsTab() {
 }
 
 /* ─── TrainerAdminTab — AINA AI Trainer Program review queue ────────────── */
-type TrainerInnerTab = "contributions" | "claims" | "balances";
+type TrainerInnerTab = "contributions" | "claims" | "balances" | "challenges";
 
 type TrainerContribution = {
   id: string; contributor_id: string; contributor_name: string; category: string;
@@ -8166,6 +8166,9 @@ type TrainerClaim = {
 type TrainerBalance = {
   contributor_id: string; full_name: string | null; email: string | null; balance_le: number;
 };
+type TrainerChallenge = {
+  id: string; question: string; category: string; difficulty: string | null; status: string;
+};
 
 function TrainerAdminTab() {
   const [inner, setInner] = useState<TrainerInnerTab>("contributions");
@@ -8175,6 +8178,10 @@ function TrainerAdminTab() {
   const [balances, setBalances] = useState<TrainerBalance[]>([]);
   const [balanceSearch, setBalanceSearch] = useState("");
   const [subtractAmount, setSubtractAmount] = useState<Record<string, string>>({});
+  const [challenges, setChallenges] = useState<TrainerChallenge[]>([]);
+  const [challengeCounts, setChallengeCounts] = useState({ open: 0, answered: 0, retired: 0 });
+  const [challengeSeedTotal, setChallengeSeedTotal] = useState(0);
+  const [seeding, setSeeding] = useState(false);
   const [categories, setCategories] = useState<Record<string, string>>({});
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
@@ -8194,10 +8201,26 @@ function TrainerAdminTab() {
       } else if (tab === "balances") {
         const d = await adminFetch(`/api/admin/trainer/balances?search=${encodeURIComponent(search ?? "")}`);
         setBalances(d.trainers ?? []);
+      } else if (tab === "challenges") {
+        const d = await adminFetch("/api/admin/trainer/challenges?status=open");
+        setChallenges(d.challenges ?? []);
+        setChallengeCounts(d.counts ?? { open: 0, answered: 0, retired: 0 });
+        setChallengeSeedTotal(d.seed_total ?? 0);
+        setCategories(d.categories ?? {});
       }
     } catch (e: any) { toast.error(e.message); }
     setLoading(false);
   }, []);
+
+  const seedChallenges = async () => {
+    setSeeding(true);
+    try {
+      const d = await adminFetch("/api/admin/trainer/challenges/seed", { method: "POST" });
+      toast.success(d.added > 0 ? `${d.added} challenge baru ditambahkan (total ${d.total})` : "Semua challenge dari daftar kurasi sudah ada");
+      load("challenges");
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSeeding(false); }
+  };
 
   useEffect(() => { load(inner); }, [inner, load]);
 
@@ -8248,6 +8271,7 @@ function TrainerAdminTab() {
 
   const tabs: { id: TrainerInnerTab; label: string }[] = [
     { id: "contributions", label: "Kontribusi" },
+    { id: "challenges",    label: "Challenge" },
     { id: "claims",        label: "Klaim Hadiah" },
     { id: "balances",      label: "Saldo Trainer" },
   ];
@@ -8394,6 +8418,41 @@ function TrainerAdminTab() {
                     >
                       Reset ke 0
                     </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && inner === "challenges" && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3">
+            <div className="flex gap-4 text-xs">
+              <span className="text-muted-foreground">Menunggu jawaban: <span className="font-bold text-primary">{challengeCounts.open}</span></span>
+              <span className="text-muted-foreground">Sudah dijawab: <span className="font-bold text-green-500">{challengeCounts.answered}</span></span>
+            </div>
+            <Button size="sm" variant="outline" className="ml-auto h-8" disabled={seeding} onClick={seedChallenges}>
+              {seeding ? "Mengisi..." : `Isi dari daftar kurasi (${challengeSeedTotal})`}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Mengisi ulang aman — pertanyaan yang sudah ada tidak diduplikasi dan statusnya tidak direset.
+          </p>
+
+          {challenges.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Belum ada challenge. Klik tombol di atas untuk mengisi bank pertanyaan.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {challenges.map(c => (
+                <div key={c.id} className="rounded-xl border border-border bg-card p-3">
+                  <p className="text-sm text-foreground">{c.question}</p>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="text-primary">{categories[c.category] ?? c.category}</span>
+                    {c.difficulty && <span>· {c.difficulty}</span>}
                   </div>
                 </div>
               ))}

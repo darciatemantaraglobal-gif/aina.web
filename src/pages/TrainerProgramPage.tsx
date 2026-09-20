@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import {
   GraduationCap, Coins, CheckCircle2, Send, Wallet, LogIn,
   LayoutDashboard, PenLine, History, Menu, X, Home, LogOut,
-  Gem, FileText, MessageCircle,
+  Gem, FileText, MessageCircle, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,16 +58,24 @@ type Contribution = {
   difficulty: string | null; reward_le: number | null; review_note: string | null;
   submitted_at: string; reviewed_at: string | null;
 };
-type Section = "overview" | "submit" | "history";
+type Section = "overview" | "challenge" | "submit" | "history";
 type ContentMode = "qa" | "artikel";
+type Challenge = { id: string; question: string; category: string; difficulty: string | null };
 
 const CATEGORY_ORDER = ["akademik", "administrasi", "kehidupan", "komunitas", "bahasa", "keislaman"];
 
 const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: "overview", label: "Ringkasan", icon: LayoutDashboard },
+  { id: "challenge", label: "Challenge", icon: Target },
   { id: "submit", label: "Kirim Kontribusi", icon: PenLine },
   { id: "history", label: "Riwayat", icon: History },
 ];
+
+const DIFFICULTY_BADGE: Record<string, { label: string; className: string }> = {
+  sederhana: { label: "Sederhana · 2 LE", className: "bg-slate-500/10 text-slate-400 border-slate-500/30" },
+  standar:   { label: "Standar · 3 LE",   className: "bg-sky-500/10 text-sky-400 border-sky-500/30" },
+  kompleks:  { label: "Kompleks · 5-8 LE", className: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
+};
 
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { label: string; className: string }> = {
@@ -168,6 +176,10 @@ export default function TrainerProgramPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contentMode, setContentMode] = useState<ContentMode>("qa");
 
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [challengeFilter, setChallengeFilter] = useState<string>("");
+  const [answeringChallenge, setAnsweringChallenge] = useState<Challenge | null>(null);
+
   const [category, setCategory] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -194,6 +206,13 @@ export default function TrainerProgramPage() {
     } catch { /* silent — the balance card still works without history */ }
   }, []);
 
+  const loadChallenges = useCallback(async () => {
+    try {
+      const data = await authedFetch("/api/trainer/challenges");
+      setChallenges(data.challenges ?? []);
+    } catch { /* silent — the rest of the dashboard works without the bank */ }
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setLoggedIn(!!session);
@@ -208,8 +227,11 @@ export default function TrainerProgramPage() {
   }, [loadStatus]);
 
   useEffect(() => {
-    if (status?.role === "trainer") loadContributions();
-  }, [status?.role, loadContributions]);
+    if (status?.role === "trainer") {
+      loadContributions();
+      loadChallenges();
+    }
+  }, [status?.role, loadContributions, loadChallenges]);
 
   const handleGoogleLogin = async () => {
     setPostLoginRedirect("/trainer");
@@ -235,7 +257,12 @@ export default function TrainerProgramPage() {
     try {
       const data = await authedFetch("/api/trainer/contributions", {
         method: "POST",
-        body: JSON.stringify({ category, question, answer, source_text: sourceText || null, source_date: sourceDate || null }),
+        body: JSON.stringify({
+          category, question, answer,
+          source_text: sourceText || null,
+          source_date: sourceDate || null,
+          challenge_id: answeringChallenge?.id ?? null,
+        }),
       });
       if (data.possible_duplicate) {
         toast.warning("Terkirim — tapi mirip artikel yang sudah ada. Reviewer akan cek ulang.");
@@ -243,13 +270,24 @@ export default function TrainerProgramPage() {
         toast.success(contentMode === "artikel" ? "Artikel terkirim! Menunggu review." : "Kontribusi terkirim! Menunggu review.");
       }
       setCategory(""); setQuestion(""); setAnswer(""); setSourceText(""); setSourceDate("");
+      setAnsweringChallenge(null);
       loadContributions();
       loadStatus();
+      loadChallenges();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const startAnsweringChallenge = (ch: Challenge) => {
+    setAnsweringChallenge(ch);
+    setQuestion(ch.question);
+    setCategory(ch.category);
+    setContentMode("qa");
+    setAnswer("");
+    setActiveSection("submit");
   };
 
   const handleTierClick = (tier: number) => {
@@ -436,14 +474,19 @@ export default function TrainerProgramPage() {
 
                   <div className="grid grid-cols-4 gap-2">
                     {[
-                      { icon: PenLine, label: "Kirim Q&A", onClick: () => { setContentMode("qa"); setActiveSection("submit"); } },
-                      { icon: FileText, label: "Kirim Artikel", onClick: () => { setContentMode("artikel"); setActiveSection("submit"); } },
-                      { icon: History, label: "Riwayat", onClick: () => setActiveSection("history") },
-                      { icon: MessageCircle, label: "Kontak Admin", onClick: () => window.open(waLink(status.claim_contact_whatsapp), "_blank") },
+                      { icon: Target, label: "Challenge", badge: challenges.length, onClick: () => setActiveSection("challenge") },
+                      { icon: PenLine, label: "Kirim Q&A", badge: 0, onClick: () => { setContentMode("qa"); setActiveSection("submit"); } },
+                      { icon: History, label: "Riwayat", badge: 0, onClick: () => setActiveSection("history") },
+                      { icon: MessageCircle, label: "Kontak Admin", badge: 0, onClick: () => window.open(waLink(status.claim_contact_whatsapp), "_blank") },
                     ].map((qa) => (
                       <button key={qa.label} onClick={qa.onClick} className="flex flex-col items-center gap-1.5">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-foreground transition-colors hover:bg-secondary/70">
+                        <span className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-foreground transition-colors hover:bg-secondary/70">
                           <qa.icon className="h-[18px] w-[18px]" />
+                          {qa.badge > 0 && (
+                            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                              {qa.badge}
+                            </span>
+                          )}
                         </span>
                         <span className="text-center text-[10px] leading-tight text-muted-foreground">{qa.label}</span>
                       </button>
@@ -514,8 +557,96 @@ export default function TrainerProgramPage() {
                 </div>
               )}
 
+              {activeSection === "challenge" && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Target className="h-4 w-4 text-primary" /> Pertanyaan Menunggu Jawaban
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Ini pertanyaan yang sering ditanyakan Masisir tapi belum ada jawabannya di AINA.
+                      Pilih satu, jawab dari pengalaman kamu — bobot LE-nya tertera di tiap kartu.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => setChallengeFilter("")}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                        challengeFilter === "" ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Semua ({challenges.length})
+                    </button>
+                    {CATEGORY_ORDER.map((key) => {
+                      const count = challenges.filter((c) => c.category === key).length;
+                      if (count === 0) return null;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setChallengeFilter(key)}
+                          className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                            challengeFilter === key ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {status.categories?.[key] ?? key} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {challenges.length === 0 ? (
+                    <p className="py-10 text-center text-sm text-muted-foreground">
+                      Belum ada challenge tersedia. Admin perlu mengisi bank pertanyaannya dulu.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {challenges
+                        .filter((c) => !challengeFilter || c.category === challengeFilter)
+                        .map((c) => {
+                          const badge = c.difficulty ? DIFFICULTY_BADGE[c.difficulty] : null;
+                          return (
+                            <div key={c.id} className="rounded-xl border border-border bg-card p-3">
+                              <p className="text-sm font-medium text-foreground">{c.question}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] text-muted-foreground">{status.categories?.[c.category] ?? c.category}</span>
+                                {badge && (
+                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>
+                                    {badge.label}
+                                  </span>
+                                )}
+                                <Button size="sm" className="ml-auto h-7 text-xs" onClick={() => startAnsweringChallenge(c)}>
+                                  Jawab
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {activeSection === "submit" && (
                 <div className="space-y-4">
+                  {answeringChallenge && (
+                    <div className="flex items-start justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+                          <Target className="h-3.5 w-3.5" /> Menjawab challenge
+                        </p>
+                        <p className="mt-0.5 text-xs text-foreground">{answeringChallenge.question}</p>
+                      </div>
+                      <button
+                        onClick={() => { setAnsweringChallenge(null); setQuestion(""); setCategory(""); }}
+                        className="shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                        title="Batal menjawab challenge"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="flex gap-1 rounded-xl bg-secondary/50 p-1">
                     {(["qa", "artikel"] as const).map((mode) => (
                       <button

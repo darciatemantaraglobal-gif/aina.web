@@ -89,6 +89,7 @@ import { createSmartRetrievalService }     from "./server/services/smartRetrieva
 import { createMuqarrarRetrievalService }  from "./server/services/muqarrarRetrievalService.js";
 import { runDailyReminder, runWeeklyRecap, runExpiryAlerts } from "./server/services/reminderService.js";
 import { createJobHelpers, getQueueStatus } from "./server/services/jobQueue.js";
+import { DEFAULT_TRAINER_CHALLENGES }      from "./server/services/trainerChallenges.js";
 import { generateEmbedding, buildArticleEmbedText, CURRENT_EMBED_MODEL } from "./engine/embedder.js";
 import { detectPlacesQuery, buildPlacesContext } from "./engine/placesSearch.js";
 
@@ -12472,6 +12473,29 @@ app.get("/api/trainer/status", async (req, res) => {
   });
 });
 
+/* GET /api/trainer/challenges — bank pertanyaan yang masih menunggu jawaban.
+ * Hanya yang berstatus 'open': begitu satu kontribusi untuk challenge itu
+ * disetujui reviewer, pertanyaannya hilang dari daftar supaya trainer lain
+ * tidak menghabiskan waktu menjawab hal yang sudah masuk KB. */
+app.get("/api/trainer/challenges", async (req, res) => {
+  const user = await verifyAuth(req.headers.authorization);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  if (!supabase) return res.status(503).json({ error: "Service unavailable" });
+
+  let q = supabase.from("trainer_challenges")
+    .select("id, question, category, difficulty")
+    .eq("status", "open");
+  if (TRAINER_CATEGORIES[req.query.category]) q = q.eq("category", req.query.category);
+
+  const { data, error } = await q.order("category").order("created_at").limit(300);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const byCategory = {};
+  for (const c of data ?? []) byCategory[c.category] = (byCategory[c.category] ?? 0) + 1;
+  res.json({ challenges: data ?? [], by_category: byCategory, categories: TRAINER_CATEGORIES });
+});
+
 app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
   const user = await verifyAuth(req.headers.authorization);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -12480,7 +12504,7 @@ app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
 
   await ensureTrainerRole(supabase, user.id);
 
-  const { category, question, answer, source_text, source_date } = req.body;
+  const { category, question, answer, source_text, source_date, challenge_id } = req.body;
   if (!TRAINER_CATEGORIES[category]) {
     return res.status(400).json({ error: `category harus salah satu: ${Object.keys(TRAINER_CATEGORIES).join(", ")}` });
   }
@@ -12489,6 +12513,16 @@ app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
 
   const possibleDuplicateOf = await findPossibleDuplicateArticle(supabase, question.trim());
   const flaggedIrrelevant = !isLikelyMasisirRelevant(question, answer);
+
+  // Only attach a challenge that actually exists and is still open — a stale
+  // id from a tab left open overnight shouldn't silently credit a challenge
+  // someone else already closed.
+  let challengeId = null;
+  if (challenge_id) {
+    const { data: ch } = await supabase.from("trainer_challenges")
+      .select("id").eq("id", challenge_id).eq("status", "open").maybeSingle();
+    challengeId = ch?.id ?? null;
+  }
 
   const { data, error } = await supabase.from("trainer_contributions").insert({
     contributor_id: user.id,
@@ -12499,6 +12533,7 @@ app.post("/api/trainer/contributions", writeLimiter, async (req, res) => {
     source_date: source_date || null,
     possible_duplicate_of: possibleDuplicateOf,
     flagged_irrelevant: flaggedIrrelevant,
+    challenge_id: challengeId,
   }).select().single();
   if (error) return res.status(500).json({ error: sanitizeErr(error) });
   res.json({ contribution: data, possible_duplicate: !!possibleDuplicateOf, flagged_irrelevant: flaggedIrrelevant });
@@ -12658,6 +12693,18 @@ app.post("/api/admin/trainer/contributions/:id/review", writeLimiter, async (req
     });
   }
 
+  // An approved answer closes its challenge — it's in the KB now, so it stops
+  // being offered to other trainers. A rejected or revision-needed answer
+  // leaves the challenge open for someone else (or a second attempt).
+  if (status === "approved" && contribution.challenge_id) {
+    await supabase.from("trainer_challenges").update({
+      status: "answered",
+      answered_by: contribution.contributor_id,
+      answered_at: new Date().toISOString(),
+      kb_article_id: kbArticleId,
+    }).eq("id", contribution.challenge_id);
+  }
+
   const notifCopy = status === "approved"
     ? { title: `Kontribusi diterima! +${rewardLe} LE 🎉`, message: `Jawabanmu untuk "${contribution.question.slice(0, 60)}" diterima dan sudah masuk Knowledge Base AINA.`, type: "success" }
     : status === "needs_revision"
@@ -12790,6 +12837,55 @@ app.post("/api/admin/trainer/balances/:contributorId/adjust", writeLimiter, asyn
     success: true,
     deducted_le: Math.round(deduction * 100) / 100,
     new_balance_le: Math.round((balance - deduction) * 100) / 100,
+  });
+});
+
+/* ── Admin: challenge bank ─────────────────────────────────────────────────
+ * Seeding is idempotent by design (UNIQUE on question + ignoreDuplicates),
+ * so the admin can re-run it after the curated list grows without wiping the
+ * status of challenges that trainers already answered.
+ */
+app.get("/api/admin/trainer/challenges", async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+  const status = ["open", "answered", "retired"].includes(req.query.status) ? req.query.status : "open";
+
+  const [{ data, error }, { data: all }] = await Promise.all([
+    supabase.from("trainer_challenges").select("*").eq("status", status).order("category").order("created_at").limit(500),
+    supabase.from("trainer_challenges").select("status"),
+  ]);
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const counts = { open: 0, answered: 0, retired: 0 };
+  for (const c of all ?? []) if (counts[c.status] != null) counts[c.status]++;
+  res.json({
+    challenges: data ?? [],
+    counts,
+    seed_total: DEFAULT_TRAINER_CHALLENGES.length,
+    categories: TRAINER_CATEGORIES,
+  });
+});
+
+app.post("/api/admin/trainer/challenges/seed", writeLimiter, async (req, res) => {
+  const admin = await verifyAdminUser(req.headers.authorization);
+  if (!admin) return res.status(403).json({ error: "Unauthorized" });
+  const supabase = getAdminClient();
+
+  const { count: before } = await supabase.from("trainer_challenges").select("*", { count: "exact", head: true });
+  const { error } = await supabase.from("trainer_challenges")
+    .upsert(DEFAULT_TRAINER_CHALLENGES.map(c => ({ ...c, source: "seed" })), {
+      onConflict: "question",
+      ignoreDuplicates: true,
+    });
+  if (error) return res.status(500).json({ error: sanitizeErr(error) });
+
+  const { count: after } = await supabase.from("trainer_challenges").select("*", { count: "exact", head: true });
+  res.json({
+    success: true,
+    added: Math.max(0, (after ?? 0) - (before ?? 0)),
+    total: after ?? 0,
+    seed_total: DEFAULT_TRAINER_CHALLENGES.length,
   });
 });
 
@@ -16941,6 +17037,28 @@ async function runColumnMigrations() {
     `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS trainer_whatsapp TEXT;`,
     `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS trainer_payment_method TEXT;`,
     `ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS trainer_payment_detail TEXT;`,
+
+    // ── Challenge bank — curated questions waiting for an answer ─────────────
+    // Answers the "what should I even write about?" problem: instead of a
+    // blank form, a trainer picks a question AINA is known to get asked and
+    // has no good KB answer for. UNIQUE(question) makes seeding idempotent —
+    // re-running the seed never duplicates a question or resets its status.
+    `CREATE TABLE IF NOT EXISTS public.trainer_challenges (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      question TEXT NOT NULL UNIQUE,
+      category TEXT NOT NULL,
+      difficulty TEXT, -- sederhana | standar | kompleks — perkiraan bobot, reviewer tetap yang memutuskan
+      status TEXT NOT NULL DEFAULT 'open', -- open | answered | retired
+      source TEXT NOT NULL DEFAULT 'seed', -- seed | gap
+      answered_by UUID,
+      answered_at TIMESTAMPTZ,
+      kb_article_id UUID,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_trainer_challenges_status ON public.trainer_challenges(status, category);`,
+    // Which challenge a submission answers, if any — free-form submissions
+    // leave this NULL, so the two paths coexist.
+    `ALTER TABLE public.trainer_contributions ADD COLUMN IF NOT EXISTS challenge_id UUID REFERENCES public.trainer_challenges(id);`,
   ];
   let succeeded = 0;
   for (const sql of migrations) {
